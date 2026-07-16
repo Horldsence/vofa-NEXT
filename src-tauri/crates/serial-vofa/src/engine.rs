@@ -1,0 +1,16 @@
+use serial_core::DataFrame;
+
+/// 协议引擎 trait — 解析接收数据 / 编码发送数据
+pub trait ProtocolEngine: Send {
+    /// 喂入原始字节流, 返回解析出的数据帧列表
+    fn feed(&mut self, data: &[u8]) -> Vec<DataFrame>;
+
+    /// 编码单通道值为字节流 (用于自动绑定模式发送)
+    fn encode_channel(&mut self, channel: usize, value: f32) -> Vec<u8>;
+
+    /// 编码多通道值 (一次性发送所有通道)
+    fn encode_channels(&mut self, values: &[f32]) -> Vec<u8>;
+
+    /// 协议名称
+    fn name(&self) -> &str;
+}

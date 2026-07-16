@@ -1,0 +1,45 @@
+[package]
+name = "serial"
+version = "0.1.0"
+description = "Modern serial port assistant with VOFA protocol support"
+authors = ["peng"]
+edition = "2021"
+
+[lib]
+name = "serial_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[workspace]
+members = ["crates/serial-core", "crates/serial-transport", "crates/serial-vofa"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+thiserror = "1"
+anyhow = "1"
+serial-core = { path = "crates/serial-core" }
+serial-transport = { path = "crates/serial-transport" }
+serial-vofa = { path = "crates/serial-vofa" }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+serial-core = { workspace = true }
+serial-transport = { workspace = true }
+serial-vofa = { workspace = true }
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+parking_lot = "0.12"
