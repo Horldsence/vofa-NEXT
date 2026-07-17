@@ -659,8 +659,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }, 50);
     });
 
-    // transport:frame 事件仍保留 (供未来逐帧响应控件)
-    const unlistenFrame = await listen<DataFrame>('transport:frame', () => {
+    // transport:frames 事件 (批量帧, 后端重构后一次 emit 多帧)
+    const unlistenFrames = await listen<DataFrame[]>('transport:frames', () => {
       // 后端已将帧推入 DataBuffer, 通过 subscribe_waveform Channel 推送窗口
       // 此处无需前端再缓冲
     });
@@ -680,7 +680,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }));
     });
 
-    unlistenFns = [unlistenData, unlistenFrame, unlistenState, unlistenStats];
+    unlistenFns = [unlistenData, unlistenFrames, unlistenState, unlistenStats];
 
     return () => {
       unlistenFns.forEach((fn) => fn());

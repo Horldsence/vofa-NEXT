@@ -27,7 +27,7 @@ pub async fn spawn(
     // UdpSocket 的 send/recv 接受 &self, 用 Arc 共享
     let socket = Arc::new(socket);
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(2048);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

@@ -501,6 +501,71 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     return () => el.removeEventListener('wheel', onWheel);
   }, [onConfigChange]);
 
+  // 鼠标中键拖动 → 平移图形 (X: hPosition, Y: 第一可见通道 position)
+  // 中键 mousedown 在 container 上触发, mousemove/mouseup 绑定 window 避免拖出丢失
+  const panRef = useRef<{ startX: number; startY: number; startHPos: number; startPos: number; chIdx: number } | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 1) return; // 仅中键
+      e.preventDefault(); // 阻止浏览器自动滚动
+      const cfg = axisConfigRef.current;
+      const firstVisible = cfg.channels.findIndex((c) => c.show);
+      const chIdx = firstVisible >= 0 ? firstVisible : 0;
+      panRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startHPos: cfg.hPosition,
+        startPos: getEffectiveChannel(cfg, chIdx).position,
+        chIdx,
+      };
+      el.style.cursor = 'grabbing';
+    };
+    const onMouseMove = (e: MouseEvent) => {
+      const ps = panRef.current;
+      if (!ps) return;
+      const plot = plotRef.current;
+      if (!plot) return;
+      e.preventDefault();
+      const cfg = axisConfigRef.current;
+      const dx = e.clientX - ps.startX;
+      const dy = e.clientY - ps.startY;
+      // X: 像素 → 秒 (hPosition >= 0, 0=实时, 正数=查看历史)
+      // 向右拖图形跟随右移 → 看更早数据 → hPosition 增大
+      const winSec = timeBaseToWindowSec(cfg.timeBase);
+      const secPerPx = winSec / plot.width;
+      const newHPos = ps.startHPos + dx * secPerPx;
+      // Y: 像素 → 值 (向下拖 = position 增加 = 波形下移, 图形跟随鼠标)
+      const effCh = getEffectiveChannel(cfg, ps.chIdx);
+      const valPerPx = (effCh.vPerDiv * VERTICAL_DIVS) / plot.height;
+      const newPos = ps.startPos + dy * valPerPx;
+      // 应用新配置 (running 时 hPosition 不生效, 切到 Stop 让平移可见)
+      const newChannels = cfg.channels.slice();
+      if (cfg.sharedY) {
+        newChannels[0] = { ...newChannels[0], position: newPos };
+      } else {
+        newChannels[ps.chIdx] = { ...newChannels[ps.chIdx], position: newPos };
+      }
+      onConfigChange?.({ ...cfg, running: false, hPosition: Math.max(0, newHPos), channels: newChannels });
+    };
+    const onMouseUp = () => {
+      if (panRef.current) {
+        panRef.current = null;
+        el.style.cursor = '';
+      }
+    };
+    // mousedown 在 container, move/up 在 window (拖出不丢失)
+    el.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      el.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [onConfigChange]);
+
   // 游标 SVG overlay
   const cursorOverlay = useMemo(() => {
     if (!axisConfig.cursors.enabled) return null;

@@ -12,7 +12,7 @@ pub async fn spawn(
     broadcast::Sender<Vec<u8>>,
     Arc<AtomicBool>,
 )> {
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(2048);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

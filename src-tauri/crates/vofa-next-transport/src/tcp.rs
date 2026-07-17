@@ -20,7 +20,7 @@ pub async fn spawn_client(
 
     let (read_half, write_half) = stream.into_split();
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(2048);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -91,7 +91,7 @@ pub async fn spawn_server(
         .await
         .map_err(|e| Error::Transport(format!("TCP 监听失败: {}", e)))?;
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(2048);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

@@ -263,7 +263,7 @@ export interface ScopeMeasurements {
 /// 示波器风格波形图配置 — 替代旧 WaveformAxisConfig
 export interface ScopeAxisConfig {
   timeBase: number;       // 时基 (秒/格), 取自 TIME_BASES_SEC
-  hPosition: number;      // 水平延迟 (秒, 0=实时, 负数=查看历史)
+  hPosition: number;      // 水平延迟 (秒, 0=实时, 正数=查看历史)
   channels: ChannelAxisConfig[];  // 每通道独立配置 (sharedY=true 时只使用 channels[0])
   grid: boolean;          // 网格可见
   running: boolean;       // true=运行 (持续更新), false=Stop (冻结)

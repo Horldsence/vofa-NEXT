@@ -78,7 +78,7 @@ pub fn spawn(
         .try_clone()
         .map_err(|e| Error::Transport(format!("克隆串口失败: {}", e)))?;
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(2048);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

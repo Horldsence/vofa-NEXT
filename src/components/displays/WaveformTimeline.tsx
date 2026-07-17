@@ -323,9 +323,10 @@ export function WaveformTimeline({
       const cfg = axisConfigRef.current;
 
       if (ds.type === 'window') {
-        // 拖动窗口体 → 整体平移, 仅改 hPosition (timeBase 不变)
+        // 拖动窗口体 → 窗口跟随鼠标平移 (仅改 hPosition, timeBase 不变)
+        // hPosition >= 0 (0=实时, 正数=查看历史); 向右拖→窗口右移→接近最新→hPosition 减小
         const newHPos = ds.startHPos - dxSec;
-        const clamped = Math.max(-totalDurSec, Math.min(0, newHPos));
+        const clamped = Math.max(0, Math.min(totalDurSec, newHPos));
         onConfigChange?.({ ...cfg, hPosition: clamped, running: false });
       } else {
         // 左右柄 → 改变窗口大小 (timeBase)
