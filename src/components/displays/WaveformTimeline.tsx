@@ -30,6 +30,9 @@ interface WaveformTimelineProps {
   viewEndSec: number;
   timeWindowSec: number;
   connectedChannels: number[];
+  /// Stop 模式下的冻结数据快照 — running=false 时使用它绘制缩略图 (而非实时 waveformWindow)
+  /// 这样示波器暂停时缩略图也同步冻结, 不会继续显示新到达的数据
+  frozenData: { ts: number[]; chs: number[][] } | null;
   onConfigChange?: (next: ScopeAxisConfig) => void;
 }
 
@@ -62,12 +65,15 @@ function snapTimeBase(tb: number): number {
 
 /// 时间轴缩略图 — 绘制全量波形概览 + 可视窗口框
 /// - 拖动窗口体 → 改变 hPosition (查看历史)
-/// - 拖动左右柄 → 连续改变 timeBase (释放时吸附到 1-2-5 档)
+/// - 拖动左柄 → 右端点固定, 左端点跟随鼠标 (改变 timeBase)
+/// - 拖动右柄 → 左端点固定, 右端点跟随鼠标 (改变 timeBase + hPosition)
+/// - 释放时 timeBase 吸附到最近 1-2-5 档
 export function WaveformTimeline({
   axisConfig,
   viewEndSec,
   timeWindowSec,
   connectedChannels,
+  frozenData,
   onConfigChange,
 }: WaveformTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -78,6 +84,23 @@ export function WaveformTimeline({
 
   const axisConfigRef = useRef(axisConfig);
   useEffect(() => { axisConfigRef.current = axisConfig; }, [axisConfig]);
+
+  // frozenData 用 ref, 避免 draw/hitTest/handleMove 因依赖变化而频繁重建
+  const frozenDataRef = useRef(frozenData);
+  useEffect(() => { frozenDataRef.current = frozenData; }, [frozenData]);
+
+  /// 获取当前应使用的数据源 — Stop 时用冻结快照, Run 时用实时 waveformWindow
+  const getActiveWindow = useCallback(() => {
+    const fd = frozenDataRef.current;
+    if (fd && fd.ts.length > 0) {
+      return {
+        timestamps: fd.ts,
+        channels: fd.chs,
+        channel_count: fd.chs.length,
+      };
+    }
+    return waveformWindow.get();
+  }, []);
 
   // ====== 绘制 ======
   useEffect(() => {
@@ -103,7 +126,7 @@ export function WaveformTimeline({
       ctx.fillStyle = '#1e1e1e';
       ctx.fillRect(0, 0, w, h);
 
-      const win = waveformWindow.get();
+      const win = getActiveWindow();
       const totalPoints = win.timestamps.length;
       if (totalPoints < 2) {
         ctx.fillStyle = '#858585';
@@ -212,7 +235,7 @@ export function WaveformTimeline({
     const pad = TIMELINE_PAD;
     const plotW = w - pad * 2;
 
-    const win = waveformWindow.get();
+    const win = getActiveWindow();
     const totalPoints = win.timestamps.length;
     if (totalPoints < 2) return null;
     const firstTs = win.timestamps[0];
@@ -231,7 +254,7 @@ export function WaveformTimeline({
     if (x >= winX + winW - hitR && x <= winX + winW + hitR) return 'right';
     if (x > winX && x < winX + winW) return 'window';
     return null;
-  }, []);
+  }, [getActiveWindow]);
 
   // ====== 鼠标按下: 启动拖动 ======
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -287,7 +310,7 @@ export function WaveformTimeline({
       const pad = TIMELINE_PAD;
       const plotW = w - pad * 2;
 
-      const win = waveformWindow.get();
+      const win = getActiveWindow();
       const totalPoints = win.timestamps.length;
       if (totalPoints < 2) return;
       const firstTs = win.timestamps[0];
@@ -300,20 +323,42 @@ export function WaveformTimeline({
       const cfg = axisConfigRef.current;
 
       if (ds.type === 'window') {
-        // 拖动窗口体 → 改变 hPosition
+        // 拖动窗口体 → 整体平移, 仅改 hPosition (timeBase 不变)
         const newHPos = ds.startHPos - dxSec;
         const clamped = Math.max(-totalDurSec, Math.min(0, newHPos));
         onConfigChange?.({ ...cfg, hPosition: clamped, running: false });
       } else {
-        // 左右柄 → 连续改变 timeBase (拖动中不吸附, 释放时吸附)
-        const curWinSec = ds.startTimeBase * HORIZONTAL_DIVS;
-        const dWinSec = ds.type === 'left' ? -dxSec : dxSec;
-        const newWinSec = Math.max(
-          TIME_BASES_SEC[0] * HORIZONTAL_DIVS,
-          Math.min(TIME_BASES_SEC[TIME_BASES_SEC.length - 1] * HORIZONTAL_DIVS, curWinSec + dWinSec)
-        );
+        // 左右柄 → 改变窗口大小 (timeBase)
+        // startVEnd: 起始右端点 (相对最新数据, 0=最新, 负数=过去)
+        // startWinStartSec: 起始左端点
+        const startVEnd = -ds.startHPos;
+        const startWinSec = ds.startTimeBase * HORIZONTAL_DIVS;
+        const startWinStartSec = startVEnd - startWinSec;
+
+        let newVEnd: number;
+        let newWinSec: number;
+        if (ds.type === 'left') {
+          // 拖左端点: 右端点固定 (viewEndSec 不变), 新窗口宽度 = startWinSec - dxSec
+          newVEnd = startVEnd;
+          newWinSec = startWinSec - dxSec;
+        } else {
+          // 拖右端点: 左端点固定, 右端点跟随鼠标 (viewEndSec 改变)
+          newVEnd = startVEnd + dxSec;
+          newWinSec = newVEnd - startWinStartSec;
+        }
+        // 限制窗口大小在时基档位范围内
+        const minWinSec = TIME_BASES_SEC[0] * HORIZONTAL_DIVS;
+        const maxWinSec = TIME_BASES_SEC[TIME_BASES_SEC.length - 1] * HORIZONTAL_DIVS;
+        newWinSec = Math.max(minWinSec, Math.min(maxWinSec, newWinSec));
+        // 限制 viewEndSec 在数据范围内 [-totalDurSec, 0]
+        newVEnd = Math.max(-totalDurSec, Math.min(0, newVEnd));
         const newTimeBase = newWinSec / HORIZONTAL_DIVS;
-        onConfigChange?.({ ...cfg, timeBase: newTimeBase, running: false });
+        onConfigChange?.({
+          ...cfg,
+          timeBase: newTimeBase,
+          hPosition: -newVEnd,
+          running: false,
+        });
       }
     };
 
@@ -339,7 +384,7 @@ export function WaveformTimeline({
       window.removeEventListener('mousemove', handleMove);
       window.removeEventListener('mouseup', handleUp);
     };
-  }, [onConfigChange]);
+  }, [onConfigChange, getActiveWindow]);
 
   const timeWindowLabel = formatTimeBase(axisConfig.timeBase).replace('/div', '') + ' ×10';
   const statusLabel = axisConfig.running

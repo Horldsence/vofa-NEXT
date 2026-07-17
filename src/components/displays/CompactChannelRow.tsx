@@ -12,14 +12,17 @@ import type { RenderStepSelect } from './scopeShared';
 export function CompactChannelRow({
   idx,
   ch,
+  yUnit,
   onPatchChannel,
   renderStepSelect,
 }: {
   idx: number;
   ch: ChannelAxisConfig;
+  yUnit: string;
   onPatchChannel: (idx: number, p: Partial<ChannelAxisConfig>) => void;
   renderStepSelect: RenderStepSelect;
 }) {
+  const unit = yUnit ?? 'V';
   return (
     <div className="channel-row">
       <div className="channel-row-header">
@@ -49,7 +52,7 @@ export function CompactChannelRow({
           steps={V_PER_DIV}
           onChange={(v) => onPatchChannel(idx, { vPerDiv: v })}
           defaultValue={1}
-          formatValue={formatVPerDiv}
+          formatValue={(v) => formatVPerDiv(v, unit)}
           size={40}
           disabled={!ch.show}
         />
@@ -57,7 +60,7 @@ export function CompactChannelRow({
           V_PER_DIV,
           ch.vPerDiv,
           (v) => onPatchChannel(idx, { vPerDiv: v }),
-          formatVPerDiv
+          (v) => formatVPerDiv(v, unit)
         )}
       </div>
       <div className="scope-knob-row small">
@@ -71,7 +74,7 @@ export function CompactChannelRow({
             onPatchChannel(idx, { position: parseFloat(e.target.value) || 0 })
           }
         />
-        <span className="scope-unit">V</span>
+        <span className="scope-unit">{unit}</span>
       </div>
     </div>
   );

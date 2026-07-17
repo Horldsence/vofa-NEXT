@@ -179,6 +179,13 @@ measure: Measure
 oscilloscopeSettings: Oscilloscope Settings
 coupling: Coupling
 position: Position
+yUnit: Y-Axis Unit
+sharedY: Shared Y
+independentY: Independent Y
+sharedYDesc: Toggle whether all channels share a single Y axis (V/div and Position)
+sharedYHint: Shared Y mode — Set V/div and Position uniformly in the "Channels" tab
+cursorHideHint: hide cursor
+cursorHiddenHint: Cursor hidden (release key to restore)
 
 # Notifications
 notifError: Error
@@ -197,3 +204,96 @@ notifDismiss: Dismiss
 notifDismissAll: Dismiss All
 notifMore: "{{count}} more notifications"
 notifCollapsedHint: Same-source error count
+
+# Settings system
+settings: Settings
+settingsTitle: Settings
+settingsSearch: Search settings...
+settingsReset: Reset to Defaults
+settingsResetCategory: Reset this category
+settingsDone: Done
+settingsClose: Close
+settingsGeneral: General
+settingsAppearance: Appearance
+settingsEditor: Editor
+settingsSerial: Serial Defaults
+settingsNotifications: Notifications
+settingsAbout: About
+
+# Setting items - General
+settingLanguage: Language
+settingLanguageDesc: User interface language
+settingAutoConnectOnStart: Auto-connect on start
+settingAutoConnectOnStartDesc: Try connecting with the last transport config when the app starts
+settingConfirmBeforeQuit: Confirm before quit
+settingConfirmBeforeQuitDesc: Show a confirmation dialog when closing the window
+
+# Setting items - Appearance
+settingTheme: Theme
+settingThemeDesc: Application color scheme (light theme not yet implemented)
+settingUiFontFamily: UI Font Family
+settingUiFontFamilyDesc: Font family used for interface text
+settingUiFontSize: UI Font Size
+settingUiFontSizeDesc: Interface text size (px)
+settingMonoFontFamily: Monospace Font
+settingMonoFontFamilyDesc: Font family for raw data / code areas
+settingMonoFontSize: Monospace Font Size
+settingMonoFontSizeDesc: Raw data / code area font size (px)
+settingStatusBarVisible: Show Status Bar
+settingStatusBarVisibleDesc: Display the status bar at the bottom of the window
+settingActivityBarVisible: Show Activity Bar
+settingActivityBarVisibleDesc: Display the activity bar on the left of the window
+
+# Setting items - Editor
+settingWaveformMaxPoints: Waveform Max Points
+settingWaveformMaxPointsDesc: Maximum data points cached per channel
+settingWaveformFps: Waveform FPS
+settingWaveformFpsDesc: Waveform chart refresh rate (FPS)
+settingScopeDefaultTimeBase: Default Time Base
+settingScopeDefaultTimeBaseDesc: Default time base for new waveform charts (sec/div)
+settingScopeDefaultVPerDiv: Default V/div
+settingScopeDefaultVPerDivDesc: Default vertical scale for new waveform charts
+settingGridVisible: Show Grid by Default
+settingGridVisibleDesc: Whether new waveform charts show grid by default
+
+# Setting items - Serial
+settingDefaultBaudRate: Default Baud Rate
+settingDefaultBaudRateDesc: Default baud rate for new serial connections
+settingDefaultDataBits: Default Data Bits
+settingDefaultDataBitsDesc: Default data bits for new serial connections
+settingDefaultParity: Default Parity
+settingDefaultParityDesc: Default parity for new serial connections
+settingDefaultStopBits: Default Stop Bits
+settingDefaultStopBitsDesc: Default stop bits for new serial connections
+settingDefaultFlowControl: Default Flow Control
+settingDefaultFlowControlDesc: Default flow control for new serial connections
+
+# Setting items - Notifications
+settingNotifEnabled: Enable Notifications
+settingNotifEnabledDesc: Show desktop notifications
+settingNotifDuration: Notification Duration
+settingNotifDurationDesc: Notification display duration (ms, 0 = persistent)
+settingNotifShowOnConnect: Connect Notification
+settingNotifShowOnConnectDesc: Show a notification when transport connects
+settingNotifShowOnDisconnect: Disconnect Notification
+settingNotifShowOnDisconnectDesc: Show a notification when transport disconnects
+settingNotifShowOnError: Error Notification
+settingNotifShowOnErrorDesc: Show a notification when an error occurs
+
+# About dialog
+about: About
+aboutTitle: About VOFA-Next
+aboutVersion: Version
+aboutAuthor: Author
+aboutLicense: License
+aboutGithub: GitHub Repository
+aboutDocs: Documentation
+aboutDescription: Modern serial assistant with VOFA+ protocol and oscilloscope-style waveform display
+aboutClose: Close
+
+# Menu event labels
+menuNewTab: New Tab
+menuCloseTab: Close Tab
+menuToggleSidebar: Toggle Sidebar
+menuAbout: About
+menuSettings: Settings

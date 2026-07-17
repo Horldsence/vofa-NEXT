@@ -179,6 +179,13 @@ measure: 测量
 oscilloscopeSettings: 示波器设置
 coupling: 耦合
 position: 位置
+yUnit: Y 轴单位
+sharedY: 共用 Y
+independentY: 独立 Y
+sharedYDesc: 切换所有通道是否共用同一个 Y 轴 (V/div 与 Position)
+sharedYHint: 共用 Y 模式 — V/div 与 Position 请在"通道"Tab 统一设置
+cursorHideHint: 隐藏光标
+cursorHiddenHint: 光标已隐藏 (松开按键恢复)
 
 # 通知
 notifError: 错误
@@ -197,3 +204,96 @@ notifDismiss: 关闭
 notifDismissAll: 关闭全部
 notifMore: "还有 {{count}} 条通知"
 notifCollapsedHint: 同源错误累计次数
+
+# 设置系统
+settings: 设置
+settingsTitle: 设置
+settingsSearch: 搜索设置...
+settingsReset: 重置为默认
+settingsResetCategory: 重置此项
+settingsDone: 完成
+settingsClose: 关闭
+settingsGeneral: 通用
+settingsAppearance: 外观
+settingsEditor: 编辑器
+settingsSerial: 串口默认值
+settingsNotifications: 通知
+settingsAbout: 关于
+
+# 设置项 - General
+settingLanguage: 语言
+settingLanguageDesc: 界面显示语言
+settingAutoConnectOnStart: 启动时自动连接
+settingAutoConnectOnStartDesc: 应用启动时自动尝试连接上次使用的传输配置
+settingConfirmBeforeQuit: 退出前确认
+settingConfirmBeforeQuitDesc: 关闭窗口时弹出确认对话框
+
+# 设置项 - Appearance
+settingTheme: 主题
+settingThemeDesc: 应用配色方案 (浅色主题暂未实现)
+settingUiFontFamily: UI 字体
+settingUiFontFamilyDesc: 界面文字使用的字体族
+settingUiFontSize: UI 字号
+settingUiFontSizeDesc: 界面文字字号 (px)
+settingMonoFontFamily: 等宽字体
+settingMonoFontFamilyDesc: 原始数据/代码区使用的等宽字体族
+settingMonoFontSize: 等宽字号
+settingMonoFontSizeDesc: 原始数据/代码区字号 (px)
+settingStatusBarVisible: 显示状态栏
+settingStatusBarVisibleDesc: 在窗口底部显示状态栏
+settingActivityBarVisible: 显示活动栏
+settingActivityBarVisibleDesc: 在窗口左侧显示活动栏
+
+# 设置项 - Editor
+settingWaveformMaxPoints: 波形最大点数
+settingWaveformMaxPointsDesc: 单通道缓存的最大数据点数
+settingWaveformFps: 波形刷新率
+settingWaveformFpsDesc: 波形图刷新频率 (FPS)
+settingScopeDefaultTimeBase: 默认时基
+settingScopeDefaultTimeBaseDesc: 新建波形图的默认时基 (秒/格)
+settingScopeDefaultVPerDiv: 默认 V/格
+settingScopeDefaultVPerDivDesc: 新建波形图的默认垂直档位
+settingGridVisible: 默认显示网格
+settingGridVisibleDesc: 新建波形图是否默认显示网格
+
+# 设置项 - Serial
+settingDefaultBaudRate: 默认波特率
+settingDefaultBaudRateDesc: 新建串口连接的默认波特率
+settingDefaultDataBits: 默认数据位
+settingDefaultDataBitsDesc: 新建串口连接的默认数据位
+settingDefaultParity: 默认校验
+settingDefaultParityDesc: 新建串口连接的默认校验方式
+settingDefaultStopBits: 默认停止位
+settingDefaultStopBitsDesc: 新建串口连接的默认停止位
+settingDefaultFlowControl: 默认流控
+settingDefaultFlowControlDesc: 新建串口连接的默认流控方式
+
+# 设置项 - Notifications
+settingNotifEnabled: 启用通知
+settingNotifEnabledDesc: 是否显示桌面通知
+settingNotifDuration: 通知持续时长
+settingNotifDurationDesc: 通知显示时长 (毫秒, 0=持久)
+settingNotifShowOnConnect: 连接成功通知
+settingNotifShowOnConnectDesc: 传输连接成功时显示通知
+settingNotifShowOnDisconnect: 断开连接通知
+settingNotifShowOnDisconnectDesc: 传输断开时显示通知
+settingNotifShowOnError: 错误通知
+settingNotifShowOnErrorDesc: 发生错误时显示通知
+
+# About 弹窗
+about: 关于
+aboutTitle: 关于 VOFA-Next
+aboutVersion: 版本
+aboutAuthor: 作者
+aboutLicense: 许可证
+aboutGithub: GitHub 仓库
+aboutDocs: 文档
+aboutDescription: 现代化串口助手, 支持 VOFA+ 协议与示波器风格波形显示
+aboutClose: 关闭
+
+# 菜单事件提示
+menuNewTab: 新建标签页
+menuCloseTab: 关闭标签页
+menuToggleSidebar: 切换侧边栏
+menuAbout: 关于
+menuSettings: 设置

@@ -105,6 +105,8 @@ export function AxisSettings({
           <ChannelTabContent
             idx={Number(activeTab.replace('ch', ''))}
             ch={channels[Number(activeTab.replace('ch', ''))]}
+            yUnit={config.yUnit}
+            sharedY={config.sharedY}
             onPatchChannel={patchChannel}
             renderStepSelect={renderStepSelect}
             lang={lang}

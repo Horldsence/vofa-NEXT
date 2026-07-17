@@ -1,12 +1,16 @@
 import { useEffect } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { listen } from '@tauri-apps/api/event';
 import { ActivityBar } from './components/layout/ActivityBar';
 import { Sidebar } from './components/layout/Sidebar';
 import { ControlPanel } from './components/layout/ControlPanel';
 import { DataPanel } from './components/layout/DataPanel';
 import { StatusBar } from './components/layout/StatusBar';
 import { NotificationToasts } from './components/NotificationToasts';
+import { SettingsModal } from './components/SettingsModal';
+import { AboutModal } from './components/AboutModal';
 import { useAppStore } from './store/appStore';
+import { useSettingsStore } from './store/settingsStore';
 import './App.css';
 
 function App() {
@@ -15,8 +19,18 @@ function App() {
   const sidebarView = useAppStore((s) => s.sidebarView);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const addControlTab = useAppStore((s) => s.addControlTab);
+  const removeControlTab = useAppStore((s) => s.removeControlTab);
+  const activeControlTabId = useAppStore((s) => s.activeControlTabId);
 
+  const loadSettings = useSettingsStore((s) => s.load);
+  const openSettings = useSettingsStore((s) => s.open);
+  const isAboutOpen = useSettingsStore((s) => s.isAboutOpen);
+  const closeAbout = useSettingsStore((s) => s.closeAbout);
+
+  // 启动: 加载设置 + 初始化事件监听 + 刷新端口
   useEffect(() => {
+    void loadSettings();
     let cleanup: (() => void) | undefined;
     initEventListeners().then((fn) => {
       cleanup = fn;
@@ -25,7 +39,48 @@ function App() {
     return () => {
       cleanup?.();
     };
-  }, [initEventListeners, refreshPorts]);
+  }, [initEventListeners, refreshPorts, loadSettings]);
+
+  // 监听原生菜单事件 (menu:about / menu:settings / menu:new-tab / menu:close-tab / menu:toggle-sidebar)
+  useEffect(() => {
+    const unlistenProm = listen<string>('menu-event', (event) => {
+      const id = event.payload;
+      switch (id) {
+        case 'menu:about':
+          useSettingsStore.getState().openAbout();
+          break;
+        case 'menu:settings':
+          openSettings();
+          break;
+        case 'menu:new-tab':
+          addControlTab();
+          break;
+        case 'menu:close-tab':
+          removeControlTab(activeControlTabId);
+          break;
+        case 'menu:toggle-sidebar':
+          toggleSidebar(sidebarView);
+          break;
+        default:
+          break;
+      }
+    });
+    return () => {
+      void unlistenProm.then((fn) => fn());
+    };
+  }, [openSettings, addControlTab, removeControlTab, activeControlTabId, toggleSidebar, sidebarView]);
+
+  // 全局快捷键: Cmd+, / Ctrl+, 打开设置
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault();
+        openSettings();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [openSettings]);
 
   return (
     <div className="app">
@@ -58,6 +113,8 @@ function App() {
       </div>
       <StatusBar />
       <NotificationToasts />
+      <SettingsModal />
+      <AboutModal isOpen={isAboutOpen} onClose={closeAbout} />
     </div>
   );
 }

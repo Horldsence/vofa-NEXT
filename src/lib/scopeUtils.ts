@@ -68,6 +68,7 @@ export function computeMeasurements(
 }
 
 /// Auto Set: 基于 waveformWindow 数据自动适配时基与每通道 V/div
+/// 信号垂直方向约占 70% (上下各留 ~15% 余量), 避免完全顶满
 export function computeAutoSetConfig(
   win: WaveformWindow,
   currentConfig: ScopeAxisConfig,
@@ -99,41 +100,84 @@ export function computeAutoSetConfig(
       ? connectedChannels
       : Array.from({ length: win.channel_count }, (_, i) => i);
 
+  // 信号目标占垂直方向的比例 (70%), 上下各留 15% 余量
+  const VERTICAL_FILL_RATIO = 0.7;
+
   const newChannels = currentConfig.channels.slice();
-  for (const chIdx of channelsToUse) {
-    const ch = win.channels[chIdx];
-    if (!ch || ch.length === 0) continue;
-    let vmin = Infinity;
-    let vmax = -Infinity;
-    for (const v of ch) {
-      if (isNaN(v)) continue;
-      if (v < vmin) vmin = v;
-      if (v > vmax) vmax = v;
-    }
-    if (vmin === Infinity) continue;
-    const targetVd = (vmax - vmin) / V_DIVS;
-    let bestVdIdx = 0;
-    let bestVdDiff = Infinity;
-    for (let i = 0; i < V_PER_DIV.length; i++) {
-      const diff = Math.abs(V_PER_DIV[i] - targetVd);
-      if (diff < bestVdDiff) {
-        bestVdDiff = diff;
-        bestVdIdx = i;
+  // 补齐 channels 数组到 channel_count
+  while (newChannels.length < win.channel_count) {
+    newChannels.push({ vPerDiv: 1, position: 0, show: true, coupling: 'DC' as const });
+  }
+
+  if (currentConfig.sharedY) {
+    // 共用 Y 模式: 计算所有连接通道的全局 min/max, 设置单一 vPerDiv/position 到 channels[0]
+    let globalMin = Infinity;
+    let globalMax = -Infinity;
+    for (const chIdx of channelsToUse) {
+      const ch = win.channels[chIdx];
+      if (!ch || ch.length === 0) continue;
+      for (const v of ch) {
+        if (isNaN(v)) continue;
+        if (v < globalMin) globalMin = v;
+        if (v > globalMax) globalMax = v;
       }
     }
-    while (newChannels.length <= chIdx) {
-      newChannels.push({
-        vPerDiv: 1,
-        position: 0,
-        show: true,
-        coupling: 'DC' as const,
-      });
+    if (globalMin !== Infinity) {
+      const targetVd = (globalMax - globalMin) / (V_DIVS * VERTICAL_FILL_RATIO);
+      let bestVdIdx = 0;
+      let bestVdDiff = Infinity;
+      for (let i = 0; i < V_PER_DIV.length; i++) {
+        const diff = Math.abs(V_PER_DIV[i] - targetVd);
+        if (diff < bestVdDiff) {
+          bestVdDiff = diff;
+          bestVdIdx = i;
+        }
+      }
+      newChannels[0] = {
+        ...newChannels[0],
+        vPerDiv: V_PER_DIV[bestVdIdx],
+        position: (globalMax + globalMin) / 2,
+      };
     }
-    newChannels[chIdx] = {
-      ...newChannels[chIdx],
-      vPerDiv: V_PER_DIV[bestVdIdx],
-      position: (vmax + vmin) / 2,
-    };
+  } else {
+    // 独立 Y 模式: 每通道独立计算 vPerDiv/position
+    for (const chIdx of channelsToUse) {
+      const ch = win.channels[chIdx];
+      if (!ch || ch.length === 0) continue;
+      let vmin = Infinity;
+      let vmax = -Infinity;
+      for (const v of ch) {
+        if (isNaN(v)) continue;
+        if (v < vmin) vmin = v;
+        if (v > vmax) vmax = v;
+      }
+      if (vmin === Infinity) continue;
+      // 信号 Vpp 占满 V_DIVS * FILL_RATIO 格, 而非全部 V_DIVS 格
+      const targetVd = (vmax - vmin) / (V_DIVS * VERTICAL_FILL_RATIO);
+      let bestVdIdx = 0;
+      let bestVdDiff = Infinity;
+      for (let i = 0; i < V_PER_DIV.length; i++) {
+        const diff = Math.abs(V_PER_DIV[i] - targetVd);
+        if (diff < bestVdDiff) {
+          bestVdDiff = diff;
+          bestVdIdx = i;
+        }
+      }
+      while (newChannels.length <= chIdx) {
+        newChannels.push({
+          vPerDiv: 1,
+          position: 0,
+          show: true,
+          coupling: 'DC' as const,
+        });
+      }
+      newChannels[chIdx] = {
+        ...newChannels[chIdx],
+        vPerDiv: V_PER_DIV[bestVdIdx],
+        // position 取信号中点, 让信号居中显示
+        position: (vmax + vmin) / 2,
+      };
+    }
   }
 
   return {

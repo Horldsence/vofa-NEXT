@@ -1,9 +1,11 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
   MiniMap,
+  useReactFlow,
   type NodeTypes,
   type Edge,
   type Node,
@@ -30,7 +32,18 @@ const nodeTypes: NodeTypes = {
 /// - 从侧边栏拖拽控件到画布 (onDrop 绑在 <ReactFlow> 上, 外层 div 不拦截)
 /// - 节点之间通过边连接表示数据流
 /// - 通道源节点自动存在, 输出 ch0..chN
+///
+/// 必须用 ReactFlowProvider 包裹, 才能在内部使用 useReactFlow().screenToFlowPosition()
+/// 否则拖拽放置的节点会落到错误的画布坐标 (尤其 fitView/pan/zoom 后)
 export function NodeEditor({ tabId }: NodeEditorProps) {
+  return (
+    <ReactFlowProvider>
+      <NodeEditorInner tabId={tabId} />
+    </ReactFlowProvider>
+  );
+}
+
+function NodeEditorInner({ tabId }: NodeEditorProps) {
   const lang = useAppStore((s) => s.lang);
   const rfNodes = useAppStore((s) => s.rfNodes);
   const rfEdges = useAppStore((s) => s.rfEdges);
@@ -38,8 +51,10 @@ export function NodeEditor({ tabId }: NodeEditorProps) {
   const onEdgesChange = useAppStore((s) => s.onEdgesChange);
   const onConnect = useAppStore((s) => s.onConnect);
   const addWidget = useAppStore((s) => s.addWidget);
+  const reactFlow = useReactFlow();
+  const [isDragOver, setIsDragOver] = useState(false);
 
-  // React Flow 容器引用 — 用于坐标转换 (无需 useReactFlow hook)
+  // React Flow 容器引用 — 仅用于视觉反馈 (drag-over 高亮)
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   // 按当前 tab 过滤节点和边
@@ -62,32 +77,46 @@ export function NodeEditor({ tabId }: NodeEditorProps) {
   );
 
   // 从侧边栏拖拽接收 — 必须绑在 <ReactFlow> 上, 否则被内部 pan/zoom 拦截
+  // 关键: 用 screenToFlowPosition 把屏幕坐标转为画布坐标 (考虑 zoom/pan),
+  // 否则 fitView 后新节点会落到屏幕外
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
+      setIsDragOver(false);
       const kind = e.dataTransfer.getData('application/widget-kind') as WidgetConfig['kind'] | '';
       if (!kind) return;
 
-      // 用容器 bounding rect 把屏幕坐标转为画布相对坐标 (不含 zoom/pan, 但 fitView 后足够准)
-      const wrapper = wrapperRef.current;
-      const rect = wrapper?.getBoundingClientRect();
-      const position = rect
-        ? { x: e.clientX - rect.left, y: e.clientY - rect.top }
-        : { x: 240, y: 80 };
+      // 用 screenToFlowPosition 正确处理 zoom/pan 后的坐标转换
+      const position = reactFlow.screenToFlowPosition({
+        x: e.clientX,
+        y: e.clientY,
+      });
 
       const widget = createWidget(kind);
       addWidget(widget, tabId, position);
     },
-    [addWidget, tabId]
+    [addWidget, tabId, reactFlow]
   );
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // 仅当离开整个容器 (relatedTarget 不在内部) 时才清除高亮
+    const related = e.relatedTarget as globalThis.Node | null;
+    if (!related || !e.currentTarget.contains(related)) {
+      setIsDragOver(false);
+    }
   }, []);
 
   return (
-    <div className="node-editor-rf" ref={wrapperRef}>
+    <div
+      className={`node-editor-rf${isDragOver ? ' drag-over' : ''}`}
+      ref={wrapperRef}
+    >
       <ReactFlow
         nodes={tabNodes}
         edges={tabEdges}
@@ -96,6 +125,7 @@ export function NodeEditor({ tabId }: NodeEditorProps) {
         onConnect={onConnect}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}

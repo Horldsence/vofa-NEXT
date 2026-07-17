@@ -37,13 +37,16 @@ export function WidgetPalette() {
   ];
 
   const handleDragStart = (e: React.DragEvent, kind: WidgetConfig['kind']) => {
+    // 必须 setData 才能触发后续 dragover/drop
     e.dataTransfer.setData('application/widget-kind', kind);
     e.dataTransfer.effectAllowed = 'copy';
+    // 阻止 click 在拖拽结束后误触发 (HTML5 拖拽完不会触发 click, 但兼容性保险)
+    e.stopPropagation();
   };
 
   const handleClick = (kind: WidgetConfig['kind']) => {
     const widget = createWidget(kind);
-    // 点击添加时放到默认位置
+    // 点击添加时放到默认位置 (带轻微随机偏移避免堆叠)
     addWidget(widget, activeControlTabId, { x: 280, y: 80 + Math.random() * 100 });
   };
 
@@ -56,7 +59,6 @@ export function WidgetPalette() {
           draggable
           onDragStart={(e) => handleDragStart(e, item.kind)}
           onClick={() => handleClick(item.kind)}
-          style={{ cursor: 'grab' }}
           title={item.label}
         >
           {item.icon}

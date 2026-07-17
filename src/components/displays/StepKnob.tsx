@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 
 interface StepKnobProps {
   /// 当前值
@@ -21,7 +21,7 @@ interface StepKnobProps {
 
 /// 离散档位旋钮组件
 /// - 拖动垂直方向改变档位 (上 = 加大, 下 = 减小)
-/// - 滚轮也可改变档位
+/// - 滚轮也可改变档位 (使用原生非被动监听器, 避免页面同时滚动)
 /// - 中心点击重置为 defaultValue
 /// 旋钮指针角度: 最小档位 = -135°, 最大档位 = +135° (共 270°)
 export function StepKnob({
@@ -34,6 +34,7 @@ export function StepKnob({
   size = 56,
   disabled = false,
 }: StepKnobProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startY: number; startIdx: number } | null>(null);
 
   const currentIndex = steps.indexOf(value);
@@ -54,16 +55,28 @@ export function StepKnob({
     [onChange, steps, totalSteps, currentIndex]
   );
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      if (disabled) return;
+  // 用 ref 保存最新的 stepTo / disabled / safeIdx, 让原生 wheel 监听器能访问最新值
+  const stepToRef = useRef(stepTo);
+  useEffect(() => { stepToRef.current = stepTo; }, [stepTo]);
+  const disabledRef = useRef(disabled);
+  useEffect(() => { disabledRef.current = disabled; }, [disabled]);
+  const safeIdxRef = useRef(safeIdx);
+  useEffect(() => { safeIdxRef.current = safeIdx; }, [safeIdx]);
+
+  // 原生非被动 wheel 监听器 — React onWheel 默认 passive, preventDefault 无效会导致页面滚动
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (disabledRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       const dir = e.deltaY > 0 ? -1 : 1;
-      stepTo(safeIdx + dir);
-    },
-    [disabled, stepTo, safeIdx]
-  );
+      stepToRef.current(safeIdxRef.current + dir);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -106,9 +119,9 @@ export function StepKnob({
 
   return (
     <div
+      ref={containerRef}
       className={`scope-knob ${disabled ? 'disabled' : ''}`}
       style={{ width: size }}
-      onWheel={handleWheel}
     >
       <div
         className="knob-dial"

@@ -1,4 +1,5 @@
 mod commands;
+mod menu;
 mod notify;
 mod state;
 
@@ -8,7 +9,6 @@ use tauri_plugin_log::{Target, TargetKind};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -21,7 +21,15 @@ pub fn run() {
         )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(AppState::new())
+        .setup(|app| {
+            // 构建并设置原生菜单栏 (macOS/Windows/Linux)
+            let menu = menu::build_menu(app)?;
+            app.set_menu(menu)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| menu::on_menu_event(app, event.id().as_ref()))
         .invoke_handler(tauri::generate_handler![
             // 传输
             commands::list_ports,
