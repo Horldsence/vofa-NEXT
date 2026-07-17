@@ -76,7 +76,7 @@ const PRESET_TEMPLATES: { name: string; description: string; code: string }[] = 
         '</div>' +
       '</div>';
   }
-});
+})
 `,
   },
   {
@@ -112,7 +112,7 @@ const PRESET_TEMPLATES: { name: string; description: string; code: string }[] = 
       btn.textContent = ctx.settings.label || 'Send';
     }
   }
-});
+})
 `,
   },
 ];
@@ -184,7 +184,15 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
         <div className="settings-header" style={{ padding: '8px 12px' }}>
           <FileCode size={16} />
           <span>{t(lang, 'customWidgetEditor')}</span>
-          <button className="btn-icon" onClick={onClose} style={{ marginLeft: 'auto' }}>
+          <button
+            className="btn-icon"
+            onClick={() => setIsHelpOpen(true)}
+            style={{ marginLeft: 'auto' }}
+            title={t(lang, 'helpTitle')}
+          >
+            <HelpCircle size={14} />
+          </button>
+          <button className="btn-icon" onClick={onClose} title={t(lang, 'customCancel')}>
             <X size={14} />
           </button>
         </div>
@@ -353,6 +361,9 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
           </button>
         </div>
       </div>
+
+      {/* 帮助说明弹窗 */}
+      <CustomWidgetHelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
     </div>
   );
 }

@@ -183,7 +183,11 @@ export function WidgetPalette() {
               className={`palette-item palette-item-${activeCategory}`}
               draggable
               onDragStart={(e) => handleDragStart(e, item.kind)}
-              onClick={() => 'onAdd' in item && item.onAdd ? handleClickAdd(item.kind, undefined, item.onAdd) : handleClickAdd(item.kind)}
+              onClick={() => {
+                const onAdd = (item as { onAdd?: () => void }).onAdd;
+                if (onAdd) handleClickAdd(item.kind, undefined, onAdd);
+                else handleClickAdd(item.kind);
+              }}
               title={item.label}
             >
               {item.icon}

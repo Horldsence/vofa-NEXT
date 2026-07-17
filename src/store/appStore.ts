@@ -790,7 +790,7 @@ const DEFAULT_CUSTOM_CODE = `({
         '<div style="font-size:11px;color:#888">' + u + '</div>' +
       '</div>';
   }
-});
+})
 `;
 
 /// 辅助函数: 创建控件

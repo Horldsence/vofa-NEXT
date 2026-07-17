@@ -316,3 +316,85 @@ customSettingsValues: 设置值
 customSave: 保存
 customCancel: 取消
 customEditorError: 代码错误
+
+# 控件分类 Tab
+catInput: 输入
+catDisplay: 显示
+catMath: 算术
+catCustom: 自定义
+catInputHelp: 输入控件用于设置参数, 释放时发送值到绑定通道
+catDisplayHelp: 显示控件用于实时展示通道数据, 拖入后从通道源连线接入
+catMathHelp: 算术控件对多通道做四则运算或数学函数, 可级联组合
+catCustomHelp: 自定义 JS 控件, 点击打开编辑器编写自己的逻辑
+
+# 算术控件
+mathAdd: 加法
+mathSub: 减法
+mathMul: 乘法
+mathDiv: 除法
+mathAvg: 均值
+mathMin: 最小
+mathMax: 最大
+mathAbs: 绝对值
+mathNeg: 取反
+mathSquare: 平方
+mathSqrt: 开方
+mathSin: 正弦
+mathCos: 余弦
+mathTan: 正切
+mathLog: 对数
+mathUnary: 单目
+mathBinary: 双目
+
+# 自定义控件帮助说明
+helpTitle: 使用说明与 API 设计
+helpClose: 关闭
+helpQuickStart: 快速入门
+helpStep1: 在左侧代码区编写控件定义 (返回一个对象)
+helpStep2: 点击"加载模板"快速开始, 或从空白开始
+helpStep3: 在右侧实时预览查看渲染效果
+helpStep4: 在"设置值"区调整配置项并预览效果
+helpStep5: 点击"保存"应用到画布, 关闭后可在节点上连线
+helpCodeStructure: 代码结构
+helpCodeStructureDesc: 控件代码返回一个对象字面量, 包含以下字段
+helpFieldName: 控件名称
+helpFieldDescription: 描述信息 (可选)
+helpFieldInputs: 输入端口列表 (id + label)
+helpFieldOutputs: 输出端口列表 (id + label)
+helpFieldSettings: 设置项列表 (id + label + type + default)
+helpFieldOnMount: 挂载时回调 (初始化 DOM 与状态)
+helpFieldRender: 渲染回调 (每次输入或设置变化时调用)
+helpFieldOnUnmount: 卸载时回调 (清理资源)
+helpCtxApi: ctx API
+helpCtxApiDesc: render/onMount 回调接收 ctx 对象, 提供以下能力
+helpApiField: 字段
+helpApiType: 类型
+helpApiDesc: 说明
+helpApiEl: 控件根 DOM 元素, 用于挂载 innerHTML 或子元素
+helpApiInputs: 当前输入值 (键为输入端口 id, 值为 number)
+helpApiSettings: 当前设置值 (键为设置项 id)
+helpApiState: 持久状态对象, 用于在 render 调用之间保存数据
+helpApiSend: 向指定输出端口发送值, 触发下游 widget 更新
+helpApiLog: 输出日志到控制台 (调试用)
+helpInputsOutputs: 输入输出与连线
+helpIoDesc: 控件之间通过 React Flow 边连接, 数据从源端口流向目标端口
+helpIoInputItem: 输入端口接收上游数据 (通道源或其他 widget 的输出)
+helpIoOutputItem: 输出端口向下游发送数据 (通过 ctx.send 触发)
+helpIoChannelSource: 通道源节点 (ch0..chN) 是数据起点, 自动创建不可删除
+helpIoMathChain: 算术控件可级联 (例如先做 ch0+ch1, 再对结果做 sin)
+helpSettingsTypes: 设置项类型
+helpSettingsDesc: 设置项支持以下类型, 用户可在编辑器右下角调整
+helpSettingsNumber: 数值类型, 输入数字
+helpSettingsText: 文本类型, 输入字符串
+helpSettingsColor: 颜色类型, 弹出取色器
+helpSettingsBoolean: 布尔类型, 切换开关
+helpExamples: 示例代码
+helpExamplesDesc: 以下是常见自定义控件的完整代码示例
+helpExample1Title: 阈值告警 — 双输入 + 输出
+helpExample2Title: 迷你示波器 — Canvas 实时绘制
+helpSecurity: 安全说明
+helpSecurityDesc: 自定义控件在 iframe 沙箱中执行, 有以下限制
+helpSecuritySandbox: 沙箱隔离, 无法访问父窗口 DOM 与 cookie
+helpSecurityNoDom: 不能修改父应用界面, 只能操作 ctx.el 内的元素
+helpSecurityPostMessage: 与父应用通过 postMessage 通信, 仅支持 ctx 提供的 API
+helpSecurityError: 代码异常会被捕获并显示在编辑器错误区, 不会崩溃主应用

@@ -1105,6 +1105,309 @@ select {
   height: 20px;
 }
 
+/* ============ Palette Container + Category Tabs ============ */
+.palette-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.palette-category-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-panel-header);
+}
+
+.palette-category-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  user-select: none;
+}
+
+.palette-category-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.palette-category-tab.active {
+  font-weight: 600;
+}
+
+.palette-category-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.palette-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/* 类别颜色高亮 (左边缘色条) */
+.palette-item-input {
+  border-left: 3px solid #4fc3f7;
+}
+
+.palette-item-display {
+  border-left: 3px solid #81c784;
+}
+
+.palette-item-math {
+  border-left: 3px solid #ffb74d;
+  background: linear-gradient(90deg, rgba(255, 183, 77, 0.08), var(--bg-input) 30%);
+}
+
+.palette-item-math:hover {
+  border-color: #ffb74d;
+  background: linear-gradient(90deg, rgba(255, 183, 77, 0.15), var(--bg-hover) 30%);
+}
+
+.palette-item-custom {
+  border-left: 3px solid #ba68c8;
+}
+
+.palette-category-help {
+  padding: 6px 8px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel-header);
+  line-height: 1.4;
+  flex-shrink: 0;
+}
+
+/* ============ Math Widget ============ */
+.math-widget {
+  position: relative;
+  padding: 10px;
+  min-width: 140px;
+}
+
+.math-widget-op-symbol {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: #ffb74d;
+  background: rgba(255, 183, 77, 0.15);
+  border-radius: 3px;
+  font-family: var(--font-mono, monospace);
+}
+
+.math-widget-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.math-widget-result {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  justify-content: center;
+  padding: 6px 0;
+}
+
+.math-widget-result-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: -0.5px;
+}
+
+.math-widget-unit {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.math-widget-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+  padding: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.math-widget-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px dashed var(--border);
+  padding-top: 4px;
+  margin-top: 2px;
+}
+
+.math-widget-input-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  padding: 1px 2px;
+}
+
+.math-widget-input-label {
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+}
+
+.math-widget-input-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono, monospace);
+}
+
+/* ============ Custom Help Modal ============ */
+.custom-help-modal {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.custom-help-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.help-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.help-section-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-section-title svg {
+  color: var(--accent, #4fc3f7);
+  flex-shrink: 0;
+}
+
+.help-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.help-steps {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+
+.help-steps li {
+  margin-bottom: 2px;
+}
+
+.help-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--text-primary);
+  line-height: 1.7;
+}
+
+.help-list li {
+  margin-bottom: 2px;
+}
+
+.help-list code,
+.help-desc code {
+  background: var(--bg-input);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--accent, #4fc3f7);
+  font-family: var(--font-mono, monospace);
+}
+
+.help-code-block {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.help-api-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.help-api-table th,
+.help-api-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.help-api-table th {
+  background: var(--bg-panel-header);
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.help-api-table td {
+  color: var(--text-primary);
+  vertical-align: top;
+}
+
+.help-api-table code {
+  background: var(--bg-input);
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: var(--accent, #4fc3f7);
+  font-family: var(--font-mono, monospace);
+}
+
 /* ============ Tabs ============ */
 .tabs {
   display: flex;

@@ -316,3 +316,85 @@ customSettingsValues: Setting Values
 customSave: Save
 customCancel: Cancel
 customEditorError: Code Error
+
+# Widget Category Tabs
+catInput: Input
+catDisplay: Display
+catMath: Math
+catCustom: Custom
+catInputHelp: Input widgets set parameters and send values to bound channels on release
+catDisplayHelp: Display widgets show real-time channel data; connect from channel source after dropping
+catMathHelp: Math widgets perform arithmetic or math functions on multiple channels, can be chained
+catCustomHelp: Custom JS widgets; click to open the editor and write your own logic
+
+# Math Widgets
+mathAdd: Add
+mathSub: Subtract
+mathMul: Multiply
+mathDiv: Divide
+mathAvg: Average
+mathMin: Minimum
+mathMax: Maximum
+mathAbs: Absolute
+mathNeg: Negate
+mathSquare: Square
+mathSqrt: Square Root
+mathSin: Sine
+mathCos: Cosine
+mathTan: Tangent
+mathLog: Logarithm
+mathUnary: Unary
+mathBinary: Binary
+
+# Custom Widget Help
+helpTitle: Usage & API Design
+helpClose: Close
+helpQuickStart: Quick Start
+helpStep1: Write a widget definition (returns an object) in the code area on the left
+helpStep2: Click "Load Template" to start quickly, or begin from scratch
+helpStep3: See the rendered preview on the right in real time
+helpStep4: Adjust settings in the "Setting Values" area and preview the result
+helpStep5: Click "Save" to apply to the canvas; then connect edges on the node
+helpCodeStructure: Code Structure
+helpCodeStructureDesc: Widget code returns an object literal with the following fields
+helpFieldName: Widget name
+helpFieldDescription: Description (optional)
+helpFieldInputs: Input port list (id + label)
+helpFieldOutputs: Output port list (id + label)
+helpFieldSettings: Settings list (id + label + type + default)
+helpFieldOnMount: Mount callback (initialize DOM and state)
+helpFieldRender: Render callback (called whenever inputs or settings change)
+helpFieldOnUnmount: Unmount callback (cleanup resources)
+helpCtxApi: ctx API
+helpCtxApiDesc: render/onMount callbacks receive a ctx object providing these capabilities
+helpApiField: Field
+helpApiType: Type
+helpApiDesc: Description
+helpApiEl: Root DOM element of the widget, used to mount innerHTML or children
+helpApiInputs: Current input values (keyed by input port id, value is number)
+helpApiSettings: Current setting values (keyed by setting id)
+helpApiState: Persistent state object, used to keep data between render calls
+helpApiSend: Send a value to an output port, triggering downstream widget updates
+helpApiLog: Log to console (for debugging)
+helpInputsOutputs: Inputs, Outputs and Edges
+helpIoDesc: Widgets are connected via React Flow edges; data flows from source to target port
+helpIoInputItem: Input ports receive upstream data (channel source or other widget outputs)
+helpIoOutputItem: Output ports send data downstream (triggered via ctx.send)
+helpIoChannelSource: Channel source nodes (ch0..chN) are data origins, auto-created and non-deletable
+helpIoMathChain: Math widgets can be chained (e.g. first ch0+ch1, then sin on the result)
+helpSettingsTypes: Setting Types
+helpSettingsDesc: Settings support the following types; users can adjust them in the editor bottom-right
+helpSettingsNumber: Numeric type, enter a number
+helpSettingsText: Text type, enter a string
+helpSettingsColor: Color type, opens a color picker
+helpSettingsBoolean: Boolean type, toggle switch
+helpExamples: Examples
+helpExamplesDesc: Below are complete code examples of common custom widgets
+helpExample1Title: Threshold Alarm — dual inputs + output
+helpExample2Title: Mini Oscilloscope — real-time Canvas drawing
+helpSecurity: Security
+helpSecurityDesc: Custom widgets run inside an iframe sandbox with the following restrictions
+helpSecuritySandbox: Sandbox isolation, cannot access parent window DOM or cookies
+helpSecurityNoDom: Cannot modify the parent app UI, only elements within ctx.el
+helpSecurityPostMessage: Communicates with parent via postMessage, only ctx APIs are available
+helpSecurityError: Code exceptions are caught and shown in the editor error area, won't crash the main app
