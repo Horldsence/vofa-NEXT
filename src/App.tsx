@@ -9,8 +9,10 @@ import { StatusBar } from './components/layout/StatusBar';
 import { NotificationToasts } from './components/NotificationToasts';
 import { SettingsModal } from './components/SettingsModal';
 import { AboutModal } from './components/AboutModal';
+import { CustomWidgetEditor } from './components/CustomWidgetEditor';
 import { useAppStore } from './store/appStore';
 import { useSettingsStore } from './store/settingsStore';
+import type { WidgetConfig } from './types';
 import './App.css';
 
 function App() {
@@ -27,6 +29,19 @@ function App() {
   const openSettings = useSettingsStore((s) => s.open);
   const isAboutOpen = useSettingsStore((s) => s.isAboutOpen);
   const closeAbout = useSettingsStore((s) => s.closeAbout);
+
+  // Custom widget 编辑器
+  const customEditorState = useAppStore((s) => s.customEditorState);
+  const widgets = useAppStore((s) => s.widgets);
+  const updateWidget = useAppStore((s) => s.updateWidget);
+  const closeCustomEditor = useAppStore((s) => s.closeCustomEditor);
+
+  const editingCustomWidget =
+    customEditorState.open && customEditorState.widgetId
+      ? (widgets.find(
+          (w) => w.params.id === customEditorState.widgetId && w.kind === 'Custom'
+        ) as Extract<WidgetConfig, { kind: 'Custom' }> | undefined)
+      : undefined;
 
   // 启动: 加载设置 + 初始化事件监听 + 刷新端口
   useEffect(() => {
@@ -115,6 +130,14 @@ function App() {
       <NotificationToasts />
       <SettingsModal />
       <AboutModal isOpen={isAboutOpen} onClose={closeAbout} />
+      {editingCustomWidget && (
+        <CustomWidgetEditor
+          widget={editingCustomWidget}
+          isOpen={customEditorState.open}
+          onClose={closeCustomEditor}
+          onSave={(next) => updateWidget(next.params.id, next)}
+        />
+      )}
     </div>
   );
 }

@@ -68,6 +68,10 @@ label: 标签
 waveform: 波形图
 pieChart: 饼图
 image: 图像
+gauge: 仪表盘
+led: 指示灯
+numberDisplay: 大数字
+custom: 自定义 JS
 addWidget: 添加控件
 removeWidget: 删除
 bindingMode: 绑定模式
@@ -297,3 +301,18 @@ menuCloseTab: 关闭标签页
 menuToggleSidebar: 切换侧边栏
 menuAbout: 关于
 menuSettings: 设置
+
+# 自定义控件编辑器
+customWidgetEditor: 自定义控件编辑器
+customWidgetCode: 控件代码
+customTemplate: 加载模板...
+customRebuildPreview: 重建预览
+customPreview: 实时预览
+customPreviewUnavailable: 预览不可用 (代码有错误)
+customInputs: 输入端口
+customOutputs: 输出端口
+customSettings: 设置项
+customSettingsValues: 设置值
+customSave: 保存
+customCancel: 取消
+customEditorError: 代码错误

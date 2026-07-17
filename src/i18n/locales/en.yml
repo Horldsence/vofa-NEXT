@@ -68,6 +68,10 @@ label: Label
 waveform: Waveform
 pieChart: Pie Chart
 image: Image
+gauge: Gauge
+led: LED
+numberDisplay: Number Display
+custom: Custom JS
 addWidget: Add Widget
 removeWidget: Remove
 bindingMode: Binding
@@ -297,3 +301,18 @@ menuCloseTab: Close Tab
 menuToggleSidebar: Toggle Sidebar
 menuAbout: About
 menuSettings: Settings
+
+# Custom Widget Editor
+customWidgetEditor: Custom Widget Editor
+customWidgetCode: Widget Code
+customTemplate: Load Template...
+customRebuildPreview: Rebuild Preview
+customPreview: Live Preview
+customPreviewUnavailable: Preview unavailable (code has errors)
+customInputs: Inputs
+customOutputs: Outputs
+customSettings: Settings
+customSettingsValues: Setting Values
+customSave: Save
+customCancel: Cancel
+customEditorError: Code Error

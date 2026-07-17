@@ -14,7 +14,8 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useAppStore, createWidget } from '../../store/appStore';
 import { t } from '../../i18n';
-import type { WidgetConfig } from '../../types';
+import type { WidgetConfig, MathOp } from '../../types';
+import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
 import { WidgetNode } from '../nodes/WidgetNode';
 
@@ -85,6 +86,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       setIsDragOver(false);
       const kind = e.dataTransfer.getData('application/widget-kind') as WidgetConfig['kind'] | '';
       if (!kind) return;
+      const op = e.dataTransfer.getData('application/widget-op') as MathOp | '';
 
       // 用 screenToFlowPosition 正确处理 zoom/pan 后的坐标转换
       const position = reactFlow.screenToFlowPosition({
@@ -93,6 +95,15 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       });
 
       const widget = createWidget(kind);
+      // 算术控件: 应用拖拽时携带的 op
+      if (widget.kind === 'Math' && op) {
+        const mathWidget = widget as Extract<WidgetConfig, { kind: 'Math' }>;
+        mathWidget.params.op = op as MathOp;
+        if (UNARY_MATH_OPS.includes(op as MathOp)) {
+          mathWidget.params.inputCount = 1;
+        }
+        mathWidget.params.label = `Math ${op}`;
+      }
       addWidget(widget, tabId, position);
     },
     [addWidget, tabId, reactFlow]

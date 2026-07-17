@@ -160,6 +160,79 @@ export interface ImageConfig {
   format: 'rgb888' | 'rgb565' | 'gray8';
 }
 
+/// 仪表盘控件 — 半圆指针式显示单通道实时值
+export interface GaugeConfig {
+  id: string;
+  label: string;
+  min: number;
+  max: number;
+  unit: string;          // 单位后缀, 如 'V' / 'A' / ''
+  channel: number | null; // 绑定的输入通道 (null = 不绑定)
+}
+
+/// LED 指示灯 — 阈值控制开关色
+export interface LEDConfig {
+  id: string;
+  label: string;
+  threshold: number;     // 输入 >= threshold 视为 ON
+  on_color: string;      // HEX, 如 '#89d185'
+  off_color: string;     // HEX, 如 '#3c3c3c'
+  channel: number | null;
+}
+
+/// 大数字显示 — 大字号展示单通道数值
+export interface NumberDisplayConfig {
+  id: string;
+  label: string;
+  unit: string;
+  precision: number;     // 小数位数
+  channel: number | null;
+}
+
+/// 自定义 JS 控件 — 用户代码在 iframe 沙箱中渲染
+/// 代码格式见 src/components/displays/CustomWidget.tsx 顶部注释
+export interface CustomConfig {
+  id: string;
+  label: string;
+  code: string;           // JS 源码, 求值后应返回 widget 定义对象
+  settings: Record<string, string | number | boolean>; // 用户在设置面板里填写的值
+}
+
+/// 算术控件 — 对多个通道输入做四则运算/数学函数, 输出单通道结果
+/// 可串联使用: 上游 Math widget 的输出端口可接到下游 Math widget 的输入端口
+export type MathOp =
+  | 'add'      // 求和: a + b + ...
+  | 'sub'      // 减法: a - b - ...
+  | 'mul'      // 乘积: a × b × ...
+  | 'div'      // 除法: a ÷ b ÷ ... (除数为 0 时返回 0)
+  | 'avg'      // 平均值
+  | 'min'      // 最小值
+  | 'max'      // 最大值
+  | 'abs'      // 绝对值 (仅第一输入)
+  | 'neg'      // 取反 (仅第一输入)
+  | 'square'   // 平方 (仅第一输入)
+  | 'sqrt'     // 平方根 (仅第一输入)
+  | 'sin'      // 正弦 (仅第一输入, 弧度)
+  | 'cos'      // 余弦 (仅第一输入, 弧度)
+  | 'tan'      // 正切 (仅第一输入, 弧度)
+  | 'log';     // 自然对数 (仅第一输入, ≤0 返回 0)
+
+export interface MathConfig {
+  id: string;
+  label: string;
+  op: MathOp;
+  inputCount: number;     // 输入端口数 (1 ~ 8), 单目运算固定为 1
+  unit: string;          // 单位后缀, 如 'V' / '' (用于显示)
+  precision: number;      // 输出小数位
+}
+
+/// 控件类别 — 用于 WidgetPalette 分组与颜色区分
+export type WidgetCategory =
+  | 'input'      // 输入控件 (Knob/Button/Radio/Checkbox/Slider)
+  | 'display'    // 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label)
+  | 'math'       // 算术控件 (Math — 加减乘除/数学函数)
+  | 'custom';    // 自定义控件 (Custom JS)
+
 export type WidgetConfig =
   | { kind: 'Knob'; params: KnobConfig }
   | { kind: 'Button'; params: ButtonConfig }
@@ -169,7 +242,63 @@ export type WidgetConfig =
   | { kind: 'Label'; params: LabelConfig }
   | { kind: 'Waveform'; params: WaveformConfig }
   | { kind: 'PieChart'; params: PieChartConfig }
-  | { kind: 'Image'; params: ImageConfig };
+  | { kind: 'Image'; params: ImageConfig }
+  | { kind: 'Gauge'; params: GaugeConfig }
+  | { kind: 'LED'; params: LEDConfig }
+  | { kind: 'NumberDisplay'; params: NumberDisplayConfig }
+  | { kind: 'Custom'; params: CustomConfig }
+  | { kind: 'Math'; params: MathConfig };
+
+/// 获取控件所属类别 (用于 palette 分组与着色)
+export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
+  switch (kind) {
+    case 'Knob':
+    case 'Button':
+    case 'Radio':
+    case 'Checkbox':
+    case 'Slider':
+      return 'input';
+    case 'Waveform':
+    case 'PieChart':
+    case 'Image':
+    case 'Gauge':
+    case 'LED':
+    case 'NumberDisplay':
+    case 'Label':
+      return 'display';
+    case 'Math':
+      return 'math';
+    case 'Custom':
+      return 'custom';
+  }
+}
+
+/// 单目运算集合 — 这些 op 只使用第一个输入
+export const UNARY_MATH_OPS: MathOp[] = ['abs', 'neg', 'square', 'sqrt', 'sin', 'cos', 'tan', 'log'];
+
+/// 计算数学运算结果 (输入为 number[], 输出为单 number)
+export function computeMathResult(op: MathOp, inputs: number[]): number {
+  const vals = inputs.filter((v) => typeof v === 'number' && !Number.isNaN(v));
+  if (vals.length === 0) return 0;
+  switch (op) {
+    case 'add': return vals.reduce((a, b) => a + b, 0);
+    case 'sub': return vals.reduce((a, b) => a - b, 0);
+    case 'mul': return vals.reduce((a, b) => a * b, 1);
+    case 'div': return vals.reduce((a, b) => (b === 0 ? 0 : a / b), vals[0] ?? 0);
+    case 'avg': return vals.reduce((a, b) => a + b, 0) / vals.length;
+    case 'min': return Math.min(...vals);
+    case 'max': return Math.max(...vals);
+    case 'abs': return Math.abs(vals[0]);
+    case 'neg': return -vals[0];
+    case 'square': return vals[0] * vals[0];
+    case 'sqrt': return vals[0] < 0 ? 0 : Math.sqrt(vals[0]);
+    case 'sin': return Math.sin(vals[0]);
+    case 'cos': return Math.cos(vals[0]);
+    case 'tan': return Math.tan(vals[0]);
+    case 'log': return vals[0] <= 0 ? 0 : Math.log(vals[0]);
+    default: return 0;
+  }
+}
 
 // ============ 波形数据 ============
 

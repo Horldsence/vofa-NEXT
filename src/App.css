@@ -361,6 +361,13 @@ select {
   transition: opacity 0.15s;
 }
 .widget-card:hover .widget-remove { opacity: 1; }
+.widget-card .widget-edit {
+  position: absolute;
+  top: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.widget-card:hover .widget-edit { opacity: 1; }
 
 .widget-label {
   font-size: 11px;
@@ -375,6 +382,303 @@ select {
   color: var(--text-bright);
   font-family: var(--font-mono);
   text-align: center;
+}
+
+/* ============ Gauge 仪表盘 ============ */
+.gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.gauge-value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-bright);
+  text-align: center;
+}
+.gauge-unit {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+/* ============ LED 指示灯 ============ */
+.led-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 0;
+}
+.led {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #1e1e1e;
+  transition: background 0.1s, box-shadow 0.1s;
+}
+.led-on { animation: led-pulse 1.5s ease-in-out infinite; }
+@keyframes led-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.85; }
+}
+.led-state {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+.led-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+/* ============ NumberDisplay 大数字 ============ */
+.number-display-container {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  padding: 12px 4px;
+  min-height: 56px;
+}
+.number-display-value {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-bright);
+  letter-spacing: -0.5px;
+  line-height: 1;
+}
+.number-display-unit {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+.number-display-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  opacity: 0.6;
+}
+
+/* ============ Custom Widget ============ */
+.custom-widget iframe {
+  border-radius: 2px;
+  display: block;
+}
+.custom-widget-error {
+  min-height: 80px;
+}
+.custom-error {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  color: var(--red, #f48771);
+  font-size: 11px;
+  padding: 6px;
+  background: rgba(244, 135, 113, 0.08);
+  border: 1px solid rgba(244, 135, 113, 0.3);
+  border-radius: 2px;
+}
+.custom-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.custom-edit-btn {
+  margin-top: 6px;
+  width: 100%;
+}
+.custom-runtime-error {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: rgba(244, 135, 113, 0.1);
+  color: var(--red, #f48771);
+  border-radius: 2px;
+  margin-top: 4px;
+}
+.custom-logs {
+  margin-top: 4px;
+  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 2px;
+  max-height: 60px;
+  overflow-y: auto;
+}
+.custom-log-line {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ============ Custom Widget Editor ============ */
+.custom-widget-editor {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.custom-editor-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.custom-editor-left {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+.custom-editor-right {
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-editor);
+}
+.custom-editor-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+  gap: 6px;
+}
+.custom-editor-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.custom-label-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 2px;
+  font-family: var(--font-ui);
+}
+.custom-template-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 2px;
+}
+.custom-editor-code {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.custom-editor-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(244, 135, 113, 0.1);
+  border-top: 1px solid rgba(244, 135, 113, 0.3);
+  color: var(--red, #f48771);
+  font-size: 11px;
+}
+.custom-editor-error svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.custom-schema-info {
+  padding: 6px 10px;
+  background: var(--bg-panel-header);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.custom-schema-row {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+.custom-schema-key {
+  color: var(--blue, #75beff);
+  min-width: 80px;
+}
+.custom-preview-area {
+  flex: 1;
+  padding: 12px;
+  overflow: auto;
+  background: var(--bg-editor);
+}
+.custom-preview-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 32px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.custom-settings-area {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-sidebar);
+  max-height: 40%;
+  overflow-y: auto;
+}
+.custom-settings-title {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 6px;
+}
+.custom-setting-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.custom-setting-row label {
+  font-size: 11px;
+  color: var(--text-primary);
+  min-width: 60px;
+}
+.custom-setting-row input[type="text"],
+.custom-setting-row input[type="number"] {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  min-width: 0;
+}
+.custom-setting-row input[type="color"] {
+  width: 28px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+.custom-setting-row input[type="checkbox"] {
+  cursor: pointer;
 }
 
 /* ============ Knob ============ */

@@ -31,6 +31,10 @@ import type {
   ControlTab,
   DataTab,
 } from '../types';
+import {
+  computeAllOutputs,
+  type WidgetOutputCache,
+} from '../lib/widgetDataFlow';
 
 const DEFAULT_SERIAL: TransportConfig = {
   kind: 'Serial',
@@ -103,6 +107,13 @@ interface AppStore {
   // Raw data version (for triggering re-renders)
   rawDataVersion: number;
 
+  // Widget 数据流缓存: widgetId -> portId -> value
+  // 由 polling loop 定时更新 (见 useWidgetDataFlow hook)
+  // 上游 widget 的输出值, 供下游 widget 读取
+  widgetOutputCache: WidgetOutputCache;
+  setWidgetOutput: (widgetId: string, portId: string, value: number) => void;
+  refreshWidgetOutputCache: () => void;
+
   // Actions
   refreshPorts: () => Promise<void>;
   connect: () => Promise<void>;
@@ -119,6 +130,11 @@ interface AppStore {
   addWidget: (widget: WidgetConfig, tabId: string, position?: { x: number; y: number }) => void;
   removeWidget: (id: string) => void;
   updateWidget: (id: string, widget: WidgetConfig) => void;
+
+  // Custom widget editor
+  customEditorState: { open: boolean; widgetId: string | null };
+  openCustomEditor: (widgetId?: string) => void;
+  closeCustomEditor: () => void;
 
   // Control tabs
   addControlTab: (name?: string) => void;
@@ -225,6 +241,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   widgets: [],
 
+  customEditorState: { open: false, widgetId: null },
+  openCustomEditor: (widgetId) =>
+    set((s) => {
+      // 未指定 widgetId → 创建新 Custom widget 并打开编辑器
+      if (!widgetId) {
+        const widget = createWidget('Custom');
+        const tabId = s.activeControlTabId;
+        const pos = { x: 280, y: 80 + Math.random() * 100 };
+        const newNode: Node = {
+          id: widget.params.id,
+          type: 'widget',
+          position: pos,
+          data: { widget, tabId },
+        };
+        return {
+          widgets: [...s.widgets, widget],
+          rfNodes: [...s.rfNodes, newNode],
+          controlTabs: s.controlTabs.map((t) =>
+            t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
+          ),
+          customEditorState: { open: true, widgetId: widget.params.id },
+        };
+      }
+      return { customEditorState: { open: true, widgetId } };
+    }),
+  closeCustomEditor: () => set({ customEditorState: { open: false, widgetId: null } }),
+
   controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
   activeControlTabId: 'default',
 
@@ -239,6 +282,29 @@ export const useAppStore = create<AppStore>((set, get) => ({
   activeDataTabId: 'waveform-fixed',
 
   rawDataVersion: 0,
+
+  // Widget 数据流缓存: widgetId -> portId -> value
+  // 由 polling loop 定时更新 (computeAllOutputs 调用)
+  widgetOutputCache: {},
+  setWidgetOutput: (widgetId, portId, value) =>
+    set((s) => {
+      const cur = s.widgetOutputCache[widgetId] ?? {};
+      // 浅比较避免无谓的更新
+      if (cur[portId] === value) return {};
+      return {
+        widgetOutputCache: {
+          ...s.widgetOutputCache,
+          [widgetId]: { ...cur, [portId]: value },
+        },
+      };
+    }),
+  refreshWidgetOutputCache: () =>
+    set((s) => {
+      const next = computeAllOutputs(s.widgets, s.rfEdges, s.widgetOutputCache);
+      // 浅比较: 引用相同则不更新
+      if (next === s.widgetOutputCache) return {};
+      return { widgetOutputCache: next };
+    }),
 
   refreshPorts: async () => {
     try {
@@ -697,6 +763,36 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 }));
 
+/// Custom widget 编辑器默认代码 (与 CustomWidgetEditor 中常量保持一致)
+const DEFAULT_CUSTOM_CODE = `({
+  name: 'MyWidget',
+  description: '自定义控件示例',
+  inputs: [
+    { id: 'value', label: 'Value' }
+  ],
+  outputs: [],
+  settings: [
+    { id: 'unit', label: 'Unit', type: 'text', default: 'V' },
+    { id: 'color', label: 'Color', type: 'color', default: '#75beff' }
+  ],
+  onMount: function(ctx) {
+    ctx.state.count = 0;
+  },
+  render: function(ctx) {
+    const v = ctx.inputs.value ?? 0;
+    const u = ctx.settings.unit || '';
+    const c = ctx.settings.color || '#75beff';
+    ctx.el.innerHTML =
+      '<div style="padding:8px;text-align:center;font-family:sans-serif">' +
+        '<div style="font-size:24px;color:' + c + ';font-weight:bold">' +
+          Number(v).toFixed(2) +
+        '</div>' +
+        '<div style="font-size:11px;color:#888">' + u + '</div>' +
+      '</div>';
+  }
+});
+`;
+
 /// 辅助函数: 创建控件
 export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
   const id = nanoid(8);
@@ -761,5 +857,41 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
         kind: 'Image',
         params: { id, label: 'Image', width: 320, height: 240, format: 'rgb888' },
       };
+    case 'Gauge':
+      return {
+        kind: 'Gauge',
+        params: { id, label: 'Gauge', min: 0, max: 100, unit: '', channel: null },
+      };
+    case 'LED':
+      return {
+        kind: 'LED',
+        params: {
+          id, label: 'LED', threshold: 0.5,
+          on_color: '#89d185', off_color: '#3c3c3c', channel: null,
+        },
+      };
+    case 'NumberDisplay':
+      return {
+        kind: 'NumberDisplay',
+        params: { id, label: 'Value', unit: '', precision: 2, channel: null },
+      };
+    case 'Custom':
+      return {
+        kind: 'Custom',
+        params: { id, label: 'Custom', code: DEFAULT_CUSTOM_CODE, settings: {} },
+      };
+    case 'Math':
+      return {
+        kind: 'Math',
+        params: {
+          id,
+          label: 'Math',
+          op: 'add',
+          inputCount: 2,
+          unit: '',
+          precision: 3,
+        },
+      };
   }
 }
+

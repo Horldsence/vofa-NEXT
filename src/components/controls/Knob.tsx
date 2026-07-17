@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
+import { useAppStore } from '../../store/appStore';
 
 interface KnobProps {
   widget: Extract<WidgetConfig, { kind: 'Knob' }>;
@@ -9,11 +10,13 @@ interface KnobProps {
 }
 
 /// 旋钮控件 — 拖动调节角度, 释放时发送值
+/// 当前值同步到 widgetOutputCache 供下游 widget (如 Math) 读取
 export function Knob({ widget, onRemove }: KnobProps) {
-  const { label, min, max, step, default: def, binding } = widget.params;
+  const { label, min, max, step, default: def, binding, id } = widget.params;
   const [value, setValue] = useState(def);
   const knobRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const setWidgetOutput = useAppStore((s) => s.setWidgetOutput);
 
   // 角度范围: -135° 到 +135° (270° 总行程)
   const angle = ((value - min) / (max - min)) * 270 - 135;
@@ -53,6 +56,11 @@ export function Knob({ widget, onRemove }: KnobProps) {
   useEffect(() => {
     setValue(def);
   }, [def]);
+
+  // 同步当前值到 widgetOutputCache (供下游 widget 读取)
+  useEffect(() => {
+    setWidgetOutput(id, 'value', value);
+  }, [id, value, setWidgetOutput]);
 
   return (
     <div className="widget-card">

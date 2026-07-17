@@ -6,15 +6,32 @@ import { RawDataView } from '../displays/RawDataView';
 import { PieChart } from '../displays/PieChart';
 import { ImageViewer } from '../displays/ImageViewer';
 import { AxisSettings } from '../displays/AxisSettings';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements } from '../../types';
 import { createDefaultScopeConfig } from '../../types';
 import { waveformWindow } from '../../lib/dataBuffer';
 import { computeMeasurements, computeAutoSetConfig } from '../../lib/scopeUtils';
+/// 每个 waveform widget 拥有独立的 axisConfig + measurements
+/// 通过 widgetId 索引, 切换 Tab 时使用对应配置, 互不干扰
+interface PerWidgetState {
+  config: ScopeAxisConfig;
+  measurements: ScopeMeasurements | null;
+  lastMeasureVersion: number;
+}
+
+/// 创建 per-widget state (懒初始化)
+function createPerWidgetState(channelCount: number): PerWidgetState {
+  return {
+    config: createDefaultScopeConfig(channelCount),
+    measurements: null,
+    lastMeasureVersion: -1,
+  };
+}
 
 /// 数据显示区 — MATLAB 风格多 Tab Figure
 /// 固定 Tab: 波形图 + 原始数据
 /// 动态 Tab: 显示控件节点对应的 Figure
+/// 每个 waveform Tab 拥有独立的 axisConfig (修复: 之前所有示波器共用一个 axisConfig)
 export function DataPanel() {
   const lang = useAppStore((s) => s.lang);
   const dataTabs = useAppStore((s) => s.dataTabs);
@@ -29,30 +46,16 @@ export function DataPanel() {
   void waveformVersion;
   const winChannelCount = waveformWindow.get().channel_count;
 
-  const [axisConfig, setAxisConfig] = useState<ScopeAxisConfig>(() =>
-    createDefaultScopeConfig(4)
-  );
-  const [measurements, setMeasurements] = useState<ScopeMeasurements | null>(null);
-  /// 上次计算测量值时的 waveformWindow 版本, 避免每帧重算
-  const lastMeasureVersionRef = useRef(-1);
+  // 每个 waveform widget 独立配置, key = widgetId (固定 Tab 用 'default-waveform')
+  const [perWidgetStates, setPerWidgetStates] = useState<Record<string, PerWidgetState>>({
+    'default-waveform': createPerWidgetState(4),
+  });
 
   // 计算默认波形的通道数: 自动模式优先用检测到的通道数, 其次用窗口缓存, 最后兜底 4
   const defaultChannelCount =
     protocolConfig.kind === 'RawData'
       ? 4
       : (protocolConfig.channels ?? detectedChannels ?? (winChannelCount || 4));
-
-  // 通道数变化时扩展 channels 数组 (保留已有配置)
-  useEffect(() => {
-    setAxisConfig((prev) => {
-      if (prev.channels.length >= defaultChannelCount) return prev;
-      const next = prev.channels.slice();
-      while (next.length < defaultChannelCount) {
-        next.push({ vPerDiv: 1, position: 0, show: true, coupling: 'DC' });
-      }
-      return { ...prev, channels: next };
-    });
-  }, [defaultChannelCount]);
 
   // 默认波形控件（固定 Tab 使用）
   const defaultWaveformWidget: Extract<WidgetConfig, { kind: 'Waveform' }> = {
@@ -65,44 +68,100 @@ export function DataPanel() {
     },
   };
 
-  // 计算测量值 (基于第一可见通道, 节流到波形版本变化)
+  // 当前活动 Tab 的 widgetId
+  const activeTab = dataTabs.find((t) => t.id === activeDataTabId);
+  const isWaveformTab = activeTab?.type === 'waveform' || activeTab?.type === 'waveform-extra';
+  const activeWidgetId =
+    isWaveformTab
+      ? (activeTab?.widgetId ?? 'default-waveform')
+      : 'default-waveform';
+  const activeWidget =
+    isWaveformTab && activeTab?.widgetId
+      ? (widgets.find(
+          (w) => w.params.id === activeTab.widgetId && w.kind === 'Waveform'
+        ) as Extract<WidgetConfig, { kind: 'Waveform' }> | undefined)
+      : undefined;
+  const activeWaveWidget = activeWidget ?? defaultWaveformWidget;
+  const activeChannelCount = activeWaveWidget.params.channels;
+
+  // 确保 perWidgetStates 中存在当前 widgetId 的配置 (懒初始化)
+  useEffect(() => {
+    setPerWidgetStates((prev) => {
+      if (prev[activeWidgetId]) {
+        // 已存在: 检查通道数是否需要扩展
+        const existing = prev[activeWidgetId];
+        if (existing.config.channels.length >= activeChannelCount) return prev;
+        const nextCh = existing.config.channels.slice();
+        while (nextCh.length < activeChannelCount) {
+          nextCh.push({ vPerDiv: 1, position: 0, show: true, coupling: 'DC' });
+        }
+        return { ...prev, [activeWidgetId]: { ...existing, config: { ...existing.config, channels: nextCh } } };
+      }
+      return { ...prev, [activeWidgetId]: createPerWidgetState(activeChannelCount) };
+    });
+  }, [activeWidgetId, activeChannelCount]);
+
+  // 移除 widget 时清理其配置 (随 widgets 变化)
+  useEffect(() => {
+    setPerWidgetStates((prev) => {
+      const next = { ...prev };
+      // 保留 default-waveform, 删除已不存在的 widget 配置
+      for (const wid of Object.keys(next)) {
+        if (wid === 'default-waveform') continue;
+        const exists = widgets.some((w) => w.params.id === wid);
+        if (!exists) delete next[wid];
+      }
+      return next;
+    });
+  }, [widgets]);
+
+  // 当前激活的 state (没有则用 default 的兜底)
+  const activeState: PerWidgetState = perWidgetStates[activeWidgetId] ?? perWidgetStates['default-waveform'] ?? createPerWidgetState(activeChannelCount);
+  const axisConfig = activeState.config;
+
+  // 更新当前 widget 的 config
+  const setAxisConfig = useCallback(
+    (next: ScopeAxisConfig) => {
+      setPerWidgetStates((prev) => {
+        const cur = prev[activeWidgetId] ?? createPerWidgetState(activeChannelCount);
+        return { ...prev, [activeWidgetId]: { ...cur, config: next } };
+      });
+    },
+    [activeWidgetId, activeChannelCount]
+  );
+  void setAxisConfig;
+
+  // 计算测量值 (基于第一可见通道, 节流到波形版本变化) — 仅在当前 active widget 触发
   useEffect(() => {
     if (!axisConfig.running) return;
     const tick = () => {
       const version = waveformWindow.version;
-      if (version !== lastMeasureVersionRef.current) {
-        lastMeasureVersionRef.current = version;
+      const cur = perWidgetStates[activeWidgetId];
+      if (!cur) return;
+      if (version !== cur.lastMeasureVersion) {
         const win = waveformWindow.get();
-        if (win.timestamps.length < 2) {
-          setMeasurements(null);
-          return;
+        let m: ScopeMeasurements | null = null;
+        if (win.timestamps.length >= 2) {
+          const chIdx = cur.config.channels.findIndex((c) => c.show);
+          const targetIdx = chIdx >= 0 ? chIdx : 0;
+          const ch = win.channels[targetIdx];
+          if (ch && ch.length > 0) {
+            m = computeMeasurements(ch, win.timestamps);
+          }
         }
-        // 找到第一个 show=true 的通道
-        const chIdx = axisConfig.channels.findIndex((c) => c.show);
-        const targetIdx = chIdx >= 0 ? chIdx : 0;
-        const ch = win.channels[targetIdx];
-        if (!ch || ch.length === 0) {
-          setMeasurements(null);
-          return;
-        }
-        const m = computeMeasurements(ch, win.timestamps);
-        setMeasurements(m);
+        setPerWidgetStates((prev) => ({
+          ...prev,
+          [activeWidgetId]: {
+            ...(prev[activeWidgetId] ?? createPerWidgetState(activeChannelCount)),
+            lastMeasureVersion: version,
+            measurements: m,
+          },
+        }));
       }
     };
     const raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [axisConfig.running, axisConfig.channels]);
-
-  // Auto Set: 基于当前 waveformWindow 数据自动适配时基与每通道 V/div
-  const handleAutoSet = useCallback(() => {
-    const win = waveformWindow.get();
-    const connected =
-      defaultWaveformWidget.params.id === 'default-waveform'
-        ? Array.from({ length: win.channel_count || defaultChannelCount }, (_, i) => i)
-        : [];
-    const next = computeAutoSetConfig(win, axisConfig, connected);
-    setAxisConfig(next);
-  }, [axisConfig, defaultChannelCount, defaultWaveformWidget.params.id]);
+  }, [axisConfig.running, axisConfig.channels, activeWidgetId, activeChannelCount, perWidgetStates]);
 
   const renderTabContent = () => {
     const tab = dataTabs.find((t) => t.id === activeDataTabId);
@@ -119,22 +178,46 @@ export function DataPanel() {
               ) as Extract<WidgetConfig, { kind: 'Waveform' }> | undefined)
             : undefined;
         const waveWidget = widget ?? defaultWaveformWidget;
+        // 每个 widget 独立 axisConfig: 此处取该 widget 的 state
+        const wid = waveWidget.params.id;
+        const st = perWidgetStates[wid] ?? createPerWidgetState(waveWidget.params.channels);
         return (
           <div className="waveform-layout">
             <div className="waveform-main">
               <WaveformChart
                 widget={waveWidget}
-                axisConfig={axisConfig}
-                onConfigChange={setAxisConfig}
+                axisConfig={st.config}
+                onConfigChange={(next) => {
+                  setPerWidgetStates((prev) => {
+                    const cur = prev[wid] ?? createPerWidgetState(waveWidget.params.channels);
+                    return { ...prev, [wid]: { ...cur, config: next } };
+                  });
+                }}
               />
             </div>
             <div className="waveform-sidebar" style={{ width: 240 }}>
               <AxisSettings
-                config={axisConfig}
-                onChange={setAxisConfig}
+                config={st.config}
+                onChange={(next) => {
+                  setPerWidgetStates((prev) => {
+                    const cur = prev[wid] ?? createPerWidgetState(waveWidget.params.channels);
+                    return { ...prev, [wid]: { ...cur, config: next } };
+                  });
+                }}
                 channelCount={waveWidget.params.channels}
-                measurements={measurements}
-                onAutoSet={handleAutoSet}
+                measurements={st.measurements}
+                onAutoSet={() => {
+                  const win = waveformWindow.get();
+                  const connected =
+                    wid === 'default-waveform'
+                      ? Array.from({ length: win.channel_count || waveWidget.params.channels }, (_, i) => i)
+                      : [];
+                  const autoNext = computeAutoSetConfig(win, st.config, connected);
+                  setPerWidgetStates((prev) => {
+                    const cur = prev[wid] ?? createPerWidgetState(waveWidget.params.channels);
+                    return { ...prev, [wid]: { ...cur, config: autoNext } };
+                  });
+                }}
               />
             </div>
           </div>

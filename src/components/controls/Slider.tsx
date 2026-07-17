@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
@@ -10,6 +10,7 @@ interface SliderProps {
 }
 
 /// 滑块控件 — 拖动调节, 释放时发送值
+/// 当前值同步到 widgetOutputCache 供下游 widget (如 Math) 读取
 export function Slider({ widget, onRemove }: SliderProps) {
   const { label, min, max, step, binding } = widget.params;
   const value = useAppStore((s) => {
@@ -18,6 +19,7 @@ export function Slider({ widget, onRemove }: SliderProps) {
     return widget.params.default;
   });
   const updateWidget = useAppStore((s) => s.updateWidget);
+  const setWidgetOutput = useAppStore((s) => s.setWidgetOutput);
   const lastSentRef = useRef(value);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -34,6 +36,11 @@ export function Slider({ widget, onRemove }: SliderProps) {
       lastSentRef.current = value;
     }
   };
+
+  // 同步当前值到 widgetOutputCache (供下游 widget 读取)
+  useEffect(() => {
+    setWidgetOutput(widget.params.id, 'value', value);
+  }, [widget.params.id, value, setWidgetOutput]);
 
   return (
     <div className="widget-card">

@@ -2,6 +2,7 @@ import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
+import { UNARY_MATH_OPS } from '../../types';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
 import { Radio } from '../controls/Radio';
@@ -10,6 +11,11 @@ import { Slider } from '../controls/Slider';
 import { Label } from '../controls/Label';
 import { PieChart } from '../displays/PieChart';
 import { ImageViewer } from '../displays/ImageViewer';
+import { Gauge } from '../displays/Gauge';
+import { LED } from '../displays/LED';
+import { NumberDisplay } from '../displays/NumberDisplay';
+import { CustomWidget, evalCustomWidgetDef } from '../displays/CustomWidget';
+import { MathWidget } from '../displays/MathWidget';
 
 /// 获取模块的端口定义
 function getWidgetPorts(widget: WidgetConfig): {
@@ -25,7 +31,10 @@ function getWidgetPorts(widget: WidgetConfig): {
       // 输入控件: 只有输出端口
       return { inputs: [], outputs: [{ id: 'value', label: 'value' }] };
     case 'Label':
-      // 显示控件: 只有输入端口
+    case 'Gauge':
+    case 'LED':
+    case 'NumberDisplay':
+      // 显示控件: 只有单个输入端口
       return { inputs: [{ id: 'value', label: 'value' }], outputs: [] };
     case 'PieChart':
       return {
@@ -43,6 +52,26 @@ function getWidgetPorts(widget: WidgetConfig): {
         })),
         outputs: [],
       };
+    case 'Math': {
+      // 算术控件: 多个输入端口 (单目运算固定 1 个) + 单输出
+      const isUnary = UNARY_MATH_OPS.includes(widget.params.op);
+      const inputCount = isUnary ? 1 : widget.params.inputCount;
+      return {
+        inputs: Array.from({ length: inputCount }, (_, i) => ({
+          id: `in${i}`,
+          label: `in${i}`,
+        })),
+        outputs: [{ id: 'result', label: 'result' }],
+      };
+    }
+    case 'Custom': {
+      // Custom: 从用户代码中解析端口定义
+      const { def } = evalCustomWidgetDef(widget.params.code);
+      return {
+        inputs: def?.inputs ?? [{ id: 'value', label: 'value' }],
+        outputs: def?.outputs ?? [],
+      };
+    }
     default:
       return { inputs: [{ id: 'in', label: 'in' }], outputs: [] };
   }
@@ -52,6 +81,7 @@ function getWidgetPorts(widget: WidgetConfig): {
 export function WidgetNode({ id, data }: NodeProps) {
   const widget = data.widget as WidgetConfig | undefined;
   const removeWidget = useAppStore((s) => s.removeWidget);
+  const openCustomEditor = useAppStore((s) => s.openCustomEditor);
 
   if (!widget) {
     return <div className="rf-widget-node-error">Missing widget</div>;
@@ -59,6 +89,8 @@ export function WidgetNode({ id, data }: NodeProps) {
 
   const onRemove = () => removeWidget(id);
   const ports = getWidgetPorts(widget);
+
+  const handleEditCustom = () => openCustomEditor(id);
 
   const renderContent = () => {
     switch (widget.kind) {
@@ -78,6 +110,29 @@ export function WidgetNode({ id, data }: NodeProps) {
         return <PieChart widget={widget as Extract<WidgetConfig, { kind: 'PieChart' }>} onRemove={onRemove} />;
       case 'Image':
         return <ImageViewer widget={widget as Extract<WidgetConfig, { kind: 'Image' }>} onRemove={onRemove} />;
+      case 'Gauge':
+        return <Gauge widget={widget as Extract<WidgetConfig, { kind: 'Gauge' }>} onRemove={onRemove} onEdit={handleEditCustom} />;
+      case 'LED':
+        return <LED widget={widget as Extract<WidgetConfig, { kind: 'LED' }>} onRemove={onRemove} onEdit={handleEditCustom} />;
+      case 'NumberDisplay':
+        return <NumberDisplay widget={widget as Extract<WidgetConfig, { kind: 'NumberDisplay' }>} onRemove={onRemove} onEdit={handleEditCustom} />;
+      case 'Custom':
+        return (
+          <CustomWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'Custom' }>}
+            onRemove={onRemove}
+            onEdit={handleEditCustom}
+            height={140}
+          />
+        );
+      case 'Math':
+        return (
+          <MathWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'Math' }>}
+            onRemove={onRemove}
+            onEdit={handleEditCustom}
+          />
+        );
       case 'Waveform':
         // 波形图在节点内仅显示占位, 实际波形在 DataPanel 显示
         return (
