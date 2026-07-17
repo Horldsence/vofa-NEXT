@@ -1,14 +1,18 @@
-use serial_core::{Error, Result, TcpClientConfig, TcpServerConfig};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
+use vofa_next_core::{Error, Result, TcpClientConfig, TcpServerConfig};
 
 /// 启动 TCP 客户端
 pub async fn spawn_client(
     config: TcpClientConfig,
-) -> Result<(mpsc::Sender<Vec<u8>>, broadcast::Sender<Vec<u8>>, Arc<AtomicBool>)> {
+) -> Result<(
+    mpsc::Sender<Vec<u8>>,
+    broadcast::Sender<Vec<u8>>,
+    Arc<AtomicBool>,
+)> {
     let addr = format!("{}:{}", config.host, config.port);
     let stream = TcpStream::connect(&addr)
         .await
@@ -33,7 +37,7 @@ pub async fn spawn_client(
                         Ok(0) => break,
                         Ok(n) => { let _ = data_tx_read.send(buf[..n].to_vec()); }
                         Err(e) => {
-                            tracing::error!("TCP 接收错误: {}", e);
+                            log::error!("TCP 接收错误: {}", e);
                             break;
                         }
                     }
@@ -43,7 +47,7 @@ pub async fn spawn_client(
                 }
             }
         }
-        tracing::info!("TCP 客户端读任务退出");
+        log::info!("TCP 客户端读任务退出");
     });
 
     // 写任务
@@ -56,7 +60,7 @@ pub async fn spawn_client(
                     match data {
                         Some(data) => {
                             if let Err(e) = write_half.write_all(&data).await {
-                                tracing::error!("TCP 发送错误: {}", e);
+                                log::error!("TCP 发送错误: {}", e);
                                 break;
                             }
                         }
@@ -68,7 +72,7 @@ pub async fn spawn_client(
                 }
             }
         }
-        tracing::info!("TCP 客户端写任务退出");
+        log::info!("TCP 客户端写任务退出");
     });
 
     Ok((write_tx, data_tx, cancel))
@@ -77,7 +81,11 @@ pub async fn spawn_client(
 /// 启动 TCP 服务端 (接受第一个连接)
 pub async fn spawn_server(
     config: TcpServerConfig,
-) -> Result<(mpsc::Sender<Vec<u8>>, broadcast::Sender<Vec<u8>>, Arc<AtomicBool>)> {
+) -> Result<(
+    mpsc::Sender<Vec<u8>>,
+    broadcast::Sender<Vec<u8>>,
+    Arc<AtomicBool>,
+)> {
     let addr = format!("{}:{}", config.listen_addr, config.listen_port);
     let listener = TcpListener::bind(&addr)
         .await
@@ -91,7 +99,7 @@ pub async fn spawn_server(
     let data_tx_accept = data_tx.clone();
     let cancel_accept = cancel.clone();
     tokio::spawn(async move {
-        tracing::info!("TCP 服务端等待连接: {}", addr);
+        log::info!("TCP 服务端等待连接: {}", addr);
 
         // 等待连接 (带取消)
         let stream = loop {
@@ -99,11 +107,11 @@ pub async fn spawn_server(
                 result = listener.accept() => {
                     match result {
                         Ok((stream, addr)) => {
-                            tracing::info!("TCP 客户端已连接: {}", addr);
+                            log::info!("TCP 客户端已连接: {}", addr);
                             break stream;
                         }
                         Err(e) => {
-                            tracing::error!("TCP 接受连接失败: {}", e);
+                            log::error!("TCP 接受连接失败: {}", e);
                             return;
                         }
                     }
@@ -128,7 +136,7 @@ pub async fn spawn_server(
                             Ok(0) => break,
                             Ok(n) => { let _ = data_tx_read.send(buf[..n].to_vec()); }
                             Err(e) => {
-                                tracing::error!("TCP 服务端接收错误: {}", e);
+                                log::error!("TCP 服务端接收错误: {}", e);
                                 break;
                             }
                         }
@@ -147,7 +155,7 @@ pub async fn spawn_server(
                     match data {
                         Some(data) => {
                             if let Err(e) = write_half.write_all(&data).await {
-                                tracing::error!("TCP 服务端发送错误: {}", e);
+                                log::error!("TCP 服务端发送错误: {}", e);
                                 break;
                             }
                         }

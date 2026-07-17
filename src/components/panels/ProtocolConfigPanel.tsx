@@ -4,25 +4,41 @@ import { ArrowRight } from 'lucide-react';
 import type { ProtocolConfig } from '../../types';
 
 /// 协议引擎配置面板 — JustFloat / FireWater / RawData
+/// 支持通道数: 自动检测 (null) 或 手动指定 (number)
 export function ProtocolConfigPanel() {
   const lang = useAppStore((s) => s.lang);
   const protocolConfig = useAppStore((s) => s.protocolConfig);
   const setProtocolConfig = useAppStore((s) => s.setProtocolConfig);
   const setSidebarView = useAppStore((s) => s.setSidebarView);
+  const detectedChannels = useAppStore((s) => s.detectedChannels);
+
+  const isRaw = protocolConfig.kind === 'RawData';
+  const isAuto = !isRaw && protocolConfig.channels == null;
 
   const updateKind = (kind: ProtocolConfig['kind']) => {
     if (kind === 'RawData') {
       setProtocolConfig({ kind: 'RawData' });
     } else {
-      const channels =
-        protocolConfig.kind === 'RawData' ? 4 : protocolConfig.channels;
-      setProtocolConfig({ kind, channels });
+      // 切换协议引擎时保留原通道配置 (auto / manual)
+      const prevChannels = protocolConfig.kind === 'RawData' ? null : protocolConfig.channels;
+      setProtocolConfig({ kind, channels: prevChannels });
     }
   };
 
-  const updateChannels = (channels: number) => {
-    if (protocolConfig.kind === 'RawData') return;
-    setProtocolConfig({ ...protocolConfig, channels });
+  /// 切换自动 / 手动模式
+  const setAutoMode = (auto: boolean) => {
+    if (isRaw) return;
+    setProtocolConfig({
+      kind: protocolConfig.kind,
+      channels: auto ? null : 4,
+    });
+  };
+
+  /// 手动模式下更新通道数
+  const updateManualChannels = (channels: number) => {
+    if (isRaw) return;
+    const clamped = Math.max(1, Math.min(32, Math.floor(channels) || 1));
+    setProtocolConfig({ kind: protocolConfig.kind, channels: clamped });
   };
 
   const kinds: { value: ProtocolConfig['kind']; label: string }[] = [
@@ -30,9 +46,6 @@ export function ProtocolConfigPanel() {
     { value: 'FireWater', label: t(lang, 'firewater') },
     { value: 'RawData', label: t(lang, 'rawdata') },
   ];
-
-  const currentChannels =
-    protocolConfig.kind === 'RawData' ? 0 : protocolConfig.channels;
 
   return (
     <div>
@@ -50,17 +63,65 @@ export function ProtocolConfigPanel() {
         </select>
       </div>
 
-      {protocolConfig.kind !== 'RawData' && (
-        <div className="form-group">
-          <label className="form-label">{t(lang, 'channels')}</label>
-          <input
-            type="number"
-            min={1}
-            max={32}
-            value={currentChannels}
-            onChange={(e) => updateChannels(parseInt(e.target.value) || 1)}
-          />
-        </div>
+      {!isRaw && (
+        <>
+          <div className="form-group">
+            <label className="form-label">{t(lang, 'channels')}</label>
+            <div className="radio-group">
+              <label className="radio-item">
+                <input
+                  type="radio"
+                  name="channel-mode"
+                  checked={isAuto}
+                  onChange={() => setAutoMode(true)}
+                />
+                <span>{t(lang, 'channelsAuto')}</span>
+              </label>
+              <label className="radio-item">
+                <input
+                  type="radio"
+                  name="channel-mode"
+                  checked={!isAuto}
+                  onChange={() => setAutoMode(false)}
+                />
+                <span>{t(lang, 'channelsManual')}</span>
+              </label>
+            </div>
+          </div>
+
+          {!isAuto && (
+            <div className="form-group">
+              <input
+                type="number"
+                min={1}
+                max={32}
+                value={protocolConfig.channels ?? 4}
+                onChange={(e) => updateManualChannels(parseInt(e.target.value) || 1)}
+              />
+            </div>
+          )}
+
+          {isAuto && (
+            <div
+              style={{
+                marginTop: 4,
+                padding: '6px 8px',
+                background: 'var(--bg-input)',
+                borderRadius: 4,
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span>{t(lang, 'detectedChannels')}:</span>
+              <span style={{ color: 'var(--blue)', fontFamily: 'var(--font-mono)' }}>
+                {detectedChannels != null ? detectedChannels : '--'}
+              </span>
+            </div>
+          )}
+        </>
       )}
 
       <div
@@ -105,10 +166,7 @@ export function ProtocolConfigPanel() {
 
       {/* 跳转到串口配置 */}
       <div className="form-group" style={{ marginTop: 16 }}>
-        <button
-          className="btn w-full"
-          onClick={() => setSidebarView('port')}
-        >
+        <button className="btn w-full" onClick={() => setSidebarView('port')}>
           {t(lang, 'nextPort')}
           <ArrowRight size={14} />
         </button>

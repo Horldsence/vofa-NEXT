@@ -1,9 +1,7 @@
-use serial_core::{
-    ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats,
-};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
+use vofa_next_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats};
 
 /// 传输管理器 — 统一管理所有传输类型
 pub struct TransportManager {
@@ -37,9 +35,7 @@ impl TransportManager {
         self.set_state(ConnectionState::Connecting);
 
         let (write_tx, data_tx, cancel) = match &config {
-            TransportConfig::Serial(c) => {
-                crate::serial::spawn(c.clone())?
-            }
+            TransportConfig::Serial(c) => crate::serial::spawn(c.clone())?,
             TransportConfig::Udp(c) => crate::udp::spawn(c.clone()).await?,
             TransportConfig::TcpClient(c) => crate::tcp::spawn_client(c.clone()).await?,
             TransportConfig::TcpServer(c) => crate::tcp::spawn_server(c.clone()).await?,
@@ -51,7 +47,7 @@ impl TransportManager {
         self.cancel = Some(cancel);
         self.set_state(ConnectionState::Connected);
 
-        tracing::info!("连接已建立: {:?}", config);
+        log::info!("连接已建立: {:?}", config);
         Ok(())
     }
 

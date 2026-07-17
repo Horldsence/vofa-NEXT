@@ -149,17 +149,19 @@ pub enum TestSignal {
 
 // ============ 协议层配置 ============
 
+/// 协议配置
+/// channels: None = 自动检测通道数, Some(n) = 手动指定
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum ProtocolConfig {
-    JustFloat { channels: usize },
-    FireWater { channels: usize },
+    JustFloat { channels: Option<usize> },
+    FireWater { channels: Option<usize> },
     RawData,
 }
 
 impl Default for ProtocolConfig {
     fn default() -> Self {
-        Self::JustFloat { channels: 4 }
+        Self::JustFloat { channels: Some(4) }
     }
 }
 

@@ -1,0 +1,199 @@
+# Sidebar
+portConfig: Port Config
+protocolEngine: Protocol Engine
+transportType: Transport
+widgetPalette: Widgets
+aiAssistant: AI Assistant
+
+# Connection
+connect: Connect
+disconnect: Disconnect
+connecting: Connecting...
+connected: Connected
+disconnected: Disconnected
+
+# Port Config
+portName: Port
+baudRate: Baud Rate
+dataBits: Data Bits
+parity: Parity
+stopBits: Stop Bits
+flowControl: Flow Control
+refresh: Refresh
+driverInfo: Driver Info
+
+# Protocol
+justfloat: JustFloat
+firewater: FireWater
+rawdata: RawData
+channels: Channels
+channelsAuto: Auto Detect
+channelsManual: Manual
+detectedChannels: Detected Channels
+
+# Transport
+serial: Serial
+udp: UDP
+tcpClient: TCP Client
+tcpServer: TCP Server
+testData: Test Data
+localAddr: Local Addr
+remoteAddr: Remote Addr
+localPort: Local Port
+remotePort: Remote Port
+host: Host
+port: Port
+listenAddr: Listen Addr
+listenPort: Listen Port
+sampleRate: Sample Rate
+signalType: Signal Type
+sine: Sine
+square: Square
+triangle: Triangle
+sawtooth: Sawtooth
+random: Random
+dc: DC
+chirp: Chirp
+steps: Steps
+noise: Noise
+multitone: MultiTone
+
+# Widgets
+knob: Knob
+button: Button
+radio: Radio
+checkbox: Checkbox
+slider: Slider
+label: Label
+waveform: Waveform
+pieChart: Pie Chart
+image: Image
+addWidget: Add Widget
+removeWidget: Remove
+bindingMode: Binding
+auto: Auto
+manual: Manual
+none: None
+channel: Channel
+template: Template
+minValue: Min
+maxValue: Max
+step: Step
+defaultValue: Default
+press: Press
+release: Release
+options: Options
+
+# Data
+rawData: Raw Data
+hexView: HEX
+asciiView: ASCII
+send: Send
+clear: Clear
+autoScroll: Auto Scroll
+
+# Stats
+rxBytes: RX Bytes
+txBytes: TX Bytes
+rxFrames: RX Frames
+txFrames: TX Frames
+
+# AI
+aiPlaceholder: AI features coming soon...
+inputMessage: Type a message...
+
+# Control Area
+controlArea: Controls
+displayArea: Display
+noWidgets: No widgets. Add from the left panel.
+layoutAuto: Auto Layout
+layoutGrid: Grid Layout
+
+# Navigation
+nextProtocol: "Next: Protocol Engine"
+nextPort: "Next: Port Config"
+goToProtocol: Go to Protocol Engine
+goToPort: Go to Port Config
+
+# Axis Settings
+axisSettings: Axis Settings
+xAxis: X Axis
+yAxis: Y Axis
+autoRange: Auto Range
+manualRange: Manual Range
+gridVisible: Show Grid
+channelVisible: Channel Visible
+noSignal: No Signal
+
+# Raw Data Extension
+showTimestamp: Timestamp
+appendNone: None
+appendNewline: \n
+appendTab: \t
+appendNewlineTab: \n\t
+appendSuffix: Append
+
+# Node Editor
+addInputModule: Add Input
+addOutputModule: Add Output
+addDrawModule: Add Draw
+newTab: New Tab
+tabName: Tab
+deleteTab: Delete Tab
+inputModule: Input
+outputModule: Output
+drawModule: Draw
+nodeConnect: Connect
+nodeDisconnect: Disconnect
+noConnection: No Connection
+channelSource: Channel Source
+connectToWaveform: Connect to Waveform
+dragWidgetHint: Drag widgets here from the left panel
+emptyWaveform: Waveform is empty. Connect an input channel.
+
+# Bottom Panel
+bottomPanel: Bottom Panel
+aiChat: AI Chat
+
+# Waveform Timeline
+timeWindow: Time Window
+zoomIn: Zoom In
+zoomOut: Zoom Out
+resetZoom: Reset Zoom
+scrollLeft: Scroll Left
+scrollRight: Scroll Right
+timeRange: Time Range
+startTime: Start
+endTime: End
+currentTime: Current
+
+# Oscilloscope
+run: Run
+stop: Stop
+autoSet: Auto Set
+horizontal: Horizontal
+timeBase: Time Base
+hPosition: H.Position
+cursors: Cursors
+measure: Measure
+oscilloscopeSettings: Oscilloscope Settings
+coupling: Coupling
+position: Position
+
+# Notifications
+notifError: Error
+notifWarn: Warning
+notifInfo: Info
+notifRefreshPortsFailed: Failed to refresh ports
+notifConnectFailed: Connection failed
+notifDisconnectFailed: Disconnect failed
+notifSendFailed: Send failed
+notifSetProtocolFailed: Protocol config failed
+notifClearBufferFailed: Clear buffer failed
+notifNodeGraphSyncFailed: Node graph sync failed
+notifPollChannelsFailed: Channel detection poll failed
+notifRetry: Retry
+notifDismiss: Dismiss
+notifDismissAll: Dismiss All
+notifMore: "{{count}} more notifications"
+notifCollapsedHint: Same-source error count

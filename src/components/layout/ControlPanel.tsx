@@ -1,87 +1,96 @@
-import { useAppStore, createWidget } from '../../store/appStore';
+import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { LayoutGrid, Plus } from 'lucide-react';
-import { Knob } from '../controls/Knob';
-import { ButtonWidget } from '../controls/ButtonWidget';
-import { Radio } from '../controls/Radio';
-import { Checkbox } from '../controls/Checkbox';
-import { Slider } from '../controls/Slider';
-import { Label } from '../controls/Label';
-import { PieChart } from '../displays/PieChart';
-import { ImageViewer } from '../displays/ImageViewer';
+import { Plus, X } from 'lucide-react';
+import { NodeEditor } from './NodeEditor';
+import { useState, useCallback } from 'react';
 
-/// 控件区 — 显示用户添加的交互控件
+/// 控件区 — 多标签页 + Blender 风格节点编辑器
+/// 从侧边栏拖拽控件到画布，连接线表示数据通道
 export function ControlPanel() {
   const lang = useAppStore((s) => s.lang);
-  const widgets = useAppStore((s) => s.widgets);
-  const removeWidget = useAppStore((s) => s.removeWidget);
-  const addWidget = useAppStore((s) => s.addWidget);
+  const controlTabs = useAppStore((s) => s.controlTabs);
+  const activeControlTabId = useAppStore((s) => s.activeControlTabId);
+  const addControlTab = useAppStore((s) => s.addControlTab);
+  const removeControlTab = useAppStore((s) => s.removeControlTab);
+  const setActiveControlTab = useAppStore((s) => s.setActiveControlTab);
+  const renameControlTab = useAppStore((s) => s.renameControlTab);
 
-  const handleQuickAdd = () => {
-    addWidget(createWidget('Slider'));
-  };
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  const handleStartRename = useCallback((tabId: string, currentName: string) => {
+    setEditingTabId(tabId);
+    setEditName(currentName);
+  }, []);
+
+  const handleFinishRename = useCallback(() => {
+    if (editingTabId && editName.trim()) {
+      renameControlTab(editingTabId, editName.trim());
+    }
+    setEditingTabId(null);
+    setEditName('');
+  }, [editingTabId, editName, renameControlTab]);
 
   return (
     <div className="panel">
-      <div className="panel-header">
-        <span>{t(lang, 'controlArea')}</span>
-        <div className="panel-header-actions">
-          <button
-            className="btn-icon"
-            title={t(lang, 'addWidget')}
-            onClick={handleQuickAdd}
+      <div className="tabs">
+        {controlTabs.map((tab) => (
+          <div
+            key={tab.id}
+            className={`tab ${tab.id === activeControlTabId ? 'active' : ''}`}
+            onClick={() => setActiveControlTab(tab.id)}
+            onDoubleClick={() => handleStartRename(tab.id, tab.name)}
+            style={{ cursor: 'pointer' }}
           >
-            <Plus size={14} />
-          </button>
-          <LayoutGrid size={14} style={{ opacity: 0.5 }} />
-        </div>
+            {editingTabId === tab.id ? (
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onBlur={handleFinishRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleFinishRename();
+                  if (e.key === 'Escape') setEditingTabId(null);
+                }}
+                autoFocus
+                style={{
+                  width: 60,
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--accent)',
+                  color: 'var(--text-primary)',
+                  fontSize: 11,
+                  padding: '1px 4px',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : (
+              <span>{tab.name}</span>
+            )}
+            {controlTabs.length > 1 && (
+              <button
+                className="btn-icon"
+                style={{ marginLeft: 2, padding: 0, width: 16, height: 16 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  removeControlTab(tab.id);
+                }}
+              >
+                <X size={10} />
+              </button>
+            )}
+          </div>
+        ))}
+        <button
+          className="btn-icon"
+          onClick={() => addControlTab()}
+          title={t(lang, 'newTab')}
+          style={{ marginLeft: 4 }}
+        >
+          <Plus size={14} />
+        </button>
       </div>
       <div className="panel-content">
-        {widgets.filter((w) => w.kind !== 'Waveform').length === 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              height: '100%',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-            }}
-          >
-            {t(lang, 'noWidgets')}
-          </div>
-        ) : (
-          <div className="widget-grid">
-            {widgets.map((widget) => {
-              if (widget.kind === 'Waveform') return null;
-              const id = widget.params.id;
-              const common = {
-                key: id,
-                onRemove: () => removeWidget(id),
-              };
-              switch (widget.kind) {
-                case 'Knob':
-                  return <Knob {...common} widget={widget} key={id} />;
-                case 'Button':
-                  return <ButtonWidget {...common} widget={widget} key={id} />;
-                case 'Radio':
-                  return <Radio {...common} widget={widget} key={id} />;
-                case 'Checkbox':
-                  return <Checkbox {...common} widget={widget} key={id} />;
-                case 'Slider':
-                  return <Slider {...common} widget={widget} key={id} />;
-                case 'Label':
-                  return <Label {...common} widget={widget} key={id} />;
-                case 'PieChart':
-                  return <PieChart {...common} widget={widget} key={id} />;
-                case 'Image':
-                  return <ImageViewer {...common} widget={widget} key={id} />;
-                default:
-                  return null;
-              }
-            })}
-          </div>
-        )}
+        <NodeEditor tabId={activeControlTabId} />
       </div>
     </div>
   );

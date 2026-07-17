@@ -1,188 +1,115 @@
+import { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { Eye, EyeOff, TestTube } from 'lucide-react';
-import { waveformBuffer } from '../../lib/dataBuffer';
+import {
+  type ScopeAxisConfig,
+  type ScopeMeasurements,
+  type ChannelAxisConfig,
+  type Coupling,
+} from '../../types';
+import { AllTabContent } from './AllTabContent';
+import { ChannelTabContent } from './ChannelTabContent';
+import { CHANNEL_TAB_COLORS, type RenderStepSelect } from './scopeShared';
 
-/// 轴配置类型
-export interface AxisConfig {
-  auto: boolean;
-  min: number;
-  max: number;
-}
-
-export interface WaveformAxisConfig {
-  x: AxisConfig;
-  y: AxisConfig;
-  grid: boolean;
-  visibleChannels: boolean[];
-}
-
-export const DEFAULT_AXIS_CONFIG: WaveformAxisConfig = {
-  x: { auto: true, min: 0, max: 10 },
-  y: { auto: true, min: -1, max: 1 },
-  grid: true,
-  visibleChannels: [true, true, true, true],
-};
-
-interface AxisSettingsProps {
-  config: WaveformAxisConfig;
-  onChange: (config: WaveformAxisConfig) => void;
+interface ScopePanelProps {
+  config: ScopeAxisConfig;
+  onChange: (next: ScopeAxisConfig) => void;
   channelCount: number;
+  measurements?: ScopeMeasurements | null;
+  onAutoSet?: () => void;
 }
 
-/// 坐标轴设置面板 — X/Y 轴范围、网格、通道可见性
-export function AxisSettings({ config, onChange, channelCount }: AxisSettingsProps) {
+type TabId = 'all' | `ch${number}`;
+
+/// 示波器风格设置面板 — 左侧竖排通道 Tab + 右侧内容
+/// - "全部" Tab: 全局控件 (Run/Stop/AutoSet/Grid/水平/所有通道/游标/测量)
+/// - "CHn" Tab: 仅该通道的 V/div/Position/耦合/Show
+export function AxisSettings({
+  config,
+  onChange,
+  channelCount,
+  measurements,
+  onAutoSet,
+}: ScopePanelProps) {
   const lang = useAppStore((s) => s.lang);
+  const [activeTab, setActiveTab] = useState<TabId>('all');
 
-  const updateAxis = (axis: 'x' | 'y', patch: Partial<AxisConfig>) => {
-    onChange({ ...config, [axis]: { ...config[axis], ...patch } });
+  // channels 数组与 channelCount 对齐
+  const channels: ChannelAxisConfig[] = Array.from({ length: channelCount }, (_, i) =>
+    config.channels[i] ?? { vPerDiv: 1, position: 0, show: true, coupling: 'DC' as Coupling }
+  );
+
+  const patch = (p: Partial<ScopeAxisConfig>) => onChange({ ...config, ...p });
+  const patchChannel = (idx: number, p: Partial<ChannelAxisConfig>) => {
+    const next = channels.slice();
+    next[idx] = { ...next[idx], ...p };
+    onChange({ ...config, channels: next });
   };
 
-  const toggleChannel = (idx: number) => {
-    const next = [...config.visibleChannels];
-    next[idx] = !next[idx];
-    onChange({ ...config, visibleChannels: next });
-  };
+  // 通用档位下拉
+  const renderStepSelect: RenderStepSelect = (steps, value, onPick, format) => (
+    <select
+      className="scope-select"
+      value={value}
+      onChange={(e) => onPick(parseFloat(e.target.value))}
+    >
+      {steps.map((v) => (
+        <option key={v} value={v}>{format(v)}</option>
+      ))}
+    </select>
+  );
 
   return (
-    <div className="axis-settings">
-      <div className="axis-settings-header">
-        {t(lang, 'axisSettings')}
-      </div>
-      <div className="axis-settings-body">
-        {/* X 轴 */}
-        <div className="form-group">
-          <label className="form-label">{t(lang, 'xAxis')}</label>
-          <div className="axis-mode-toggle">
-            <label className="radio-item">
-              <input
-                type="radio"
-                name="x-mode"
-                checked={config.x.auto}
-                onChange={() => updateAxis('x', { auto: true })}
-              />
-              <span>{t(lang, 'autoRange')}</span>
-            </label>
-            <label className="radio-item">
-              <input
-                type="radio"
-                name="x-mode"
-                checked={!config.x.auto}
-                onChange={() => updateAxis('x', { auto: false })}
-              />
-              <span>{t(lang, 'manualRange')}</span>
-            </label>
-          </div>
-          {!config.x.auto && (
-            <div className="form-row">
-              <input
-                type="number"
-                value={config.x.min}
-                onChange={(e) =>
-                  updateAxis('x', { min: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="min"
-              />
-              <input
-                type="number"
-                value={config.x.max}
-                onChange={(e) =>
-                  updateAxis('x', { max: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="max"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Y 轴 */}
-        <div className="form-group">
-          <label className="form-label">{t(lang, 'yAxis')}</label>
-          <div className="axis-mode-toggle">
-            <label className="radio-item">
-              <input
-                type="radio"
-                name="y-mode"
-                checked={config.y.auto}
-                onChange={() => updateAxis('y', { auto: true })}
-              />
-              <span>{t(lang, 'autoRange')}</span>
-            </label>
-            <label className="radio-item">
-              <input
-                type="radio"
-                name="y-mode"
-                checked={!config.y.auto}
-                onChange={() => updateAxis('y', { auto: false })}
-              />
-              <span>{t(lang, 'manualRange')}</span>
-            </label>
-          </div>
-          {!config.y.auto && (
-            <div className="form-row">
-              <input
-                type="number"
-                value={config.y.min}
-                onChange={(e) =>
-                  updateAxis('y', { min: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="min"
-              />
-              <input
-                type="number"
-                value={config.y.max}
-                onChange={(e) =>
-                  updateAxis('y', { max: parseFloat(e.target.value) || 0 })
-                }
-                placeholder="max"
-              />
-            </div>
-          )}
-        </div>
-
-        {/* 网格 */}
-        <div className="form-group">
-          <label className="radio-item">
-            <input
-              type="checkbox"
-              checked={config.grid}
-              onChange={(e) => onChange({ ...config, grid: e.target.checked })}
-            />
-            <span>{t(lang, 'gridVisible')}</span>
-          </label>
-        </div>
-
-        {/* 通道可见性 */}
-        <div className="form-group">
-          <label className="form-label">{t(lang, 'channelVisible')}</label>
-          <div className="channel-toggle-list">
-            {Array.from({ length: channelCount }).map((_, i) => {
-              const visible = config.visibleChannels[i] ?? true;
-              return (
-                <button
-                  key={i}
-                  className={`channel-toggle ${visible ? 'on' : 'off'}`}
-                  onClick={() => toggleChannel(i)}
-                  title={`CH${i}`}
-                >
-                  {visible ? <Eye size={12} /> : <EyeOff size={12} />}
-                  <span>CH{i}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 调试: 注入测试波形 */}
-        <div className="form-group" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+    <div className="scope-panel-with-tabs">
+      {/* 左侧竖排通道 Tab */}
+      <div className="scope-tabs-sidebar">
+        <button
+          className={`scope-tab ${activeTab === 'all' ? 'active' : ''}`}
+          onClick={() => setActiveTab('all')}
+          title={t(lang, 'channels')}
+        >
+          {t(lang, 'channels')}
+        </button>
+        {channels.map((ch, idx) => (
           <button
-            className="btn w-full"
-            onClick={() => waveformBuffer.injectTestData(500)}
+            key={idx}
+            className={`scope-tab channel ${activeTab === `ch${idx}` ? 'active' : ''} ${
+              ch.show ? 'visible' : 'muted'
+            }`}
+            onClick={() => setActiveTab(`ch${idx}` as TabId)}
+            title={`CH${idx}`}
           >
-            <TestTube size={12} />
-            {t(lang, 'injectTestData')}
+            <span
+              className="scope-tab-dot"
+              style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
+            />
+            <span>CH{idx}</span>
           </button>
-        </div>
+        ))}
+      </div>
+
+      {/* 右侧内容 */}
+      <div className="scope-tab-content">
+        {activeTab === 'all' ? (
+          <AllTabContent
+            config={config}
+            channels={channels}
+            measurements={measurements}
+            onAutoSet={onAutoSet}
+            lang={lang}
+            patch={patch}
+            patchChannel={patchChannel}
+            renderStepSelect={renderStepSelect}
+          />
+        ) : (
+          <ChannelTabContent
+            idx={Number(activeTab.replace('ch', ''))}
+            ch={channels[Number(activeTab.replace('ch', ''))]}
+            onPatchChannel={patchChannel}
+            renderStepSelect={renderStepSelect}
+            lang={lang}
+          />
+        )}
       </div>
     </div>
   );

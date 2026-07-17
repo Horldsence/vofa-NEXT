@@ -1,9 +1,9 @@
-use serialport::{self, DataBits, FlowControl, Parity, StopBits, SerialPortType};
-use serial_core::{Error, PortInfo, Result, SerialConfig};
+use serialport::{self, DataBits, FlowControl, Parity, SerialPortType, StopBits};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
+use vofa_next_core::{Error, PortInfo, Result, SerialConfig};
 
 /// 列出所有可用串口
 pub fn list_ports() -> Result<Vec<PortInfo>> {
@@ -44,7 +44,11 @@ pub fn list_ports() -> Result<Vec<PortInfo>> {
 /// 返回 (写入端, 数据广播端, 取消标志)
 pub fn spawn(
     config: SerialConfig,
-) -> Result<(mpsc::Sender<Vec<u8>>, broadcast::Sender<Vec<u8>>, Arc<AtomicBool>)> {
+) -> Result<(
+    mpsc::Sender<Vec<u8>>,
+    broadcast::Sender<Vec<u8>>,
+    Arc<AtomicBool>,
+)> {
     let mut port = serialport::new(&config.port_name, config.baud_rate)
         .data_bits(match config.data_bits {
             5 => DataBits::Five,
@@ -53,18 +57,18 @@ pub fn spawn(
             _ => DataBits::Eight,
         })
         .parity(match config.parity {
-            serial_core::Parity::Odd => Parity::Odd,
-            serial_core::Parity::Even => Parity::Even,
-            serial_core::Parity::None => Parity::None,
+            vofa_next_core::Parity::Odd => Parity::Odd,
+            vofa_next_core::Parity::Even => Parity::Even,
+            vofa_next_core::Parity::None => Parity::None,
         })
         .stop_bits(match config.stop_bits {
-            serial_core::StopBits::Two => StopBits::Two,
-            serial_core::StopBits::One => StopBits::One,
+            vofa_next_core::StopBits::Two => StopBits::Two,
+            vofa_next_core::StopBits::One => StopBits::One,
         })
         .flow_control(match config.flow_control {
-            serial_core::FlowControl::Software => FlowControl::Software,
-            serial_core::FlowControl::Hardware => FlowControl::Hardware,
-            serial_core::FlowControl::None => FlowControl::None,
+            vofa_next_core::FlowControl::Software => FlowControl::Software,
+            vofa_next_core::FlowControl::Hardware => FlowControl::Hardware,
+            vofa_next_core::FlowControl::None => FlowControl::None,
         })
         .timeout(Duration::from_millis(50))
         .open()
@@ -94,7 +98,7 @@ pub fn spawn(
                 Err(_) => break,
             }
         }
-        tracing::info!("串口读线程退出");
+        log::info!("串口读线程退出");
     });
 
     // 写线程
@@ -104,14 +108,14 @@ pub fn spawn(
             match write_rx.blocking_recv() {
                 Some(data) => {
                     if let Err(e) = write_port.write_all(&data) {
-                        tracing::error!("串口写入失败: {}", e);
+                        log::error!("串口写入失败: {}", e);
                         break;
                     }
                 }
                 None => break,
             }
         }
-        tracing::info!("串口写线程退出");
+        log::info!("串口写线程退出");
     });
 
     Ok((write_tx, data_tx, cancel))

@@ -4,8 +4,8 @@ import { ActivityBar } from './components/layout/ActivityBar';
 import { Sidebar } from './components/layout/Sidebar';
 import { ControlPanel } from './components/layout/ControlPanel';
 import { DataPanel } from './components/layout/DataPanel';
-import { AiPanel } from './components/layout/AiPanel';
 import { StatusBar } from './components/layout/StatusBar';
+import { NotificationToasts } from './components/NotificationToasts';
 import { useAppStore } from './store/appStore';
 import './App.css';
 
@@ -45,22 +45,19 @@ function App() {
           )}
           <Panel order={2}>
             <PanelGroup direction="vertical" autoSaveId="sp-center">
-              <Panel defaultSize={40} minSize={15} order={1}>
+              <Panel defaultSize={45} minSize={15} order={1}>
                 <ControlPanel />
               </Panel>
               <PanelResizeHandle className="resize-handle-vertical" />
-              <Panel defaultSize={60} minSize={15} order={2}>
+              <Panel defaultSize={55} minSize={15} order={2}>
                 <DataPanel />
               </Panel>
             </PanelGroup>
           </Panel>
-          <PanelResizeHandle className="resize-handle-horizontal" />
-          <Panel defaultSize={20} minSize={12} maxSize={40} order={3}>
-            <AiPanel />
-          </Panel>
         </PanelGroup>
       </div>
       <StatusBar />
+      <NotificationToasts />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-use serial_core::DataFrame;
+use vofa_next_core::DataFrame;
 
 use crate::engine::ProtocolEngine;
 

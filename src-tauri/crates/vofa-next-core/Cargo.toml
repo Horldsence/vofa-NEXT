@@ -1,10 +1,9 @@
 [package]
-name = "serial-vofa"
+name = "vofa-next-core"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-serial-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-tracing = { workspace = true }
+thiserror = { workspace = true }

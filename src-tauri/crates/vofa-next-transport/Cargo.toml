@@ -1,14 +1,14 @@
 [package]
-name = "serial-transport"
+name = "vofa-next-transport"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-serial-core = { workspace = true }
+vofa-next-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
-tracing = { workspace = true }
+log = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 serialport = "4"

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
-import { waveformBuffer } from '../../lib/dataBuffer';
+import { waveformWindow } from '../../lib/dataBuffer';
 
 interface LabelProps {
   widget: Extract<WidgetConfig, { kind: 'Label' }>;
@@ -20,12 +20,11 @@ export function Label({ widget, onRemove }: LabelProps) {
       return;
     }
 
-    // 绑定通道: 订阅波形缓冲区更新
+    // 绑定通道: 轮询后端波形窗口缓存
     setDisplay(text);
     const interval = setInterval(() => {
-      const data = waveformBuffer.getData();
-      // data[0] = timestamps, data[i+1] = channel i
-      const ch = data[channel + 1];
+      const win = waveformWindow.get();
+      const ch = win.channels[channel];
       if (ch && ch.length > 0) {
         const last = ch[ch.length - 1];
         setDisplay(`${text}: ${last.toFixed(3)}`);

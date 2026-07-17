@@ -1,8 +1,21 @@
 import { create } from 'zustand';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import {
+  applyNodeChanges,
+  applyEdgeChanges,
+  addEdge,
+  type Node,
+  type Edge,
+  type NodeChange,
+  type EdgeChange,
+  type Connection,
+  MarkerType,
+} from '@xyflow/react';
 import { api } from '../lib/tauri';
-import { waveformBuffer, rawDataBuffer } from '../lib/dataBuffer';
+import { waveformWindow, rawDataBuffer } from '../lib/dataBuffer';
+import { notify, formatError } from '../lib/notifications';
 import { nanoid } from 'nanoid';
+import { t } from '../i18n';
 import type { Lang } from '../i18n';
 import type {
   ConnectionState,
@@ -14,6 +27,9 @@ import type {
   TransportStats,
   WidgetConfig,
   WidgetBinding,
+  NodeGraphEdge,
+  ControlTab,
+  DataTab,
 } from '../types';
 
 const DEFAULT_SERIAL: TransportConfig = {
@@ -28,10 +44,14 @@ const DEFAULT_SERIAL: TransportConfig = {
   },
 };
 
+/// 默认协议: JustFloat 自动检测通道
 const DEFAULT_PROTOCOL: ProtocolConfig = {
   kind: 'JustFloat',
-  channels: 4,
+  channels: null, // null = 自动检测
 };
+
+/// 通道源节点 ID (全局唯一, 不可删除)
+export const CHANNEL_SOURCE_ID = '__channel_source__';
 
 /// 侧边栏视图类型 — 顺序符合配置操作流: 接口 → 协议 → 串口
 export type SidebarView =
@@ -62,8 +82,23 @@ interface AppStore {
   ports: PortInfo[];
   selectedPortIndex: number;
 
+  /// 自动检测到的通道数 (仅在自动模式下有值)
+  detectedChannels: number | null;
+
   // Widgets
   widgets: WidgetConfig[];
+
+  // Control tabs
+  controlTabs: ControlTab[];
+  activeControlTabId: string;
+
+  // React Flow node graph (global, filtered by tabId when rendering)
+  rfNodes: Node[];
+  rfEdges: Edge[];
+
+  // Data tabs
+  dataTabs: DataTab[];
+  activeDataTabId: string;
 
   // Raw data version (for triggering re-renders)
   rawDataVersion: number;
@@ -78,21 +113,89 @@ interface AppStore {
   sendText: (text: string) => Promise<void>;
   sendWidgetValue: (binding: WidgetBinding, value: number) => Promise<void>;
   selectPort: (index: number) => void;
+  pollDetectedChannels: () => Promise<void>;
 
   // Widget management
-  addWidget: (widget: WidgetConfig) => void;
+  addWidget: (widget: WidgetConfig, tabId: string, position?: { x: number; y: number }) => void;
   removeWidget: (id: string) => void;
   updateWidget: (id: string, widget: WidgetConfig) => void;
 
+  // Control tabs
+  addControlTab: (name?: string) => void;
+  removeControlTab: (tabId: string) => void;
+  setActiveControlTab: (tabId: string) => void;
+  renameControlTab: (tabId: string, name: string) => void;
+
+  // React Flow
+  onNodesChange: (changes: NodeChange[]) => void;
+  onEdgesChange: (changes: EdgeChange[]) => void;
+  onConnect: (connection: Connection) => void;
+  /// 获取指定 tab 的节点和边 (过滤)
+  getTabNodes: (tabId: string) => Node[];
+  getTabEdges: (tabId: string) => Edge[];
+
+  // Data tabs
+  addDataTab: (tab: DataTab) => void;
+  removeDataTab: (tabId: string) => void;
+  setActiveDataTab: (tabId: string) => void;
+
   // Data
-  clearData: () => void;
+  clearData: () => Promise<void>;
 
   // Event setup
   initEventListeners: () => Promise<() => void>;
 }
 
 let unlistenFns: UnlistenFn[] = [];
+let waveformSub: { cancel: () => void } | null = null;
+let detectedChannelsPoller: ReturnType<typeof setInterval> | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+/// 创建通道源节点 (每个 tab 一个)
+function createChannelSourceNode(tabId: string, channelCount: number): Node {
+  return {
+    id: `${CHANNEL_SOURCE_ID}-${tabId}`,
+    type: 'channelSource',
+    position: { x: 40, y: 40 },
+    data: { tabId, channelCount, label: 'Channel Source' },
+    selectable: false,
+    deletable: false,
+  };
+}
+
+/// 同步节点图到后端
+async function syncNodeGraphToBackend(edges: Edge[]): Promise<void> {
+  const graphEdges: NodeGraphEdge[] = edges
+    .filter((e) => !e.source.startsWith(CHANNEL_SOURCE_ID) || !e.target.startsWith(CHANNEL_SOURCE_ID))
+    .map((e) => ({
+      id: e.id,
+      source: e.source,
+      source_handle: e.sourceHandle ?? '',
+      target: e.target,
+      target_handle: e.targetHandle ?? '',
+    }));
+  try {
+    await api.updateNodeGraph(graphEdges);
+  } catch (err) {
+    const lang = useAppStore.getState().lang;
+    notify.error(
+      t(lang, 'notifNodeGraphSyncFailed'),
+      formatError(err),
+      { source: 'syncNodeGraph' }
+    );
+  }
+}
+
+/// 获取当前生效通道数 (优先检测值, 其次配置值)
+function getEffectiveChannels(
+  protocolConfig: ProtocolConfig,
+  detectedChannels: number | null
+): number {
+  if (protocolConfig.kind === 'RawData') return 4;
+  const configured = protocolConfig.channels;
+  if (configured != null) return configured;
+  return detectedChannels ?? 4;
+}
 
 export const useAppStore = create<AppStore>((set, get) => ({
   lang: 'zh',
@@ -118,8 +221,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
   protocolConfig: DEFAULT_PROTOCOL,
   ports: [],
   selectedPortIndex: 0,
+  detectedChannels: null,
 
   widgets: [],
+
+  controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
+  activeControlTabId: 'default',
+
+  // 初始化: 为每个 tab 创建一个通道源节点
+  rfNodes: [createChannelSourceNode('default', 4)],
+  rfEdges: [],
+
+  dataTabs: [
+    { id: 'waveform-fixed', type: 'waveform' as const, name: 'Waveform', closable: false },
+    { id: 'raw-fixed', type: 'raw' as const, name: 'Raw Data', closable: false },
+  ],
+  activeDataTabId: 'waveform-fixed',
 
   rawDataVersion: 0,
 
@@ -128,7 +245,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
       const ports = await api.listPorts();
       set({ ports });
     } catch (e) {
-      console.error('Failed to list ports:', e);
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifRefreshPortsFailed'),
+        formatError(e),
+        {
+          source: 'refreshPorts',
+          actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().refreshPorts(); } }],
+        }
+      );
     }
   },
 
@@ -136,30 +261,61 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const { transportConfig, protocolConfig } = get();
     try {
       await api.setProtocol(protocolConfig);
-      waveformBuffer.setChannels(
-        'channels' in protocolConfig ? protocolConfig.channels : 4
-      );
-      // 清空旧数据并重置统计
-      waveformBuffer.clear();
+      await api.clearBuffer();
       rawDataBuffer.clear();
+      waveformWindow.clear();
       await api.openTransport(transportConfig);
       set({
         connectionState: 'Connected',
         stats: { rx_bytes: 0, tx_bytes: 0, rx_frames: 0, tx_frames: 0 },
         rawDataVersion: Date.now(),
       });
+      // 启动波形订阅
+      if (waveformSub) {
+        waveformSub.cancel();
+      }
+      waveformSub = api.subscribeWaveform(
+        (window) => waveformWindow.set(window),
+        { intervalMs: 33, maxPoints: 2000 }
+      );
+      // 启动自动通道检测轮询 (仅在自动模式下)
+      get().pollDetectedChannels();
     } catch (e) {
-      console.error('Connect failed:', e);
+      const lang = get().lang;
       set({ connectionState: 'Error' });
+      notify.error(
+        t(lang, 'notifConnectFailed'),
+        formatError(e),
+        {
+          source: 'connect',
+          actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().connect(); } }],
+        }
+      );
     }
   },
 
   disconnect: async () => {
     try {
       await api.closeTransport();
+      if (waveformSub) {
+        waveformSub.cancel();
+        waveformSub = null;
+      }
+      if (detectedChannelsPoller) {
+        clearInterval(detectedChannelsPoller);
+        detectedChannelsPoller = null;
+      }
       set({ connectionState: 'Disconnected' });
     } catch (e) {
-      console.error('Disconnect failed:', e);
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifDisconnectFailed'),
+        formatError(e),
+        {
+          source: 'disconnect',
+          actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().disconnect(); } }],
+        }
+      );
     }
   },
 
@@ -169,11 +325,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ protocolConfig: config });
     try {
       await api.setProtocol(config);
-      waveformBuffer.setChannels(
-        'channels' in config ? config.channels : 4
-      );
+      // 手动模式: 设置后端缓冲区通道数; 自动模式: 由后端动态扩展
+      if (config.kind !== 'RawData' && config.channels != null) {
+        await api.setBufferChannels(config.channels);
+        set({ detectedChannels: null });
+      }
     } catch (e) {
-      console.error('Set protocol failed:', e);
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifSetProtocolFailed'),
+        formatError(e),
+        { source: 'setProtocol' }
+      );
     }
   },
 
@@ -181,7 +344,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       await api.sendRaw(data);
     } catch (e) {
-      console.error('Send failed:', e);
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifSendFailed'),
+        formatError(e),
+        { source: 'sendData' }
+      );
     }
   },
 
@@ -189,7 +357,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       await api.sendString(text);
     } catch (e) {
-      console.error('Send failed:', e);
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifSendFailed'),
+        formatError(e),
+        { source: 'sendText' }
+      );
     }
   },
 
@@ -197,7 +370,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     try {
       await api.sendWidgetValue(binding, value);
     } catch (e) {
-      console.error('Send widget value failed:', e);
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifSendFailed'),
+        formatError(e),
+        { source: 'sendWidget' }
+      );
     }
   },
 
@@ -221,19 +399,247 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
   },
 
-  addWidget: (widget) => set((s) => ({ widgets: [...s.widgets, widget] })),
+  /// 轮询自动检测到的通道数 (仅在自动模式下查询)
+  pollDetectedChannels: async () => {
+    const { protocolConfig } = get();
+    if (protocolConfig.kind === 'RawData') return;
+    if (protocolConfig.channels != null) return; // 手动模式不轮询
+
+    if (detectedChannelsPoller) clearInterval(detectedChannelsPoller);
+    detectedChannelsPoller = setInterval(async () => {
+      try {
+        const detected = await api.getDetectedChannels();
+        const prev = get().detectedChannels;
+        if (detected !== prev) {
+          set({ detectedChannels: detected });
+          // 更新通道源节点的 channelCount
+          const effective = getEffectiveChannels(protocolConfig, detected);
+          set((s) => ({
+            rfNodes: s.rfNodes.map((n) =>
+              n.type === 'channelSource' && n.data.tabId
+                ? { ...n, data: { ...n.data, channelCount: effective } }
+                : n
+            ),
+          }));
+        }
+      } catch (e) {
+        const lang = get().lang;
+        notify.warn(
+          t(lang, 'notifPollChannelsFailed'),
+          formatError(e),
+          { source: 'pollChannels' }
+        );
+      }
+    }, 1000);
+  },
+
+  addWidget: (widget, tabId, position) =>
+    set((s) => {
+      const pos = position ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 };
+      const newNode: Node = {
+        id: widget.params.id,
+        type: 'widget',
+        position: pos,
+        data: { widget, tabId },
+      };
+      const newState: Partial<AppStore> = {
+        widgets: [...s.widgets, widget],
+        rfNodes: [...s.rfNodes, newNode],
+      };
+      // 显示控件自动创建 DataTab
+      if (
+        widget.kind === 'Waveform' ||
+        widget.kind === 'PieChart' ||
+        widget.kind === 'Image'
+      ) {
+        const tabType =
+          widget.kind === 'Waveform'
+            ? 'waveform-extra'
+            : widget.kind === 'PieChart'
+            ? 'pie'
+            : 'image';
+        const tabName =
+          widget.kind === 'Waveform'
+            ? 'Waveform'
+            : widget.params.label;
+        const newTab: DataTab = {
+          id: widget.params.id,
+          type: tabType as DataTab['type'],
+          name: tabName,
+          widgetId: widget.params.id,
+          closable: true,
+        };
+        newState.dataTabs = [...s.dataTabs, newTab];
+        newState.activeDataTabId = widget.params.id;
+      }
+      // 加入 Tab
+      newState.controlTabs = s.controlTabs.map((t) =>
+        t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
+      );
+      return newState;
+    }),
 
   removeWidget: (id) =>
-    set((s) => ({ widgets: s.widgets.filter((w) => w.params.id !== id) })),
+    set((s) => {
+      const widget = s.widgets.find((w) => w.params.id === id);
+      const newState: Partial<AppStore> = {
+        widgets: s.widgets.filter((w) => w.params.id !== id),
+        rfNodes: s.rfNodes.filter((n) => n.id !== id),
+        rfEdges: s.rfEdges.filter((e) => e.source !== id && e.target !== id),
+      };
+      // 移除关联的 DataTab
+      if (
+        widget &&
+        (widget.kind === 'Waveform' ||
+          widget.kind === 'PieChart' ||
+          widget.kind === 'Image')
+      ) {
+        const remaining = s.dataTabs.filter((t) => t.id !== id);
+        newState.dataTabs = remaining;
+        if (s.activeDataTabId === id) {
+          newState.activeDataTabId = remaining[0]?.id ?? 'waveform-fixed';
+        }
+      }
+      // 从所有 controlTabs 中移除
+      newState.controlTabs = s.controlTabs.map((t) => ({
+        ...t,
+        widgets: t.widgets.filter((w) => w !== id),
+      }));
+      return newState;
+    }),
 
   updateWidget: (id, widget) =>
     set((s) => ({
       widgets: s.widgets.map((w) => (w.params.id === id ? widget : w)),
+      rfNodes: s.rfNodes.map((n) =>
+        n.id === id ? { ...n, data: { ...n.data, widget } } : n
+      ),
     })),
 
-  clearData: () => {
-    waveformBuffer.clear();
+  addControlTab: (name) =>
+    set((s) => {
+      const id = nanoid(8);
+      const tabName = name || `Tab ${s.controlTabs.length + 1}`;
+      const effectiveCh = getEffectiveChannels(s.protocolConfig, s.detectedChannels);
+      return {
+        controlTabs: [...s.controlTabs, { id, name: tabName, widgets: [] }],
+        activeControlTabId: id,
+        rfNodes: [...s.rfNodes, createChannelSourceNode(id, effectiveCh)],
+      };
+    }),
+
+  removeControlTab: (tabId) =>
+    set((s) => {
+      const remaining = s.controlTabs.filter((t) => t.id !== tabId);
+      if (remaining.length === 0) {
+        const defaultTab = { id: 'default', name: 'Tab 1', widgets: [] };
+        return {
+          controlTabs: [defaultTab],
+          activeControlTabId: 'default',
+        };
+      }
+      // 移除该 tab 的所有节点和边
+      const tabNodeIds = new Set(
+        s.rfNodes.filter((n) => n.data.tabId === tabId).map((n) => n.id)
+      );
+      tabNodeIds.add(`${CHANNEL_SOURCE_ID}-${tabId}`);
+      return {
+        controlTabs: remaining,
+        activeControlTabId:
+          s.activeControlTabId === tabId ? remaining[0].id : s.activeControlTabId,
+        rfNodes: s.rfNodes.filter((n) => n.data.tabId !== tabId && n.id !== `${CHANNEL_SOURCE_ID}-${tabId}`),
+        rfEdges: s.rfEdges.filter((e) => !tabNodeIds.has(e.source) && !tabNodeIds.has(e.target)),
+      };
+    }),
+
+  setActiveControlTab: (tabId) => set({ activeControlTabId: tabId }),
+
+  renameControlTab: (tabId, name) =>
+    set((s) => ({
+      controlTabs: s.controlTabs.map((t) =>
+        t.id === tabId ? { ...t, name } : t
+      ),
+    })),
+
+  onNodesChange: (changes) => {
+    set((s) => ({
+      rfNodes: applyNodeChanges(changes, s.rfNodes),
+    }));
+  },
+
+  onEdgesChange: (changes) => {
+    set((s) => {
+      const newEdges = applyEdgeChanges(changes, s.rfEdges);
+      // 异步同步到后端 (不阻塞 UI)
+      void syncNodeGraphToBackend(newEdges);
+      return { rfEdges: newEdges };
+    });
+  },
+
+  onConnect: (connection) => {
+    set((s) => {
+      const newEdge: Edge = {
+        ...connection,
+        id: nanoid(8),
+        animated: true,
+        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+      };
+      const newEdges = addEdge(newEdge, s.rfEdges);
+      void syncNodeGraphToBackend(newEdges);
+      return { rfEdges: newEdges };
+    });
+  },
+
+  getTabNodes: (tabId) => {
+    const { rfNodes } = get();
+    return rfNodes.filter(
+      (n) => n.data.tabId === tabId || (n.type === 'channelSource' && n.id === `${CHANNEL_SOURCE_ID}-${tabId}`)
+    );
+  },
+
+  getTabEdges: (tabId) => {
+    const { rfNodes, rfEdges } = get();
+    const tabNodeIds = new Set(
+      rfNodes
+        .filter((n) => n.data.tabId === tabId || (n.type === 'channelSource' && n.id === `${CHANNEL_SOURCE_ID}-${tabId}`))
+        .map((n) => n.id)
+    );
+    return rfEdges.filter((e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target));
+  },
+
+  addDataTab: (tab) =>
+    set((s) => ({
+      dataTabs: [...s.dataTabs, tab],
+      activeDataTabId: tab.id,
+    })),
+
+  removeDataTab: (tabId) =>
+    set((s) => {
+      const tab = s.dataTabs.find((t) => t.id === tabId);
+      if (!tab || !tab.closable) return s;
+      const remaining = s.dataTabs.filter((t) => t.id !== tabId);
+      return {
+        dataTabs: remaining,
+        activeDataTabId:
+          s.activeDataTabId === tabId ? remaining[0]?.id ?? 'waveform-fixed' : s.activeDataTabId,
+      };
+    }),
+
+  setActiveDataTab: (tabId) => set({ activeDataTabId: tabId }),
+
+  clearData: async () => {
+    try {
+      await api.clearBuffer();
+    } catch (e) {
+      const lang = get().lang;
+      notify.error(
+        t(lang, 'notifClearBufferFailed'),
+        formatError(e),
+        { source: 'clearBuffer' }
+      );
+    }
     rawDataBuffer.clear();
+    waveformWindow.clear();
     set({ rawDataVersion: Date.now() });
   },
 
@@ -253,8 +659,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }, 50);
     });
 
-    const unlistenFrame = await listen<DataFrame>('transport:frame', (event) => {
-      waveformBuffer.push(event.payload);
+    // transport:frame 事件仍保留 (供未来逐帧响应控件)
+    const unlistenFrame = await listen<DataFrame>('transport:frame', () => {
+      // 后端已将帧推入 DataBuffer, 通过 subscribe_waveform Channel 推送窗口
+      // 此处无需前端再缓冲
     });
 
     const unlistenState = await listen<ConnectionState>('transport:state', (event) => {
@@ -277,6 +685,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
     return () => {
       unlistenFns.forEach((fn) => fn());
       unlistenFns = [];
+      if (waveformSub) {
+        waveformSub.cancel();
+        waveformSub = null;
+      }
+      if (detectedChannelsPoller) {
+        clearInterval(detectedChannelsPoller);
+        detectedChannelsPoller = null;
+      }
     };
   },
 }));

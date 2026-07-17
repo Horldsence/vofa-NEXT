@@ -1,0 +1,199 @@
+# 侧边栏
+portConfig: 串口配置
+protocolEngine: 协议引擎
+transportType: 数据接口
+widgetPalette: 控件面板
+aiAssistant: AI 助手
+
+# 连接
+connect: 连接
+disconnect: 断开
+connecting: 连接中...
+connected: 已连接
+disconnected: 已断开
+
+# 串口配置
+portName: 端口
+baudRate: 波特率
+dataBits: 数据位
+parity: 校验
+stopBits: 停止位
+flowControl: 流控
+refresh: 刷新
+driverInfo: 驱动信息
+
+# 协议
+justfloat: JustFloat
+firewater: FireWater
+rawdata: RawData
+channels: 通道数
+channelsAuto: 自动检测
+channelsManual: 手动指定
+detectedChannels: 检测到通道
+
+# 数据接口
+serial: 串口
+udp: UDP
+tcpClient: TCP 客户端
+tcpServer: TCP 服务端
+testData: 测试数据
+localAddr: 本地地址
+remoteAddr: 远程地址
+localPort: 本地端口
+remotePort: 远程端口
+host: 主机
+port: 端口
+listenAddr: 监听地址
+listenPort: 监听端口
+sampleRate: 采样率
+signalType: 信号类型
+sine: 正弦
+square: 方波
+triangle: 三角
+sawtooth: 锯齿
+random: 随机
+dc: 直流
+chirp: 扫频
+steps: 阶梯
+noise: 噪声
+multitone: 多频
+
+# 控件
+knob: 旋钮
+button: 按钮
+radio: 单选
+checkbox: 多选
+slider: 滑块
+label: 标签
+waveform: 波形图
+pieChart: 饼图
+image: 图像
+addWidget: 添加控件
+removeWidget: 删除
+bindingMode: 绑定模式
+auto: 自动
+manual: 手动
+none: 无
+channel: 通道
+template: 模板
+minValue: 最小值
+maxValue: 最大值
+step: 步长
+defaultValue: 默认值
+press: 按下
+release: 释放
+options: 选项
+
+# 数据区
+rawData: 原始数据
+hexView: HEX
+asciiView: ASCII
+send: 发送
+clear: 清空
+autoScroll: 自动滚动
+
+# 统计
+rxBytes: 接收字节
+txBytes: 发送字节
+rxFrames: 接收帧
+txFrames: 发送帧
+
+# AI
+aiPlaceholder: AI 功能即将上线...
+inputMessage: 输入消息...
+
+# 控件区
+controlArea: 控件区
+displayArea: 显示区
+noWidgets: 暂无控件, 从左侧面板添加
+layoutAuto: 自动排版
+layoutGrid: 网格排版
+
+# 跳转按钮
+nextProtocol: "下一步: 协议引擎"
+nextPort: "下一步: 串口配置"
+goToProtocol: 前往协议引擎
+goToPort: 前往串口配置
+
+# 轴设置
+axisSettings: 坐标轴设置
+xAxis: X 轴
+yAxis: Y 轴
+autoRange: 自动范围
+manualRange: 手动范围
+gridVisible: 显示网格
+channelVisible: 通道可见
+noSignal: 暂无信号
+
+# 原始数据扩展
+showTimestamp: 时间戳
+appendNone: 无
+appendNewline: \n
+appendTab: \t
+appendNewlineTab: \n\t
+appendSuffix: 附加
+
+# 节点编辑器
+addInputModule: 添加输入模块
+addOutputModule: 添加输出模块
+addDrawModule: 添加绘制模块
+newTab: 新建标签页
+tabName: 标签页
+deleteTab: 删除标签页
+inputModule: 输入模块
+outputModule: 输出模块
+drawModule: 绘制模块
+nodeConnect: 连接
+nodeDisconnect: 断开连接
+noConnection: 无连接
+channelSource: 通道源
+connectToWaveform: 连接到波形图
+dragWidgetHint: 从左侧拖拽控件到此处
+emptyWaveform: 波形图为空, 请连接输入通道
+
+# 底部面板
+bottomPanel: 底部面板
+aiChat: AI 对话
+
+# 波形时间轴
+timeWindow: 时间窗口
+zoomIn: 放大
+zoomOut: 缩小
+resetZoom: 重置缩放
+scrollLeft: 左移
+scrollRight: 右移
+timeRange: 时间范围
+startTime: 起始
+endTime: 终止
+currentTime: 当前
+
+# 示波器
+run: 运行
+stop: 停止
+autoSet: 自动设置
+horizontal: 水平
+timeBase: 时基
+hPosition: 水平位置
+cursors: 游标
+measure: 测量
+oscilloscopeSettings: 示波器设置
+coupling: 耦合
+position: 位置
+
+# 通知
+notifError: 错误
+notifWarn: 警告
+notifInfo: 提示
+notifRefreshPortsFailed: 刷新端口失败
+notifConnectFailed: 连接失败
+notifDisconnectFailed: 断开连接失败
+notifSendFailed: 发送失败
+notifSetProtocolFailed: 协议配置失败
+notifClearBufferFailed: 清空数据失败
+notifNodeGraphSyncFailed: 节点图同步失败
+notifPollChannelsFailed: 通道检测轮询失败
+notifRetry: 重试
+notifDismiss: 关闭
+notifDismissAll: 关闭全部
+notifMore: "还有 {{count}} 条通知"
+notifCollapsedHint: 同源错误累计次数

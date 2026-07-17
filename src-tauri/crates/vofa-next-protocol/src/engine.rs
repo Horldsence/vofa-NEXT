@@ -1,4 +1,4 @@
-use serial_core::DataFrame;
+use vofa_next_core::DataFrame;
 
 /// 协议引擎 trait — 解析接收数据 / 编码发送数据
 pub trait ProtocolEngine: Send {
@@ -13,4 +13,15 @@ pub trait ProtocolEngine: Send {
 
     /// 协议名称
     fn name(&self) -> &str;
+
+    /// 自动检测到的通道数 (自动模式下, 收到首帧后返回 Some(n))
+    /// 手动模式或未检测到时返回 None
+    fn detected_channels(&self) -> Option<usize> {
+        None
+    }
+
+    /// 是否为自动检测模式
+    fn is_auto_mode(&self) -> bool {
+        false
+    }
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
-import { waveformBuffer } from '../../lib/dataBuffer';
+import { waveformWindow } from '../../lib/dataBuffer';
 
 interface PieChartProps {
   widget: Extract<WidgetConfig, { kind: 'PieChart' }>;
@@ -21,9 +21,9 @@ export function PieChart({ widget, onRemove }: PieChartProps) {
 
   useEffect(() => {
     const interval = setInterval(() => {
-      const data = waveformBuffer.getData();
+      const win = waveformWindow.get();
       const next = channels.map((ch) => {
-        const chData = data[ch + 1];
+        const chData = win.channels[ch];
         return chData && chData.length > 0 ? chData[chData.length - 1] : 0;
       });
       setValues(next);

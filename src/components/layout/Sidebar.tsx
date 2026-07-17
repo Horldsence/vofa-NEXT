@@ -5,7 +5,7 @@ import { PortConfig } from '../panels/PortConfig';
 import { ProtocolConfigPanel } from '../panels/ProtocolConfigPanel';
 import { TransportConfigPanel } from '../panels/TransportConfigPanel';
 import { WidgetPalette } from '../panels/WidgetPalette';
-import { AiPanel as AiSidebar } from './AiPanel';
+import { Bot } from 'lucide-react';
 
 interface SidebarProps {
   view: SidebarView;
@@ -33,7 +33,12 @@ export function Sidebar({ view }: SidebarProps) {
         {view === 'protocol' && <ProtocolConfigPanel />}
         {view === 'transport' && <TransportConfigPanel />}
         {view === 'widgets' && <WidgetPalette />}
-        {view === 'ai' && <AiSidebar inSidebar />}
+        {view === 'ai' && (
+          <div style={{ padding: 16, color: 'var(--text-secondary)', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 32 }}>
+            <Bot size={32} style={{ opacity: 0.4 }} />
+            <p style={{ textAlign: 'center' }}>{t(lang, 'aiPlaceholder')}</p>
+          </div>
+        )}
       </div>
     </div>
   );

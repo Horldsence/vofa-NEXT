@@ -126,11 +126,14 @@ body {
   flex-direction: column;
   background: var(--bg-editor);
   overflow: hidden;
+  height: 100%;
+  width: 100%;
 }
 
 .panel-header {
   background: var(--bg-panel-header);
   padding: 6px 12px;
+  height: 28px;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -141,6 +144,7 @@ body {
   justify-content: space-between;
   flex-shrink: 0;
   border-bottom: 1px solid var(--border);
+  box-sizing: border-box;
 }
 
 .panel-header-actions {
@@ -759,31 +763,6 @@ select {
   50% { opacity: 0.4; }
 }
 
-/* ============ AI Panel ============ */
-.ai-panel {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-editor);
-}
-
-.ai-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  color: var(--text-secondary);
-  gap: 12px;
-}
-
-.ai-input-bar {
-  padding: 8px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: 4px;
-}
-
 /* ============ Widget Palette ============ */
 .palette-grid {
   display: grid;
@@ -800,10 +779,15 @@ select {
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  cursor: pointer;
+  cursor: grab;
   transition: all 0.15s;
   font-size: 11px;
   color: var(--text-secondary);
+  user-select: none;
+}
+
+.palette-item:active {
+  cursor: grabbing;
 }
 
 .palette-item:hover {
@@ -898,3 +882,1174 @@ select {
 .w-full { width: 100%; }
 .h-full { height: 100%; }
 .hidden { display: none; }
+
+/* ============ Node Editor ============ */
+.node-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.node-editor-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.node-editor-canvas {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+  background-size: 20px 20px;
+  background-position: -1px -1px;
+}
+
+.node-editor-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.node-editor-node {
+  position: absolute;
+  min-width: 180px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: move;
+  user-select: none;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.node-editor-node-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.node-editor-node-header span {
+  flex: 1;
+}
+
+.node-editor-node-body {
+  padding: 8px;
+}
+
+.node-editor-ports {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-panel-header);
+  border-radius: 0 0 6px 6px;
+}
+
+.node-editor-ports-left,
+.node-editor-ports-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 2px 4px;
+}
+
+.node-editor-port {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  cursor: crosshair;
+  padding: 1px 0;
+}
+
+.node-editor-port:hover .node-editor-port-dot,
+.node-editor-port.hover .node-editor-port-dot {
+  background: var(--accent);
+  box-shadow: 0 0 4px var(--accent);
+}
+
+.node-editor-port-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.node-editor-ports-right .node-editor-port {
+  flex-direction: row-reverse;
+}
+
+.node-editor-port-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ============ Waveform Timeline ============ */
+.waveform-timeline {
+  border-top: 1px solid var(--border);
+  background: var(--bg-editor);
+  flex-shrink: 0;
+}
+
+.waveform-timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+}
+
+.waveform-timeline-label {
+  font-size: 10px;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  padding: 0 4px;
+}
+
+.waveform-timeline-canvas {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+/* ============ Oscilloscope Settings Panel ============ */
+.scope-panel-with-tabs {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 左侧竖排通道 Tab 列表 */
+.scope-tabs-sidebar {
+  flex: 0 0 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 0;
+  background: var(--bg-panel-header);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.scope-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 2px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-left: 2px solid transparent;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  writing-mode: horizontal-tb;
+}
+
+.scope-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.scope-tab.active {
+  background: var(--bg-active);
+  color: var(--text-bright);
+  border-left-color: var(--text-bright);
+}
+
+.scope-tab.channel.muted {
+  opacity: 0.5;
+}
+
+.scope-tab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* 右侧内容区 */
+.scope-tab-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.scope-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  color: var(--text-primary);
+  font-size: 11px;
+}
+
+.scope-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.scope-section:last-child {
+  border-bottom: none;
+}
+
+.scope-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scope-toolbar {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding-bottom: 6px;
+}
+
+.scope-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.scope-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.scope-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.scope-btn.run {
+  background: var(--green);
+  color: #000;
+  border-color: var(--green);
+}
+
+.scope-btn.run:hover {
+  filter: brightness(1.1);
+}
+
+.scope-btn.stop {
+  background: var(--red);
+  color: #000;
+  border-color: var(--red);
+}
+
+.scope-btn.stop:hover {
+  filter: brightness(1.1);
+}
+
+.scope-btn.icon-only {
+  padding: 4px 6px;
+}
+
+.scope-btn.icon-only.active {
+  background: var(--bg-active);
+  color: var(--text-bright);
+  border-color: var(--accent);
+}
+
+/* ============ Step Knob ============ */
+.scope-knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  user-select: none;
+}
+
+.scope-knob.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.knob-dial {
+  position: relative;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #5a5a5a, #1e1e1e 70%);
+  border: 1px solid #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  cursor: grab;
+  transition: transform 0.08s ease-out;
+  touch-action: none;
+}
+
+.knob-dial:active {
+  cursor: grabbing;
+}
+
+.knob-rim {
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+
+.knob-pointer {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 2px;
+  height: 30%;
+  margin-left: -1px;
+  background: var(--blue);
+  border-radius: 1px;
+  box-shadow: 0 0 3px rgba(117, 190, 255, 0.6);
+  pointer-events: none;
+}
+
+.knob-value {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-bright);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.knob-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ============ Scope Rows & Inputs ============ */
+.scope-knob-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.scope-knob-row.small {
+  gap: 4px;
+}
+
+/* 单通道 Tab 中的独立旋钮行 (居中, 大尺寸) */
+.scope-knob-row.standalone {
+  justify-content: center;
+  padding: 6px 0;
+}
+
+/* 单通道 Tab 顶部 header (CH 标签 + 颜色条) */
+.scope-channel-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.scope-channel-color {
+  display: inline-block;
+  width: 16px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.scope-field-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  min-width: 24px;
+}
+
+.scope-select {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.scope-select.small {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+.scope-number-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.scope-unit {
+  font-size: 10px;
+  color: var(--text-secondary);
+  min-width: 12px;
+}
+
+.scope-readout {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-bright);
+  padding: 2px 4px;
+  background: var(--bg-input);
+  border-radius: 3px;
+}
+
+/* ============ Channel Row ============ */
+.channel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(60, 60, 60, 0.5);
+}
+
+.channel-row:first-of-type {
+  border-top: none;
+}
+
+.channel-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.scope-channel-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.scope-channel-toggle.on {
+  color: var(--text-bright);
+  border-color: var(--blue);
+  background: rgba(117, 190, 255, 0.08);
+}
+
+.scope-channel-toggle.off {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+.scope-channel-toggle:hover {
+  background: var(--bg-hover);
+}
+
+/* ============ Cursor SVG Overlay ============ */
+.cursor-overlay {
+  pointer-events: none;
+}
+
+/* ============ Measure Grid ============ */
+.measure-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px 6px;
+}
+
+.measure-item {
+  display: flex;
+  flex-direction: column;
+  padding: 3px 4px;
+  background: var(--bg-input);
+  border-radius: 3px;
+  border-left: 2px solid var(--blue);
+}
+
+.measure-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.measure-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-bright);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.measure-unit {
+  font-size: 9px;
+  color: var(--text-secondary);
+  margin-left: 1px;
+}
+
+/* ============ Drag Over / Empty State ============ */
+.node-editor.drag-over .node-editor-canvas {
+  background-color: rgba(117, 190, 255, 0.05);
+  outline: 2px dashed var(--accent);
+  outline-offset: -4px;
+}
+
+.empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* ============ React Flow ============ */
+.node-editor-rf {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-editor);
+  overflow: hidden;
+}
+
+.node-editor-rf .react-flow {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-editor);
+}
+
+.node-editor-rf .react-flow__background {
+  background-color: var(--bg-editor);
+}
+
+.node-editor-rf .react-flow__attribution {
+  display: none;
+}
+
+.node-editor-rf .react-flow__controls {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.node-editor-rf .react-flow__controls-button {
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  fill: var(--text-primary);
+  width: 24px;
+  height: 24px;
+}
+
+.node-editor-rf .react-flow__controls-button:hover {
+  background: var(--bg-hover);
+}
+
+.node-editor-rf .react-flow__controls-button svg {
+  fill: var(--text-primary);
+}
+
+.node-editor-rf .react-flow__edge-path {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+
+.node-editor-rf .react-flow__edge.animated .react-flow__edge-path {
+  stroke-dasharray: 4 3;
+  animation: rf-edge-flow 0.6s linear infinite;
+}
+
+@keyframes rf-edge-flow {
+  to { stroke-dashoffset: -7; }
+}
+
+.node-editor-rf .react-flow__edge.selected .react-flow__edge-path,
+.node-editor-rf .react-flow__edge:hover .react-flow__edge-path {
+  stroke: var(--text-bright);
+  stroke-width: 2;
+}
+
+.node-editor-rf .react-flow__handle {
+  width: 9px;
+  height: 9px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  cursor: crosshair;
+  transition: all 0.15s;
+}
+
+.node-editor-rf .react-flow__handle:hover {
+  background: var(--accent);
+  transform: scale(1.3);
+}
+
+.node-editor-rf .react-flow__handle.connectingto,
+.node-editor-rf .react-flow__handle.valid {
+  background: var(--green);
+  border-color: var(--green);
+}
+
+/* ============ React Flow Custom Nodes ============ */
+.rf-widget-node {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 160px;
+  max-width: 240px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  font-size: 11px;
+  position: relative;
+}
+
+.rf-widget-node.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 2px 12px rgba(0,0,0,0.5);
+}
+
+.rf-widget-node-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border);
+  border-radius: 6px 6px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-secondary);
+}
+
+.rf-widget-node-kind {
+  flex: 1;
+}
+
+.rf-widget-node-close {
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  opacity: 0.6;
+}
+
+.rf-widget-node-close:hover {
+  opacity: 1;
+}
+
+.rf-widget-node-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rf-widget-node-error {
+  padding: 8px;
+  color: var(--red);
+  font-size: 11px;
+}
+
+/* 端口布局 */
+.rf-ports-left,
+.rf-ports-right {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0;
+}
+
+.rf-ports-left {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.rf-ports-right {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+}
+
+.rf-port-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 14px;
+  position: relative;
+}
+
+.rf-ports-left .rf-port-row {
+  padding-left: 2px;
+}
+
+.rf-ports-right .rf-port-row {
+  flex-direction: row-reverse;
+  padding-right: 2px;
+}
+
+.rf-port-label {
+  font-size: 9px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  background: var(--bg-sidebar);
+  padding: 1px 3px;
+  border-radius: 2px;
+}
+
+/* 通道源节点 */
+.rf-channel-source {
+  background: linear-gradient(135deg, #1a3a5c, #2a5a8c);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  min-width: 140px;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  font-size: 11px;
+}
+
+.rf-channel-source-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px 6px 0 0;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.rf-channel-source-channels {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+}
+
+.rf-channel-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: relative;
+}
+
+.rf-channel-source-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-bright);
+}
+
+/* 波形占位提示 */
+.rf-waveform-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-align: center;
+}
+
+.rf-waveform-placeholder-hint {
+  color: var(--blue);
+  font-size: 9px;
+}
+
+/* RF 空状态提示 */
+.rf-empty-hint {
+  background: var(--bg-panel-header);
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* 波形空状态覆盖层 */
+.waveform-empty-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  background: rgba(30, 30, 30, 0.6);
+  z-index: 5;
+}
+
+/* RF MiniMap */
+.rf-minimap,
+.node-editor-rf .react-flow__minimap {
+  background: var(--bg-sidebar) !important;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.node-editor-rf .react-flow__minimap-mask {
+  fill: rgba(117, 190, 255, 0.15);
+}
+
+/* ============ Responsive Layout ============ */
+
+/* 中等屏 (1280-1440): 缩小默认面板比例 */
+@media (max-width: 1440px) {
+  .waveform-sidebar {
+    width: 200px;
+  }
+  .palette-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 小屏 (1024-1280): 侧边栏更窄 */
+@media (max-width: 1280px) {
+  .sidebar {
+    min-width: 180px;
+  }
+  .waveform-sidebar {
+    width: 180px;
+  }
+  .rf-widget-node {
+    min-width: 140px;
+  }
+  .rf-channel-source {
+    min-width: 120px;
+  }
+}
+
+/* 最小屏 (< 1024): 强制最小尺寸, 隐藏 Minimap */
+@media (max-width: 1024px) {
+  .app {
+    min-width: 1024px;
+  }
+  .node-editor-rf .react-flow__minimap {
+    display: none;
+  }
+  .node-editor-rf .react-flow__controls {
+    transform: scale(0.85);
+    transform-origin: bottom right;
+  }
+}
+
+/* 窄高比 (低高度): 缩小波形时间轴 */
+@media (max-height: 700px) {
+  .waveform-timeline-canvas {
+    height: 28px;
+  }
+  .waveform-timeline-controls {
+    padding: 1px 4px;
+  }
+}
+
+/* 大屏 (>= 1920): 更宽的侧边栏 */
+@media (min-width: 1920px) {
+  .waveform-sidebar {
+    width: 260px;
+  }
+  .palette-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* ============ Notifications (VSCode-style Toast) ============ */
+.notif-container {
+  position: fixed;
+  right: 16px;
+  bottom: 32px; /* 避开状态栏 */
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 380px;
+}
+
+.notif-overflow {
+  pointer-events: auto;
+  background: var(--bg-sidebar);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.notif-overflow:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.notif-toast {
+  pointer-events: auto;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 360px;
+  padding: 10px 12px 10px 10px;
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--text-secondary);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow: hidden;
+  animation: notif-slide-in 0.18s ease-out;
+}
+
+@keyframes notif-slide-in {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.notif-toast.notif-error {
+  border-left-color: var(--red);
+}
+.notif-toast.notif-warn {
+  border-left-color: var(--yellow);
+}
+.notif-toast.notif-info {
+  border-left-color: var(--blue);
+}
+
+.notif-icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 1px;
+}
+.notif-error .notif-icon { color: var(--red); }
+.notif-warn .notif-icon { color: var(--yellow); }
+.notif-info .notif-icon { color: var(--blue); }
+
+.notif-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notif-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notif-title {
+  font-weight: 600;
+  color: var(--text-bright);
+  font-size: 12px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-count {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: help;
+}
+
+.notif-severity-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+.notif-error .notif-severity-tag {
+  color: var(--red);
+  background: rgba(244, 135, 113, 0.1);
+}
+.notif-warn .notif-severity-tag {
+  color: var(--yellow);
+  background: rgba(226, 192, 141, 0.1);
+}
+.notif-info .notif-severity-tag {
+  color: var(--blue);
+  background: rgba(117, 190, 255, 0.1);
+}
+
+.notif-message {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  cursor: pointer;
+  max-height: 4.5em; /* 约 3 行 */
+  overflow: hidden;
+  word-break: break-all;
+  white-space: pre-wrap;
+  transition: max-height 0.2s ease;
+}
+.notif-message.expanded {
+  max-height: 200px;
+}
+
+.notif-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.notif-action-btn {
+  background: var(--bg-button);
+  color: var(--text-bright);
+  border: none;
+  border-radius: 2px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: background 0.15s;
+}
+.notif-action-btn:hover {
+  background: var(--bg-button-hover);
+}
+
+.notif-close {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.notif-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+/* 自动消失进度条 (warn/info) */
+.notif-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  animation: notif-progress-shrink 8s linear forwards;
+}
+.notif-progress.paused {
+  animation-play-state: paused;
+}
+.notif-warn .notif-progress { background: var(--yellow); }
+.notif-info .notif-progress { background: var(--blue); }
+
+@keyframes notif-progress-shrink {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* 折叠态略微缩小 */
+.notif-toast.notif-collapsed {
+  border-left-width: 3px;
+}
+
+/* 小屏适配 */
+@media (max-width: 480px) {
+  .notif-container {
+    right: 8px;
+    left: 8px;
+    bottom: 40px;
+    max-width: none;
+  }
+  .notif-toast {
+    width: auto;
+  }
+}

@@ -1,13 +1,13 @@
-use serial_core::{TestDataConfig, TestSignal};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
+use vofa_next_core::{TestDataConfig, TestSignal};
 
 /// 启动测试数据生成器
 pub async fn spawn(
     config: TestDataConfig,
-) -> serial_core::Result<(
+) -> vofa_next_core::Result<(
     mpsc::Sender<Vec<u8>>,
     broadcast::Sender<Vec<u8>>,
     Arc<AtomicBool>,
@@ -57,7 +57,7 @@ pub async fn spawn(
                 }
             }
         }
-        tracing::info!("测试数据生成器退出");
+        log::info!("测试数据生成器退出");
     });
 
     Ok((write_tx, data_tx, cancel))
@@ -103,8 +103,7 @@ fn generate_frame(channels: usize, signal: TestSignal, t: f32, phase: f32) -> Ve
                 TestSignal::Chirp => {
                     // 扫频: 频率随时间线性增加
                     let f = 0.5 + t * 2.0;
-                    (phase * f * freq * 2.0 * std::f32::consts::PI).sin()
-                        * 80.0
+                    (phase * f * freq * 2.0 * std::f32::consts::PI).sin() * 80.0
                         + 128.0
                         + i as f32 * 10.0
                 }

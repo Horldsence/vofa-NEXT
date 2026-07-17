@@ -1,65 +1,29 @@
-import { DataFrame } from '../types';
+import type { DataFrame, WaveformWindow } from '../types';
 
-/// 波形数据缓冲区 — 模块级单例, 避免频繁触发 React re-render
-export class WaveformBuffer {
-  private timestamps: number[] = [];
-  private channels: number[][] = [];
-  private maxPoints: number;
-  private numChannels: number;
-  private listeners = new Set<() => void>();
-  /// 版本号: 每次 push 递增, 用于检测数据变化 (即使 pointCount 因满而不再增长)
+/// 波形窗口缓存 — 接收来自后端 Tauri Channel 的推送, 由订阅者维护
+/// 不同于旧的 WaveformBuffer (前端持有完整数据), 此处仅缓存最新窗口快照
+class WaveformWindowCache {
+  private latest: WaveformWindow = { timestamps: [], channels: [], channel_count: 0 };
   private _version = 0;
+  private listeners = new Set<() => void>();
 
-  constructor(maxPoints = 10000, numChannels = 8) {
-    this.maxPoints = maxPoints;
-    this.numChannels = numChannels;
-    this.channels = Array.from({ length: numChannels }, () => []);
-  }
-
-  push(frame: DataFrame) {
-    this.timestamps.push(frame.timestamp);
-    for (let i = 0; i < this.numChannels; i++) {
-      this.channels[i].push(frame.channels[i] ?? 0);
-    }
-    if (this.timestamps.length > this.maxPoints) {
-      const cut = this.timestamps.length - this.maxPoints;
-      this.timestamps.splice(0, cut);
-      for (let i = 0; i < this.numChannels; i++) {
-        this.channels[i].splice(0, cut);
-      }
-    }
+  set(window: WaveformWindow) {
+    this.latest = window;
     this._version++;
     this.notify();
   }
 
-  /** 获取 uPlot 格式数据: [timestamps, ch0, ch1, ...] */
-  getData(): number[][] {
-    return [this.timestamps, ...this.channels];
+  get(): WaveformWindow {
+    return this.latest;
   }
 
-  get channelCount(): number {
-    return this.numChannels;
-  }
-
-  get pointCount(): number {
-    return this.timestamps.length;
-  }
-
-  /** 版本号: 每次推送递增, 不受 maxPoints 截断影响 */
   get version(): number {
     return this._version;
   }
 
-  setChannels(num: number) {
-    this.numChannels = num;
-    this.channels = Array.from({ length: num }, () => []);
-    this.timestamps = [];
-  }
-
   clear() {
-    this.timestamps = [];
-    this.channels = Array.from({ length: this.numChannels }, () => []);
-    this._version = 0;
+    this.latest = { timestamps: [], channels: [], channel_count: 0 };
+    this._version++;
     this.notify();
   }
 
@@ -68,30 +32,15 @@ export class WaveformBuffer {
     return () => this.listeners.delete(fn);
   }
 
-  notify() {
+  private notify() {
     this.listeners.forEach((fn) => fn());
-  }
-
-  /// 注入测试数据 (仅用于前端调试) — 生成 count 个采样点的正弦波
-  injectTestData(count: number) {
-    this.clear();
-    const channels = this.numChannels || 4;
-    for (let n = 0; n < count; n++) {
-      const t = n * 0.05;
-      const channelsArr: number[] = [];
-      for (let c = 0; c < channels; c++) {
-        const freq = 1 + c * 0.5;
-        channelsArr.push(Math.sin(t * freq) * (50 + c * 20) + 128);
-      }
-      this.push({ timestamp: t, channels: channelsArr });
-    }
   }
 }
 
-/// 全局波形缓冲区实例
-export const waveformBuffer = new WaveformBuffer();
+/// 全局波形窗口缓存
+export const waveformWindow = new WaveformWindowCache();
 
-/// 原始数据缓冲区 — 环形缓冲区, 支持时间戳追踪
+/// 原始数据缓冲区 — 环形缓冲区, 支持时间戳追踪 (前端仍需保留以格式化 hex/ascii)
 export class RawDataBuffer {
   private buf: Uint8Array;
   private writePos = 0;
@@ -199,3 +148,6 @@ export interface RawDataSnapshot {
 }
 
 export const rawDataBuffer = new RawDataBuffer();
+
+/// 兼容旧代码的导出 (DataFrame 类型仍需要)
+export type { DataFrame };
