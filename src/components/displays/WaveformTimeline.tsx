@@ -393,17 +393,17 @@ export function WaveformTimeline({
     : axisConfig.hPosition === 0 ? 'STOP' : axisConfig.hPosition.toFixed(2) + 's';
 
   return (
-    <div className="waveform-timeline">
-      <div className="waveform-timeline-controls">
-        <span className="waveform-timeline-label">{timeWindowLabel}</span>
-        <div style={{ flex: 1 }} />
-        <span className="waveform-timeline-label" style={{ color: 'var(--text-secondary)' }}>
+    <div className="border-t border-border bg-bg-editor flex-shrink-0">
+      <div className="flex items-center gap-0.5 px-1.5 py-0.5 bg-bg-panel-header border-b border-border">
+        <span className="text-[10px] text-text-primary font-mono px-1">{timeWindowLabel}</span>
+        <div className="flex-1" />
+        <span className="text-[10px] text-text-secondary font-mono px-1">
           {statusLabel}
         </span>
       </div>
       <canvas
         ref={canvasRef}
-        className="waveform-timeline-canvas"
+        className="block w-full h-10"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}

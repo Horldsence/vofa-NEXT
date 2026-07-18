@@ -323,11 +323,11 @@ customCancel: Cancel
 customEditorError: Code Error
 
 # Widget Category Tabs
-catInput: Input
+catInput: Data
 catDisplay: Display
 catMath: Math
 catCustom: Custom
-catInputHelp: Input widgets set parameters and send values to bound channels on release
+catInputHelp: Data widgets set parameters or send commands; connect to Command's value port for template interpolation
 catDisplayHelp: Display widgets show real-time channel data; connect from channel source after dropping
 catMathHelp: Math widgets perform arithmetic or math functions on multiple channels, can be chained
 catCustomHelp: Custom JS widgets; click to open the editor and write your own logic
@@ -395,6 +395,24 @@ cmdFormatAscii: ASCII
 cmdFormatTemplate: Template
 cmdFormatStructured: Structured
 cmdSettings: Settings
+# Data block types
+cmdBlockConstHex: Const HEX
+cmdBlockVarRef: Var Ref
+cmdBlockTypedConst: Typed Const
+cmdBlockChecksum: Checksum
+cmdAddBlockConstHex: Const
+cmdAddBlockVarRef: Var
+cmdAddBlockTypedConst: Typed
+cmdAddBlockChecksum: Checksum
+cmdBlocksEmpty: No blocks yet, use buttons below to add
+cmdDragToReorder: Drag to reorder
+cmdBlockLabel: Label
+cmdBlockLabelPlaceholder: Block name (optional)
+cmdBlockPortName: Port Name
+cmdBlockType: Data Type
+cmdBlockValue: Value
+cmdBlockVarRefHint: Current connected value
+cmdBlockChecksumHint: Computes checksum over all preceding blocks
 cmdChecksum: Checksum
 cmdChecksumNone: None
 cmdChecksumSum8: Sum8

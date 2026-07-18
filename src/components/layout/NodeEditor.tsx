@@ -132,7 +132,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
 
   return (
     <div
-      className={`node-editor-rf${isDragOver ? ' drag-over' : ''}`}
+      className={`absolute inset-0 bg-bg-editor overflow-hidden node-editor-rf${isDragOver ? ' drag-over' : ''}`}
       ref={wrapperRef}
     >
       <ReactFlow
@@ -156,12 +156,12 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         <MiniMap
           pannable
           zoomable
-          className="rf-minimap"
+          className="bg-bg-sidebar border border-border rounded overflow-hidden"
           nodeColor={(n) => (n.type === 'channelSource' ? '#75beff' : '#89d185')}
         />
         <Panel position="top-left">
           {tabNodes.length <= 1 && (
-            <div className="rf-empty-hint">{t(lang, 'dragWidgetHint')}</div>
+            <div className="bg-bg-panel-header border border-dashed border-border rounded px-2.5 py-1.5 text-xs text-text-secondary pointer-events-none">{t(lang, 'dragWidgetHint')}</div>
           )}
         </Panel>
       </ReactFlow>

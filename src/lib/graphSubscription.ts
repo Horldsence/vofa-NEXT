@@ -1,5 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import type { SpectrumResult } from '../types';
+import { closeTauriChannel } from './tauri';
 
 /// 后端图输出快照 — 与 Rust GraphOutputSnapshot 对应
 export interface GraphOutputSnapshot {
@@ -31,7 +32,7 @@ export function subscribeGraphOutputs(
   void invoke('subscribe_graph_outputs', { onEvent: channel });
   return {
     cancel: () => {
-      channel.onmessage = () => {};
+      void closeTauriChannel(channel, 'unsubscribe_graph_outputs', channel.id);
     },
   };
 }
@@ -45,7 +46,7 @@ export function subscribeCustomInputs(
   void invoke('subscribe_custom_inputs', { onEvent: channel });
   return {
     cancel: () => {
-      channel.onmessage = () => {};
+      void closeTauriChannel(channel, 'unsubscribe_custom_inputs', channel.id);
     },
   };
 }
@@ -60,7 +61,7 @@ export function subscribeSpectrum(
   void invoke('subscribe_spectrum', { onEvent: channel });
   return {
     cancel: () => {
-      channel.onmessage = () => {};
+      void closeTauriChannel(channel, 'unsubscribe_spectrum', channel.id);
     },
   };
 }

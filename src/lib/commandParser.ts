@@ -115,8 +115,8 @@ export function parseStructured(fields: CommandField[]): Uint8Array {
   return result;
 }
 
-/// 单字段打包
-function packField(type: FieldType, value: string): Uint8Array {
+/// 单字段打包 (导出供 CommandSender 块编码复用)
+export function packField(type: FieldType, value: string): Uint8Array {
   switch (type) {
     case 'uint8': {
       const n = parseNumber(value, 0, 0xff);

@@ -34,10 +34,10 @@ export function ChannelTabContent({
   // Y 轴单位 (不一定是电压, 如 'A'/'°C'/'', 默认 'V')
   const unit = yUnit ?? 'V';
   return (
-    <div className="scope-panel">
-      <div className="scope-section scope-channel-header">
+    <div className="flex flex-col gap-1 px-2.5 py-2 text-text-primary text-xs">
+      <div className="flex flex-row items-center justify-between gap-1.5 py-1.5 border-b border-border">
         <button
-          className={`scope-channel-toggle ${ch.show ? 'on' : 'off'}`}
+          className={`inline-flex items-center gap-1 border rounded px-1.5 py-1 text-[10px] font-mono cursor-pointer transition-all duration-150 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
           onClick={() => onPatchChannel(idx, { show: !ch.show })}
           title={`CH${idx}`}
         >
@@ -45,15 +45,15 @@ export function ChannelTabContent({
           <span>CH{idx}</span>
         </button>
         <span
-          className="scope-channel-color"
+          className="inline-block w-4 h-1 rounded-sm"
           style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
         />
       </div>
 
-      <div className="scope-section">
-        <div className="scope-section-title">{t(lang, 'coupling')}</div>
+      <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'coupling')}</div>
         <select
-          className="scope-select"
+          className="form-select"
           value={ch.coupling}
           onChange={(e) =>
             onPatchChannel(idx, { coupling: e.target.value as Coupling })
@@ -67,16 +67,16 @@ export function ChannelTabContent({
 
       {sharedY ? (
         // 共用 Y 模式: V/div/Position 在全部 Tab 统一设置, 这里只显示提示
-        <div className="scope-section">
-          <div className="scope-shared-y-hint">
+        <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+          <div className="p-2 text-xs text-text-secondary bg-bg-input border border-dashed border-border rounded leading-relaxed">
             {t(lang, 'sharedYHint')}
           </div>
         </div>
       ) : (
         <>
-          <div className="scope-section">
-            <div className="scope-section-title">{unit}/div</div>
-            <div className="scope-knob-row standalone">
+          <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{unit}/div</div>
+            <div className="flex items-center justify-center gap-1.5 py-1.5 mt-0.5">
               <StepKnob
                 value={ch.vPerDiv}
                 steps={V_PER_DIV}
@@ -87,7 +87,7 @@ export function ChannelTabContent({
                 disabled={!ch.show}
               />
             </div>
-            <div className="scope-knob-row">
+            <div className="flex items-center gap-1.5 mt-0.5">
               {renderStepSelect(
                 V_PER_DIV,
                 ch.vPerDiv,
@@ -97,20 +97,20 @@ export function ChannelTabContent({
             </div>
           </div>
 
-          <div className="scope-section">
-            <div className="scope-section-title">{t(lang, 'position')}</div>
-            <div className="scope-knob-row">
-              <span className="scope-field-label">Pos</span>
+          <div className="flex flex-col gap-1 py-1.5 border-b border-border last:border-b-0">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'position')}</div>
+            <div className="flex items-center gap-1 mt-0.5">
+              <span className="text-[10px] text-text-secondary min-w-[24px]">Pos</span>
               <input
                 type="number"
-                className="scope-number-input"
+                className="form-input flex-1 min-w-0"
                 value={ch.position}
                 step={ch.vPerDiv}
                 onChange={(e) =>
                   onPatchChannel(idx, { position: parseFloat(e.target.value) || 0 })
                 }
               />
-              <span className="scope-unit">{unit}</span>
+              <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
             </div>
           </div>
         </>

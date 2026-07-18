@@ -24,10 +24,10 @@ export function CompactChannelRow({
 }) {
   const unit = yUnit ?? 'V';
   return (
-    <div className="channel-row">
-      <div className="channel-row-header">
+    <div className="flex flex-col gap-0.5 py-1 border-t border-border/50 first:border-t-0">
+      <div className="flex items-center justify-between gap-1">
         <button
-          className={`scope-channel-toggle ${ch.show ? 'on' : 'off'}`}
+          className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer transition-all duration-150 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
           onClick={() => onPatchChannel(idx, { show: !ch.show })}
           title={`CH${idx}`}
         >
@@ -35,7 +35,7 @@ export function CompactChannelRow({
           <span>CH{idx}</span>
         </button>
         <select
-          className="scope-select small"
+          className="form-select w-auto flex-none text-[10px] py-0.5 px-1"
           value={ch.coupling}
           onChange={(e) =>
             onPatchChannel(idx, { coupling: e.target.value as Coupling })
@@ -46,7 +46,7 @@ export function CompactChannelRow({
           <option value="GND">GND</option>
         </select>
       </div>
-      <div className="scope-knob-row">
+      <div className="flex items-center gap-1.5 mt-0.5">
         <StepKnob
           value={ch.vPerDiv}
           steps={V_PER_DIV}
@@ -63,18 +63,18 @@ export function CompactChannelRow({
           (v) => formatVPerDiv(v, unit)
         )}
       </div>
-      <div className="scope-knob-row small">
-        <span className="scope-field-label">Pos</span>
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-[10px] text-text-secondary min-w-[24px]">Pos</span>
         <input
           type="number"
-          className="scope-number-input"
+          className="form-input flex-1 min-w-0"
           value={ch.position}
           step={ch.vPerDiv}
           onChange={(e) =>
             onPatchChannel(idx, { position: parseFloat(e.target.value) || 0 })
           }
         />
-        <span className="scope-unit">{unit}</span>
+        <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
       </div>
     </div>
   );

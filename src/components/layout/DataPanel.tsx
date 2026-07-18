@@ -185,8 +185,8 @@ export function DataPanel() {
         const wid = waveWidget.params.id;
         const st = perWidgetStates[wid] ?? createPerWidgetState(waveWidget.params.channels);
         return (
-          <div className="waveform-layout">
-            <div className="waveform-main">
+          <div className="flex h-full w-full">
+            <div className="flex-1 min-w-0 relative">
               <WaveformChart
                 widget={waveWidget}
                 axisConfig={st.config}
@@ -198,7 +198,7 @@ export function DataPanel() {
                 }}
               />
             </div>
-            <div className="waveform-sidebar" style={{ width: 240 }}>
+            <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto">
               <AxisSettings
                 config={st.config}
                 onChange={(next) => {
@@ -232,23 +232,31 @@ export function DataPanel() {
         const widget = widgets.find(
           (w) => w.params.id === tab.widgetId && w.kind === 'PieChart'
         ) as Extract<WidgetConfig, { kind: 'PieChart' }> | undefined;
-        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
-        return <PieChart widget={widget} onRemove={() => {}} />;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
+        return (
+          <div className="flex h-full p-2">
+            <PieChart widget={widget} onRemove={() => {}} full />
+          </div>
+        );
       }
       case 'image': {
         const widget = widgets.find(
           (w) => w.params.id === tab.widgetId && w.kind === 'Image'
         ) as Extract<WidgetConfig, { kind: 'Image' }> | undefined;
-        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
-        return <ImageViewer widget={widget} onRemove={() => {}} />;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
+        return (
+          <div className="flex h-full p-2">
+            <ImageViewer widget={widget} onRemove={() => {}} full />
+          </div>
+        );
       }
       case 'model3d': {
         const widget = widgets.find(
           (w) => w.params.id === tab.widgetId && w.kind === 'Model3D'
         ) as Extract<WidgetConfig, { kind: 'Model3D' }> | undefined;
-        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
         return (
-          <div className="datatab-fullscreen-widget">
+          <div className="flex h-full p-2">
             <Model3DWidget widget={widget} onRemove={() => {}} />
           </div>
         );
@@ -257,9 +265,9 @@ export function DataPanel() {
         const widget = widgets.find(
           (w) => w.params.id === tab.widgetId && w.kind === 'Spectrum'
         ) as Extract<WidgetConfig, { kind: 'Spectrum' }> | undefined;
-        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
         return (
-          <div className="datatab-fullscreen-widget">
+          <div className="flex h-full p-2">
             <SpectrumChart widget={widget} onRemove={() => {}} />
           </div>
         );
@@ -268,9 +276,9 @@ export function DataPanel() {
         const widget = widgets.find(
           (w) => w.params.id === tab.widgetId && w.kind === 'Command'
         ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
-        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
         return (
-          <div className="datatab-command-wrapper">
+          <div className="flex h-full p-2">
             <CommandSender widget={widget} onRemove={() => {}} />
           </div>
         );
@@ -303,21 +311,19 @@ export function DataPanel() {
   };
 
   return (
-    <div className="panel">
-      <div className="tabs">
+    <div className="flex flex-col bg-bg-editor overflow-hidden h-full w-full">
+      <div className="flex bg-bg-panel-header border-b border-border flex-shrink-0">
         {dataTabs.map((tab) => (
           <div
             key={tab.id}
-            className={`tab ${tab.id === activeDataTabId ? 'active' : ''}`}
+            className={`px-3 h-7 text-xs cursor-pointer border-r border-border flex items-center gap-1 hover:bg-bg-hover transition-colors ${tab.id === activeDataTabId ? 'text-text-bright bg-bg-editor border-t-2 border-t-accent' : 'text-text-secondary'}`}
             onClick={() => setActiveDataTab(tab.id)}
-            style={{ cursor: 'pointer' }}
           >
             {getTabIcon(tab.type)}
             <span>{tab.name}</span>
             {tab.closable && (
               <button
-                className="btn-icon"
-                style={{ marginLeft: 2, padding: 0, width: 16, height: 16 }}
+                className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-0.5 p-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   removeDataTab(tab.id);
@@ -329,7 +335,7 @@ export function DataPanel() {
           </div>
         ))}
       </div>
-      <div className="panel-content">
+      <div className="flex-1 overflow-hidden relative min-h-0">
         {renderTabContent()}
       </div>
     </div>

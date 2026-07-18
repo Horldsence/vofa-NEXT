@@ -132,6 +132,9 @@ pub async fn get_detected_channels(state: State<'_, AppState>) -> Result<Option<
 ///
 /// interval_ms: 推送间隔 (毫秒), 默认 33ms (~30 FPS)
 /// max_points: 单次推送的最大点数, 默认 1000
+///
+/// 取消方式: 前端调用 unsubscribe_waveform(channel_id) 触发 oneshot 取消信号,
+/// task 在 select! 中收到信号后优雅退出, 避免向已关闭的 channel send 产生警告。
 #[tauri::command]
 pub async fn subscribe_waveform(
     state: State<'_, AppState>,
@@ -142,21 +145,34 @@ pub async fn subscribe_waveform(
     let buffer = state.buffer.clone();
     let interval = Duration::from_millis(interval_ms.unwrap_or(33));
     let max_pts = max_points.unwrap_or(1000);
+    let channel_id = on_event.id();
+
+    // 创建取消信号 channel, 存入全局 state 供 unsubscribe_waveform 使用
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.waveform_tasks.lock().insert(channel_id, cancel_tx);
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
-        log::info!("波形订阅已启动, 间隔={}ms", interval.as_millis());
+        log::info!("波形订阅已启动, channel_id={}, 间隔={}ms", channel_id, interval.as_millis());
         loop {
-            ticker.tick().await;
-            let window = {
-                let buf = buffer.lock();
-                let pts = buf.point_count().min(max_pts);
-                buf.get_recent(pts)
-            };
-            // Channel 已关闭则退出
-            if on_event.send(window).is_err() {
-                log::info!("波形订阅通道已关闭");
-                break;
+            tokio::select! {
+                // 收到取消信号 → 优雅退出
+                _ = &mut cancel_rx => {
+                    log::info!("波形订阅被主动取消, channel_id={}", channel_id);
+                    break;
+                }
+                _ = ticker.tick() => {
+                    let window = {
+                        let buf = buffer.lock();
+                        let pts = buf.point_count().min(max_pts);
+                        buf.get_recent(pts)
+                    };
+                    // Channel 已关闭则退出
+                    if on_event.send(window).is_err() {
+                        log::info!("波形订阅通道已关闭, channel_id={}", channel_id);
+                        break;
+                    }
+                }
             }
         }
     });
@@ -296,5 +312,53 @@ pub async fn subscribe_spectrum(
     on_event: Channel<SpectrumBatch>,
 ) -> Result<()> {
     state.spectrum_subscribers.lock().push(on_event);
+    Ok(())
+}
+
+/// 取消订阅图输出 — 从订阅者列表中移除指定 channel
+///
+/// 前端在取消订阅时应先调用此命令移除后端引用, 再注销 JS 端回调,
+/// 避免后端向已关闭的 channel 发送数据时产生 "Couldn't find callback id" 警告。
+#[tauri::command]
+pub async fn unsubscribe_graph_outputs(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    let mut subs = state.output_subscribers.lock();
+    subs.retain(|ch| ch.id() != channel_id);
+    Ok(())
+}
+
+/// 取消订阅 Custom 输入 — 从订阅者列表中移除指定 channel
+#[tauri::command]
+pub async fn unsubscribe_custom_inputs(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    let mut subs = state.custom_input_subscribers.lock();
+    subs.retain(|ch| ch.id() != channel_id);
+    Ok(())
+}
+
+/// 取消订阅频谱 — 从订阅者列表中移除指定 channel
+#[tauri::command]
+pub async fn unsubscribe_spectrum(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    let mut subs = state.spectrum_subscribers.lock();
+    subs.retain(|ch| ch.id() != channel_id);
+    Ok(())
+}
+
+/// 取消订阅波形 — 通过 channel_id 触发 oneshot 取消信号, 让 task 优雅退出
+#[tauri::command]
+pub async fn unsubscribe_waveform(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    if let Some(tx) = state.waveform_tasks.lock().remove(&channel_id) {
+        let _ = tx.send(());
+    }
     Ok(())
 }

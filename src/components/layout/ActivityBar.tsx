@@ -7,6 +7,7 @@ import {
   Settings,
   Info,
 } from 'lucide-react';
+import clsx from 'clsx';
 import type { SidebarView } from '../../store/appStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
@@ -40,27 +41,30 @@ export function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
     : items;
 
   return (
-    <div className="activity-bar">
+    <div className="w-12 bg-bg-activity flex flex-col items-center pt-1 flex-shrink-0">
       {visibleItems.map((item) => (
         <div
           key={item.view}
-          className={`activity-icon ${activeView === item.view ? 'active' : ''}`}
+          className={clsx(
+            "w-12 h-12 flex items-center justify-center cursor-pointer text-text-secondary relative transition-colors duration-150 hover:text-text-primary",
+            activeView === item.view && "text-text-bright before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-text-bright"
+          )}
           title={t(lang, item.key)}
           onClick={() => onSelect(item.view)}
         >
           {item.icon}
         </div>
       ))}
-      <div style={{ flex: 1 }} />
+      <div className="flex-1" />
       <div
-        className="activity-icon"
+        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-secondary hover:text-text-primary transition-colors duration-150"
         title={t(lang, 'about')}
         onClick={openAbout}
       >
         <Info size={22} />
       </div>
       <div
-        className="activity-icon"
+        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-secondary hover:text-text-primary transition-colors duration-150"
         title={t(lang, 'settings')}
         onClick={() => openSettings()}
       >

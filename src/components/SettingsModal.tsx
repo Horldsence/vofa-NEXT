@@ -387,7 +387,7 @@ export function SettingsModal() {
       case 'select':
         return (
           <select
-            className="settings-select"
+            className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors cursor-pointer min-w-[140px]"
             value={String(value)}
             onChange={(e) => {
               const opt = ctrl.options.find((o) => String(o.value) === e.target.value);
@@ -405,7 +405,7 @@ export function SettingsModal() {
         return (
           <input
             type="number"
-            className="settings-input settings-input-number"
+            className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-ui focus:outline-none focus:border-accent transition-colors w-[120px]"
             value={value as number}
             min={ctrl.min}
             max={ctrl.max}
@@ -420,7 +420,7 @@ export function SettingsModal() {
         return (
           <input
             type="text"
-            className="settings-input"
+            className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-ui focus:outline-none focus:border-accent transition-colors"
             value={String(value)}
             onChange={(e) => handleChange(e.target.value)}
           />
@@ -429,45 +429,45 @@ export function SettingsModal() {
   };
 
   return (
-    <div className="settings-overlay" onClick={close}>
+    <div className="fixed inset-0 bg-black/50 z-[9000] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]" onClick={close}>
       <div
-        className="settings-modal"
+        className="w-[820px] max-w-[92vw] h-[600px] max-h-[88vh] bg-bg-sidebar border border-border rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
         {/* 顶部 — 标题 + 搜索框 + 关闭 */}
-        <div className="settings-header">
-          <div className="settings-title-row">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-bg-panel-header flex-shrink-0">
+          <div className="flex items-center gap-1.5 text-text-bright text-base font-semibold flex-shrink-0">
             <Type size={16} />
-            <span className="settings-title-text">{t(lang, 'settingsTitle')}</span>
+            <span>{t(lang, 'settingsTitle')}</span>
           </div>
-          <div className="settings-search-row">
-            <Search size={14} className="settings-search-icon" />
+          <div className="flex-1 flex items-center gap-1.5 bg-bg-input border border-border rounded px-2 py-1 focus-within:border-accent transition-colors">
+            <Search size={14} className="text-text-secondary flex-shrink-0" />
             <input
               ref={searchInputRef}
               type="text"
-              className="settings-search-input"
+              className="flex-1 bg-transparent border-none outline-none text-text-primary text-sm font-ui"
               placeholder={t(lang, 'settingsSearch')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className="settings-close-btn" onClick={close} title={t(lang, 'settingsClose')}>
+          <button className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer" onClick={close} title={t(lang, 'settingsClose')}>
             <X size={16} />
           </button>
         </div>
 
         {/* 主体 — 左侧分类 + 右侧表单 */}
-        <div className="settings-body">
-          <div className="settings-sidebar">
+        <div className="flex-1 flex min-h-0">
+          <div className="w-50 bg-bg-sidebar border-r border-border py-2 flex flex-col flex-shrink-0 overflow-y-auto">
             {(Object.keys(CATEGORY_LABEL_KEY) as (keyof AppSettings)[]).map((cat) => {
               const isActive =
                 !searchQuery.trim() && activeCategory === cat;
               return (
                 <div
                   key={cat}
-                  className={`settings-category-item${isActive ? ' active' : ''}`}
+                  className={`flex items-center gap-2.5 px-4 py-2 text-text-secondary text-sm cursor-pointer transition-all duration-150 border-l-2 border-transparent hover:bg-bg-hover hover:text-text-primary ${isActive ? 'text-text-bright bg-bg-hover border-l-accent' : ''}`}
                   onClick={() => {
                     setActiveCategory(cat);
                     setSearchQuery('');
@@ -478,9 +478,9 @@ export function SettingsModal() {
                 </div>
               );
             })}
-            <div style={{ flex: 1 }} />
+            <div className="flex-1" />
             <div
-              className="settings-category-item"
+              className="flex items-center gap-2.5 px-4 py-2 text-text-secondary text-sm cursor-pointer transition-all duration-150 border-l-2 border-transparent hover:bg-bg-hover hover:text-text-primary"
               onClick={reset}
               title={t(lang, 'settingsReset')}
             >
@@ -489,34 +489,34 @@ export function SettingsModal() {
             </div>
           </div>
 
-          <div className="settings-content">
+          <div className="flex-1 overflow-y-auto px-6 py-4 bg-bg-editor">
             {(Object.keys(groupedFields) as (keyof AppSettings)[]).map((cat) => {
               const fields = groupedFields[cat]!;
               // 搜索模式下显示分类标题; 非搜索模式只显示当前分类
               if (!searchQuery.trim() && cat !== activeCategory) return null;
               return (
-                <div key={cat} className="settings-group">
+                <div key={cat} className="mb-6">
                   {searchQuery.trim() && (
-                    <div className="settings-group-title">
+                    <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary pb-2 mb-3 border-b border-border">
                       {t(lang, CATEGORY_LABEL_KEY[cat])}
                     </div>
                   )}
                   {fields.map((def) => (
-                    <div key={`${def.category}-${def.field}`} className="settings-row">
-                      <div className="settings-row-label">
-                        <div className="settings-row-title">{t(lang, def.labelKey)}</div>
-                        <div className="settings-row-desc">{t(lang, def.descKey)}</div>
+                    <div key={`${def.category}-${def.field}`} className="flex items-start justify-between gap-6 py-2.5 border-b border-white/[0.04] last:border-b-0">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-text-primary mb-0.5">{t(lang, def.labelKey)}</div>
+                        <div className="text-xs text-text-secondary leading-relaxed">{t(lang, def.descKey)}</div>
                       </div>
-                      <div className="settings-row-control">{renderControl(def)}</div>
+                      <div className="flex-shrink-0 min-w-[200px] flex items-center justify-end">{renderControl(def)}</div>
                     </div>
                   ))}
                 </div>
               );
             })}
             {!searchQuery.trim() && (
-              <div className="settings-group-actions">
+              <div className="py-4 flex gap-2">
                 <button
-                  className="btn-secondary"
+                  className="px-3 py-1.5 bg-transparent text-text-secondary border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-hover hover:text-text-primary inline-flex items-center gap-1.5"
                   onClick={() => resetCategory(activeCategory)}
                 >
                   <RotateCcw size={12} />
@@ -528,9 +528,9 @@ export function SettingsModal() {
         </div>
 
         {/* 底部 — 完成按钮 */}
-        <div className="settings-footer">
-          <div style={{ flex: 1 }} />
-          <button className="btn-primary" onClick={close}>
+        <div className="flex items-center px-4 py-2.5 border-t border-border bg-bg-panel-header flex-shrink-0">
+          <div className="flex-1" />
+          <button className="bg-bg-button text-text-bright border-none py-1.5 px-4 text-sm font-ui cursor-pointer rounded inline-flex items-center gap-1.5 transition-colors hover:bg-bg-button-hover" onClick={close}>
             <Check size={14} />
             <span>{t(lang, 'settingsDone')}</span>
           </button>

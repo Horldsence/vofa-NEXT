@@ -36,10 +36,10 @@ export function AllTabContent({
   renderStepSelect: RenderStepSelect;
 }) {
   return (
-    <div className="scope-panel">
-      <div className="scope-section scope-toolbar">
+    <div className="flex flex-col gap-1 px-2.5 py-2 text-text-primary text-xs">
+      <div className="flex flex-row flex-wrap gap-1 pb-1.5 border-b border-border">
         <button
-          className={`scope-btn ${config.running ? 'run' : 'stop'}`}
+          className={`inline-flex items-center gap-1 px-2 py-1 border rounded text-xs cursor-pointer transition-all duration-150 ${config.running ? 'bg-green border-green text-black' : 'bg-red border-red text-black'}`}
           onClick={() => patch({ running: !config.running })}
           title={config.running ? t(lang, 'stop') : t(lang, 'run')}
         >
@@ -47,7 +47,7 @@ export function AllTabContent({
           <span>{config.running ? t(lang, 'stop') : t(lang, 'run')}</span>
         </button>
         <button
-          className="scope-btn"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-xs cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-bright disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={() => onAutoSet?.()}
           title={t(lang, 'autoSet')}
           disabled={!onAutoSet}
@@ -56,7 +56,7 @@ export function AllTabContent({
           <span>{t(lang, 'autoSet')}</span>
         </button>
         <button
-          className={`scope-btn icon-only ${config.grid ? 'active' : ''}`}
+          className={`inline-flex items-center gap-1 px-1.5 py-1 border rounded text-xs cursor-pointer transition-all duration-150 ${config.grid ? 'bg-bg-active text-text-bright border-accent' : 'bg-bg-input text-text-primary border-border hover:bg-bg-hover hover:text-text-bright'}`}
           onClick={() => patch({ grid: !config.grid })}
           title={t(lang, 'gridVisible')}
         >
@@ -65,9 +65,9 @@ export function AllTabContent({
       </div>
 
       {/* 水平 */}
-      <div className="scope-section">
-        <div className="scope-section-title">{t(lang, 'horizontal')}</div>
-        <div className="scope-knob-row">
+      <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'horizontal')}</div>
+        <div className="flex items-center gap-1.5 mt-0.5">
           <StepKnobTimeBase config={config} patch={patch} lang={lang} />
           {renderStepSelect(
             TIME_BASES_SEC,
@@ -76,25 +76,25 @@ export function AllTabContent({
             formatTimeBase
           )}
         </div>
-        <div className="scope-knob-row small">
-          <span className="scope-field-label">{t(lang, 'hPosition')}</span>
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="text-[10px] text-text-secondary min-w-[24px]">{t(lang, 'hPosition')}</span>
           <input
             type="number"
-            className="scope-number-input"
+            className="form-input flex-1 min-w-0"
             value={config.hPosition}
             step={config.timeBase}
             onChange={(e) => patch({ hPosition: parseFloat(e.target.value) || 0 })}
           />
-          <span className="scope-unit">s</span>
+          <span className="text-[10px] text-text-secondary min-w-[12px]">s</span>
         </div>
       </div>
 
       {/* 每通道 — 含 独立/共用 Y 切换 */}
-      <div className="scope-section">
-        <div className="scope-section-title scope-section-title-row">
+      <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center justify-between gap-1.5">
           <span>{t(lang, 'channels')}</span>
           <button
-            className={`scope-toggle-btn ${config.sharedY ? 'active' : ''}`}
+            className={`px-2 py-0.5 text-[10px] border rounded cursor-pointer transition-all duration-150 whitespace-nowrap ${config.sharedY ? 'bg-blue text-black border-blue' : 'bg-bg-input text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary'}`}
             onClick={() => patch({ sharedY: !config.sharedY })}
             title={t(lang, 'sharedYDesc')}
           >
@@ -124,13 +124,13 @@ export function AllTabContent({
       </div>
 
       {/* Y 轴单位 */}
-      <div className="scope-section">
-        <div className="scope-section-title">{t(lang, 'yUnit')}</div>
-        <div className="scope-knob-row small">
-          <span className="scope-field-label">Unit</span>
+      <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'yUnit')}</div>
+        <div className="flex items-center gap-1 mt-0.5">
+          <span className="text-[10px] text-text-secondary min-w-[24px]">Unit</span>
           <input
             type="text"
-            className="scope-number-input"
+            className="form-input flex-1 min-w-0"
             value={config.yUnit}
             placeholder="V / A / °C / ''"
             onChange={(e) => patch({ yUnit: e.target.value })}
@@ -143,9 +143,9 @@ export function AllTabContent({
 
       {/* 测量值 */}
       {measurements && (
-        <div className="scope-section">
-          <div className="scope-section-title">{t(lang, 'measure')}</div>
-          <div className="measure-grid">
+        <div className="flex flex-col gap-1 py-1.5 border-b border-border last:border-b-0">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'measure')}</div>
+          <div className="grid grid-cols-2 gap-y-0.5 gap-x-1.5">
             <MeasureItem label="PP" value={measurements.vpp} unit={config.yUnit} />
             <MeasureItem label="Max" value={measurements.vmax} unit={config.yUnit} />
             <MeasureItem label="Min" value={measurements.vmin} unit={config.yUnit} />
@@ -181,7 +181,7 @@ function SharedYControls({
   return (
     <>
       {/* 共用 V/div 旋钮 + 下拉 (操作 channels[0], 影响所有通道) */}
-      <div className="scope-knob-row standalone">
+      <div className="flex items-center justify-center gap-1.5 py-1.5 mt-0.5">
         <StepKnob
           value={shared.vPerDiv}
           steps={V_PER_DIV}
@@ -198,16 +198,16 @@ function SharedYControls({
           (v) => formatVPerDiv(v, unit)
         )}
       </div>
-      <div className="scope-knob-row small">
-        <span className="scope-field-label">{t(lang, 'position')}</span>
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-[10px] text-text-secondary min-w-[24px]">{t(lang, 'position')}</span>
         <input
           type="number"
-          className="scope-number-input"
+          className="form-input flex-1 min-w-0"
           value={shared.position}
           step={shared.vPerDiv}
           onChange={(e) => onPatchChannel(0, { position: parseFloat(e.target.value) || 0 })}
         />
-        <span className="scope-unit">{unit}</span>
+        <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
       </div>
       {/* 每通道 show + 耦合 (per-channel, 不共用) */}
       {channels.map((ch, idx) => (
@@ -233,9 +233,9 @@ function ChannelVisibilityRow({
   onPatchChannel: (idx: number, p: Partial<ChannelAxisConfig>) => void;
 }) {
   return (
-    <div className="channel-row channel-row-visibility">
+    <div className="flex items-center gap-1.5 py-0.5">
       <button
-        className={`scope-channel-toggle ${ch.show ? 'on' : 'off'}`}
+        className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer transition-all duration-150 flex-1 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
         onClick={() => onPatchChannel(idx, { show: !ch.show })}
         title={`CH${idx}`}
       >
@@ -243,7 +243,7 @@ function ChannelVisibilityRow({
         <span>CH{idx}</span>
       </button>
       <select
-        className="scope-select small"
+        className="form-select w-[60px] flex-none text-[10px] py-0.5 px-1"
         value={ch.coupling}
         onChange={(e) =>
           onPatchChannel(idx, { coupling: e.target.value as Coupling })
@@ -254,7 +254,7 @@ function ChannelVisibilityRow({
         <option value="GND">GND</option>
       </select>
       <span
-        className="scope-tab-dot"
+        className="w-2 h-2 rounded-full flex-shrink-0"
         style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
       />
     </div>
@@ -296,17 +296,18 @@ function CursorSection({
 }) {
   if (!config.cursors.enabled) {
     return (
-      <div className="scope-section">
-        <div className="scope-section-title">
-          <label className="radio-item">
+      <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">
+          <label className="flex items-center gap-1.5 cursor-pointer text-xs">
             <input
               type="checkbox"
               checked={false}
               onChange={(e) =>
                 patch({ cursors: { ...config.cursors, enabled: e.target.checked } })
               }
+              className="accent-accent"
             />
-            <span>{t(lang, 'cursors')}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary">{t(lang, 'cursors')}</span>
           </label>
         </div>
       </div>
@@ -317,22 +318,23 @@ function CursorSection({
   // 水平游标用 Y 轴单位 (不一定是 V)
   const unit = isVertical ? 's' : (config.yUnit ?? 'V');
   return (
-    <div className="scope-section">
-      <div className="scope-section-title">
-        <label className="radio-item">
+    <div className="flex flex-col gap-1 py-1.5 border-b border-border">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">
+        <label className="flex items-center gap-1.5 cursor-pointer text-xs">
           <input
             type="checkbox"
             checked
             onChange={(e) =>
               patch({ cursors: { ...config.cursors, enabled: e.target.checked } })
             }
+            className="accent-accent"
           />
-          <span>{t(lang, 'cursors')}</span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary">{t(lang, 'cursors')}</span>
         </label>
       </div>
-      <div className="scope-knob-row small">
+      <div className="flex items-center gap-1 mt-0.5">
         <select
-          className="scope-select small"
+          className="form-select w-auto flex-none text-[10px] py-0.5 px-1"
           value={config.cursors.type}
           onChange={(e) =>
             patch({
@@ -344,35 +346,35 @@ function CursorSection({
           <option value="horizontal">Y</option>
         </select>
       </div>
-      <div className="scope-knob-row small">
-        <span className="scope-field-label">C1</span>
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-[10px] text-text-secondary min-w-[24px]">C1</span>
         <input
           type="number"
-          className="scope-number-input"
+          className="form-input flex-1 min-w-0"
           value={config.cursors.c1}
           step={step}
           onChange={(e) =>
             patch({ cursors: { ...config.cursors, c1: parseFloat(e.target.value) || 0 } })
           }
         />
-        <span className="scope-unit">{unit}</span>
+        <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
       </div>
-      <div className="scope-knob-row small">
-        <span className="scope-field-label">C2</span>
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-[10px] text-text-secondary min-w-[24px]">C2</span>
         <input
           type="number"
-          className="scope-number-input"
+          className="form-input flex-1 min-w-0"
           value={config.cursors.c2}
           step={step}
           onChange={(e) =>
             patch({ cursors: { ...config.cursors, c2: parseFloat(e.target.value) || 0 } })
           }
         />
-        <span className="scope-unit">{unit}</span>
+        <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
       </div>
-      <div className="scope-knob-row small">
-        <span className="scope-field-label">Δ</span>
-        <span className="scope-readout">
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className="text-[10px] text-text-secondary min-w-[24px]">Δ</span>
+        <span className="font-mono text-xs text-text-bright py-0.5 px-1 bg-bg-input rounded">
           {(config.cursors.c2 - config.cursors.c1).toFixed(4)}
           {unit}
         </span>

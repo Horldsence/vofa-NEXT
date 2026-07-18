@@ -8,8 +8,35 @@ import type {
   WidgetBinding,
   WaveformWindow,
 } from '../types';
-import type { NodeDef } from './nodeDef';
-import type { Edge } from '@xyflow/react';
+import type { NodeDef, GraphEdge } from './nodeDef';
+
+/// 关闭 Tauri Channel 的完整流程:
+/// 1. 调用后端 unsubscribe 命令, 从订阅者列表移除 (停止 send)
+/// 2. 注销 JS 端回调 (cleanupCallback, 防止 callback id 残留)
+/// 3. 清空 onmessage handler
+///
+/// 必须先调用后端移除再注销 JS 回调, 否则后端在 send 时找不到回调 ID 会产生警告。
+export async function closeTauriChannel<T>(
+  channel: Channel<T>,
+  unsubscribeCmd?: string,
+  channelId?: number
+): Promise<void> {
+  // 1. 通知后端移除 (如果在 HMR 期间后端已不可达, 忽略错误)
+  if (unsubscribeCmd && channelId != null) {
+    try {
+      await invoke(unsubscribeCmd, { channelId });
+    } catch {
+      // 后端可能已不可达 (HMR/重载), 忽略
+    }
+  }
+  // 2. 注销 JS 端回调
+  const ch = channel as unknown as { cleanupCallback?: () => void };
+  if (typeof ch.cleanupCallback === 'function') {
+    ch.cleanupCallback();
+  }
+  // 3. 清空 handler
+  channel.onmessage = () => {};
+}
 
 export const api = {
   // ===== 传输 =====
@@ -54,13 +81,11 @@ export const api = {
       intervalMs: options?.intervalMs,
       maxPoints: options?.maxPoints,
     });
-    // 取消订阅: 关闭 channel 即可让后端任务退出
+    // 取消订阅: 先通知后端 task 退出, 再注销 JS 回调
     return {
       promise,
       cancel: () => {
-        // 重新赋值 onmessage 为空让 channel 自然关闭
-        // Tauri Channel 没有显式 close API, 后端会在 send 失败时退出
-        channel.onmessage = () => {};
+        void closeTauriChannel(channel, 'unsubscribe_waveform', channel.id);
       },
     };
   },
@@ -86,7 +111,7 @@ export const api = {
   // ===== 节点图 (后端化重构) =====
   /// 更新指定 tab 的节点图 (整体替换 nodes + edges)
   /// 编译失败 (循环等) 返回错误, 旧图保留
-  updateTabGraph: (tabId: string, nodes: NodeDef[], edges: Edge[]) =>
+  updateTabGraph: (tabId: string, nodes: NodeDef[], edges: GraphEdge[]) =>
     invoke<void>('update_tab_graph', { tabId, nodes, edges }),
 
   /// 移除指定 tab 的节点图 (tab 删除时调用)

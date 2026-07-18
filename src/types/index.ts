@@ -353,26 +353,40 @@ export interface CommandField {
   value: string;  // 字符串形式, 解析时转换
 }
 
+/// 数据块类型 — Command 以块列表方式拼接最终字节流
+/// - const_hex:   固定字节序列 (如帧头 AA BB)
+/// - var_ref:     引用输入端口的值, 按 fieldType 编码 (端口名自定义)
+/// - typed_const: 手动输入的字面值, 按 fieldType 编码
+/// - checksum:    对前面所有块的累计字节计算校验
+export type BlockType = 'const_hex' | 'var_ref' | 'typed_const' | 'checksum';
+
+/// 单个数据块
+export interface CommandBlock {
+  id: string;
+  type: BlockType;
+  /// 块显示名 (可选, 用于列表中标识)
+  label?: string;
+  /// const_hex: hex 字符串 "AA 01 02"
+  hex?: string;
+  /// var_ref: 自定义输入端口名 (如 "speed"), 节点上按此名暴露 Handle
+  portName?: string;
+  /// var_ref / typed_const: 数据编码类型
+  fieldType?: FieldType;
+  /// typed_const: 字面值字符串
+  value?: string;
+  /// checksum: 校验算法
+  checksum?: ChecksumType;
+  /// checksum: 自定义校验脚本 (checksum === 'custom' 时使用)
+  customScript?: string;
+}
+
 /// 命令发送控件配置
-/// 支持多格式输入 + 校验计算 + 发送到嵌入式设备
+/// 以数据块列表方式拼接最终字节流, 支持可变数量输入端口 + 校验
 export interface CommandConfig {
   id: string;
   label: string;
-  format: CommandFormat;
-  /// HEX 模式内容 (如 "AA 01 02 BB")
-  hexContent: string;
-  /// ASCII 模式内容 (支持 \n \t \r \xHH 转义)
-  asciiContent: string;
-  /// 模板模式内容 (如 "SET ${CH0} ${VALUE}\n")
-  templateContent: string;
-  /// 结构化模式字段列表
-  fields: CommandField[];
-  /// 校验算法
-  checksum: ChecksumType;
-  /// 校验位置
-  checksumPosition: ChecksumPosition;
-  /// 自定义校验脚本 (checksum === 'custom' 时使用)
-  customScript: string;
+  /// 数据块列表 (按顺序拼接为最终字节流)
+  blocks: CommandBlock[];
   /// 发送后追加 \n
   appendNewline: boolean;
 }
@@ -387,9 +401,9 @@ export interface SpectrumResult {
 
 /// 控件类别 — 用于 WidgetPalette 分组与颜色区分
 export type WidgetCategory =
-  | 'input'      // 输入控件 (Knob/Button/Radio/Checkbox/Slider)
-  | 'display'    // 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label)
-  | 'math'       // 算术控件 (Math — 加减乘除/数学函数)
+  | 'input'      // 数据类 (Knob/Button/Radio/Checkbox/Slider/Command)
+  | 'display'    // 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Spectrum/Model3D)
+  | 'math'       // 算术控件 (Math/Filter — 加减乘除/数学函数/滤波)
   | 'custom';    // 自定义控件 (Custom JS)
 
 export type WidgetConfig =

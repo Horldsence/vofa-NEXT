@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Grid } from '@react-three/drei';
 import * as THREE from 'three';
-import { Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import type { WidgetConfig, Model3DMode } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { useGraphInputs } from '../../lib/useGraphInput';
@@ -116,7 +116,6 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
   const { id, mode, trailLength, color, axisLength } = widget.params;
   const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
-  const [showSettings, setShowSettings] = useState(false);
 
   // 读取 x/y/z 三通道 (缺失补 0)
   const inputs = useGraphInputs(id, ['x', 'y', 'z'], 0);
@@ -175,112 +174,111 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
   const modeLabel = t(lang, MODE_OPTIONS.find((o) => o.value === mode)?.labelKey ?? 'model3dTrajectory');
 
   return (
-    <div className="widget-card model3d-widget">
-      {onEdit && (
-        <button
-          className="btn-icon widget-edit"
-          onClick={onEdit}
-          title={t(lang, 'settings')}
-          style={{ right: 24 }}
+    <div className="group bg-bg-sidebar border border-blue/30 rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+      {/* 主区: 3D Canvas 铺满 */}
+      <div className="flex-1 min-w-0 min-h-0 bg-[#0a0a0a] relative">
+        <Canvas
+          camera={{ position: [3, 3, 3], fov: 50 }}
+          gl={{ antialias: true }}
+          dpr={[1, 2]}
         >
-          <Settings2 size={11} />
-        </button>
-      )}
-      <div className="model3d-widget-mode-badge">{modeLabel}</div>
-      <div className="model3d-widget-body">
-        <div className="model3d-widget-canvas">
-          <Canvas
-            camera={{ position: [3, 3, 3], fov: 50 }}
-            gl={{ antialias: true }}
-            dpr={[1, 2]}
-          >
-            <ambientLight intensity={0.5} />
-            <directionalLight position={[5, 5, 5]} intensity={0.8} />
-            <Grid
-              infiniteGrid
-              cellSize={0.5}
-              sectionSize={1}
-              cellColor="#3c3c3c"
-              sectionColor="#555555"
-              fadeDistance={20}
+          <ambientLight intensity={0.5} />
+          <directionalLight position={[5, 5, 5]} intensity={0.8} />
+          <Grid
+            infiniteGrid
+            cellSize={0.5}
+            sectionSize={1}
+            cellColor="#3c3c3c"
+            sectionColor="#555555"
+            fadeDistance={20}
+          />
+          <axesHelper args={[axisLength]} />
+          {mode === 'trajectory' ? (
+            <Trajectory positions={positions} color={color} />
+          ) : (
+            <AttitudeBox
+              rotation={[x, y, z]}
+              color={color}
+              axisLength={axisLength}
             />
-            <axesHelper args={[axisLength]} />
-            {mode === 'trajectory' ? (
-              <Trajectory positions={positions} color={color} />
-            ) : (
-              <AttitudeBox
-                rotation={[x, y, z]}
-                color={color}
-                axisLength={axisLength}
-              />
-            )}
-            <OrbitControls makeDefault />
-          </Canvas>
+          )}
+          <OrbitControls makeDefault />
+        </Canvas>
+        {/* 模式标签覆盖在左上角 */}
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-blue/15 border border-blue/40 rounded-sm text-blue text-[10px] font-semibold uppercase tracking-[0.3px] pointer-events-none">
+          {modeLabel}
         </div>
-        <div className="model3d-widget-input-row">
-          <span className="model3d-widget-input-label">x</span>
-          <span className="model3d-widget-input-value">{x.toFixed(3)}</span>
-          <span className="model3d-widget-input-label">y</span>
-          <span className="model3d-widget-input-value">{y.toFixed(3)}</span>
-          <span className="model3d-widget-input-label">z</span>
-          <span className="model3d-widget-input-value">{z.toFixed(3)}</span>
+        {onEdit && (
+          <button
+            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-black/40"
+            onClick={onEdit}
+            title={t(lang, 'settings')}
+          >
+            <Settings2 size={11} />
+          </button>
+        )}
+      </div>
+      {/* 侧栏: 数值 + 设置 (固定宽, 纵向滚动, 直接展开) */}
+      <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-2.5">
+        {/* xyz 实时数值 */}
+        <div className="grid grid-cols-3 gap-1">
+          {(['x', 'y', 'z'] as const).map((k, i) => (
+            <div key={k} className="flex flex-col items-center bg-bg-input border border-border rounded-sm py-1">
+              <span className="text-text-secondary text-[9px] font-semibold uppercase">{k}</span>
+              <span className="text-text-bright text-[11px] font-mono">{[x, y, z][i].toFixed(3)}</span>
+            </div>
+          ))}
         </div>
-        <button
-          className="model3d-widget-toggle"
-          onClick={() => setShowSettings((v) => !v)}
-          title={t(lang, 'settings')}
-        >
-          {showSettings ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-          <span>{t(lang, 'model3dSettings')}</span>
-        </button>
-        {showSettings && (
-          <div className="model3d-widget-settings">
-            <div className="model3d-widget-setting-row">
-              <label>{t(lang, 'model3dMode')}</label>
-              <div className="model3d-widget-btn-group">
-                {MODE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={`model3d-widget-btn ${mode === opt.value ? 'active' : ''}`}
-                    onClick={() => handleModeChange(opt.value)}
-                  >
-                    {t(lang, opt.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {mode === 'trajectory' && (
-              <div className="model3d-widget-setting-row">
-                <label>{t(lang, 'model3dTrailLength')}</label>
-                <input
-                  type="number"
-                  value={trailLength}
-                  onChange={(e) => handleNumberChange('trailLength', e.target.value)}
-                  min={1}
-                  step={10}
-                />
-              </div>
-            )}
-            <div className="model3d-widget-setting-row">
-              <label>{t(lang, 'model3dColor')}</label>
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => handleColorChange(e.target.value)}
-              />
-            </div>
-            <div className="model3d-widget-setting-row">
-              <label>{t(lang, 'model3dAxisLength')}</label>
-              <input
-                type="number"
-                value={axisLength}
-                onChange={(e) => handleNumberChange('axisLength', e.target.value)}
-                min={0.1}
-                step={0.1}
-              />
+        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1 pt-1">{t(lang, 'model3dSettings')}</div>
+        <div className="flex flex-col gap-1.5 p-1.5 bg-black/20 border border-border rounded-sm">
+          <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'model3dMode')}</label>
+            <div className="flex gap-0.5">
+              {MODE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`flex-1 px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-blue hover:text-blue ${mode === opt.value ? 'bg-blue/20 border-blue text-blue' : ''}`}
+                  onClick={() => handleModeChange(opt.value)}
+                >
+                  {t(lang, opt.labelKey)}
+                </button>
+              ))}
             </div>
           </div>
-        )}
+          {mode === 'trajectory' && (
+            <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
+              <label className="text-[10px] text-text-secondary">{t(lang, 'model3dTrailLength')}</label>
+              <input
+                type="number"
+                value={trailLength}
+                onChange={(e) => handleNumberChange('trailLength', e.target.value)}
+                min={1}
+                step={10}
+                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'model3dColor')}</label>
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => handleColorChange(e.target.value)}
+              className="w-full h-[22px] p-0 bg-transparent border border-border rounded-sm cursor-pointer"
+            />
+          </div>
+          <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'model3dAxisLength')}</label>
+            <input
+              type="number"
+              value={axisLength}
+              onChange={(e) => handleNumberChange('axisLength', e.target.value)}
+              min={0.1}
+              step={0.1}
+              className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

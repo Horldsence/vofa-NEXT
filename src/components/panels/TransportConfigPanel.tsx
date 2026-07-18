@@ -120,11 +120,12 @@ export function TransportConfigPanel() {
 
   return (
     <div>
-      <div className="form-group">
-        <label className="form-label">{t(lang, 'transportType')}</label>
+      <div className="mb-2.5">
+        <label className="block text-xs text-text-secondary mb-1">{t(lang, 'transportType')}</label>
         <select
           value={transportConfig.kind}
           onChange={(e) => switchKind(e.target.value as TransportConfig['kind'])}
+          className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
         >
           {kinds.map((k) => (
             <option key={k.value} value={k.value}>
@@ -136,19 +137,8 @@ export function TransportConfigPanel() {
 
       {/* 串口模式: 端口和参数在 PortConfig 面板配置, 此处仅提示 */}
       {transportConfig.kind === 'Serial' && (
-        <div
-          style={{
-            padding: 12,
-            background: 'var(--bg-input)',
-            borderRadius: 4,
-            fontSize: 11,
-            color: 'var(--text-secondary)',
-            lineHeight: 1.6,
-            display: 'flex',
-            gap: 8,
-          }}
-        >
-          <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+        <div className="p-3 bg-bg-input rounded text-xs text-text-secondary leading-relaxed flex gap-2">
+          <Info size={14} className="flex-shrink-0 mt-0.25" />
           <span>
             {lang === 'zh'
               ? '串口端口选择和参数配置 (波特率/数据位/校验/停止位/流控) 请在"串口配置"面板中完成。'
@@ -159,40 +149,44 @@ export function TransportConfigPanel() {
 
       {transportConfig.kind === 'Udp' && (
         <>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'localAddr')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'localAddr')}</label>
             <input
               type="text"
               value={transportConfig.params.local_addr}
               onChange={(e) => update<'Udp'>({ local_addr: e.target.value })}
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'localPort')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'localPort')}</label>
             <input
               type="number"
               value={transportConfig.params.local_port}
               onChange={(e) =>
                 update<'Udp'>({ local_port: parseInt(e.target.value) || 0 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'remoteAddr')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'remoteAddr')}</label>
             <input
               type="text"
               value={transportConfig.params.remote_addr}
               onChange={(e) => update<'Udp'>({ remote_addr: e.target.value })}
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'remotePort')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'remotePort')}</label>
             <input
               type="number"
               value={transportConfig.params.remote_port}
               onChange={(e) =>
                 update<'Udp'>({ remote_port: parseInt(e.target.value) || 0 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
         </>
@@ -200,22 +194,24 @@ export function TransportConfigPanel() {
 
       {transportConfig.kind === 'TcpClient' && (
         <>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'host')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'host')}</label>
             <input
               type="text"
               value={transportConfig.params.host}
               onChange={(e) => update<'TcpClient'>({ host: e.target.value })}
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'port')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'port')}</label>
             <input
               type="number"
               value={transportConfig.params.port}
               onChange={(e) =>
                 update<'TcpClient'>({ port: parseInt(e.target.value) || 0 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
         </>
@@ -223,24 +219,26 @@ export function TransportConfigPanel() {
 
       {transportConfig.kind === 'TcpServer' && (
         <>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'listenAddr')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'listenAddr')}</label>
             <input
               type="text"
               value={transportConfig.params.listen_addr}
               onChange={(e) =>
                 update<'TcpServer'>({ listen_addr: e.target.value })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'listenPort')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'listenPort')}</label>
             <input
               type="number"
               value={transportConfig.params.listen_port}
               onChange={(e) =>
                 update<'TcpServer'>({ listen_port: parseInt(e.target.value) || 0 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
         </>
@@ -248,8 +246,8 @@ export function TransportConfigPanel() {
 
       {transportConfig.kind === 'TestData' && (
         <>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'channels')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'channels')}</label>
             <input
               type="number"
               min={1}
@@ -258,10 +256,11 @@ export function TransportConfigPanel() {
               onChange={(e) =>
                 update<'TestData'>({ channels: parseInt(e.target.value) || 1 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'sampleRate')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'sampleRate')}</label>
             <input
               type="number"
               min={1}
@@ -270,10 +269,11 @@ export function TransportConfigPanel() {
               onChange={(e) =>
                 update<'TestData'>({ sample_rate: parseInt(e.target.value) || 1 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'signalType')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'signalType')}</label>
             <select
               value={transportConfig.params.signal}
               onChange={(e) =>
@@ -281,6 +281,7 @@ export function TransportConfigPanel() {
                   signal: e.target.value as TestDataConfig['signal'],
                 })
               }
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
             >
               {signalOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -293,9 +294,9 @@ export function TransportConfigPanel() {
       )}
 
       {/* 跳转到协议引擎配置 */}
-      <div className="form-group" style={{ marginTop: 16 }}>
+      <div className="mb-2.5 mt-4">
         <button
-          className="btn w-full"
+          className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5"
           onClick={() => setSidebarView('protocol')}
         >
           {t(lang, 'nextProtocol')}

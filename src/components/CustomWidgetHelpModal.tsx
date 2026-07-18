@@ -7,36 +7,37 @@ interface CustomWidgetHelpModalProps {
   onClose: () => void;
 }
 
-/// 自定义控件帮助说明弹窗 — 展示使用说明与 API 设计
-/// 入口: CustomWidgetEditor 顶部的 "?" 按钮
 export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModalProps) {
   const lang = useAppStore((s) => s.lang);
 
   if (!isOpen) return null;
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]" onClick={onClose}>
       <div
-        className="custom-help-modal"
+        className="flex flex-col bg-bg-sidebar border border-border rounded-lg overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         style={{ width: '80vw', height: '85vh', maxWidth: 1000, maxHeight: 800 }}
       >
-        <div className="settings-header" style={{ padding: '8px 12px' }}>
+        <div className="flex items-center gap-2 px-3 py-2 bg-bg-panel-header border-b border-border text-text-primary font-semibold">
           <BookOpen size={16} />
           <span>{t(lang, 'helpTitle')}</span>
-          <button className="btn-icon" onClick={onClose} style={{ marginLeft: 'auto' }}>
+          <button
+            className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-auto"
+            onClick={onClose}
+          >
             <X size={14} />
           </button>
         </div>
 
-        <div className="custom-help-body">
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
           {/* 快速入门 */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Lightbulb size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Lightbulb size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpQuickStart')}
             </h2>
-            <ol className="help-steps">
+            <ol className="m-0 pl-5 text-sm text-text-primary leading-[1.7] list-decimal">
               <li>{t(lang, 'helpStep1')}</li>
               <li>{t(lang, 'helpStep2')}</li>
               <li>{t(lang, 'helpStep3')}</li>
@@ -46,13 +47,13 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           </section>
 
           {/* 代码结构 */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Code size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Code size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpCodeStructure')}
             </h2>
-            <p className="help-desc">{t(lang, 'helpCodeStructureDesc')}</p>
-            <pre className="help-code-block">{`({
+            <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpCodeStructureDesc')}</p>
+            <pre className="m-0 px-3 py-2.5 bg-bg-input border border-border rounded font-mono text-xs text-text-primary leading-[1.5] overflow-x-auto whitespace-pre">{`({
   name: 'MyWidget',           // ${t(lang, 'helpFieldName')}
   description: '描述信息',     // ${t(lang, 'helpFieldDescription')}
   inputs: [                    // ${t(lang, 'helpFieldInputs')}
@@ -80,63 +81,63 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           </section>
 
           {/* ctx API */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Workflow size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Workflow size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpCtxApi')}
             </h2>
-            <p className="help-desc">{t(lang, 'helpCtxApiDesc')}</p>
-            <table className="help-api-table">
+            <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpCtxApiDesc')}</p>
+            <table className="w-full border-collapse text-xs">
               <thead>
-                <tr>
-                  <th>{t(lang, 'helpApiField')}</th>
-                  <th>{t(lang, 'helpApiType')}</th>
-                  <th>{t(lang, 'helpApiDesc')}</th>
+                <tr className="bg-bg-panel-header text-text-secondary font-semibold text-left">
+                  <th className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiField')}</th>
+                  <th className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiType')}</th>
+                  <th className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiDesc')}</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="text-text-primary">
                 <tr>
-                  <td><code>ctx.el</code></td>
-                  <td>HTMLElement</td>
-                  <td>{t(lang, 'helpApiEl')}</td>
+                  <td className="px-2 py-1.5 border-b border-border"><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">ctx.el</code></td>
+                  <td className="px-2 py-1.5 border-b border-border">HTMLElement</td>
+                  <td className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiEl')}</td>
                 </tr>
                 <tr>
-                  <td><code>ctx.inputs</code></td>
-                  <td>{'Record<string, number>'}</td>
-                  <td>{t(lang, 'helpApiInputs')}</td>
+                  <td className="px-2 py-1.5 border-b border-border"><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">ctx.inputs</code></td>
+                  <td className="px-2 py-1.5 border-b border-border">{'Record<string, number>'}</td>
+                  <td className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiInputs')}</td>
                 </tr>
                 <tr>
-                  <td><code>ctx.settings</code></td>
-                  <td>{'Record<string, any>'}</td>
-                  <td>{t(lang, 'helpApiSettings')}</td>
+                  <td className="px-2 py-1.5 border-b border-border"><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">ctx.settings</code></td>
+                  <td className="px-2 py-1.5 border-b border-border">{'Record<string, any>'}</td>
+                  <td className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiSettings')}</td>
                 </tr>
                 <tr>
-                  <td><code>ctx.state</code></td>
-                  <td>{'Record<string, any>'}</td>
-                  <td>{t(lang, 'helpApiState')}</td>
+                  <td className="px-2 py-1.5 border-b border-border"><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">ctx.state</code></td>
+                  <td className="px-2 py-1.5 border-b border-border">{'Record<string, any>'}</td>
+                  <td className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiState')}</td>
                 </tr>
                 <tr>
-                  <td><code>ctx.send(port, value)</code></td>
-                  <td>function</td>
-                  <td>{t(lang, 'helpApiSend')}</td>
+                  <td className="px-2 py-1.5 border-b border-border"><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">ctx.send(port, value)</code></td>
+                  <td className="px-2 py-1.5 border-b border-border">function</td>
+                  <td className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiSend')}</td>
                 </tr>
                 <tr>
-                  <td><code>ctx.log(...args)</code></td>
-                  <td>function</td>
-                  <td>{t(lang, 'helpApiLog')}</td>
+                  <td className="px-2 py-1.5 border-b border-border"><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">ctx.log(...args)</code></td>
+                  <td className="px-2 py-1.5 border-b border-border">function</td>
+                  <td className="px-2 py-1.5 border-b border-border">{t(lang, 'helpApiLog')}</td>
                 </tr>
               </tbody>
             </table>
           </section>
 
           {/* 输入输出 */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Send size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Send size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpInputsOutputs')}
             </h2>
-            <p className="help-desc">{t(lang, 'helpIoDesc')}</p>
-            <ul className="help-list">
+            <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpIoDesc')}</p>
+            <ul className="m-0 pl-5 text-sm text-text-primary leading-[1.7] list-disc">
               <li>{t(lang, 'helpIoInputItem')}</li>
               <li>{t(lang, 'helpIoOutputItem')}</li>
               <li>{t(lang, 'helpIoChannelSource')}</li>
@@ -145,28 +146,28 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           </section>
 
           {/* 设置项类型 */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Settings size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Settings size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpSettingsTypes')}
             </h2>
-            <p className="help-desc">{t(lang, 'helpSettingsDesc')}</p>
-            <ul className="help-list">
-              <li><code>number</code> — {t(lang, 'helpSettingsNumber')}</li>
-              <li><code>text</code> — {t(lang, 'helpSettingsText')}</li>
-              <li><code>color</code> — {t(lang, 'helpSettingsColor')}</li>
-              <li><code>boolean</code> — {t(lang, 'helpSettingsBoolean')}</li>
+            <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpSettingsDesc')}</p>
+            <ul className="m-0 pl-5 text-sm text-text-primary leading-[1.7] list-disc">
+              <li><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">number</code> — {t(lang, 'helpSettingsNumber')}</li>
+              <li><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">text</code> — {t(lang, 'helpSettingsText')}</li>
+              <li><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">color</code> — {t(lang, 'helpSettingsColor')}</li>
+              <li><code className="bg-bg-input px-1 py-0.5 rounded-sm text-accent font-mono">boolean</code> — {t(lang, 'helpSettingsBoolean')}</li>
             </ul>
           </section>
 
           {/* 示例 */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Code size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Code size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpExamples')}
             </h2>
-            <p className="help-desc">{t(lang, 'helpExamplesDesc')}</p>
-            <pre className="help-code-block">{`// ${t(lang, 'helpExample1Title')}
+            <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpExamplesDesc')}</p>
+            <pre className="m-0 px-3 py-2.5 bg-bg-input border border-border rounded font-mono text-xs text-text-primary leading-[1.5] overflow-x-auto whitespace-pre">{`// ${t(lang, 'helpExample1Title')}
 ({
   name: 'ThresholdAlarm',
   inputs: [
@@ -250,13 +251,13 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           </section>
 
           {/* 安全说明 */}
-          <section className="help-section">
-            <h2 className="help-section-title">
-              <Lightbulb size={14} />
+          <section className="flex flex-col gap-2">
+            <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
+              <Lightbulb size={14} className="text-accent flex-shrink-0" />
               {t(lang, 'helpSecurity')}
             </h2>
-            <p className="help-desc">{t(lang, 'helpSecurityDesc')}</p>
-            <ul className="help-list">
+            <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpSecurityDesc')}</p>
+            <ul className="m-0 pl-5 text-sm text-text-primary leading-[1.7] list-disc">
               <li>{t(lang, 'helpSecuritySandbox')}</li>
               <li>{t(lang, 'helpSecurityNoDom')}</li>
               <li>{t(lang, 'helpSecurityPostMessage')}</li>
@@ -265,8 +266,8 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           </section>
         </div>
 
-        <div className="settings-footer" style={{ padding: '8px 12px', display: 'flex', justifyContent: 'flex-end' }}>
-          <button className="btn-primary" onClick={onClose}>
+        <div className="px-3 py-2 flex justify-end bg-bg-panel-header border-t border-border">
+          <button className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover" onClick={onClose}>
             {t(lang, 'helpClose')}
           </button>
         </div>

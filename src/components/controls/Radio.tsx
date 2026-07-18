@@ -38,25 +38,29 @@ export function Radio({ widget, onRemove }: RadioProps) {
   }, [id, value, setInputValue]);
 
   return (
-    <div className="widget-card">
-      <button className="btn-icon widget-remove" onClick={onRemove}>
+    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
+      <button
+        className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+        onClick={onRemove}
+      >
         <X size={12} />
       </button>
-      <div className="widget-label">{label}</div>
-      <div className="radio-group">
+      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
+      <div className="flex flex-col gap-1">
         {options.map(([text, val]) => (
-          <label key={val} className="radio-item">
+          <label key={val} className="flex items-center gap-1.5 cursor-pointer text-xs">
             <input
               type="radio"
               name={widget.params.id}
               checked={current === val}
               onChange={() => handleChange(val)}
+              className="accent-accent"
             />
             <span>{text}</span>
           </label>
         ))}
       </div>
-      <div className="text-xs text-secondary">
+      <div className="text-xs text-text-secondary">
         {t(lang, 'channel')}: {current}
       </div>
     </div>

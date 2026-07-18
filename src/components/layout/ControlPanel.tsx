@@ -32,15 +32,14 @@ export function ControlPanel() {
   }, [editingTabId, editName, renameControlTab]);
 
   return (
-    <div className="panel">
-      <div className="tabs">
+    <div className="flex flex-col bg-bg-editor overflow-hidden h-full w-full">
+      <div className="flex bg-bg-panel-header border-b border-border flex-shrink-0">
         {controlTabs.map((tab) => (
           <div
             key={tab.id}
-            className={`tab ${tab.id === activeControlTabId ? 'active' : ''}`}
+            className={`px-3 h-7 text-xs cursor-pointer border-r border-border flex items-center gap-1 hover:bg-bg-hover transition-colors ${tab.id === activeControlTabId ? 'text-text-bright bg-bg-editor border-t-2 border-t-accent' : 'text-text-secondary'}`}
             onClick={() => setActiveControlTab(tab.id)}
             onDoubleClick={() => handleStartRename(tab.id, tab.name)}
-            style={{ cursor: 'pointer' }}
           >
             {editingTabId === tab.id ? (
               <input
@@ -53,14 +52,7 @@ export function ControlPanel() {
                   if (e.key === 'Escape') setEditingTabId(null);
                 }}
                 autoFocus
-                style={{
-                  width: 60,
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--accent)',
-                  color: 'var(--text-primary)',
-                  fontSize: 11,
-                  padding: '1px 4px',
-                }}
+                className="w-[60px] bg-bg-input border border-accent text-text-primary text-xs px-1 py-px rounded-sm"
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
@@ -68,8 +60,7 @@ export function ControlPanel() {
             )}
             {controlTabs.length > 1 && (
               <button
-                className="btn-icon"
-                style={{ marginLeft: 2, padding: 0, width: 16, height: 16 }}
+                className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-0.5 p-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   removeControlTab(tab.id);
@@ -81,15 +72,14 @@ export function ControlPanel() {
           </div>
         ))}
         <button
-          className="btn-icon"
+          className="w-6 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-1"
           onClick={() => addControlTab()}
           title={t(lang, 'newTab')}
-          style={{ marginLeft: 4 }}
         >
           <Plus size={14} />
         </button>
       </div>
-      <div className="panel-content">
+      <div className="flex-1 overflow-hidden relative min-h-0">
         <NodeEditor tabId={activeControlTabId} />
       </div>
     </div>

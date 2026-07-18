@@ -95,15 +95,15 @@ export function RawDataView() {
       const lineOffset = snapshot.offset + i * 16;
       const ts = snapshot.timestamps[i] ?? 0;
       return (
-        <div key={i} className="raw-data-line">
+        <div key={i} className="flex gap-3 whitespace-pre">
           {showTimestamp && (
-            <span className="raw-data-time">{formatTime(ts)}</span>
+            <span className="text-accent min-w-[100px] text-xs">{formatTime(ts)}</span>
           )}
-          <span className="raw-data-offset">
+          <span className="text-text-secondary min-w-[72px]">
             {lineOffset.toString(16).padStart(8, '0')}
           </span>
-          <span className="raw-data-hex">{hexLine}</span>
-          <span className="raw-data-ascii">{asciiLines[i] || ''}</span>
+          <span className="text-text-primary min-w-[360px]">{hexLine}</span>
+          <span className="text-green">{asciiLines[i] || ''}</span>
         </div>
       );
     });
@@ -117,34 +117,30 @@ export function RawDataView() {
   ];
 
   return (
-    <div className="raw-data-view">
-      <div className="raw-data-toolbar">
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex gap-1 p-1 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
         <button
-          className={`btn-icon ${view === 'hex' ? 'active' : ''}`}
-          style={view === 'hex' ? { color: 'var(--text-bright)' } : {}}
+          className={`w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${view === 'hex' ? 'text-text-bright' : ''}`}
           onClick={() => setView('hex')}
         >
           {t(lang, 'hexView')}
         </button>
         <button
-          className={`btn-icon ${view === 'ascii' ? 'active' : ''}`}
-          style={view === 'ascii' ? { color: 'var(--text-bright)' } : {}}
+          className={`w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${view === 'ascii' ? 'text-text-bright' : ''}`}
           onClick={() => setView('ascii')}
         >
           {t(lang, 'asciiView')}
         </button>
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
         <button
-          className={`btn-icon ${showTimestamp ? 'active' : ''}`}
-          style={showTimestamp ? { color: 'var(--text-bright)' } : {}}
+          className={`w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${showTimestamp ? 'text-text-bright' : ''}`}
           title={t(lang, 'showTimestamp')}
           onClick={() => setShowTimestamp(!showTimestamp)}
         >
           <Clock size={14} />
         </button>
         <button
-          className={`btn-icon ${autoScroll && !userScrolledRef.current ? 'active' : ''}`}
-          style={autoScroll && !userScrolledRef.current ? { color: 'var(--text-bright)' } : {}}
+          className={`w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${autoScroll && !userScrolledRef.current ? 'text-text-bright' : ''}`}
           title={t(lang, 'autoScroll')}
           onClick={() => {
             setAutoScroll(!autoScroll);
@@ -154,7 +150,7 @@ export function RawDataView() {
           <ArrowDown size={14} />
         </button>
         <button
-          className="btn-icon"
+          className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
           title={t(lang, 'clear')}
           onClick={handleClear}
         >
@@ -162,34 +158,34 @@ export function RawDataView() {
         </button>
       </div>
       <div
-        className="raw-data-content"
+        className="flex-1 overflow-y-auto overflow-x-hidden font-mono text-sm px-2 py-1 leading-relaxed min-h-0"
         ref={contentRef}
         onScroll={handleScroll}
       >
         {view === 'hex' ? (
           formatHexView()
         ) : (
-          <div className="raw-data-ascii-text">
+          <div className="font-mono">
             {snapshot.ascii.split('\n').map((line, i) => (
-              <div key={i} className="raw-data-line">
+              <div key={i} className="flex gap-3 whitespace-pre">
                 {showTimestamp && (
-                  <span className="raw-data-time">
+                  <span className="text-accent min-w-[100px] text-xs">
                     {formatTime(snapshot.timestamps[i] ?? 0)}
                   </span>
                 )}
-                <span className="raw-data-ascii">{line}</span>
+                <span className="text-green">{line}</span>
               </div>
             ))}
           </div>
         )}
       </div>
-      <div className="send-bar">
-        <div className="append-selector">
-          <span className="append-label">{t(lang, 'appendSuffix')}:</span>
+      <div className="flex gap-1 p-1 items-center border-t border-border bg-bg-panel-header flex-shrink-0">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          <span className="text-xs text-text-secondary mr-0.5">{t(lang, 'appendSuffix')}:</span>
           {appendOptions.map((opt) => (
             <button
               key={opt.mode}
-              className={`append-btn ${appendMode === opt.mode ? 'active' : ''}`}
+              className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-xs font-mono cursor-pointer transition-all hover:border-accent hover:text-text-primary ${appendMode === opt.mode ? 'bg-accent border-accent text-text-bright' : ''}`}
               onClick={() => setAppendMode(opt.mode)}
             >
               {opt.label}
@@ -198,7 +194,7 @@ export function RawDataView() {
         </div>
         <input
           type="text"
-          className="send-input"
+          className="flex-1 min-w-[60px] px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
           placeholder={lang === 'zh' ? '输入要发送的文本...' : 'Type to send...'}
           value={sendContent}
           onChange={(e) => setSendContent(e.target.value)}
@@ -206,7 +202,7 @@ export function RawDataView() {
             if (e.key === 'Enter') handleSend();
           }}
         />
-        <button className="btn" onClick={handleSend}>
+        <button className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover" onClick={handleSend}>
           {t(lang, 'send')}
         </button>
       </div>

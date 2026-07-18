@@ -61,30 +61,29 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
   const presetLabel = t(lang, PRESET_OPTIONS.find((o) => o.value === preset)?.labelKey ?? 'filterLowpass');
 
   return (
-    <div className="widget-card filter-widget">
+    <div className="group bg-bg-sidebar border border-[#ff8c42] rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
       {onEdit && (
         <button
-          className="btn-icon widget-edit"
+          className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           onClick={onEdit}
           title={t(lang, 'settings')}
-          style={{ right: 24 }}
         >
           <Settings2 size={11} />
         </button>
       )}
-      <div className="filter-widget-preset-badge">{presetLabel}</div>
-      <div className="filter-widget-body">
-        <div className="filter-widget-result">
-          <span className="filter-widget-result-value">
+      <div className="inline-block ml-1.5 px-1.5 py-0.5 bg-[#ff8c42]/15 text-[#ff8c42] border border-[#ff8c42]/40 rounded-sm text-[10px] font-semibold w-fit">{presetLabel}</div>
+      <div className="flex flex-col gap-1 px-1.5 py-1">
+        <div className="flex items-baseline justify-center gap-1 py-1">
+          <span className="text-[22px] font-semibold text-[#ff8c42] font-mono">
             {result.toFixed(precision)}
           </span>
         </div>
-        <div className="filter-widget-input-row">
-          <span className="filter-widget-input-label">in</span>
-          <span className="filter-widget-input-value">{inputValue.toFixed(precision)}</span>
+        <div className="flex justify-between items-center text-xs px-1 py-0.5 bg-white/[0.03] rounded-sm">
+          <span className="text-text-secondary">in</span>
+          <span className="text-text-primary font-mono">{inputValue.toFixed(precision)}</span>
         </div>
         <button
-          className="filter-widget-toggle"
+          className="flex items-center justify-center gap-1 bg-transparent border border-border text-text-secondary px-1.5 py-0.5 rounded-sm text-[10px] cursor-pointer mt-0.5 hover:bg-white/[0.05] hover:text-text-primary transition-colors"
           onClick={() => setShowSettings((v) => !v)}
           title={t(lang, 'settings')}
         >
@@ -92,14 +91,14 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
           <span>{t(lang, 'filterSettings')}</span>
         </button>
         {showSettings && (
-          <div className="filter-widget-settings">
-            <div className="filter-widget-setting-row">
-              <label>{t(lang, 'filterPreset')}</label>
-              <div className="filter-widget-preset-buttons">
+          <div className="flex flex-col gap-1.5 p-1.5 bg-black/20 rounded-sm border border-border">
+            <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
+              <label className="text-text-secondary">{t(lang, 'filterPreset')}</label>
+              <div className="grid grid-cols-2 gap-0.5 col-span-2">
                 {PRESET_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`filter-widget-preset-btn ${preset === opt.value ? 'active' : ''}`}
+                    className={`px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#ff8c42] hover:text-[#ff8c42] ${preset === opt.value ? 'bg-[#ff8c42]/20 border-[#ff8c42] text-[#ff8c42]' : ''}`}
                     onClick={() => handlePresetChange(opt.value)}
                   >
                     {t(lang, opt.labelKey)}
@@ -108,54 +107,58 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
               </div>
             </div>
             {(preset === 'Lowpass' || preset === 'Highpass') && (
-              <div className="filter-widget-setting-row">
-                <label>{t(lang, 'filterCutoff')}</label>
+              <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
+                <label className="text-text-secondary">{t(lang, 'filterCutoff')}</label>
                 <input
                   type="number"
                   value={cutoff}
                   onChange={(e) => handleNumberChange('cutoff', e.target.value)}
                   min={0}
                   step={1}
+                  className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
                 />
-                <span className="filter-widget-unit">Hz</span>
+                <span className="text-text-secondary text-[10px]">Hz</span>
               </div>
             )}
             {(preset === 'Bandpass' || preset === 'Bandstop') && (
               <>
-                <div className="filter-widget-setting-row">
-                  <label>{t(lang, 'filterLow')}</label>
+                <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
+                  <label className="text-text-secondary">{t(lang, 'filterLow')}</label>
                   <input
                     type="number"
                     value={low}
                     onChange={(e) => handleNumberChange('low', e.target.value)}
                     min={0}
                     step={1}
+                    className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
                   />
-                  <span className="filter-widget-unit">Hz</span>
+                  <span className="text-text-secondary text-[10px]">Hz</span>
                 </div>
-                <div className="filter-widget-setting-row">
-                  <label>{t(lang, 'filterHigh')}</label>
+                <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
+                  <label className="text-text-secondary">{t(lang, 'filterHigh')}</label>
                   <input
                     type="number"
                     value={high}
                     onChange={(e) => handleNumberChange('high', e.target.value)}
                     min={0}
                     step={1}
+                    className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
                   />
-                  <span className="filter-widget-unit">Hz</span>
+                  <span className="text-text-secondary text-[10px]">Hz</span>
                 </div>
               </>
             )}
-            <div className="filter-widget-setting-row">
-              <label>{t(lang, 'filterSampleRate')}</label>
+            <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
+              <label className="text-text-secondary">{t(lang, 'filterSampleRate')}</label>
               <input
                 type="number"
                 value={sampleRate}
                 onChange={(e) => handleNumberChange('sampleRate', e.target.value)}
                 min={1}
                 step={1}
+                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
               />
-              <span className="filter-widget-unit">Hz</span>
+              <span className="text-text-secondary text-[10px]">Hz</span>
             </div>
           </div>
         )}

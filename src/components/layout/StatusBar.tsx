@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { RefreshCw } from 'lucide-react';
+import clsx from 'clsx';
 
 /// 底部状态栏 — 显示连接状态、统计数据
 export function StatusBar() {
@@ -38,30 +39,37 @@ export function StatusBar() {
     return `${(n / 1024 / 1024).toFixed(2)} MB`;
   };
 
+  const dotColorClass = {
+    Disconnected: 'bg-text-secondary',
+    Connecting: 'bg-yellow animate-pulse',
+    Connected: 'bg-green',
+    Error: 'bg-red',
+  }[connectionState];
+
   return (
-    <div className="status-bar">
-      <div className="status-item">
-        <span className={`state-dot ${connectionState.toLowerCase()}`} />
+    <div className="h-[22px] bg-bg-statusbar text-text-bright flex items-center px-2 text-xs gap-3 flex-shrink-0">
+      <div className="flex items-center gap-1">
+        <span className={clsx("w-2 h-2 rounded-full inline-block", dotColorClass)} />
         <span>{stateLabel[connectionState]}</span>
       </div>
-      <div className="status-item">
+      <div className="flex items-center gap-1">
         {transportLabel[transportConfig.kind]}
       </div>
-      <div className="status-item">
+      <div className="flex items-center gap-1">
         {protocolLabel[protocolConfig.kind]}
       </div>
-      <div className="status-spacer" />
-      <div className="status-item">
+      <div className="flex-1" />
+      <div className="flex items-center gap-1">
         {t(lang, 'rxBytes')}: {formatBytes(stats.rx_bytes)}
       </div>
-      <div className="status-item">
+      <div className="flex items-center gap-1">
         {t(lang, 'txBytes')}: {formatBytes(stats.tx_bytes)}
       </div>
-      <div className="status-item">
+      <div className="flex items-center gap-1">
         {t(lang, 'rxFrames')}: {stats.rx_frames}
       </div>
       <button
-        className="btn-icon"
+        className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-150"
         style={{ color: 'var(--text-bright)' }}
         title={t(lang, 'refresh')}
         onClick={() => refreshPorts()}

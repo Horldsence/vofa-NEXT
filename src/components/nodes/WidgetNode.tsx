@@ -87,9 +87,14 @@ function getWidgetPorts(widget: WidgetConfig): {
         ],
         outputs: [],
       };
-    case 'Command':
-      // 命令发送: 无输入端口 (主动发送), 无输出 (前端 → transport)
-      return { inputs: [], outputs: [] };
+    case 'Command': {
+      // 命令发送: 从 blocks 中 var_ref 块推导输入端口 (端口名自定义)
+      const blocks = widget.params.blocks ?? [];
+      const inputs = blocks
+        .filter((b) => b.type === 'var_ref' && b.portName)
+        .map((b) => ({ id: b.portName!, label: b.portName! }));
+      return { inputs, outputs: [] };
+    }
     case 'Custom': {
       // Custom: 从用户代码中解析端口定义
       const { def } = evalCustomWidgetDef(widget.params.code);
@@ -110,7 +115,7 @@ export function WidgetNode({ id, data }: NodeProps) {
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
 
   if (!widget) {
-    return <div className="rf-widget-node-error">Missing widget</div>;
+    return <div className="p-2 text-red text-xs">Missing widget</div>;
   }
 
   const onRemove = () => removeWidget(id);
@@ -173,9 +178,9 @@ export function WidgetNode({ id, data }: NodeProps) {
     case 'Command':
         // 这些控件在节点内仅显示占位, 实际渲染在 DataPanel
         return (
-          <div className="rf-waveform-placeholder">
+          <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">
             <span>{widget.kind}</span>
-            <span className="rf-waveform-placeholder-hint">→ DataPanel</span>
+            <span className="text-blue text-[9px]">→ DataPanel</span>
           </div>
         );
       default:
@@ -192,13 +197,13 @@ export function WidgetNode({ id, data }: NodeProps) {
       : widget.kind;
 
   return (
-    <div className="rf-widget-node">
-      <div className="rf-widget-node-header">
-        <span className="rf-widget-node-kind" title={widget.kind}>
+    <div className="bg-bg-sidebar border border-border rounded-md min-w-[160px] max-w-[240px] shadow-[0_2px_8px_rgba(0,0,0,0.4)] text-[11px] relative [&.selected]:border-accent [&.selected]:shadow-[0_0_0_1px_var(--accent),0_2px_12px_rgba(0,0,0,0.5)]">
+      <div className="flex items-center justify-between px-1.5 py-1 bg-bg-panel-header border-b border-border rounded-t-md text-[10px] font-semibold uppercase tracking-[0.4px] text-text-secondary">
+        <span className="flex-1 truncate" title={widget.kind}>
           {widgetLabel || widget.kind}
         </span>
         <button
-          className="btn-icon rf-widget-node-close"
+          className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();
@@ -207,31 +212,33 @@ export function WidgetNode({ id, data }: NodeProps) {
           <X size={10} />
         </button>
       </div>
-      <div className="rf-widget-node-body">{renderContent()}</div>
-      {/* 输入端口 (左侧) */}
-      <div className="rf-ports-left">
+      <div className="p-2 flex flex-col gap-1.5">{renderContent()}</div>
+      {/* 输入端口 (左侧) — Handle 覆盖 position:relative 让多端口纵向分布 */}
+      <div className="absolute top-1/2 left-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
         {ports.inputs.map((port) => (
-          <div key={port.id} className="rf-port-row">
+          <div key={port.id} className="flex items-center gap-1 h-[14px] relative pl-0.5">
             <Handle
               type="target"
               position={Position.Left}
               id={port.id}
-              className="rf-handle rf-handle-target"
+              style={{ position: 'relative', left: 'auto', top: 'auto', transform: 'none' }}
+              className="w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green"
             />
-            <span className="rf-port-label">{port.label}</span>
+            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
           </div>
         ))}
       </div>
       {/* 输出端口 (右侧) */}
-      <div className="rf-ports-right">
+      <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
         {ports.outputs.map((port) => (
-          <div key={port.id} className="rf-port-row">
-            <span className="rf-port-label">{port.label}</span>
+          <div key={port.id} className="flex items-center gap-1 h-[14px] relative flex-row-reverse pr-0.5">
+            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
             <Handle
               type="source"
               position={Position.Right}
               id={port.id}
-              className="rf-handle rf-handle-source"
+              style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none' }}
+              className="w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green"
             />
           </div>
         ))}

@@ -54,73 +54,60 @@ export function PortConfig() {
   const baudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 
   return (
-    <div>
-      <div className="form-group">
-        <div className="form-row" style={{ marginBottom: 6 }}>
-          <span className="form-label" style={{ margin: 0 }}>
+    <div className="p-3">
+      <div className="mb-2.5">
+        <div className="flex gap-2 items-center mb-1.5">
+          <span className="block text-xs text-text-secondary m-0 flex-1">
             {t(lang, 'portName')}
           </span>
           <button
-            className="btn-icon"
+            className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
             title={t(lang, 'refresh')}
             onClick={() => refreshPorts()}
           >
             <RefreshCw size={14} />
           </button>
         </div>
-        <div className="port-filter">
+        <div className="flex items-center gap-1.5 bg-bg-input border border-border rounded px-2 mb-1.5 text-text-secondary">
           <Search size={12} />
           <input
             type="text"
+            className="bg-transparent border-none py-1 flex-1 focus:outline-none text-text-primary text-sm"
             placeholder={lang === 'zh' ? '筛选端口...' : 'Filter ports...'}
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
           />
         </div>
-        <div className="port-list">
+        <div className="flex flex-col gap-0.5">
           {ports.length === 0 ? (
-            <div
-              style={{
-                padding: 12,
-                color: 'var(--text-secondary)',
-                fontSize: 11,
-                textAlign: 'center',
-              }}
-            >
+            <div className="p-3 text-text-secondary text-xs text-center">
               {lang === 'zh' ? '未发现串口' : 'No ports found'}
             </div>
           ) : filteredPorts.length === 0 ? (
-            <div
-              style={{
-                padding: 12,
-                color: 'var(--text-secondary)',
-                fontSize: 11,
-                textAlign: 'center',
-              }}
-            >
+            <div className="p-3 text-text-secondary text-xs text-center">
               {lang === 'zh' ? '无匹配端口' : 'No matching ports'}
             </div>
           ) : (
             filteredPorts.map(({ port, idx }) => (
               <div
                 key={port.name}
-                className={`port-item ${idx === selectedPortIndex ? 'selected' : ''}`}
+                className={`px-2 py-1.5 rounded cursor-pointer flex flex-col gap-0.5 transition-colors hover:bg-bg-hover ${idx === selectedPortIndex ? 'bg-bg-active' : ''}`}
                 onClick={() => selectPort(idx)}
               >
-                <div className="port-name">
-                  <Usb size={10} style={{ display: 'inline', marginRight: 4 }} />
+                <div className="text-sm text-text-primary font-mono">
+                  <Usb size={10} className="inline mr-1" />
                   {port.name}
                 </div>
                 {(port.product || port.manufacturer) && (
-                  <div className="port-info">
-                    <Cpu size={9} style={{ display: 'inline', marginRight: 3, verticalAlign: 'middle' }} />
+                  <div className="text-[10px] text-text-secondary">
+                    <Cpu size={9} className="inline mr-0.5 align-middle" />
                     {[port.product, port.manufacturer]
                       .filter(Boolean)
                       .join(' • ')}
                   </div>
                 )}
                 {(port.vid !== null || port.pid !== null) && (
-                  <div className="port-info port-info-vidpid">
+                  <div className="text-[10px] font-mono text-blue">
                     VID:{port.vid !== null ? port.vid.toString(16).toUpperCase().padStart(4, '0') : '----'}
                     {'  PID:'}
                     {port.pid !== null ? port.pid.toString(16).toUpperCase().padStart(4, '0') : '----'}
@@ -130,7 +117,7 @@ export function PortConfig() {
                   </div>
                 )}
                 {port.serial_number && (
-                  <div className="port-info port-info-serial">
+                  <div className="text-[10px] font-mono text-text-secondary">
                     S/N: {port.serial_number}
                   </div>
                 )}
@@ -142,9 +129,10 @@ export function PortConfig() {
 
       {isSerial && params && (
         <>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'baudRate')}</label>
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'baudRate')}</label>
             <select
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors appearance-none bg-no-repeat bg-right-6 bg-center pr-6 cursor-pointer"
               value={params.baud_rate}
               onChange={(e) =>
                 updateParam('baud_rate', parseInt(e.target.value))
@@ -158,10 +146,11 @@ export function PortConfig() {
             </select>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">{t(lang, 'dataBits')}</label>
+          <div className="flex gap-2 items-center">
+            <div className="mb-2.5 flex-1">
+              <label className="block text-xs text-text-secondary mb-1">{t(lang, 'dataBits')}</label>
               <select
+                className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors appearance-none bg-no-repeat bg-right-6 bg-center pr-6 cursor-pointer"
                 value={params.data_bits}
                 onChange={(e) =>
                   updateParam('data_bits', parseInt(e.target.value))
@@ -173,9 +162,10 @@ export function PortConfig() {
                 <option value={8}>8</option>
               </select>
             </div>
-            <div className="form-group">
-              <label className="form-label">{t(lang, 'parity')}</label>
+            <div className="mb-2.5 flex-1">
+              <label className="block text-xs text-text-secondary mb-1">{t(lang, 'parity')}</label>
               <select
+                className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors appearance-none bg-no-repeat bg-right-6 bg-center pr-6 cursor-pointer"
                 value={params.parity}
                 onChange={(e) => updateParam('parity', e.target.value as SerialConfig['parity'])}
               >
@@ -186,10 +176,11 @@ export function PortConfig() {
             </div>
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">{t(lang, 'stopBits')}</label>
+          <div className="flex gap-2 items-center">
+            <div className="mb-2.5 flex-1">
+              <label className="block text-xs text-text-secondary mb-1">{t(lang, 'stopBits')}</label>
               <select
+                className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors appearance-none bg-no-repeat bg-right-6 bg-center pr-6 cursor-pointer"
                 value={params.stop_bits}
                 onChange={(e) => updateParam('stop_bits', e.target.value as SerialConfig['stop_bits'])}
               >
@@ -197,9 +188,10 @@ export function PortConfig() {
                 <option value="two">2</option>
               </select>
             </div>
-            <div className="form-group">
-              <label className="form-label">{t(lang, 'flowControl')}</label>
+            <div className="mb-2.5 flex-1">
+              <label className="block text-xs text-text-secondary mb-1">{t(lang, 'flowControl')}</label>
               <select
+                className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors appearance-none bg-no-repeat bg-right-6 bg-center pr-6 cursor-pointer"
                 value={params.flow_control}
                 onChange={(e) => updateParam('flow_control', e.target.value as SerialConfig['flow_control'])}
               >
@@ -212,10 +204,10 @@ export function PortConfig() {
         </>
       )}
 
-      <div className="form-group">
+      <div className="mb-2.5">
         {isConnected ? (
           <button
-            className="btn btn-danger w-full"
+            className="w-full px-3 py-1.5 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5"
             onClick={() => disconnect()}
           >
             <PlugZap size={14} />
@@ -223,7 +215,7 @@ export function PortConfig() {
           </button>
         ) : (
           <button
-            className="btn w-full"
+            className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             onClick={() => connect()}
             disabled={connectionState === 'Connecting'}
           >

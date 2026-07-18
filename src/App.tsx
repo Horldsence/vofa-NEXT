@@ -13,7 +13,6 @@ import { CustomWidgetEditor } from './components/CustomWidgetEditor';
 import { useAppStore } from './store/appStore';
 import { useSettingsStore } from './store/settingsStore';
 import type { WidgetConfig } from './types';
-import './App.css';
 
 function App() {
   const initEventListeners = useAppStore((s) => s.initEventListeners);
@@ -46,13 +45,19 @@ function App() {
   // 启动: 加载设置 + 初始化事件监听 + 刷新端口
   useEffect(() => {
     void loadSettings();
-    let cleanup: (() => void) | undefined;
+    const cleanupRef: { fn: (() => void) | null } = { fn: null };
+    let cancelled = false;
     initEventListeners().then((fn) => {
-      cleanup = fn;
+      if (cancelled) {
+        fn();
+      } else {
+        cleanupRef.fn = fn;
+      }
     });
     refreshPorts();
     return () => {
-      cleanup?.();
+      cancelled = true;
+      cleanupRef.fn?.();
     };
   }, [initEventListeners, refreshPorts, loadSettings]);
 
@@ -98,8 +103,8 @@ function App() {
   }, [openSettings]);
 
   return (
-    <div className="app">
-      <div className="app-body">
+    <div className="flex h-full flex-col">
+      <div className="flex flex-1 min-h-0">
         <ActivityBar
           activeView={sidebarVisible ? sidebarView : null}
           onSelect={toggleSidebar}
@@ -110,7 +115,7 @@ function App() {
               <Panel defaultSize={18} minSize={12} maxSize={35} order={1}>
                 <Sidebar view={sidebarView} />
               </Panel>
-              <PanelResizeHandle className="resize-handle-horizontal" />
+              <PanelResizeHandle className="w-px bg-border cursor-col-resize" />
             </>
           )}
           <Panel order={2}>
@@ -118,7 +123,7 @@ function App() {
               <Panel defaultSize={45} minSize={15} order={1}>
                 <ControlPanel />
               </Panel>
-              <PanelResizeHandle className="resize-handle-vertical" />
+              <PanelResizeHandle className="h-px bg-border cursor-row-resize" />
               <Panel defaultSize={55} minSize={15} order={2}>
                 <DataPanel />
               </Panel>

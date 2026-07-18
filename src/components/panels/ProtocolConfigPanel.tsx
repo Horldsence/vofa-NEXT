@@ -49,11 +49,12 @@ export function ProtocolConfigPanel() {
 
   return (
     <div>
-      <div className="form-group">
-        <label className="form-label">{t(lang, 'protocolEngine')}</label>
+      <div className="mb-2.5">
+        <label className="block text-xs text-text-secondary mb-1">{t(lang, 'protocolEngine')}</label>
         <select
           value={protocolConfig.kind}
           onChange={(e) => updateKind(e.target.value as ProtocolConfig['kind'])}
+          className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
         >
           {kinds.map((k) => (
             <option key={k.value} value={k.value}>
@@ -65,24 +66,26 @@ export function ProtocolConfigPanel() {
 
       {!isRaw && (
         <>
-          <div className="form-group">
-            <label className="form-label">{t(lang, 'channels')}</label>
-            <div className="radio-group">
-              <label className="radio-item">
+          <div className="mb-2.5">
+            <label className="block text-xs text-text-secondary mb-1">{t(lang, 'channels')}</label>
+            <div className="flex flex-col gap-1">
+              <label className="flex items-center gap-1.5 cursor-pointer text-sm">
                 <input
                   type="radio"
                   name="channel-mode"
                   checked={isAuto}
                   onChange={() => setAutoMode(true)}
+                  className="accent-accent"
                 />
                 <span>{t(lang, 'channelsAuto')}</span>
               </label>
-              <label className="radio-item">
+              <label className="flex items-center gap-1.5 cursor-pointer text-sm">
                 <input
                   type="radio"
                   name="channel-mode"
                   checked={!isAuto}
                   onChange={() => setAutoMode(false)}
+                  className="accent-accent"
                 />
                 <span>{t(lang, 'channelsManual')}</span>
               </label>
@@ -90,33 +93,22 @@ export function ProtocolConfigPanel() {
           </div>
 
           {!isAuto && (
-            <div className="form-group">
+            <div className="mb-2.5">
               <input
                 type="number"
                 min={1}
                 max={32}
                 value={protocolConfig.channels ?? 4}
                 onChange={(e) => updateManualChannels(parseInt(e.target.value) || 1)}
+                className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
               />
             </div>
           )}
 
           {isAuto && (
-            <div
-              style={{
-                marginTop: 4,
-                padding: '6px 8px',
-                background: 'var(--bg-input)',
-                borderRadius: 4,
-                fontSize: 11,
-                color: 'var(--text-secondary)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
+            <div className="mt-1 px-2 py-1.5 bg-bg-input rounded text-xs text-text-secondary flex justify-between items-center">
               <span>{t(lang, 'detectedChannels')}:</span>
-              <span style={{ color: 'var(--blue)', fontFamily: 'var(--font-mono)' }}>
+              <span className="text-blue font-mono">
                 {detectedChannels != null ? detectedChannels : '--'}
               </span>
             </div>
@@ -124,20 +116,10 @@ export function ProtocolConfigPanel() {
         </>
       )}
 
-      <div
-        style={{
-          marginTop: 12,
-          padding: 8,
-          background: 'var(--bg-input)',
-          borderRadius: 4,
-          fontSize: 11,
-          color: 'var(--text-secondary)',
-          lineHeight: 1.6,
-        }}
-      >
+      <div className="mt-3 p-2 bg-bg-input rounded text-xs text-text-secondary leading-relaxed">
         {protocolConfig.kind === 'JustFloat' && (
           <>
-            <strong style={{ color: 'var(--text-primary)' }}>JustFloat</strong>
+            <strong className="text-text-primary">JustFloat</strong>
             <br />
             {lang === 'zh'
               ? '4 字节小端浮点数 + 帧尾 [0x00,0x00,0x80,0x7f]。适合高速波形传输。'
@@ -146,7 +128,7 @@ export function ProtocolConfigPanel() {
         )}
         {protocolConfig.kind === 'FireWater' && (
           <>
-            <strong style={{ color: 'var(--text-primary)' }}>FireWater</strong>
+            <strong className="text-text-primary">FireWater</strong>
             <br />
             {lang === 'zh'
               ? 'CSV 格式, 通道间逗号分隔, 以 \\n 结尾。可读性强。'
@@ -155,7 +137,7 @@ export function ProtocolConfigPanel() {
         )}
         {protocolConfig.kind === 'RawData' && (
           <>
-            <strong style={{ color: 'var(--text-primary)' }}>RawData</strong>
+            <strong className="text-text-primary">RawData</strong>
             <br />
             {lang === 'zh'
               ? '原始字节流, 不解析。仅显示原始数据。'
@@ -165,8 +147,8 @@ export function ProtocolConfigPanel() {
       </div>
 
       {/* 跳转到串口配置 */}
-      <div className="form-group" style={{ marginTop: 16 }}>
-        <button className="btn w-full" onClick={() => setSidebarView('port')}>
+      <div className="mb-2.5 mt-4">
+        <button className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5" onClick={() => setSidebarView('port')}>
           {t(lang, 'nextPort')}
           <ArrowRight size={14} />
         </button>

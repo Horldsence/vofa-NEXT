@@ -21,7 +21,7 @@ import {
   setInputValue as apiSetInputValue,
   submitCustomOutput as apiSubmitCustomOutput,
 } from '../lib/graphSubscription';
-import { widgetToNodeKind, makeChannelSourceNodeDef, type NodeDef } from '../lib/nodeDef';
+import { widgetToNodeKind, makeChannelSourceNodeDef, edgeToGraphEdge, type NodeDef } from '../lib/nodeDef';
 import { nanoid } from 'nanoid';
 import { t } from '../i18n';
 import type { Lang } from '../i18n';
@@ -233,9 +233,9 @@ async function syncTabGraphToBackend(tabId: string): Promise<void> {
     });
   }
   // 收集 tab 内的 edges (source 和 target 都在 tab 内)
-  const edges = state.rfEdges.filter(
-    (e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target)
-  );
+  const edges = state.rfEdges
+    .filter((e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target))
+    .map(edgeToGraphEdge);
   try {
     await api.updateTabGraph(tabId, nodes, edges);
   } catch (err) {
@@ -1072,19 +1072,11 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
         params: {
           id,
           label: 'Command',
-          format: 'hex',
-          hexContent: 'AA 01 00',
-          asciiContent: 'HELLO\\n',
-          templateContent: 'SET ${CH0} ${VALUE}\\n',
-          fields: [
-            { id: 'f1', name: 'header', type: 'uint8', value: '0xAA' },
-            { id: 'f2', name: 'addr', type: 'uint8', value: '0x01' },
-            { id: 'f3', name: 'value', type: 'uint16LE', value: '0' },
-            { id: 'f4', name: 'crc', type: 'uint8', value: '0' },
+          blocks: [
+            { id: 'b1', type: 'const_hex', label: '帧头', hex: 'AA 01' },
+            { id: 'b2', type: 'var_ref', label: '速度', portName: 'speed', fieldType: 'uint16LE' },
+            { id: 'b3', type: 'checksum', label: '校验', checksum: 'sum8' },
           ],
-          checksum: 'sum8',
-          checksumPosition: 'append',
-          customScript: '// bytes: 输入字节数组\n// 返回: 校验字节数组\nlet s = 0;\nfor (const b of bytes) s = (s + b) & 0xff;\nreturn [s];',
           appendNewline: false,
         },
       };

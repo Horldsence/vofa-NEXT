@@ -264,19 +264,25 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
   // 渲染错误 (代码语法错误)
   if (defError) {
     return (
-      <div className="widget-card custom-widget-error">
+      <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative min-h-[80px]">
         {onEdit && (
-          <button className="btn-icon widget-edit" onClick={onEdit} style={{ right: 24 }}>
+          <button
+            className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            onClick={onEdit}
+          >
             <Settings2 size={11} />
           </button>
         )}
-        <div className="custom-widget-name">{widget.params.label || 'Custom'}</div>
-        <div className="custom-error">
-          <AlertCircle size={14} />
-          <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 10 }}>{defError}</pre>
+        <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{widget.params.label || 'Custom'}</div>
+        <div className="flex gap-1.5 items-start text-red text-xs p-1.5 bg-red/[0.08] border border-red/30 rounded-sm">
+          <AlertCircle size={14} className="flex-shrink-0 mt-px" />
+          <pre className="m-0 whitespace-pre-wrap text-[10px] flex-1">{defError}</pre>
         </div>
         {onEdit && (
-          <button className="btn-primary custom-edit-btn" onClick={onEdit}>
+          <button
+            className="mt-1.5 w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover"
+            onClick={onEdit}
+          >
             编辑代码
           </button>
         )}
@@ -285,13 +291,16 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
   }
 
   return (
-    <div className="widget-card custom-widget">
+    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
       {onEdit && (
-        <button className="btn-icon widget-edit" onClick={onEdit} style={{ right: 24 }}>
+        <button
+          className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+          onClick={onEdit}
+        >
           <Settings2 size={11} />
         </button>
       )}
-      <div className="custom-widget-name">
+      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">
         {def?.name || widget.params.label || 'Custom'}
       </div>
       <iframe
@@ -303,19 +312,21 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
           height,
           border: 'none',
           background: 'transparent',
+          borderRadius: 2,
+          display: 'block',
         }}
         title="custom-widget"
       />
       {error && (
-        <div className="custom-runtime-error">
+        <div className="flex items-center gap-1 px-1.5 py-1 bg-red/10 text-red rounded-sm mt-1">
           <AlertCircle size={10} />
-          <span style={{ fontSize: 10 }}>{error}</span>
+          <span className="text-[10px]">{error}</span>
         </div>
       )}
       {logs.length > 0 && (
-        <div className="custom-logs">
+        <div className="mt-1 px-1.5 py-1 bg-black/30 rounded-sm max-h-[60px] overflow-y-auto">
           {logs.slice(-3).map((l, i) => (
-            <div key={i} className="custom-log-line">{l}</div>
+            <div key={i} className="font-mono text-[10px] text-text-secondary whitespace-pre-wrap break-all">{l}</div>
           ))}
         </div>
       )}

@@ -7,6 +7,7 @@ import type { WidgetConfig, MathOp, WindowType, SpectrumOutput } from '../types'
 import { UNARY_MATH_OPS, biquadFromFilterConfig } from '../types';
 import { evalCustomWidgetDef } from '../components/displays/CustomWidget';
 import { CHANNEL_SOURCE_ID } from '../store/appStore';
+import type { Edge } from '@xyflow/react';
 
 /// Rust 端 NodeKind 序列化 — serde tag="kind" content="params"
 ///
@@ -37,6 +38,7 @@ export interface NodeDef {
 /// - Filter → Filter { kind: IIR { b, a } } (前端从 preset 计算 biquad 系数)
 /// - Spectrum → SpectrumSink { window_size, window_type, output, sample_rate }
 /// - Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Model3D/Command → Sink
+///   (Command 的 value 输入端口由前端 useGraphInputs 读取, 用于模板插值)
 export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
   switch (widget.kind) {
     case 'Knob':
@@ -109,5 +111,25 @@ export function makeChannelSourceNodeDef(tabId: string, channels: number): NodeD
     id: `${CHANNEL_SOURCE_ID}-${tabId}`,
     tab_id: tabId,
     kind: { kind: 'ChannelSource', params: { channels } },
+  };
+}
+
+/// 边 DTO — 与 Rust vofa_next_buffer::graph::Edge 对应 (snake_case)
+export interface GraphEdge {
+  id: string;
+  source: string;
+  source_handle: string;
+  target: string;
+  target_handle: string;
+}
+
+/// 将 React Flow Edge (camelCase: sourceHandle/targetHandle) 转为后端 DTO (snake_case: source_handle/target_handle)
+export function edgeToGraphEdge(edge: Edge): GraphEdge {
+  return {
+    id: edge.id,
+    source: edge.source,
+    source_handle: edge.sourceHandle ?? '',
+    target: edge.target,
+    target_handle: edge.targetHandle ?? '',
   };
 }

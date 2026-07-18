@@ -52,6 +52,19 @@ export function Knob({ widget, onRemove }: KnobProps) {
     }
   };
 
+  // 鼠标滚轮调整: 向上加 step, 向下减 step
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const dir = e.deltaY < 0 ? 1 : -1;
+    // 滚轮加速: 大步长时按 step, 小步长时按 5*step
+    const increment = step >= 1 ? step : step * 5;
+    const raw = value + dir * increment;
+    const stepped = Math.round(raw / step) * step;
+    const clamped = Math.max(min, Math.min(max, stepped));
+    setValue(clamped);
+    sendBindingValue(binding, clamped);
+  };
+
   // 切换控件时重置默认值
   useEffect(() => {
     setValue(def);
@@ -63,25 +76,29 @@ export function Knob({ widget, onRemove }: KnobProps) {
   }, [id, value, setInputValue]);
 
   return (
-    <div className="widget-card">
-      <button className="btn-icon widget-remove" onClick={onRemove}>
+    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
+      <button
+        className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+        onClick={onRemove}
+      >
         <X size={12} />
       </button>
-      <div className="widget-label">{label}</div>
-      <div className="knob-container">
+      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
+      <div className="flex flex-col items-center gap-1">
         <div
           ref={knobRef}
-          className="knob"
+          className="knob-dial"
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onWheel={handleWheel}
         >
           <div
-            className="knob-indicator"
+            className="knob-indicator-line"
             style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}
           />
         </div>
-        <div className="widget-value">{value.toFixed(2)}</div>
+        <div className="text-xl font-semibold text-text-bright font-mono text-center">{value.toFixed(2)}</div>
       </div>
     </div>
   );

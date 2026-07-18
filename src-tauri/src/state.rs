@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tauri::ipc::Channel;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use vofa_next_buffer::DataBuffer;
 use vofa_next_core::{ConnectionState, DataFrame, ProtocolConfig, RawData, TransportStats};
 use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
@@ -101,6 +101,10 @@ pub struct AppState {
     pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
     /// 频谱订阅者 (30 FPS 推送)
     pub spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
+    /// 波形订阅任务的取消句柄 — key: channel_id, value: oneshot sender
+    /// 前端调用 unsubscribe_waveform 时, 通过 channel_id 取出 sender 发送取消信号,
+    /// 让 tokio::spawn 的 task 优雅退出, 避免向已关闭的 channel send 产生警告。
+    pub waveform_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
 }
 
 impl AppState {
@@ -123,6 +127,7 @@ impl AppState {
             spectrum_analyzers: Arc::new(Mutex::new(HashMap::new())),
             spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
             spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
+            waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 

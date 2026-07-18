@@ -323,11 +323,11 @@ customCancel: 取消
 customEditorError: 代码错误
 
 # 控件分类 Tab
-catInput: 输入
+catInput: 数据
 catDisplay: 显示
 catMath: 算术
 catCustom: 自定义
-catInputHelp: 输入控件用于设置参数, 释放时发送值到绑定通道
+catInputHelp: 数据类控件用于设置参数或发送命令, 可连线到 Command 的 value 端口做模板插值
 catDisplayHelp: 显示控件用于实时展示通道数据, 拖入后从通道源连线接入
 catMathHelp: 算术控件对多通道做四则运算或数学函数, 可级联组合
 catCustomHelp: 自定义 JS 控件, 点击打开编辑器编写自己的逻辑
@@ -395,6 +395,24 @@ cmdFormatAscii: ASCII
 cmdFormatTemplate: 模板
 cmdFormatStructured: 结构化
 cmdSettings: 设置
+# 数据块类型
+cmdBlockConstHex: 常量HEX
+cmdBlockVarRef: 变量引用
+cmdBlockTypedConst: 类型化常量
+cmdBlockChecksum: 校验段
+cmdAddBlockConstHex: 常量
+cmdAddBlockVarRef: 变量
+cmdAddBlockTypedConst: 类型化
+cmdAddBlockChecksum: 校验
+cmdBlocksEmpty: 暂无数据块, 点击下方按钮添加
+cmdDragToReorder: 拖拽排序
+cmdBlockLabel: 标签
+cmdBlockLabelPlaceholder: 块名称 (可选)
+cmdBlockPortName: 端口名
+cmdBlockType: 数据类型
+cmdBlockValue: 数值
+cmdBlockVarRefHint: 当前连入值
+cmdBlockChecksumHint: 对前面所有块的累计字节计算校验
 cmdChecksum: 校验算法
 cmdChecksumNone: 无
 cmdChecksumSum8: Sum8

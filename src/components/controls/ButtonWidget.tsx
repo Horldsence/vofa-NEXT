@@ -3,6 +3,7 @@ import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
 import { useAppStore } from '../../store/appStore';
+import clsx from 'clsx';
 
 interface ButtonWidgetProps {
   widget: Extract<WidgetConfig, { kind: 'Button' }>;
@@ -32,13 +33,19 @@ export function ButtonWidget({ widget, onRemove }: ButtonWidgetProps) {
   }, [id, value, setInputValue]);
 
   return (
-    <div className="widget-card">
-      <button className="btn-icon widget-remove" onClick={onRemove}>
+    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
+      <button
+        className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+        onClick={onRemove}
+      >
         <X size={12} />
       </button>
-      <div className="widget-label">{label}</div>
+      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
       <button
-        className={`widget-button ${pressed ? 'pressed' : ''}`}
+        className={clsx(
+          "px-4 py-2 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors",
+          pressed && "bg-bg-button-hover"
+        )}
         onPointerDown={handleDown}
         onPointerUp={handleUp}
         onPointerLeave={handleUp}

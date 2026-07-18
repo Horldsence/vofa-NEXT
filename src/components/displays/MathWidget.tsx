@@ -61,40 +61,39 @@ export function MathWidget({ widget, onEdit }: MathWidgetProps) {
   const symbol = OP_SYMBOLS[op];
 
   return (
-    <div className="widget-card math-widget">
+    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
       {onEdit && (
         <button
-          className="btn-icon widget-edit"
+          className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           onClick={onEdit}
           title="Edit"
-          style={{ right: 24 }}
         >
           <Settings2 size={11} />
         </button>
       )}
-      <div className="math-widget-op-symbol">{symbol}</div>
-      <div className="math-widget-body">
-        <div className="math-widget-result">
+      <div className="ml-1.5 px-1.5 py-0.5 text-xs text-[#ffb74d] bg-[#ffb74d]/15 rounded-sm font-mono w-fit">{symbol}</div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-baseline gap-1 justify-center py-1.5">
           <span
-            className="math-widget-result-value"
+            className="font-semibold text-text-primary font-mono tracking-[-0.5px]"
             style={{ fontSize: result.toFixed(precision).length > 8 ? 16 : 22 }}
           >
             {result.toFixed(precision)}
           </span>
-          {unit && <span className="math-widget-unit">{unit}</span>}
+          {unit && <span className="text-xs text-text-secondary">{unit}</span>}
         </div>
         {!isConnected && (
-          <div className="math-widget-hint">
+          <div className="flex items-center gap-1 justify-center p-1 text-[10px] text-text-secondary opacity-70">
             <Plus size={10} />
             <span>连接输入</span>
           </div>
         )}
         {isConnected && (
-          <div className="math-widget-inputs">
+          <div className="flex flex-col gap-0.5 border-t border-dashed border-border pt-1 mt-0.5">
             {inputPorts.map((p) => (
-              <div key={p.id} className="math-widget-input-row">
-                <span className="math-widget-input-label">{p.label}</span>
-                <span className="math-widget-input-value">
+              <div key={p.id} className="flex justify-between items-center text-[10px] px-0.5 py-px">
+                <span className="text-text-secondary font-mono">{p.label}</span>
+                <span className="text-text-primary font-mono">
                   {inputs[p.id] !== undefined ? inputs[p.id].toFixed(precision) : '—'}
                 </span>
               </div>

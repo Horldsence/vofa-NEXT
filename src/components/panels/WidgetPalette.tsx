@@ -34,9 +34,9 @@ import { UNARY_MATH_OPS } from '../../types';
 /// 控件面板 — 按 tab 分组分类, 不同类别颜色不同
 ///
 /// 4 个分类 Tab:
-///   - input:   输入控件 (Knob/Button/Radio/Checkbox/Slider) — 蓝色
-///   - display: 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label) — 绿色
-///   - math:    算术控件 (Math) — 橙色
+///   - input:   数据类 (Knob/Button/Radio/Checkbox/Slider/Command) — 蓝色
+///   - display: 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Spectrum/Model3D) — 绿色
+///   - math:    算术控件 (Math/Filter) — 橙色
 ///   - custom:  自定义控件 (Custom JS) — 紫色
 export function WidgetPalette() {
   const lang = useAppStore((s) => s.lang);
@@ -178,14 +178,21 @@ export function WidgetPalette() {
     activeCategory === 'custom' ? customItems :
     []; // math 类别特殊处理
 
+  const categoryBorderClass: Record<WidgetCategory, string> = {
+    input: 'border-l-[3px] border-l-blue',
+    display: 'border-l-[3px] border-l-green',
+    math: 'border-l-[3px] border-l-orange bg-gradient-to-r from-orange/10 to-bg-input via-bg-input',
+    custom: 'border-l-[3px] border-l-purple',
+  };
+
   return (
-    <div className="palette-container">
+    <div className="flex flex-col h-full overflow-hidden">
       {/* 分类 Tab */}
-      <div className="palette-category-tabs">
+      <div className="flex border-b border-border flex-shrink-0 bg-bg-panel-header">
         {categories.map((cat) => (
           <button
             key={cat.id}
-            className={`palette-category-tab ${activeCategory === cat.id ? 'active' : ''}`}
+            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 text-xs font-medium text-text-secondary bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all select-none hover:bg-bg-hover hover:text-text-primary ${activeCategory === cat.id ? 'font-semibold' : ''}`}
             data-category={cat.id}
             onClick={() => setActiveCategory(cat.id)}
             style={{
@@ -193,27 +200,29 @@ export function WidgetPalette() {
               color: activeCategory === cat.id ? cat.color : undefined,
             }}
           >
-            <span className="palette-category-dot" style={{ background: cat.color }} />
+            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: cat.color }} />
             {cat.label}
           </button>
         ))}
       </div>
 
       {/* 控件网格 */}
-      <div className="palette-grid">
+      <div className="grid grid-cols-2 gap-1.5 flex-1 overflow-y-auto p-2">
         {activeCategory === 'math' ? (
           <>
             {/* 算术控件: 每个 op 一个项 */}
             {mathItems.map((item) => (
               <div
                 key={item.op}
-                className="palette-item palette-item-math"
+                className={`border-l-[3px] border-l-orange bg-gradient-to-r from-orange/10 to-bg-input via-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:from-orange/20 hover:text-text-primary active:cursor-grabbing`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Math', item.op)}
                 onClick={() => handleClickAdd('Math', item.op)}
                 title={`${item.label} (${item.isUnary ? t(lang, 'mathUnary') : t(lang, 'mathBinary')})`}
               >
-                {item.icon}
+                <div className="w-5 h-5 flex items-center justify-center">
+                  {item.icon}
+                </div>
                 <span>{item.label}</span>
               </div>
             ))}
@@ -221,13 +230,15 @@ export function WidgetPalette() {
             {filterItems.map((item) => (
               <div
                 key={item.preset}
-                className="palette-item palette-item-math palette-item-filter"
+                className={`bg-bg-input border border-[rgba(255,140,66,0.3)] rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:text-orange active:cursor-grabbing`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Filter', undefined, item.preset)}
                 onClick={() => handleClickAdd('Filter', undefined, undefined, item.preset)}
                 title={`${t(lang, 'filter')}: ${item.label}`}
               >
-                <FilterIcon size={14} />
+                <div className="w-5 h-5 flex items-center justify-center">
+                  <FilterIcon size={14} />
+                </div>
                 <span>{item.label}</span>
               </div>
             ))}
@@ -236,7 +247,7 @@ export function WidgetPalette() {
           activeItems.map((item) => (
             <div
               key={item.kind}
-              className={`palette-item palette-item-${activeCategory}`}
+              className={`bg-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:bg-bg-hover hover:border-accent hover:text-text-primary active:cursor-grabbing ${categoryBorderClass[activeCategory]}`}
               draggable
               onDragStart={(e) => handleDragStart(e, item.kind)}
               onClick={() => {
@@ -246,7 +257,9 @@ export function WidgetPalette() {
               }}
               title={item.label}
             >
-              {item.icon}
+              <div className="w-5 h-5 flex items-center justify-center">
+                {item.icon}
+              </div>
               <span>{item.label}</span>
             </div>
           ))
@@ -254,7 +267,7 @@ export function WidgetPalette() {
       </div>
 
       {/* 当前类别说明 */}
-      <div className="palette-category-help">
+      <div className="px-2 py-1.5 text-[10px] text-text-secondary border-t border-border bg-bg-panel-header leading-relaxed flex-shrink-0">
         {activeCategory === 'input' && t(lang, 'catInputHelp')}
         {activeCategory === 'display' && t(lang, 'catDisplayHelp')}
         {activeCategory === 'math' && t(lang, 'catMathHelp')}

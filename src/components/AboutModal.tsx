@@ -40,58 +40,70 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]"
+      onClick={onClose}
+    >
       <div
-        className="about-modal"
+        className="w-[400px] max-w-[90vw] bg-bg-sidebar border border-border rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] py-7 px-8 flex flex-col items-center gap-2 relative animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
-        <button className="settings-close-btn" onClick={onClose} title={t(lang, 'aboutClose')}>
+        <button
+          className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-bright transition-colors cursor-pointer bg-transparent border-none"
+          onClick={onClose}
+          title={t(lang, 'aboutClose')}
+        >
           <X size={16} />
         </button>
 
-        <div className="about-icon">
+        <div className="flex items-center justify-center mb-1">
           <img src="/tauri.svg" alt="logo" width={72} height={72} />
         </div>
 
-        <h2 className="about-name">{appName}</h2>
-        <p className="about-version">
-          {t(lang, 'aboutVersion')}: <code>v{appVersion}</code>
+        <h2 className="text-xl font-semibold text-text-bright m-0">{appName}</h2>
+        <p className="text-sm text-text-secondary m-0">
+          {t(lang, 'aboutVersion')}: <code className="bg-bg-input px-1.5 py-0.5 rounded-sm text-text-primary font-mono">v{appVersion}</code>
         </p>
-        <p className="about-description">{t(lang, 'aboutDescription')}</p>
+        <p className="text-sm text-text-primary text-center leading-relaxed my-2 mb-3">
+          {t(lang, 'aboutDescription')}
+        </p>
 
-        <div className="about-info-grid">
-          <div className="about-info-row">
-            <span className="about-info-label">{t(lang, 'aboutAuthor')}</span>
-            <span className="about-info-value">{APP_AUTHOR}</span>
+        <div className="w-full flex flex-col gap-1.5 py-2 border-t border-b border-border my-2 mb-4">
+          <div className="flex justify-between text-sm">
+            <span className="text-text-secondary">{t(lang, 'aboutAuthor')}</span>
+            <span className="text-text-primary">{APP_AUTHOR}</span>
           </div>
-          <div className="about-info-row">
-            <span className="about-info-label">{t(lang, 'aboutLicense')}</span>
-            <span className="about-info-value">{APP_LICENSE}</span>
+          <div className="flex justify-between text-sm">
+            <span className="text-text-secondary">{t(lang, 'aboutLicense')}</span>
+            <span className="text-text-primary">{APP_LICENSE}</span>
           </div>
         </div>
 
-        <div className="about-links">
+        <div className="flex gap-2 mb-4">
           <button
-            className="btn-secondary about-link-btn"
+            className="bg-transparent text-text-primary border border-border px-2.5 py-1 text-xs cursor-pointer rounded inline-flex items-center gap-1.5 transition-all hover:bg-bg-hover hover:border-accent hover:text-text-bright"
             onClick={() => void openUrl(APP_GITHUB)}
           >
             <Github size={14} />
             <span>{t(lang, 'aboutGithub')}</span>
-            <ExternalLink size={10} style={{ opacity: 0.6 }} />
+            <ExternalLink size={10} className="opacity-60" />
           </button>
           <button
-            className="btn-secondary about-link-btn"
+            className="bg-transparent text-text-primary border border-border px-2.5 py-1 text-xs cursor-pointer rounded inline-flex items-center gap-1.5 transition-all hover:bg-bg-hover hover:border-accent hover:text-text-bright"
             onClick={() => void openUrl(APP_DOCS)}
           >
             <span>{t(lang, 'aboutDocs')}</span>
-            <ExternalLink size={10} style={{ opacity: 0.6 }} />
+            <ExternalLink size={10} className="opacity-60" />
           </button>
         </div>
 
-        <div className="about-footer">
-          <button className="btn-primary" onClick={onClose}>
+        <div className="flex justify-center w-full">
+          <button
+            className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover"
+            onClick={onClose}
+          >
             {t(lang, 'aboutClose')}
           </button>
         </div>

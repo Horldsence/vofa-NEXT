@@ -175,62 +175,49 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
   if (!isOpen) return null;
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]" onClick={onClose}>
       <div
-        className="custom-widget-editor"
+        className="bg-bg-sidebar border border-border rounded-lg flex flex-col overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         style={{ width: '90vw', height: '85vh', maxWidth: 1200, maxHeight: 800 }}
       >
-        <div className="settings-header" style={{ padding: '8px 12px' }}>
+        <div className="flex items-center gap-3 px-4 py-3 bg-bg-panel-header border-b border-border text-text-bright font-semibold flex-shrink-0">
           <FileCode size={16} />
           <span>{t(lang, 'customWidgetEditor')}</span>
           <button
-            className="btn-icon"
+            className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-auto"
             onClick={() => setIsHelpOpen(true)}
-            style={{ marginLeft: 'auto' }}
             title={t(lang, 'helpTitle')}
           >
             <HelpCircle size={14} />
           </button>
-          <button className="btn-icon" onClick={onClose} title={t(lang, 'customCancel')}>
+          <button className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer" onClick={onClose} title={t(lang, 'customCancel')}>
             <X size={14} />
           </button>
         </div>
 
         {/* 性能警告横幅 — 提示用户 Custom JS 性能低于原生 Rust 节点 */}
         <div
-          className="custom-perf-warning"
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 8,
-            padding: '6px 12px',
-            background: 'rgba(204, 153, 0, 0.12)',
-            borderBottom: '1px solid rgba(204, 153, 0, 0.3)',
-            color: '#cca230',
-            fontSize: 11,
-            lineHeight: 1.4,
-          }}
+          className="flex items-start gap-2 px-3 py-1.5 bg-yellow/10 border-b border-yellow/30 text-yellow text-xs leading-relaxed"
         >
-          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <AlertTriangle size={14} className="flex-shrink-0 mt-0.25" />
           <div>
             <strong>{t(lang, 'customPerfWarningTitle')}</strong>
-            <span style={{ marginLeft: 6, opacity: 0.9 }}>
+            <span className="ml-1.5 opacity-90">
               {t(lang, 'customPerfWarning')}
             </span>
           </div>
         </div>
 
-        <div className="custom-editor-body">
+        <div className="flex-1 flex min-h-0">
           {/* 左侧: 代码编辑器 */}
-          <div className="custom-editor-left">
-            <div className="custom-editor-toolbar">
-              <span style={{ color: 'var(--text-secondary)', fontSize: 11 }}>
+          <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+            <div className="flex items-center justify-between px-2.5 py-1.5 bg-bg-panel-header border-b border-border gap-1.5">
+              <span className="text-text-secondary text-xs">
                 {t(lang, 'customWidgetCode')}
               </span>
-              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <div className="flex gap-1 items-center">
                 <select
-                  className="custom-template-select"
                   value=""
                   onChange={(e) => {
                     if (e.target.value) {
@@ -239,6 +226,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                       e.target.value = '';
                     }
                   }}
+                  className="bg-bg-input border border-border text-text-primary text-xs px-1.5 py-0.5 rounded-sm"
                 >
                   <option value="">{t(lang, 'customTemplate')}</option>
                   {PRESET_TEMPLATES.map((t) => (
@@ -248,7 +236,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                   ))}
                 </select>
                 <button
-                  className="btn-icon"
+                  className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
                   onClick={handleRebuildPreview}
                   title={t(lang, 'customRebuildPreview')}
                 >
@@ -257,46 +245,44 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
               </div>
             </div>
 
-            <div className="custom-editor-label-row">
-              <label style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-border">
+              <label className="text-xs text-text-secondary">
                 {t(lang, 'label')}
               </label>
               <input
                 type="text"
-                className="custom-label-input"
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="Custom Widget"
+                className="flex-1 bg-bg-input border border-border text-text-primary text-sm px-1.5 py-0.5 rounded-sm font-ui"
               />
             </div>
 
-            <div className="custom-editor-code">
+            <div className="flex-1 min-h-0 overflow-hidden relative">
               <CodeEditor value={code} onChange={setCode} height="100%" />
             </div>
 
             {/* 错误提示 */}
             {validation.error && (
-              <div className="custom-editor-error">
-                <AlertCircle size={12} />
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 11 }}>
-                  {validation.error}
-                </pre>
+              <div className="flex items-start gap-1.5 px-2.5 py-1.5 bg-red/10 border-t border-red/30 text-red text-xs">
+                <AlertCircle size={12} className="flex-shrink-0 mt-0.25" />
+                <pre className="m-0 whitespace-pre-wrap text-xs">{validation.error}</pre>
               </div>
             )}
 
             {/* 解析出的 schema 信息 */}
             {validation.def && (
-              <div className="custom-schema-info">
-                <div className="custom-schema-row">
-                  <span className="custom-schema-key">{t(lang, 'customInputs')}:</span>
+              <div className="px-2.5 py-1.5 bg-bg-panel-header border-t border-border text-xs text-text-secondary">
+                <div className="flex gap-1.5 items-baseline py-0.5">
+                  <span className="text-blue min-w-[80px]">{t(lang, 'customInputs')}:</span>
                   <span>{validation.def.inputs?.map((i) => i.label).join(', ') || '-'}</span>
                 </div>
-                <div className="custom-schema-row">
-                  <span className="custom-schema-key">{t(lang, 'customOutputs')}:</span>
+                <div className="flex gap-1.5 items-baseline py-0.5">
+                  <span className="text-blue min-w-[80px]">{t(lang, 'customOutputs')}:</span>
                   <span>{validation.def.outputs?.map((o) => o.label).join(', ') || '-'}</span>
                 </div>
-                <div className="custom-schema-row">
-                  <span className="custom-schema-key">{t(lang, 'customSettings')}:</span>
+                <div className="flex gap-1.5 items-baseline py-0.5">
+                  <span className="text-blue min-w-[80px]">{t(lang, 'customSettings')}:</span>
                   <span>{validation.def.settings?.map((s) => s.id).join(', ') || '-'}</span>
                 </div>
               </div>
@@ -304,12 +290,12 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
           </div>
 
           {/* 右侧: 预览 */}
-          <div className="custom-editor-right">
-            <div className="custom-editor-toolbar">
-              <Play size={12} style={{ color: 'var(--green)' }} />
-              <span style={{ fontSize: 11 }}>{t(lang, 'customPreview')}</span>
+          <div className="w-[320px] flex flex-col bg-bg-editor flex-shrink-0">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-bg-panel-header border-b border-border">
+              <Play size={12} className="text-green" />
+              <span className="text-xs">{t(lang, 'customPreview')}</span>
             </div>
-            <div className="custom-preview-area">
+            <div className="flex-1 p-3 overflow-auto bg-bg-editor">
               {validation.def ? (
                 <CustomWidget
                   key={previewKey}
@@ -318,8 +304,8 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                   height={200}
                 />
               ) : (
-                <div className="custom-preview-empty">
-                  <AlertCircle size={24} style={{ opacity: 0.4 }} />
+                <div className="flex flex-col items-center gap-2 p-8 text-text-secondary text-sm">
+                  <AlertCircle size={24} className="opacity-40" />
                   <span>{t(lang, 'customPreviewUnavailable')}</span>
                 </div>
               )}
@@ -327,11 +313,11 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
 
             {/* 设置项编辑 */}
             {validation.def?.settings && validation.def.settings.length > 0 && (
-              <div className="custom-settings-area">
-                <div className="custom-settings-title">{t(lang, 'customSettingsValues')}</div>
+              <div className="px-3 py-2 border-t border-border bg-bg-sidebar max-h-[40%] overflow-y-auto">
+                <div className="text-xs text-text-secondary uppercase tracking-wide mb-1.5">{t(lang, 'customSettingsValues')}</div>
                 {validation.def.settings.map((s) => (
-                  <div key={s.id} className="custom-setting-row">
-                    <label>{s.label}</label>
+                  <div key={s.id} className="flex items-center gap-2 py-1">
+                    <label className="text-xs text-text-primary min-w-[60px]">{s.label}</label>
                     {s.type === 'boolean' ? (
                       <input
                         type="checkbox"
@@ -339,6 +325,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                         onChange={(e) =>
                           setSettings({ ...settings, [s.id]: e.target.checked })
                         }
+                        className="cursor-pointer"
                       />
                     ) : s.type === 'color' ? (
                       <input
@@ -347,6 +334,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                         onChange={(e) =>
                           setSettings({ ...settings, [s.id]: e.target.value })
                         }
+                        className="w-7 h-5 p-0 border border-border bg-transparent cursor-pointer rounded-sm"
                       />
                     ) : (
                       <input
@@ -361,6 +349,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                                 : e.target.value,
                           })
                         }
+                        className="flex-1 bg-bg-input border border-border text-text-primary text-xs px-1 py-0.5 rounded-sm font-mono min-w-0"
                       />
                     )}
                   </div>
@@ -370,15 +359,14 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
           </div>
         </div>
 
-        <div className="settings-footer" style={{ padding: '8px 12px', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-          <button className="btn-secondary" onClick={onClose}>
+        <div className="px-3 py-2 flex justify-end gap-2 bg-bg-panel-header border-t border-border">
+          <button className="px-3 py-1.5 bg-transparent text-text-secondary border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-hover hover:text-text-primary" onClick={onClose}>
             {t(lang, 'customCancel')}
           </button>
           <button
-            className="btn-primary"
+            className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-default"
             onClick={handleSave}
             disabled={!validation.def}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}
           >
             <Save size={12} />
             {t(lang, 'customSave')}

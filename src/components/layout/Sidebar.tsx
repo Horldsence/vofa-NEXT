@@ -24,19 +24,19 @@ export function Sidebar({ view }: SidebarProps) {
   };
 
   return (
-    <div className="sidebar">
-      <div className="sidebar-header">
+    <div className="bg-bg-sidebar flex flex-col min-w-[200px] overflow-hidden">
+      <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0">
         <span>{t(lang, titleMap[view])}</span>
       </div>
-      <div className="sidebar-content">
+      <div className="flex-1 overflow-y-auto px-3 pb-3">
         {view === 'port' && <PortConfig />}
         {view === 'protocol' && <ProtocolConfigPanel />}
         {view === 'transport' && <TransportConfigPanel />}
         {view === 'widgets' && <WidgetPalette />}
         {view === 'ai' && (
-          <div style={{ padding: 16, color: 'var(--text-secondary)', fontSize: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, marginTop: 32 }}>
-            <Bot size={32} style={{ opacity: 0.4 }} />
-            <p style={{ textAlign: 'center' }}>{t(lang, 'aiPlaceholder')}</p>
+          <div className="p-4 text-text-secondary text-xs flex flex-col items-center gap-2 mt-8">
+            <Bot size={32} className="opacity-40" />
+            <p className="text-center">{t(lang, 'aiPlaceholder')}</p>
           </div>
         )}
       </div>

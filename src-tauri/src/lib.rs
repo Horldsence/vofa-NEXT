@@ -82,6 +82,10 @@ pub fn run() {
             commands::subscribe_graph_outputs,
             commands::subscribe_custom_inputs,
             commands::subscribe_spectrum,
+            commands::unsubscribe_graph_outputs,
+            commands::unsubscribe_custom_inputs,
+            commands::unsubscribe_spectrum,
+            commands::unsubscribe_waveform,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

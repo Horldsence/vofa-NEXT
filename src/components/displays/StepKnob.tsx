@@ -120,11 +120,11 @@ export function StepKnob({
   return (
     <div
       ref={containerRef}
-      className={`scope-knob ${disabled ? 'disabled' : ''}`}
+      className={`flex flex-col items-center gap-0.5 select-none ${disabled ? 'opacity-40 pointer-events-none' : ''}`}
       style={{ width: size }}
     >
       <div
-        className="knob-dial"
+        className="step-knob-dial"
         style={{
           width: size,
           height: size,
@@ -135,13 +135,13 @@ export function StepKnob({
         onPointerUp={handlePointerUp}
         onDoubleClick={handleDoubleClick}
       >
-        <div className="knob-pointer" />
-        <div className="knob-rim" />
+        <div className="step-knob-pointer" />
+        <div className="step-knob-rim" />
       </div>
-      <div className="knob-value" title={formatValue(value)}>
+      <div className="font-mono text-[10px] text-text-bright max-w-full overflow-hidden text-ellipsis whitespace-nowrap" title={formatValue(value)}>
         {formatValue(value)}
       </div>
-      {label && <div className="knob-label">{label}</div>}
+      {label && <div className="text-[9px] text-text-secondary uppercase tracking-[0.5px]">{label}</div>}
     </div>
   );
 }

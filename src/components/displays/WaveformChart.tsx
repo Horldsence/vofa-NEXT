@@ -577,22 +577,29 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seriesSignature]);
 
-  // 数据更新 (运行模式)
+  // 数据更新 (运行模式) — 事件驱动 + rAF 节流
+  // waveformWindow.subscribe 在数据到达时触发, 用 rAF 合并多次更新避免超过渲染帧率
   useEffect(() => {
     if (!axisConfig.running) return;
     let rafId: number | null = null;
-    const tick = () => {
-      if (plotRef.current) {
-        const v = waveformWindow.version;
-        if (v !== lastVersionRef.current) {
-          lastVersionRef.current = v;
-          plotRef.current.setData(getDisplayData() as unknown as uPlot.AlignedData);
+    const unsub = waveformWindow.subscribe(() => {
+      // 数据到达, 如果已有待渲染帧则跳过 (节流)
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        if (plotRef.current) {
+          const v = waveformWindow.version;
+          if (v !== lastVersionRef.current) {
+            lastVersionRef.current = v;
+            plotRef.current.setData(getDisplayData() as unknown as uPlot.AlignedData);
+          }
         }
-      }
-      rafId = requestAnimationFrame(tick);
+      });
+    });
+    return () => {
+      unsub();
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
-    rafId = requestAnimationFrame(tick);
-    return () => { if (rafId !== null) cancelAnimationFrame(rafId); };
   }, [getDisplayData, axisConfig.running]);
 
   // 视图同步: timeBase/hPosition 变化时强制 setScale
@@ -766,21 +773,20 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   }, [axisConfig.cursors, axisConfig.channels, axisConfig.sharedY, axisConfig.running, axisConfig.hPosition, timeWindowSec, connectedChannels]);
 
   return (
-    <div className="waveform-layout" style={{ flexDirection: 'column' }}>
+    <div className="flex flex-col h-full w-full" style={{ flexDirection: 'column' }}>
       <div
-        className={`waveform-container ${cursorHidden ? 'cursor-hidden' : ''}`}
+        className={`waveform-container ${cursorHidden ? 'cursor-hidden' : ''} flex-1 min-h-0 relative`}
         ref={containerRef}
         onMouseLeave={() => setCursorReadout(null)}
-        style={{ flex: 1, minHeight: 0, position: 'relative' }}
       >
         {axisConfig.cursors.enabled && (
-          <svg className="cursor-overlay" style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 5 }}>
+          <svg className="absolute inset-0 pointer-events-none z-5">
             {cursorOverlay}
           </svg>
         )}
 
         {/* 左上角提示: 按住 Ctrl/Cmd 隐藏光标 */}
-        <div className="cursor-hint">
+        <div className="absolute top-1.5 right-2 z-[100] px-2 py-0.5 text-[10px] text-white/95 bg-black/85 border border-white/15 rounded pointer-events-none select-none shadow whitespace-nowrap">
           {cursorHidden
             ? t(lang, 'cursorHiddenHint')
             : (isMac ? '⌘ ' : 'Ctrl ') + t(lang, 'cursorHideHint')}
@@ -789,7 +795,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         {/* 右下角动态 series 开关 (仅用户创建的波形图, default-waveform 不显示) */}
         {widget.params.id !== 'default-waveform' && (
           <button
-            className={`dynamic-series-toggle ${widget.params.dynamicSeries ? 'active' : ''}`}
+            className={`absolute bottom-1.5 right-2 z-[100] px-2.5 py-0.5 text-[10px] text-white/85 bg-black/85 border border-white/15 rounded cursor-pointer select-none shadow whitespace-nowrap transition-all duration-150 hover:bg-[#282828]/95 hover:border-white/30 ${widget.params.dynamicSeries ? 'text-[#ff8c42] border-[#ff8c42]/50 bg-[#3c1e0a]/85' : ''}`}
             onClick={() => {
               updateWidget(widget.params.id, {
                 ...widget,
@@ -811,39 +817,38 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         {cursorReadout && !cursorHidden && (
           <div
             ref={tooltipRef}
-            className="cursor-readout-tooltip"
+            className="flex flex-col gap-0.5 px-1.5 py-1 min-w-[80px] bg-[rgba(30,30,30,0.95)] text-[#e8e8e8] border border-[rgba(255,255,255,0.18)] rounded font-mono text-xs leading-tight shadow-lg select-none"
             style={{
               position: 'absolute',
-              // tooltipPos 由 useLayoutEffect 测量后设置; 首帧用默认位置 (会被同步覆盖, 不闪烁)
               left: tooltipPos ? tooltipPos.left : cursorReadout.leftPx + 12,
               top: tooltipPos ? tooltipPos.top : cursorReadout.topPx + 12,
               pointerEvents: 'none',
               zIndex: 9,
             }}
           >
-            <div className="cursor-readout-row">
-              <span className="cursor-readout-label">X</span>
-              <span className="cursor-readout-val">
+            <div className="flex items-center gap-1.5 leading-tight">
+              <span className="inline-block min-w-[12px] text-[10px] font-semibold opacity-60 text-center">X</span>
+              <span className="font-mono text-xs text-right ml-auto">
                 {formatTimeMs(cursorReadout.xSec * 1000)}
               </span>
             </div>
-            <div className="cursor-readout-row">
-              <span className="cursor-readout-label">Y</span>
-              <span className="cursor-readout-val">
+            <div className="flex items-center gap-1.5 leading-tight">
+              <span className="inline-block min-w-[12px] text-[10px] font-semibold opacity-60 text-center">Y</span>
+              <span className="font-mono text-xs text-right ml-auto">
                 {formatYValue(cursorReadout.yVal, cursorReadout.yUnit)}
               </span>
             </div>
             {cursorReadout.channels.length > 1 && (
-              <div className="cursor-readout-divider" />
+              <div className="h-px my-[3px] bg-white/15" />
             )}
             {cursorReadout.channels.map((ch, i) => (
-              <div key={ch.label + i} className="cursor-readout-channel">
+              <div key={ch.label + i} className="flex items-center gap-1">
                 <span
-                  className="cursor-readout-dot"
+                  className="w-2 h-2 rounded-full flex-shrink-0"
                   style={{ background: ch.color }}
                 />
-                <span className="cursor-readout-ch-label">{ch.label}</span>
-                <span className="cursor-readout-ch-val">
+                <span className="font-semibold opacity-85 min-w-[28px]">{ch.label}</span>
+                <span className="ml-auto text-right font-mono text-xs">
                   {formatYValue(ch.val, cursorReadout.yUnit)}
                 </span>
               </div>
@@ -852,7 +857,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         )}
       </div>
       {!isConnected && (
-        <div className="waveform-empty-overlay">
+        <div className="absolute inset-0 flex items-center justify-center text-text-secondary text-sm pointer-events-none">
           <span>{t(lang, 'emptyWaveform')}</span>
         </div>
       )}

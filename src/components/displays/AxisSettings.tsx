@@ -49,7 +49,7 @@ export function AxisSettings({
   // 通用档位下拉
   const renderStepSelect: RenderStepSelect = (steps, value, onPick, format) => (
     <select
-      className="scope-select"
+      className="form-select"
       value={value}
       onChange={(e) => onPick(parseFloat(e.target.value))}
     >
@@ -60,11 +60,11 @@ export function AxisSettings({
   );
 
   return (
-    <div className="scope-panel-with-tabs">
+    <div className="flex h-full w-full overflow-hidden">
       {/* 左侧竖排通道 Tab */}
-      <div className="scope-tabs-sidebar">
+      <div className="flex-none w-14 flex flex-col gap-[1px] py-1 bg-bg-panel-header border-r border-border overflow-y-auto">
         <button
-          className={`scope-tab ${activeTab === 'all' ? 'active' : ''}`}
+          className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === 'all' ? 'bg-bg-active text-text-bright border-l-text-bright' : 'text-text-secondary'}`}
           onClick={() => setActiveTab('all')}
           title={t(lang, 'channels')}
         >
@@ -73,14 +73,12 @@ export function AxisSettings({
         {channels.map((ch, idx) => (
           <button
             key={idx}
-            className={`scope-tab channel ${activeTab === `ch${idx}` ? 'active' : ''} ${
-              ch.show ? 'visible' : 'muted'
-            }`}
+            className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === `ch${idx}` ? 'bg-bg-active text-text-bright border-l-text-bright' : 'text-text-secondary'} ${!ch.show ? 'opacity-50' : ''}`}
             onClick={() => setActiveTab(`ch${idx}` as TabId)}
             title={`CH${idx}`}
           >
             <span
-              className="scope-tab-dot"
+              className="w-2 h-2 rounded-full inline-block"
               style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
             />
             <span>CH{idx}</span>
@@ -89,7 +87,7 @@ export function AxisSettings({
       </div>
 
       {/* 右侧内容 */}
-      <div className="scope-tab-content">
+      <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
         {activeTab === 'all' ? (
           <AllTabContent
             config={config}

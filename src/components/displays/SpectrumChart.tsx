@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import type { WidgetConfig, WindowType, SpectrumOutput, SpectrumResult } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
@@ -45,10 +45,25 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
   const spectrumResults = useAppStore((s) => s.spectrumResults);
   const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
-  const [showSettings, setShowSettings] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // 跟踪容器尺寸, 触发 canvas 重绘 (响应式)
+  const [size, setSize] = useState({ w: 0, h: 0 });
 
   const result: SpectrumResult | undefined = spectrumResults[id];
+
+  // ResizeObserver: 容器尺寸变化时更新 size, 触发重绘
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect;
+      setSize({ w: Math.floor(r.width), h: Math.floor(r.height) });
+    });
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
 
   // 绘制频谱图
   useEffect(() => {
@@ -56,15 +71,16 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+    if (size.w === 0 || size.h === 0) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    canvas.width = size.w * dpr;
+    canvas.height = size.h * dpr;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr, dpr);
 
-    const w = rect.width;
-    const h = rect.height;
+    const w = size.w;
+    const h = size.h;
     ctx.clearRect(0, 0, w, h);
 
     // 背景
@@ -158,12 +174,12 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
     ctx.fillStyle = '#aaaaaa';
     ctx.fillText(formatValue(vMax, output), 2, 10);
     ctx.fillText(formatValue(vMin, output), 2, h - 12);
-  }, [result, sampleRate, output, lang]);
+  }, [result, sampleRate, output, lang, size]);
 
-  const handleWindowSizeChange = (size: number) => {
+  const handleWindowSizeChange = (sz: number) => {
     updateWidget(id, {
       kind: 'Spectrum',
-      params: { ...widget.params, windowSize: size },
+      params: { ...widget.params, windowSize: sz },
     });
   };
 
@@ -191,56 +207,52 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
   };
 
   return (
-    <div className="widget-card spectrum-widget">
-      {onEdit && (
-        <button
-          className="btn-icon widget-edit"
-          onClick={onEdit}
-          title={t(lang, 'settings')}
-          style={{ right: 24 }}
-        >
-          <Settings2 size={11} />
-        </button>
-      )}
-      <div className="spectrum-widget-info">
-        {windowSize} · {output}
-      </div>
-      <div className="spectrum-widget-body">
+    <div className="group bg-bg-sidebar border border-[#81c784] rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+      {/* 主区: 频谱 Canvas 铺满 */}
+      <div className="flex-1 min-w-0 min-h-0 relative bg-[#1e1e1e]">
         <canvas
           ref={canvasRef}
-          style={{ width: '100%', height: 110, background: '#1e1e1e' }}
+          style={{ width: '100%', height: '100%', display: 'block' }}
         />
-        <button
-          className="spectrum-widget-toggle"
-          onClick={() => setShowSettings((v) => !v)}
-          title={t(lang, 'settings')}
-        >
-          {showSettings ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-          <span>{t(lang, 'spectrumSettings')}</span>
-        </button>
-        {showSettings && (
-          <div className="spectrum-widget-settings">
-            <div className="spectrum-widget-setting-row">
-              <label>{t(lang, 'spectrumWindowSize')}</label>
-              <div className="spectrum-widget-btn-group">
-                {WINDOW_SIZE_OPTIONS.map((size) => (
+        {/* 状态标签覆盖左上角 */}
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-[#81c784]/15 text-[#81c784] border border-[#81c784]/40 rounded-sm text-[10px] font-semibold pointer-events-none">
+          {windowSize} · {output}
+        </div>
+        {onEdit && (
+          <button
+            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-black/40"
+            onClick={onEdit}
+            title={t(lang, 'settings')}
+          >
+            <Settings2 size={11} />
+          </button>
+        )}
+      </div>
+      {/* 侧栏: 设置面板 (固定宽, 纵向滚动, 直接展开) */}
+      <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-2.5">
+        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1">{t(lang, 'spectrumSettings')}</div>
+        <div className="flex flex-col gap-1.5 p-1.5 bg-black/20 rounded-sm border border-border">
+            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
+              <label className="text-text-secondary">{t(lang, 'spectrumWindowSize')}</label>
+              <div className="flex flex-wrap gap-0.5 col-span-2">
+                {WINDOW_SIZE_OPTIONS.map((sz) => (
                   <button
-                    key={size}
-                    className={`spectrum-widget-btn ${windowSize === size ? 'active' : ''}`}
-                    onClick={() => handleWindowSizeChange(size)}
+                    key={sz}
+                    className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#81c784] hover:text-[#81c784] ${windowSize === sz ? 'bg-[#81c784]/20 border-[#81c784] text-[#81c784]' : ''}`}
+                    onClick={() => handleWindowSizeChange(sz)}
                   >
-                    {size}
+                    {sz}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="spectrum-widget-setting-row">
-              <label>{t(lang, 'spectrumWindowType')}</label>
-              <div className="spectrum-widget-btn-group">
+            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
+              <label className="text-text-secondary">{t(lang, 'spectrumWindowType')}</label>
+              <div className="flex flex-wrap gap-0.5 col-span-2">
                 {WINDOW_TYPE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`spectrum-widget-btn ${windowType === opt.value ? 'active' : ''}`}
+                    className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#81c784] hover:text-[#81c784] ${windowType === opt.value ? 'bg-[#81c784]/20 border-[#81c784] text-[#81c784]' : ''}`}
                     onClick={() => handleWindowTypeChange(opt.value)}
                   >
                     {t(lang, opt.labelKey)}
@@ -248,13 +260,13 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
                 ))}
               </div>
             </div>
-            <div className="spectrum-widget-setting-row">
-              <label>{t(lang, 'spectrumOutputMode')}</label>
-              <div className="spectrum-widget-btn-group">
+            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
+              <label className="text-text-secondary">{t(lang, 'spectrumOutputMode')}</label>
+              <div className="flex flex-wrap gap-0.5 col-span-2">
                 {OUTPUT_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`spectrum-widget-btn ${output === opt.value ? 'active' : ''}`}
+                    className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#81c784] hover:text-[#81c784] ${output === opt.value ? 'bg-[#81c784]/20 border-[#81c784] text-[#81c784]' : ''}`}
                     onClick={() => handleOutputChange(opt.value)}
                   >
                     {t(lang, opt.labelKey)}
@@ -262,23 +274,25 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
                 ))}
               </div>
             </div>
-            <div className="spectrum-widget-setting-row">
-              <label>{t(lang, 'filterSampleRate')}</label>
+            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
+              <label className="text-text-secondary">{t(lang, 'filterSampleRate')}</label>
               <input
                 type="number"
                 value={sampleRate}
                 onChange={(e) => handleSampleRateChange(e.target.value)}
                 min={1}
                 step={1}
+                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
               />
-              <span className="spectrum-widget-unit">Hz</span>
+              <span className="text-text-secondary text-[10px]">Hz</span>
             </div>
           </div>
-        )}
       </div>
     </div>
   );
 }
+
+
 
 /// 格式化频率 (Hz / kHz)
 function formatFreq(hz: number): string {

@@ -103,10 +103,10 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
   }, [value, min, max]);
 
   return (
-    <div className="widget-card">
+    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
       {onEdit && (
         <button
-          className="btn-icon widget-edit"
+          className="absolute top-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           onClick={onEdit}
           title="Edit"
           style={{ right: 24 }}
@@ -114,11 +114,11 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
           <Settings2 size={11} />
         </button>
       )}
-      <div className="gauge-container">
+      <div className="flex flex-col items-center gap-1">
         <canvas ref={canvasRef} style={{ width: '100%', height: 90 }} />
-        <div className="gauge-value">
+        <div className="font-mono text-lg font-semibold text-text-bright text-center">
           {value.toFixed(2)}
-          {unit && <span className="gauge-unit">{unit}</span>}
+          {unit && <span className="ml-1 text-[10px] text-text-secondary font-normal">{unit}</span>}
         </div>
       </div>
     </div>
