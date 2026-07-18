@@ -190,6 +190,9 @@ sharedYDesc: Toggle whether all channels share a single Y axis (V/div and Positi
 sharedYHint: Shared Y mode — Set V/div and Position uniformly in the "Channels" tab
 cursorHideHint: hide cursor
 cursorHiddenHint: Cursor hidden (release key to restore)
+dynamicSeriesToggle: Toggle dynamic series mode (fixed channel slots ↔ dynamic by connections)
+dynamicSeriesOff: FIXED
+dynamicSeriesOn: DYNAMIC
 
 # Notifications
 notifError: Error
@@ -305,6 +308,8 @@ menuSettings: Settings
 # Custom Widget Editor
 customWidgetEditor: Custom Widget Editor
 customWidgetCode: Widget Code
+customPerfWarningTitle: Performance Notice
+customPerfWarning: Custom JS widgets run in an iframe sandbox. Inputs are pushed at 30 FPS and outputs round-trip through IPC, so they are slower than native Rust nodes. For latency-sensitive scenarios prefer built-in widgets or the Math widget.
 customTemplate: Load Template...
 customRebuildPreview: Rebuild Preview
 customPreview: Live Preview
@@ -345,6 +350,79 @@ mathTan: Tangent
 mathLog: Logarithm
 mathUnary: Unary
 mathBinary: Binary
+
+# Filter & Spectrum widgets
+filter: Filter
+filterLowpass: Lowpass
+filterHighpass: Highpass
+filterBandpass: Bandpass
+filterBandstop: Bandstop
+filterSettings: Filter Settings
+filterPreset: Preset
+filterCutoff: Cutoff
+filterLow: Low
+filterHigh: High
+filterSampleRate: Sample Rate
+spectrum: Spectrum
+spectrumSettings: Spectrum Settings
+spectrumWindowSize: Window Size
+spectrumWindowType: Window Function
+spectrumOutputMode: Output Mode
+spectrumMagnitude: Magnitude
+spectrumPower: Power
+spectrumPSD: PSD
+spectrumDecibel: Decibel
+spectrumWaiting: Waiting for data...
+windowRect: Rect
+windowHann: Hann
+windowHamming: Hamming
+windowBlackman: Blackman
+
+# 3D Model widget
+model3d: 3D Model
+model3dSettings: 3D Settings
+model3dMode: Mode
+model3dTrajectory: Trajectory
+model3dAttitude: Attitude
+model3dTrailLength: Trail Length
+model3dColor: Color
+model3dAxisLength: Axis Length
+
+# Command Sender widget
+command: Command
+cmdFormatHex: HEX
+cmdFormatAscii: ASCII
+cmdFormatTemplate: Template
+cmdFormatStructured: Structured
+cmdSettings: Settings
+cmdChecksum: Checksum
+cmdChecksumNone: None
+cmdChecksumSum8: Sum8
+cmdChecksumXor8: XOR8
+cmdChecksumCRC8: CRC8
+cmdChecksumCRC16Modbus: CRC16-Modbus
+cmdChecksumCRC16CCITT: CRC16-CCITT
+cmdChecksumCRC32: CRC32
+cmdChecksumLRC: LRC
+cmdChecksumCustom: Custom
+cmdChecksumPosition: Position
+cmdChecksumPos_append: Append
+cmdChecksumPos_prepend: Prepend
+cmdChecksumPos_none: None
+cmdCustomScript: Custom Script
+cmdCustomWarn: Custom scripts are evaluated via new Function. Local use only — do not paste untrusted code.
+cmdAppendNewline: Append Newline
+cmdNewlineOn: On
+cmdNewlineOff: Off
+cmdLabel: Label
+cmdPreview: Preview
+cmdPreviewEmpty: Enter content to see preview
+cmdSend: Send
+cmdErrorEmpty: No data to send
+cmdAddField: Add Field
+cmdAvailableVars: Available Vars
+cmdNoVars: No variables (add Knob/Slider etc. to enable)
+cmdLastSent: Last Sent
 
 # Custom Widget Help
 helpTitle: Usage & API Design

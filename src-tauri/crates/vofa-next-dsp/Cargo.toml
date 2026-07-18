@@ -1,0 +1,10 @@
+[package]
+name = "vofa-next-dsp"
+edition = "2021"
+version = "0.1.0"
+
+[dependencies]
+serde = { workspace = true }
+rustfft = "6"
+realfft = "3"
+log = { workspace = true }

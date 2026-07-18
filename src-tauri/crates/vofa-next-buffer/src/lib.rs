@@ -11,6 +11,7 @@ pub mod graph;
 pub use graph::{Edge, NodeGraph, RoutedData};
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use vofa_next_core::DataFrame;
 
 /// 泛型环形缓冲区 — 固定容量, 覆盖最旧数据
@@ -117,6 +118,10 @@ pub struct WaveformWindow {
     pub channels: Vec<Vec<f32>>,
     /// 当前检测到的通道数
     pub channel_count: usize,
+    /// 派生通道数据 (Math/Filter 等节点的输出, 作为 Waveform sink 的输入)
+    /// key1 = sink_widget_id, key2 = source_widget_id, value = 与 timestamps 对齐的数据
+    #[serde(default)]
+    pub derived: HashMap<String, HashMap<String, Vec<f32>>>,
 }
 
 /// 原始数据批次
@@ -137,6 +142,9 @@ pub struct DataBuffer {
     max_points: usize,
     /// 当前通道数 (可动态变化)
     num_channels: usize,
+    /// 派生数据缓冲区: (sink_widget_id, source_widget_id) → 环形缓冲区
+    /// 与 timestamps 同步 push, 保证时间戳完全对齐
+    derived_buffers: HashMap<(String, String), RingBuffer<f32>>,
 }
 
 impl DataBuffer {
@@ -147,6 +155,7 @@ impl DataBuffer {
             timestamps: RingBuffer::new(max_points),
             max_points,
             num_channels: nc,
+            derived_buffers: HashMap::new(),
         }
     }
 
@@ -168,12 +177,104 @@ impl DataBuffer {
         }
     }
 
+    /// 推入派生数据 (与最近一次 push_frame 的时间戳对齐)
+    ///
+    /// 在 data_loop 中, 每帧 evaluate_all_graphs_with 后调用:
+    /// 遍历 graph.edges, 对每条 edge, 若 source 在 output_snapshot 中,
+    /// 调用本方法将值 push 到 (sink_id, source_id) 的环形缓冲区。
+    ///
+    /// **时间对齐**: 派生缓冲区与 timestamps 共享同一时间轴,
+    /// 保证 derived[i] 与 channels[ch][i] 对应同一帧。
+    pub fn push_derived(&mut self, sink_id: &str, source_id: &str, value: f32) {
+        let key = (sink_id.to_string(), source_id.to_string());
+        self.derived_buffers
+            .entry(key)
+            .or_insert_with(|| RingBuffer::new(self.max_points))
+            .push(value);
+    }
+
+    /// 清空所有派生缓冲区 (断开连接/清数据时调用)
+    pub fn clear_derived(&mut self) {
+        self.derived_buffers.clear();
+    }
+
+    /// 移除指定 sink 的派生缓冲区 (widget 删除时调用)
+    pub fn remove_derived_sink(&mut self, sink_id: &str) {
+        self.derived_buffers.retain(|(s, _), _| s != sink_id);
+    }
+
     /// 调整通道数 (仅增大, 保留已有数据)
     fn resize_channels(&mut self, new_count: usize) {
         while self.channels.len() < new_count {
             self.channels.push(RingBuffer::new(self.max_points));
         }
         self.num_channels = new_count;
+    }
+
+    /// 切片所有派生缓冲区 — 用于 get_window (按 start_idx..end_idx 索引)
+    ///
+    /// 返回 HashMap<sink_id, HashMap<source_id, Vec<f32>>>,
+    /// 每个 Vec<f32> 长度 = end_idx - start_idx, 与 window timestamps 对齐。
+    /// 派生缓冲区创建较晚时, 早期位置填 NaN (表示 "尚无数据")。
+    fn slice_all_derived_window(
+        &self,
+        start_idx: usize,
+        end_idx: usize,
+        total_ts: usize,
+    ) -> HashMap<String, HashMap<String, Vec<f32>>> {
+        let window_len = end_idx - start_idx;
+        let mut result: HashMap<String, HashMap<String, Vec<f32>>> = HashMap::new();
+        for ((sink, source), rb) in &self.derived_buffers {
+            let m = rb.len();
+            // derived[0] 对应 timestamps[offset] (offset = total_ts - m)
+            let offset = total_ts.saturating_sub(m);
+            let all_data = rb.all();
+            let mut v = Vec::with_capacity(window_len);
+            for i in start_idx..end_idx {
+                if i < offset {
+                    v.push(f32::NAN); // 派生缓冲区创建之前 → NaN
+                } else {
+                    let di = i - offset;
+                    if di < m {
+                        v.push(all_data[di]);
+                    } else {
+                        v.push(f32::NAN);
+                    }
+                }
+            }
+            result
+                .entry(sink.clone())
+                .or_insert_with(HashMap::new)
+                .insert(source.clone(), v);
+        }
+        result
+    }
+
+    /// 切片所有派生缓冲区 — 用于 get_recent (取最近 count 个点)
+    ///
+    /// 每个 Vec<f32> 长度 = count, 与 recent timestamps 对齐。
+    /// 派生缓冲区不足 count 时, 开头填 NaN。
+    fn slice_all_derived_recent(&self, count: usize) -> HashMap<String, HashMap<String, Vec<f32>>> {
+        let mut result: HashMap<String, HashMap<String, Vec<f32>>> = HashMap::new();
+        for ((sink, source), rb) in &self.derived_buffers {
+            let data = rb.recent(count);
+            if data.len() < count {
+                // 开头补 NaN (派生缓冲区创建较晚)
+                let pad = count - data.len();
+                let mut v = vec![f32::NAN; pad];
+                v.extend_from_slice(&data);
+                result
+                    .entry(sink.clone())
+                    .or_insert_with(HashMap::new)
+                    .insert(source.clone(), v);
+            } else {
+                result
+                    .entry(sink.clone())
+                    .or_insert_with(HashMap::new)
+                    .insert(source.clone(), data);
+            }
+        }
+        result
     }
 
     /// 获取时间窗口内的数据
@@ -185,6 +286,7 @@ impl DataBuffer {
                 timestamps: vec![],
                 channels: vec![],
                 channel_count: self.num_channels,
+                derived: HashMap::new(),
             };
         }
 
@@ -218,10 +320,13 @@ impl DataBuffer {
             .map(|ch| self.channels[ch].recent(self.timestamps.len())[start_idx..end_idx].to_vec())
             .collect();
 
+        let derived = self.slice_all_derived_window(start_idx, end_idx, all_ts.len());
+
         WaveformWindow {
             timestamps: window_ts,
             channels: window_channels,
             channel_count: self.num_channels,
+            derived,
         }
     }
 
@@ -239,10 +344,13 @@ impl DataBuffer {
             .map(|ch| self.channels[ch].recent(count))
             .collect();
 
+        let derived = self.slice_all_derived_recent(count);
+
         WaveformWindow {
             timestamps: rel_ts,
             channels,
             channel_count: self.num_channels,
+            derived,
         }
     }
 
@@ -270,6 +378,7 @@ impl DataBuffer {
             ch.clear();
         }
         self.timestamps.clear();
+        self.derived_buffers.clear();
     }
 
     /// 设置通道数 (清空已有数据)
@@ -425,5 +534,148 @@ mod tests {
         assert_eq!(buf.get_channel(2, 2), vec![30.0, 31.0]);
         // 越界返回空
         assert_eq!(buf.get_channel(99, 2), Vec::<f32>::new());
+    }
+
+    // ===== Derived buffer tests =====
+
+    #[test]
+    fn test_push_derived_aligned_with_timestamps() {
+        // 场景: 3 帧, 每帧 push_frame 后 push_derived
+        // 验证 derived 数据与 channels 时间戳对齐
+        let mut buf = DataBuffer::new(100, 2);
+        // 帧 0
+        buf.push_frame(&DataFrame::new(vec![1.0, 2.0]));
+        buf.push_derived("wave1", "math1", 10.0);
+        // 帧 1
+        buf.push_frame(&DataFrame::new(vec![3.0, 4.0]));
+        buf.push_derived("wave1", "math1", 30.0);
+        // 帧 2
+        buf.push_frame(&DataFrame::new(vec![5.0, 6.0]));
+        buf.push_derived("wave1", "math1", 50.0);
+
+        let w = buf.get_recent(3);
+        assert_eq!(w.channels[0], vec![1.0, 3.0, 5.0]);
+        // derived 应与 channels 对齐
+        let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+        assert_eq!(derived, &vec![10.0, 30.0, 50.0]);
+    }
+
+    #[test]
+    fn test_derived_created_later_pads_nan() {
+        // 场景: derived 缓冲区在第 2 帧才创建 (前 2 帧无 derived)
+        let mut buf = DataBuffer::new(100, 1);
+        buf.push_frame(&DataFrame::new(vec![1.0]));
+        buf.push_frame(&DataFrame::new(vec![2.0]));
+        // 第 3 帧才开始 push derived
+        buf.push_frame(&DataFrame::new(vec![3.0]));
+        buf.push_derived("wave1", "math1", 30.0);
+        buf.push_frame(&DataFrame::new(vec![4.0]));
+        buf.push_derived("wave1", "math1", 40.0);
+
+        let w = buf.get_recent(4);
+        assert_eq!(w.channels[0], vec![1.0, 2.0, 3.0, 4.0]);
+        let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+        // 前 2 个应为 NaN, 后 2 个为实际值
+        assert_eq!(derived.len(), 4);
+        assert!(derived[0].is_nan());
+        assert!(derived[1].is_nan());
+        assert_eq!(derived[2], 30.0);
+        assert_eq!(derived[3], 40.0);
+    }
+
+    #[test]
+    fn test_multiple_derived_sources() {
+        // 场景: 一个 sink 连接多个 source (math1, math2)
+        let mut buf = DataBuffer::new(100, 1);
+        buf.push_frame(&DataFrame::new(vec![1.0]));
+        buf.push_derived("wave1", "math1", 10.0);
+        buf.push_derived("wave1", "math2", 20.0);
+        buf.push_frame(&DataFrame::new(vec![2.0]));
+        buf.push_derived("wave1", "math1", 30.0);
+        buf.push_derived("wave1", "math2", 40.0);
+
+        let w = buf.get_recent(2);
+        let sink_derived = w.derived.get("wave1").unwrap();
+        assert_eq!(sink_derived.get("math1").unwrap(), &vec![10.0, 30.0]);
+        assert_eq!(sink_derived.get("math2").unwrap(), &vec![20.0, 40.0]);
+    }
+
+    #[test]
+    fn test_multiple_derived_sinks() {
+        // 场景: 多个 sink 各自有 derived
+        let mut buf = DataBuffer::new(100, 1);
+        buf.push_frame(&DataFrame::new(vec![1.0]));
+        buf.push_derived("wave1", "math1", 10.0);
+        buf.push_derived("wave2", "math2", 20.0);
+
+        let w = buf.get_recent(1);
+        assert_eq!(w.derived.get("wave1").unwrap().get("math1").unwrap(), &vec![10.0]);
+        assert_eq!(w.derived.get("wave2").unwrap().get("math2").unwrap(), &vec![20.0]);
+    }
+
+    #[test]
+    fn test_clear_derived() {
+        let mut buf = DataBuffer::new(100, 1);
+        buf.push_frame(&DataFrame::new(vec![1.0]));
+        buf.push_derived("wave1", "math1", 10.0);
+        assert!(!buf.get_recent(1).derived.is_empty());
+
+        buf.clear_derived();
+        let w = buf.get_recent(1);
+        assert!(w.derived.is_empty());
+        // timestamps 和 channels 不受影响
+        assert_eq!(w.channels[0], vec![1.0]);
+    }
+
+    #[test]
+    fn test_remove_derived_sink() {
+        let mut buf = DataBuffer::new(100, 1);
+        buf.push_frame(&DataFrame::new(vec![1.0]));
+        buf.push_derived("wave1", "math1", 10.0);
+        buf.push_derived("wave2", "math2", 20.0);
+
+        buf.remove_derived_sink("wave1");
+        let w = buf.get_recent(1);
+        assert!(w.derived.get("wave1").is_none());
+        assert!(w.derived.get("wave2").is_some());
+    }
+
+    #[test]
+    fn test_derived_ringbuffer_overflow() {
+        // 验证 derived 缓冲区也会覆盖旧数据
+        let mut buf = DataBuffer::new(3, 1); // max_points = 3
+        for i in 0..5 {
+            buf.push_frame(&DataFrame::new(vec![i as f32]));
+            buf.push_derived("wave1", "math1", (i * 10) as f32);
+        }
+        let w = buf.get_recent(3);
+        // 只保留最近 3 个点
+        assert_eq!(w.channels[0], vec![2.0, 3.0, 4.0]);
+        let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+        assert_eq!(derived, &vec![20.0, 30.0, 40.0]);
+    }
+
+    #[test]
+    fn test_get_window_with_derived() {
+        // 验证 get_window 正切片 derived
+        let mut buf = DataBuffer::new(100, 1);
+        for i in 0..5 {
+            buf.push_frame(&DataFrame::new(vec![i as f32]));
+            buf.push_derived("wave1", "math1", (i * 10) as f32);
+        }
+        // 获取全部 (start_ms=0 表示从最新到最新, 但 end_ms 也为 0 会返回空)
+        // 用 get_recent 更简单
+        let w = buf.get_recent(5);
+        assert_eq!(w.channels[0], vec![0.0, 1.0, 2.0, 3.0, 4.0]);
+        let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+        assert_eq!(derived, &vec![0.0, 10.0, 20.0, 30.0, 40.0]);
+    }
+
+    #[test]
+    fn test_derived_empty_buffer() {
+        // 空 buffer 时 derived 也应为空
+        let buf = DataBuffer::new(100, 2);
+        let w = buf.get_recent(10);
+        assert!(w.derived.is_empty());
     }
 }

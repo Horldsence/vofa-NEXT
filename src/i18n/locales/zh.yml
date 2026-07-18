@@ -190,6 +190,9 @@ sharedYDesc: 切换所有通道是否共用同一个 Y 轴 (V/div 与 Position)
 sharedYHint: 共用 Y 模式 — V/div 与 Position 请在"通道"Tab 统一设置
 cursorHideHint: 隐藏光标
 cursorHiddenHint: 光标已隐藏 (松开按键恢复)
+dynamicSeriesToggle: 切换动态 series 模式 (固定通道槽 ↔ 按连接数动态显示)
+dynamicSeriesOff: 固定
+dynamicSeriesOn: 动态
 
 # 通知
 notifError: 错误
@@ -305,6 +308,8 @@ menuSettings: 设置
 # 自定义控件编辑器
 customWidgetEditor: 自定义控件编辑器
 customWidgetCode: 控件代码
+customPerfWarningTitle: 性能提示
+customPerfWarning: 自定义 JS 控件在 iframe 沙箱中执行, 输入以 30 FPS 推送、输出经 IPC 回传, 性能低于原生 Rust 节点。对实时性敏感的场景请改用内置控件或 Math 控件。
 customTemplate: 加载模板...
 customRebuildPreview: 重建预览
 customPreview: 实时预览
@@ -345,6 +350,79 @@ mathTan: 正切
 mathLog: 对数
 mathUnary: 单目
 mathBinary: 双目
+
+# 滤波器与频谱控件
+filter: 滤波器
+filterLowpass: 低通
+filterHighpass: 高通
+filterBandpass: 带通
+filterBandstop: 带阻
+filterSettings: 滤波器设置
+filterPreset: 预设
+filterCutoff: 截止频率
+filterLow: 下限
+filterHigh: 上限
+filterSampleRate: 采样率
+spectrum: 频谱
+spectrumSettings: 频谱设置
+spectrumWindowSize: 窗口大小
+spectrumWindowType: 窗函数
+spectrumOutputMode: 输出模式
+spectrumMagnitude: 振幅
+spectrumPower: 功率
+spectrumPSD: PSD
+spectrumDecibel: 分贝
+spectrumWaiting: 等待数据...
+windowRect: 矩形
+windowHann: 汉宁
+windowHamming: 汉明
+windowBlackman: 布莱克曼
+
+# 3D 模型控件
+model3d: 3D 模型
+model3dSettings: 3D 设置
+model3dMode: 模式
+model3dTrajectory: 轨迹
+model3dAttitude: 姿态
+model3dTrailLength: 拖尾长度
+model3dColor: 颜色
+model3dAxisLength: 坐标轴长度
+
+# 命令发送控件
+command: 命令发送
+cmdFormatHex: HEX
+cmdFormatAscii: ASCII
+cmdFormatTemplate: 模板
+cmdFormatStructured: 结构化
+cmdSettings: 设置
+cmdChecksum: 校验算法
+cmdChecksumNone: 无
+cmdChecksumSum8: Sum8
+cmdChecksumXor8: XOR8
+cmdChecksumCRC8: CRC8
+cmdChecksumCRC16Modbus: CRC16-Modbus
+cmdChecksumCRC16CCITT: CRC16-CCITT
+cmdChecksumCRC32: CRC32
+cmdChecksumLRC: LRC
+cmdChecksumCustom: 自定义
+cmdChecksumPosition: 校验位置
+cmdChecksumPos_append: 末尾
+cmdChecksumPos_prepend: 开头
+cmdChecksumPos_none: 不附加
+cmdCustomScript: 自定义脚本
+cmdCustomWarn: 自定义脚本使用 new Function 求值, 仅限本地使用, 请勿粘贴不可信代码
+cmdAppendNewline: 追加换行
+cmdNewlineOn: 开
+cmdNewlineOff: 关
+cmdLabel: 标签
+cmdPreview: 预览
+cmdPreviewEmpty: 输入内容后显示预览
+cmdSend: 发送
+cmdErrorEmpty: 无可发送数据
+cmdAddField: 添加字段
+cmdAvailableVars: 可用变量
+cmdNoVars: 暂无变量 (添加 Knob/Slider 等输入控件后可用)
+cmdLastSent: 最近发送
 
 # 自定义控件帮助说明
 helpTitle: 使用说明与 API 设计

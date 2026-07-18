@@ -1,10 +1,13 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, X } from 'lucide-react';
+import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X } from 'lucide-react';
 import { WaveformChart } from '../displays/WaveformChart';
 import { RawDataView } from '../displays/RawDataView';
 import { PieChart } from '../displays/PieChart';
 import { ImageViewer } from '../displays/ImageViewer';
+import { Model3DWidget } from '../displays/Model3DWidget';
+import { SpectrumChart } from '../displays/SpectrumChart';
+import { CommandSender } from '../displays/CommandSender';
 import { AxisSettings } from '../displays/AxisSettings';
 import { useState, useEffect, useCallback } from 'react';
 import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements } from '../../types';
@@ -239,6 +242,39 @@ export function DataPanel() {
         if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
         return <ImageViewer widget={widget} onRemove={() => {}} />;
       }
+      case 'model3d': {
+        const widget = widgets.find(
+          (w) => w.params.id === tab.widgetId && w.kind === 'Model3D'
+        ) as Extract<WidgetConfig, { kind: 'Model3D' }> | undefined;
+        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
+        return (
+          <div className="datatab-fullscreen-widget">
+            <Model3DWidget widget={widget} onRemove={() => {}} />
+          </div>
+        );
+      }
+      case 'spectrum': {
+        const widget = widgets.find(
+          (w) => w.params.id === tab.widgetId && w.kind === 'Spectrum'
+        ) as Extract<WidgetConfig, { kind: 'Spectrum' }> | undefined;
+        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
+        return (
+          <div className="datatab-fullscreen-widget">
+            <SpectrumChart widget={widget} onRemove={() => {}} />
+          </div>
+        );
+      }
+      case 'command': {
+        const widget = widgets.find(
+          (w) => w.params.id === tab.widgetId && w.kind === 'Command'
+        ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
+        if (!widget) return <div className="empty-state">{t(lang, 'noWidgets')}</div>;
+        return (
+          <div className="datatab-command-wrapper">
+            <CommandSender widget={widget} onRemove={() => {}} />
+          </div>
+        );
+      }
       default:
         return null;
     }
@@ -255,6 +291,12 @@ export function DataPanel() {
         return <PieIcon size={12} />;
       case 'image':
         return <ImageIcon size={12} />;
+      case 'model3d':
+        return <Box size={12} />;
+      case 'spectrum':
+        return <BarChart3 size={12} />;
+      case 'command':
+        return <Send size={12} />;
       default:
         return null;
     }

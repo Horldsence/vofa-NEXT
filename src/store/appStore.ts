@@ -14,6 +14,14 @@ import {
 import { api } from '../lib/tauri';
 import { waveformWindow, rawDataBuffer } from '../lib/dataBuffer';
 import { notify, formatError } from '../lib/notifications';
+import {
+  subscribeGraphOutputs,
+  subscribeCustomInputs,
+  subscribeSpectrum,
+  setInputValue as apiSetInputValue,
+  submitCustomOutput as apiSubmitCustomOutput,
+} from '../lib/graphSubscription';
+import { widgetToNodeKind, makeChannelSourceNodeDef, type NodeDef } from '../lib/nodeDef';
 import { nanoid } from 'nanoid';
 import { t } from '../i18n';
 import type { Lang } from '../i18n';
@@ -27,14 +35,12 @@ import type {
   TransportStats,
   WidgetConfig,
   WidgetBinding,
-  NodeGraphEdge,
   ControlTab,
   DataTab,
+  SpectrumResult,
+  WindowType,
+  SpectrumOutput,
 } from '../types';
-import {
-  computeAllOutputs,
-  type WidgetOutputCache,
-} from '../lib/widgetDataFlow';
 
 const DEFAULT_SERIAL: TransportConfig = {
   kind: 'Serial',
@@ -107,12 +113,17 @@ interface AppStore {
   // Raw data version (for triggering re-renders)
   rawDataVersion: number;
 
-  // Widget 数据流缓存: widgetId -> portId -> value
-  // 由 polling loop 定时更新 (见 useWidgetDataFlow hook)
-  // 上游 widget 的输出值, 供下游 widget 读取
-  widgetOutputCache: WidgetOutputCache;
-  setWidgetOutput: (widgetId: string, portId: string, value: number) => void;
-  refreshWidgetOutputCache: () => void;
+  // ===== 后端图评估状态 (60 FPS / 30 FPS 推送) =====
+  /// 后端图输出快照: widgetId -> portId -> value
+  /// 由 subscribeGraphOutputs 推送 (60 FPS), 供显示控件读取
+  graphOutputs: Record<string, Record<string, number>>;
+  graphOutputsTick: number;
+  /// Custom widget 输入批次: widgetId -> portId -> value
+  /// 由 subscribeCustomInputs 推送 (30 FPS), 供 Custom iframe 读取
+  customInputs: Record<string, Record<string, number>>;
+  /// 频谱分析结果: sinkWidgetId -> SpectrumResult
+  /// 由 subscribeSpectrum 推送 (30 FPS), 供 SpectrumChart 读取
+  spectrumResults: Record<string, SpectrumResult>;
 
   // Actions
   refreshPorts: () => Promise<void>;
@@ -130,6 +141,16 @@ interface AppStore {
   addWidget: (widget: WidgetConfig, tabId: string, position?: { x: number; y: number }) => void;
   removeWidget: (id: string) => void;
   updateWidget: (id: string, widget: WidgetConfig) => void;
+
+  // ===== 图同步 actions (后端评估) =====
+  /// 同步指定 tab 的图到后端 (整体替换 nodes + edges)
+  syncTabGraph: (tabId: string) => void;
+  /// 移除指定 tab 的图 (tab 删除时调用)
+  removeTabGraph: (tabId: string) => void;
+  /// 输入控件值变更 → invoke 后端 (事件驱动)
+  setInputValue: (widgetId: string, value: number) => void;
+  /// Custom widget 输出回传 → invoke 后端
+  submitCustomOutput: (widgetId: string, outputs: Record<string, number>) => void;
 
   // Custom widget editor
   customEditorState: { open: boolean; widgetId: string | null };
@@ -164,6 +185,9 @@ interface AppStore {
 
 let unlistenFns: UnlistenFn[] = [];
 let waveformSub: { cancel: () => void } | null = null;
+let graphOutputSub: { cancel: () => void } | null = null;
+let customInputSub: { cancel: () => void } | null = null;
+let spectrumSub: { cancel: () => void } | null = null;
 let detectedChannelsPoller: ReturnType<typeof setInterval> | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -179,25 +203,47 @@ function createChannelSourceNode(tabId: string, channelCount: number): Node {
   };
 }
 
-/// 同步节点图到后端
-async function syncNodeGraphToBackend(edges: Edge[]): Promise<void> {
-  const graphEdges: NodeGraphEdge[] = edges
-    .filter((e) => !e.source.startsWith(CHANNEL_SOURCE_ID) || !e.target.startsWith(CHANNEL_SOURCE_ID))
-    .map((e) => ({
-      id: e.id,
-      source: e.source,
-      source_handle: e.sourceHandle ?? '',
-      target: e.target,
-      target_handle: e.targetHandle ?? '',
-    }));
+/// 同步指定 tab 的节点图到后端
+/// 收集该 tab 的所有节点 (ChannelSource + widgets) 与边, 整体替换后端图
+async function syncTabGraphToBackend(tabId: string): Promise<void> {
+  const state = useAppStore.getState();
+  const tabNodeIds = new Set(
+    state.rfNodes
+      .filter((n) => n.data?.tabId === tabId || n.id === `${CHANNEL_SOURCE_ID}-${tabId}`)
+      .map((n) => n.id)
+  );
+  // 收集 NodeDef: ChannelSource + widgets
+  const nodes: NodeDef[] = [];
+  const channelSourceNode = state.rfNodes.find(
+    (n) => n.id === `${CHANNEL_SOURCE_ID}-${tabId}` && n.type === 'channelSource'
+  );
+  if (channelSourceNode) {
+    const data = channelSourceNode.data as { channelCount?: number } | undefined;
+    const chCount: number = data?.channelCount ?? 4;
+    nodes.push(makeChannelSourceNodeDef(tabId, chCount));
+  }
+  for (const n of state.rfNodes) {
+    if (n.data?.tabId !== tabId) continue;
+    const widget = n.data?.widget as WidgetConfig | undefined;
+    if (!widget) continue;
+    nodes.push({
+      id: n.id,
+      tab_id: tabId,
+      kind: widgetToNodeKind(widget),
+    });
+  }
+  // 收集 tab 内的 edges (source 和 target 都在 tab 内)
+  const edges = state.rfEdges.filter(
+    (e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target)
+  );
   try {
-    await api.updateNodeGraph(graphEdges);
+    await api.updateTabGraph(tabId, nodes, edges);
   } catch (err) {
     const lang = useAppStore.getState().lang;
     notify.error(
       t(lang, 'notifNodeGraphSyncFailed'),
       formatError(err),
-      { source: 'syncNodeGraph' }
+      { source: 'syncTabGraph' }
     );
   }
 }
@@ -283,28 +329,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   rawDataVersion: 0,
 
-  // Widget 数据流缓存: widgetId -> portId -> value
-  // 由 polling loop 定时更新 (computeAllOutputs 调用)
-  widgetOutputCache: {},
-  setWidgetOutput: (widgetId, portId, value) =>
-    set((s) => {
-      const cur = s.widgetOutputCache[widgetId] ?? {};
-      // 浅比较避免无谓的更新
-      if (cur[portId] === value) return {};
-      return {
-        widgetOutputCache: {
-          ...s.widgetOutputCache,
-          [widgetId]: { ...cur, [portId]: value },
-        },
-      };
-    }),
-  refreshWidgetOutputCache: () =>
-    set((s) => {
-      const next = computeAllOutputs(s.widgets, s.rfEdges, s.widgetOutputCache);
-      // 浅比较: 引用相同则不更新
-      if (next === s.widgetOutputCache) return {};
-      return { widgetOutputCache: next };
-    }),
+  // 后端图评估状态 — 由 initEventListeners 中的 subscribeGraphOutputs / subscribeCustomInputs / subscribeSpectrum 推送
+  graphOutputs: {},
+  graphOutputsTick: 0,
+  customInputs: {},
+  spectrumResults: {},
+
+  // 图同步 actions
+  syncTabGraph: (tabId) => {
+    void syncTabGraphToBackend(tabId);
+  },
+  removeTabGraph: (tabId) => {
+    void api.removeTabGraph(tabId);
+  },
+  setInputValue: (widgetId, value) => {
+    void apiSetInputValue(widgetId, value);
+  },
+  submitCustomOutput: (widgetId, outputs) => {
+    void apiSubmitCustomOutput(widgetId, outputs);
+  },
 
   refreshPorts: async () => {
     try {
@@ -487,6 +530,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
                 : n
             ),
           }));
+          // 通道数变更 → 重新同步所有 tab 图 (ChannelSource 参数变化)
+          get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
         }
       } catch (e) {
         const lang = get().lang;
@@ -499,7 +544,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }, 1000);
   },
 
-  addWidget: (widget, tabId, position) =>
+  addWidget: (widget, tabId, position) => {
     set((s) => {
       const pos = position ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 };
       const newNode: Node = {
@@ -516,14 +561,23 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (
         widget.kind === 'Waveform' ||
         widget.kind === 'PieChart' ||
-        widget.kind === 'Image'
+        widget.kind === 'Image' ||
+        widget.kind === 'Model3D' ||
+        widget.kind === 'Spectrum' ||
+        widget.kind === 'Command'
       ) {
         const tabType =
           widget.kind === 'Waveform'
             ? 'waveform-extra'
             : widget.kind === 'PieChart'
             ? 'pie'
-            : 'image';
+            : widget.kind === 'Image'
+            ? 'image'
+            : widget.kind === 'Model3D'
+            ? 'model3d'
+            : widget.kind === 'Spectrum'
+            ? 'spectrum'
+            : 'command';
         const tabName =
           widget.kind === 'Waveform'
             ? 'Waveform'
@@ -543,11 +597,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
         t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
       );
       return newState;
-    }),
+    });
+    // 同步该 tab 图到后端 (新增节点)
+    get().syncTabGraph(tabId);
+  },
 
-  removeWidget: (id) =>
+  removeWidget: (id) => {
+    const widget = get().widgets.find((w) => w.params.id === id);
+    const affectedTabs = new Set<string>();
+    // 找到该 widget 所在的 tab
+    const node = get().rfNodes.find((n) => n.id === id);
+    if (node?.data?.tabId) affectedTabs.add(node.data.tabId as string);
     set((s) => {
-      const widget = s.widgets.find((w) => w.params.id === id);
       const newState: Partial<AppStore> = {
         widgets: s.widgets.filter((w) => w.params.id !== id),
         rfNodes: s.rfNodes.filter((n) => n.id !== id),
@@ -572,19 +633,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
         widgets: t.widgets.filter((w) => w !== id),
       }));
       return newState;
-    }),
+    });
+    // 同步受影响的 tab 图
+    affectedTabs.forEach((tabId) => get().syncTabGraph(tabId));
+  },
 
-  updateWidget: (id, widget) =>
+  updateWidget: (id, widget) => {
+    const node = get().rfNodes.find((n) => n.id === id);
+    const tabId = node?.data?.tabId as string | undefined;
     set((s) => ({
       widgets: s.widgets.map((w) => (w.params.id === id ? widget : w)),
       rfNodes: s.rfNodes.map((n) =>
         n.id === id ? { ...n, data: { ...n.data, widget } } : n
       ),
-    })),
+    }));
+    // widget 配置变更可能影响 NodeKind (如 Math op / input_count), 需重新同步
+    if (tabId) get().syncTabGraph(tabId);
+  },
 
-  addControlTab: (name) =>
+  addControlTab: (name) => {
+    const id = nanoid(8);
     set((s) => {
-      const id = nanoid(8);
       const tabName = name || `Tab ${s.controlTabs.length + 1}`;
       const effectiveCh = getEffectiveChannels(s.protocolConfig, s.detectedChannels);
       return {
@@ -592,9 +661,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         activeControlTabId: id,
         rfNodes: [...s.rfNodes, createChannelSourceNode(id, effectiveCh)],
       };
-    }),
+    });
+    // 新 tab 仅含 ChannelSource, 同步以建立后端图
+    get().syncTabGraph(id);
+  },
 
-  removeControlTab: (tabId) =>
+  removeControlTab: (tabId) => {
     set((s) => {
       const remaining = s.controlTabs.filter((t) => t.id !== tabId);
       if (remaining.length === 0) {
@@ -616,7 +688,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
         rfNodes: s.rfNodes.filter((n) => n.data.tabId !== tabId && n.id !== `${CHANNEL_SOURCE_ID}-${tabId}`),
         rfEdges: s.rfEdges.filter((e) => !tabNodeIds.has(e.source) && !tabNodeIds.has(e.target)),
       };
-    }),
+    });
+    // 后端清除该 tab 的图
+    get().removeTabGraph(tabId);
+  },
 
   setActiveControlTab: (tabId) => set({ activeControlTabId: tabId }),
 
@@ -634,26 +709,48 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   onEdgesChange: (changes) => {
-    set((s) => {
-      const newEdges = applyEdgeChanges(changes, s.rfEdges);
-      // 异步同步到后端 (不阻塞 UI)
-      void syncNodeGraphToBackend(newEdges);
-      return { rfEdges: newEdges };
-    });
+    // 收集受影响的 tab (从 edge 的 source/target 反查)
+    const affectedTabs = new Set<string>();
+    for (const ch of changes) {
+      if ('source' in ch && ch.source) {
+        const node = get().rfNodes.find((n) => n.id === ch.source);
+        if (node?.data?.tabId) affectedTabs.add(node.data.tabId as string);
+      }
+      if ('target' in ch && ch.target) {
+        const node = get().rfNodes.find((n) => n.id === ch.target);
+        if (node?.data?.tabId) affectedTabs.add(node.data.tabId as string);
+      }
+    }
+    set((s) => ({
+      rfEdges: applyEdgeChanges(changes, s.rfEdges),
+    }));
+    // 同步受影响的 tab 图
+    affectedTabs.forEach((tabId) => get().syncTabGraph(tabId));
   },
 
   onConnect: (connection) => {
-    set((s) => {
-      const newEdge: Edge = {
-        ...connection,
-        id: nanoid(8),
-        animated: true,
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
-      };
-      const newEdges = addEdge(newEdge, s.rfEdges);
-      void syncNodeGraphToBackend(newEdges);
-      return { rfEdges: newEdges };
-    });
+    const newEdge: Edge = {
+      ...connection,
+      id: nanoid(8),
+      animated: true,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
+    };
+    let tabId: string | undefined;
+    const sourceNode = get().rfNodes.find((n) => n.id === connection.source);
+    tabId = sourceNode?.data?.tabId as string | undefined;
+    // 通道源节点没有 tabId, 反查 target
+    if (!tabId) {
+      const targetNode = get().rfNodes.find((n) => n.id === connection.target);
+      tabId = targetNode?.data?.tabId as string | undefined;
+      // 通道源节点: 从 id 反查 tabId
+      if (!tabId && connection.source.startsWith(CHANNEL_SOURCE_ID)) {
+        tabId = connection.source.slice(CHANNEL_SOURCE_ID.length + 1);
+      }
+    }
+    set((s) => ({
+      rfEdges: addEdge(newEdge, s.rfEdges),
+    }));
+    if (tabId) get().syncTabGraph(tabId);
   },
 
   getTabNodes: (tabId) => {
@@ -748,12 +845,51 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
     unlistenFns = [unlistenData, unlistenFrames, unlistenState, unlistenStats];
 
+    // 启动后端图输出订阅 (60 FPS 推送)
+    // 后端在每帧评估所有 tab 的图, 并将合并快照推送至此
+    if (graphOutputSub) graphOutputSub.cancel();
+    graphOutputSub = subscribeGraphOutputs((snapshot) => {
+      set({
+        graphOutputs: snapshot.values,
+        graphOutputsTick: snapshot.tick,
+      });
+    });
+
+    // 启动 Custom widget 输入订阅 (30 FPS 推送)
+    // 后端收集所有 Custom widget 的输入端口值, 批量推送至此
+    if (customInputSub) customInputSub.cancel();
+    customInputSub = subscribeCustomInputs((batch) => {
+      set({ customInputs: batch.inputs });
+    });
+
+    // 启动频谱分析订阅 (30 FPS 推送)
+    // 后端对每个 SpectrumSink 节点做 FFT, 推送结果至此
+    if (spectrumSub) spectrumSub.cancel();
+    spectrumSub = subscribeSpectrum((batch) => {
+      set({ spectrumResults: batch.spectra });
+    });
+
+    // 启动时同步所有现有 tab 的图到后端
+    get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
+
     return () => {
       unlistenFns.forEach((fn) => fn());
       unlistenFns = [];
       if (waveformSub) {
         waveformSub.cancel();
         waveformSub = null;
+      }
+      if (graphOutputSub) {
+        graphOutputSub.cancel();
+        graphOutputSub = null;
+      }
+      if (customInputSub) {
+        customInputSub.cancel();
+        customInputSub = null;
+      }
+      if (spectrumSub) {
+        spectrumSub.cancel();
+        spectrumSub = null;
       }
       if (detectedChannelsPoller) {
         clearInterval(detectedChannelsPoller);
@@ -890,6 +1026,66 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           inputCount: 2,
           unit: '',
           precision: 3,
+        },
+      };
+    case 'Filter':
+      return {
+        kind: 'Filter',
+        params: {
+          id,
+          label: 'Filter',
+          preset: 'Lowpass',
+          cutoff: 100,
+          low: 80,
+          high: 200,
+          sampleRate: 1000,
+          precision: 3,
+        },
+      };
+    case 'Spectrum':
+      return {
+        kind: 'Spectrum',
+        params: {
+          id,
+          label: 'Spectrum',
+          windowSize: 512,
+          windowType: 'Hann' as WindowType,
+          output: 'Magnitude' as SpectrumOutput,
+          sampleRate: 1000,
+        },
+      };
+    case 'Model3D':
+      return {
+        kind: 'Model3D',
+        params: {
+          id,
+          label: 'Model3D',
+          mode: 'trajectory',
+          trailLength: 200,
+          color: '#75beff',
+          axisLength: 1.0,
+        },
+      };
+    case 'Command':
+      return {
+        kind: 'Command',
+        params: {
+          id,
+          label: 'Command',
+          format: 'hex',
+          hexContent: 'AA 01 00',
+          asciiContent: 'HELLO\\n',
+          templateContent: 'SET ${CH0} ${VALUE}\\n',
+          fields: [
+            { id: 'f1', name: 'header', type: 'uint8', value: '0xAA' },
+            { id: 'f2', name: 'addr', type: 'uint8', value: '0x01' },
+            { id: 'f3', name: 'value', type: 'uint16LE', value: '0' },
+            { id: 'f4', name: 'crc', type: 'uint8', value: '0' },
+          ],
+          checksum: 'sum8',
+          checksumPosition: 'append',
+          customScript: '// bytes: 输入字节数组\n// 返回: 校验字节数组\nlet s = 0;\nfor (const b of bytes) s = (s + b) & 0xff;\nreturn [s];',
+          appendNewline: false,
         },
       };
   }

@@ -7,8 +7,9 @@ import type {
   TransportStats,
   WidgetBinding,
   WaveformWindow,
-  NodeGraphEdge,
 } from '../types';
+import type { NodeDef } from './nodeDef';
+import type { Edge } from '@xyflow/react';
 
 export const api = {
   // ===== 传输 =====
@@ -82,9 +83,14 @@ export const api = {
 
   getBufferInfo: () => invoke<[number, number]>('get_buffer_info'),
 
-  // ===== 节点图 =====
-  updateNodeGraph: (edges: NodeGraphEdge[]) =>
-    invoke<void>('update_node_graph', { edges }),
+  // ===== 节点图 (后端化重构) =====
+  /// 更新指定 tab 的节点图 (整体替换 nodes + edges)
+  /// 编译失败 (循环等) 返回错误, 旧图保留
+  updateTabGraph: (tabId: string, nodes: NodeDef[], edges: Edge[]) =>
+    invoke<void>('update_tab_graph', { tabId, nodes, edges }),
 
-  getNodeEdges: () => invoke<NodeGraphEdge[]>('get_node_edges'),
+  /// 移除指定 tab 的节点图 (tab 删除时调用)
+  removeTabGraph: (tabId: string) =>
+    invoke<void>('remove_tab_graph', { tabId }),
 };
+

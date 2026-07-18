@@ -1,12 +1,71 @@
 use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
+use tauri::ipc::Channel;
 use tokio::sync::mpsc;
-use vofa_next_buffer::{DataBuffer, NodeGraph};
+use vofa_next_buffer::DataBuffer;
 use vofa_next_core::{ConnectionState, DataFrame, ProtocolConfig, RawData, TransportStats};
+use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
+use vofa_next_nodes::CompiledGraph;
 use vofa_next_protocol::ProtocolEngine;
 use vofa_next_transport::TransportManager;
+
+/// 单个图输出快照 — 通过 Channel 推送到前端
+///
+/// values: widgetId -> portId -> value
+/// 包含 ChannelSource/Input/Math/Custom/Filter 节点的输出
+/// 前端通过 edges 自行解析 Sink 节点的输入 (上游 widgetId + sourceHandle)
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GraphOutputSnapshot {
+    /// 自增计数器, 前端可用于去重/丢弃过期帧
+    pub tick: u64,
+    /// widgetId -> portId -> value
+    pub values: HashMap<String, HashMap<String, f32>>,
+}
+
+/// Custom widget 输入批次 — 后端推送到前端 iframe
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CustomInputBatch {
+    /// custom widget id -> input port id -> value
+    pub inputs: HashMap<String, HashMap<String, f32>>,
+}
+
+/// 频谱分析结果批次 — 后端推送到前端 SpectrumChart
+///
+/// 30 FPS 推送, key = SpectrumSink widget id, value = 最新一次 FFT 结果
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SpectrumBatch {
+    /// sink widget id -> 频谱结果
+    pub spectra: HashMap<String, SpectrumResult>,
+}
+
+/// 节点图评估所需的共享状态 (从 AppState 抽取, 供 data_loop 使用)
+///
+/// 设计动机: Tauri 2 的 State<'_, T> 内部是 &Arc<T> 但不暴露 Arc,
+/// 我们也无法在 manage() 时包装 AppState 成 Arc<AppState> (因为 tauri::manage
+/// 内部已用 Arc)。因此把 data_loop 需要的字段单独打包为 Arc, 从 AppState 克隆。
+pub struct GraphEvalState {
+    pub graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
+    pub input_values: Arc<Mutex<HashMap<String, f32>>>,
+    pub custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
+    pub output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
+    pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
+    pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
+    /// Filter 节点状态 (跨帧持久化, 逐点滤波)
+    /// key: Filter widget id, value: DigitalFilter (含 FIR 延迟线 / IIR biquad 状态)
+    pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
+    /// SpectrumSink 节点对应的频谱分析器
+    /// key: SpectrumSink widget id, value: SpectrumAnalyzer (含滑动窗口)
+    /// 由 spectrum_ticker 在每 tick 开头与 graphs 同步 (增删)
+    pub spectrum_analyzers: Arc<Mutex<HashMap<String, SpectrumAnalyzer>>>,
+    /// 最新一次 FFT 结果 (供 30 FPS spectrum_ticker 推送)
+    /// key: SpectrumSink widget id, value: SpectrumResult
+    pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
+    /// 频谱订阅者 (30 FPS 推送 SpectrumBatch)
+    pub spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
+}
 
 /// 应用全局状态
 pub struct AppState {
@@ -18,20 +77,68 @@ pub struct AppState {
     pub protocol_config: Mutex<ProtocolConfig>,
     /// 多通道数据缓冲区
     pub buffer: Arc<Mutex<DataBuffer>>,
-    /// 节点图 (数据路由)
-    pub graph: Arc<Mutex<NodeGraph>>,
+    /// 节点图 — 按 tab_id 索引 (每个 tab 独立编译图)
+    pub graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
+    /// 输入控件当前值 (Knob/Slider/Button/Radio/Checkbox)
+    /// key: widget_id, value: 当前值
+    /// 由前端 invoke('set_input_value') 更新
+    pub input_values: Arc<Mutex<HashMap<String, f32>>>,
+    /// Custom widget 回传输出
+    /// key: widget_id, value: portId -> value
+    /// 由前端 invoke('submit_custom_output') 更新
+    pub custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
+    /// 最新一帧的图输出快照 (供 60 FPS ticker 推送)
+    pub output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
+    /// 图输出订阅者 (60 FPS 推送)
+    pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
+    /// Custom 输入订阅者 (30 FPS 推送到前端 iframe)
+    pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
+    /// Filter 节点状态 (跨帧持久化)
+    pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
+    /// SpectrumSink 节点对应的频谱分析器
+    pub spectrum_analyzers: Arc<Mutex<HashMap<String, SpectrumAnalyzer>>>,
+    /// 最新一次 FFT 结果快照
+    pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
+    /// 频谱订阅者 (30 FPS 推送)
+    pub spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
 }
 
 impl AppState {
     pub fn new() -> Self {
-        let default_config = ProtocolConfig::default();
-        let engine = vofa_next_protocol::create_engine(&default_config);
         Self {
             transport: tokio::sync::Mutex::new(TransportManager::new()),
-            protocol: Arc::new(Mutex::new(engine)),
-            protocol_config: Mutex::new(default_config),
+            protocol: Arc::new(Mutex::new(vofa_next_protocol::create_engine(&ProtocolConfig::default()))),
+            protocol_config: Mutex::new(ProtocolConfig::default()),
             buffer: Arc::new(Mutex::new(DataBuffer::new(10_000, 4))),
-            graph: Arc::new(Mutex::new(NodeGraph::new())),
+            graphs: Arc::new(Mutex::new(HashMap::new())),
+            input_values: Arc::new(Mutex::new(HashMap::new())),
+            custom_outputs: Arc::new(Mutex::new(HashMap::new())),
+            output_snapshot: Arc::new(Mutex::new(GraphOutputSnapshot {
+                tick: 0,
+                values: HashMap::new(),
+            })),
+            output_subscribers: Arc::new(Mutex::new(Vec::new())),
+            custom_input_subscribers: Arc::new(Mutex::new(Vec::new())),
+            filter_states: Arc::new(Mutex::new(HashMap::new())),
+            spectrum_analyzers: Arc::new(Mutex::new(HashMap::new())),
+            spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
+            spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// 抽取图评估所需的 Arc 字段 (供 data_loop 持有)
+    pub fn eval_state(&self) -> GraphEvalState {
+        GraphEvalState {
+            graphs: self.graphs.clone(),
+            input_values: self.input_values.clone(),
+            custom_outputs: self.custom_outputs.clone(),
+            output_snapshot: self.output_snapshot.clone(),
+            output_subscribers: self.output_subscribers.clone(),
+            custom_input_subscribers: self.custom_input_subscribers.clone(),
+            filter_states: self.filter_states.clone(),
+            spectrum_analyzers: self.spectrum_analyzers.clone(),
+            spectrum_snapshot: self.spectrum_snapshot.clone(),
+            spectrum_subscribers: self.spectrum_subscribers.clone(),
         }
     }
 }
@@ -45,18 +152,86 @@ impl Default for AppState {
 /// 统计节流间隔 (毫秒) — 避免高波特率下每包都 emit 统计
 const STATS_THROTTLE_MS: u128 = 100;
 
+/// 评估所有图 (静态函数版本, 供 GraphEvalState 使用)
+///
+/// 步骤:
+/// 1. 对每个图调用 evaluate (传入 filter_states, 逐点滤波跨帧持久化)
+/// 2. 合并所有图输出到 output_snapshot
+/// 3. 遍历所有图的 SpectrumSink, 从 output_snapshot 取输入值, push 到对应 analyzer
+fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) {
+    let input_values = eval_state.input_values.lock().clone();
+    let custom_outputs = eval_state.custom_outputs.lock().clone();
+    let graphs = eval_state.graphs.lock();
+    let mut filter_states = eval_state.filter_states.lock();
+
+    let mut combined: HashMap<String, HashMap<String, f32>> = HashMap::new();
+    for (_, graph) in graphs.iter() {
+        let out = graph.evaluate(frame, &input_values, &custom_outputs, &mut filter_states);
+        for (k, v) in out {
+            combined.insert(k, v);
+        }
+    }
+
+    // 更新 output_snapshot (供 60 FPS ticker 推送)
+    {
+        let mut snap = eval_state.output_snapshot.lock();
+        snap.tick = snap.tick.wrapping_add(1);
+        snap.values = combined.clone();
+    }
+
+    // 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口
+    // analyzer 的创建/删除由 spectrum_ticker 在每 tick 开头与 graphs 同步
+    let mut analyzers = eval_state.spectrum_analyzers.lock();
+    if !analyzers.is_empty() {
+        for (_, graph) in graphs.iter() {
+            let spectrum_inputs = graph.collect_spectrum_inputs(&combined);
+            for (sink_id, value) in spectrum_inputs {
+                if let Some(analyzer) = analyzers.get_mut(&sink_id) {
+                    analyzer.push(value);
+                }
+            }
+        }
+    }
+}
+
+/// 从 output_snapshot 收集派生值, push 到 buffer 的 derived_buffers
+///
+/// 遍历所有 graph 的 edges, 对每条 edge:
+///   若 source 在 output_snapshot 中 (即 source 是有输出的节点: Math/Input/Custom/ChannelSource):
+///     取 snapshot[source][sourceHandle], push 到 buffer.derived_buffers[(target, source)]
+///
+/// **时间对齐**: 本函数在每帧 evaluate_all_graphs_with 后调用,
+/// 与 push_frame 同步, 保证 derived[i] 与 timestamps[i] 对齐。
+fn push_derived_from_snapshot(eval_state: &GraphEvalState, buffer: &mut DataBuffer) {
+    let snap = eval_state.output_snapshot.lock();
+    let graphs = eval_state.graphs.lock();
+    for (_, graph) in graphs.iter() {
+        for e in graph.edges() {
+            // 只对有输出的 source (ChannelSource/Input/Math/Custom) 收集派生值
+            if let Some(src_out) = snap.values.get(&e.source) {
+                if let Some(&val) = src_out.get(&e.source_handle) {
+                    buffer.push_derived(&e.target, &e.source, val);
+                }
+            }
+        }
+    }
+}
+
 /// 数据循环 — 快速消费传输层 broadcast, 转发到解析 task
 ///
-/// 架构 (A+B+C 重构):
+/// 架构 (节点图后端化重构):
 /// - data_loop (本函数): 只做 recv + mpsc.send, 最快消费 broadcast 避免 Lagged
-/// - parse_task: 从 mpsc 收数据, 做 协议解析 + buffer.push + 批量 emit
+/// - parse_task: 从 mpsc 收数据, 做 协议解析 + buffer.push + 图评估 + 批量 emit
 ///   - 批量 emit: `transport:frames` (数组) 替代每帧一次 `transport:frame`
 ///   - 统计节流: STATS_THROTTLE_MS 内累积, 一次性 emit
+///   - 图评估: 调用 evaluate_all_graphs_with 实时计算所有节点输出
+///     结果存入 output_snapshot, 由独立的 60 FPS ticker task 推送到前端
 pub async fn data_loop(
     app: AppHandle,
     mut rx: tokio::sync::broadcast::Receiver<Vec<u8>>,
     protocol: Arc<Mutex<Box<dyn ProtocolEngine>>>,
     buffer: Arc<Mutex<DataBuffer>>,
+    eval_state: GraphEvalState,
 ) {
     log::info!("数据循环已启动");
 
@@ -65,6 +240,7 @@ pub async fn data_loop(
     let app2 = app.clone();
     let proto2 = protocol.clone();
     let buf2 = buffer.clone();
+    let eval2 = eval_state;
 
     let parse_task = tokio::spawn(async move {
         let mut detection_notified = false;
@@ -99,13 +275,25 @@ pub async fn data_loop(
                 }
             }
 
-            // 3. 推入缓冲区
+            // 3. 推入缓冲区 + 评估节点图 + 收集派生值 (每帧实时计算)
+            //    三步必须在同一帧内顺序执行, 保证 derived 与 timestamps 对齐
             if !frames.is_empty() {
-                let mut buf = buf2.lock();
                 for f in &frames {
-                    buf.push_frame(f);
+                    // 3.1 push 原始帧到 buffer
+                    {
+                        let mut buf = buf2.lock();
+                        buf.push_frame(f);
+                    }
+                    // 3.2 评估所有 tab 的图, 更新 output_snapshot
+                    //     (ticker task 会按 60 FPS 推送到前端)
+                    evaluate_all_graphs_with(&eval2, f);
+                    // 3.3 从 snapshot 收集派生值, push 到 buffer.derived_buffers
+                    //     与本帧 push_frame 的时间戳对齐
+                    {
+                        let mut buf = buf2.lock();
+                        push_derived_from_snapshot(&eval2, &mut buf);
+                    }
                 }
-                drop(buf);
                 frame_batch.extend(frames);
             }
 
@@ -161,6 +349,186 @@ pub async fn data_loop(
     drop(parse_tx);
     let _ = parse_task.await;
     log::info!("数据循环已退出");
+}
+
+/// 图输出推送循环 — 60 FPS 推送 output_snapshot 到所有订阅者
+///
+/// 订阅者通过 invoke('subscribe_graph_outputs', on_event: Channel) 加入
+/// Channel 关闭时自动移除
+pub async fn graph_output_ticker(state: GraphEvalState) {
+    log::info!("图输出 ticker 已启动 (60 FPS)");
+    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(16));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        ticker.tick().await;
+        let snap = state.output_snapshot.lock().clone();
+        let mut subs = state.output_subscribers.lock();
+        // 尝试推送, 失败 (Channel 关闭) 则移除
+        subs.retain(|ch| ch.send(snap.clone()).is_ok());
+    }
+}
+
+/// Custom 输入推送循环 — 30 FPS 推送 Custom 输入到所有订阅者
+///
+/// 订阅者通过 invoke('subscribe_custom_inputs', on_event: Channel) 加入
+pub async fn custom_input_ticker(state: GraphEvalState) {
+    log::info!("Custom 输入 ticker 已启动 (30 FPS)");
+    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(33));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        ticker.tick().await;
+        // 仅当存在 Custom 节点时才收集
+        let has_custom = state
+            .graphs
+            .lock()
+            .values()
+            .any(|g| !g.custom_node_ids().is_empty());
+        if !has_custom {
+            continue;
+        }
+        // 收集 Custom 输入
+        let snap = state.output_snapshot.lock();
+        let graphs = state.graphs.lock();
+        let mut inputs: HashMap<String, HashMap<String, f32>> = HashMap::new();
+        for (_, graph) in graphs.iter() {
+            let ci = graph.collect_custom_inputs(&snap.values);
+            for (k, v) in ci {
+                inputs.insert(k, v);
+            }
+        }
+        drop(snap);
+        drop(graphs);
+
+        if inputs.is_empty() {
+            continue;
+        }
+        let batch = CustomInputBatch { inputs };
+        let mut subs = state.custom_input_subscribers.lock();
+        subs.retain(|ch| ch.send(batch.clone()).is_ok());
+    }
+}
+
+/// 同步 spectrum_analyzers 与 graphs 中的 SpectrumSink 节点
+///
+/// - 遍历所有 graph 的 spectrum_sink_ids, 对每个 sink:
+///   - 若 analyzer 不存在 → 按当前 config 创建
+///   - 若 analyzer 存在但 config 变了 (window_size/window_type/output/sample_rate) → 重建
+/// - 删除 graphs 中已不存在的 sink 对应的 analyzer
+/// - 同时清理 spectrum_snapshot 中已不存在的 sink
+///
+/// 由 spectrum_ticker 在每 tick 开头调用, 保证 analyzer 与图拓扑一致。
+fn sync_spectrum_analyzers(state: &GraphEvalState) {
+    let graphs = state.graphs.lock();
+    let mut analyzers = state.spectrum_analyzers.lock();
+
+    // 收集所有 graph 中当前的 SpectrumSink id → config
+    let mut current_configs: HashMap<String, (usize, vofa_next_dsp::WindowType, vofa_next_dsp::SpectrumOutput, f32)> = HashMap::new();
+    for (_, graph) in graphs.iter() {
+        for sink_id in graph.spectrum_sink_ids() {
+            if let Some(cfg) = graph.spectrum_sink_config(&sink_id) {
+                current_configs.insert(sink_id, cfg);
+            }
+        }
+    }
+
+    // 删除已不存在的 sink 的 analyzer
+    analyzers.retain(|id, _| current_configs.contains_key(id));
+    {
+        let mut snap = state.spectrum_snapshot.lock();
+        snap.retain(|id, _| current_configs.contains_key(id));
+    }
+
+    // 新建或重建 analyzer
+    for (sink_id, (window_size, window_type, output, sample_rate)) in &current_configs {
+        let need_rebuild = match analyzers.get(sink_id) {
+            None => true,
+            Some(a) => {
+                // 任一配置变化都需要重建 (window_size/sample_rate 需要 new FFT planner;
+                // window_type/output 虽有 setter 但重建更简单且不影响性能)
+                a.window_size() != *window_size
+                    || a.sample_rate() != *sample_rate
+                    || a.window_type() != *window_type
+                    || a.output() != *output
+            }
+        };
+        if need_rebuild {
+            let analyzer = SpectrumAnalyzer::new(
+                *window_size,
+                *window_type,
+                *output,
+                *sample_rate,
+            );
+            analyzers.insert(sink_id.clone(), analyzer);
+            log::info!(
+                "频谱分析器已 (重新)创建: sink={} window={} output={} fs={}",
+                sink_id,
+                window_size,
+                match output {
+                    vofa_next_dsp::SpectrumOutput::Magnitude => "Magnitude",
+                    vofa_next_dsp::SpectrumOutput::Power => "Power",
+                    vofa_next_dsp::SpectrumOutput::PSD => "PSD",
+                    vofa_next_dsp::SpectrumOutput::Decibel => "Decibel",
+                },
+                sample_rate
+            );
+        }
+    }
+}
+
+/// 频谱分析推送循环 — 30 FPS 触发 FFT + 推送结果到所有订阅者
+///
+/// 订阅者通过 invoke('subscribe_spectrum', on_event: Channel) 加入
+/// Channel 关闭时自动移除
+///
+/// 流程:
+/// 1. 每 tick 开头调用 sync_spectrum_analyzers 与 graphs 同步
+/// 2. 对每个 analyzer 调用 compute() (窗口未填满返回 None, 跳过)
+/// 3. 将结果存入 spectrum_snapshot
+/// 4. 推送 SpectrumBatch 到所有订阅者
+pub async fn spectrum_ticker(state: GraphEvalState) {
+    log::info!("频谱分析 ticker 已启动 (30 FPS)");
+    let mut ticker = tokio::time::interval(std::time::Duration::from_millis(33));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        ticker.tick().await;
+        // 1. 同步 analyzers 与 graphs
+        sync_spectrum_analyzers(&state);
+
+        // 2. 对每个 analyzer 计算 FFT
+        let mut analyzers = state.spectrum_analyzers.lock();
+        if analyzers.is_empty() {
+            continue;
+        }
+        let mut new_results: HashMap<String, SpectrumResult> = HashMap::new();
+        for (sink_id, analyzer) in analyzers.iter_mut() {
+            if let Some(result) = analyzer.compute() {
+                new_results.insert(sink_id.clone(), result);
+            }
+        }
+        drop(analyzers);
+
+        if new_results.is_empty() {
+            continue;
+        }
+
+        // 3. 更新 spectrum_snapshot
+        {
+            let mut snap = state.spectrum_snapshot.lock();
+            for (k, v) in &new_results {
+                snap.insert(k.clone(), v.clone());
+            }
+        }
+
+        // 4. 推送到所有订阅者 (snapshot 全量推送, 保证新订阅者立即收到数据)
+        let batch = SpectrumBatch {
+            spectra: state.spectrum_snapshot.lock().clone(),
+        };
+        let mut subs = state.spectrum_subscribers.lock();
+        subs.retain(|ch| ch.send(batch.clone()).is_ok());
+    }
 }
 
 fn now_us() -> u64 {

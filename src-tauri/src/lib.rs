@@ -4,6 +4,7 @@ mod notify;
 mod state;
 
 use state::AppState;
+use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,6 +28,28 @@ pub fn run() {
             // 构建并设置原生菜单栏 (macOS/Windows/Linux)
             let menu = menu::build_menu(app)?;
             app.set_menu(menu)?;
+
+            // 启动图输出 ticker (60 FPS 推送快照到前端)
+            let eval_state_for_ticker = {
+                let state = app.state::<AppState>();
+                state.eval_state()
+            };
+            tauri::async_runtime::spawn(state::graph_output_ticker(eval_state_for_ticker));
+
+            // 启动 Custom 输入 ticker (30 FPS 推送到 iframe)
+            let eval_state_for_custom = {
+                let state = app.state::<AppState>();
+                state.eval_state()
+            };
+            tauri::async_runtime::spawn(state::custom_input_ticker(eval_state_for_custom));
+
+            // 启动频谱分析 ticker (30 FFT 计算 + 推送 SpectrumBatch)
+            let eval_state_for_spectrum = {
+                let state = app.state::<AppState>();
+                state.eval_state()
+            };
+            tauri::async_runtime::spawn(state::spectrum_ticker(eval_state_for_spectrum));
+
             Ok(())
         })
         .on_menu_event(|app, event| menu::on_menu_event(app, event.id().as_ref()))
@@ -51,9 +74,14 @@ pub fn run() {
             commands::clear_buffer,
             commands::set_buffer_channels,
             commands::get_buffer_info,
-            // 节点图
-            commands::update_node_graph,
-            commands::get_node_edges,
+            // 节点图 (后端化重构)
+            commands::update_tab_graph,
+            commands::remove_tab_graph,
+            commands::set_input_value,
+            commands::submit_custom_output,
+            commands::subscribe_graph_outputs,
+            commands::subscribe_custom_inputs,
+            commands::subscribe_spectrum,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

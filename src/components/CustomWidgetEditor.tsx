@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { X, Play, Save, FileCode, AlertCircle, RotateCcw, HelpCircle } from 'lucide-react';
+import { X, Play, Save, FileCode, AlertCircle, AlertTriangle, RotateCcw, HelpCircle } from 'lucide-react';
 import { CodeEditor } from './CodeEditor';
 import { CustomWidget, evalCustomWidgetDef } from './displays/CustomWidget';
 import { CustomWidgetHelpModal } from './CustomWidgetHelpModal';
@@ -195,6 +195,30 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
           <button className="btn-icon" onClick={onClose} title={t(lang, 'customCancel')}>
             <X size={14} />
           </button>
+        </div>
+
+        {/* 性能警告横幅 — 提示用户 Custom JS 性能低于原生 Rust 节点 */}
+        <div
+          className="custom-perf-warning"
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 8,
+            padding: '6px 12px',
+            background: 'rgba(204, 153, 0, 0.12)',
+            borderBottom: '1px solid rgba(204, 153, 0, 0.3)',
+            color: '#cca230',
+            fontSize: 11,
+            lineHeight: 1.4,
+          }}
+        >
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <strong>{t(lang, 'customPerfWarningTitle')}</strong>
+            <span style={{ marginLeft: 6, opacity: 0.9 }}>
+              {t(lang, 'customPerfWarning')}
+            </span>
+          </div>
         </div>
 
         <div className="custom-editor-body">

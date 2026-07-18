@@ -6,6 +6,12 @@ export const CHANNEL_COLORS = [
   '#c586c0', '#4ec9b0', '#dcdcaa', '#9cdcfe',
 ];
 
+/// 派生 series (Math/Filter 等节点输出) 颜色 — 橙色, 与通道色区分
+export const DERIVED_COLORS = [
+  '#ff8c42', '#ff5e5e', '#b266ff', '#00d9ff',
+  '#ffd700', '#ff66b2', '#66ff66', '#ffffff',
+];
+
 export const TEXT_COLOR = '#bbbbbb';
 export const GRID_COLOR = '#444444';
 export const TICK_COLOR = '#555555';

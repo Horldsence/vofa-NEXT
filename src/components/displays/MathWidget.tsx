@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
-import { X, Settings2, Plus } from 'lucide-react';
+import { useMemo } from 'react';
+import { Settings2, Plus } from 'lucide-react';
 import type { WidgetConfig, MathOp } from '../../types';
-import { computeMathResult, UNARY_MATH_OPS } from '../../types';
+import { UNARY_MATH_OPS } from '../../types';
 import { useAppStore } from '../../store/appStore';
-import { readAllInputs } from '../../lib/widgetDataFlow';
+import { useGraphInputs } from '../../lib/useGraphInput';
 
 interface MathWidgetProps {
   widget: Extract<WidgetConfig, { kind: 'Math' }>;
@@ -30,38 +30,16 @@ const OP_SYMBOLS: Record<MathOp, string> = {
   log: 'ln',
 };
 
-/// 算术控件 — 对多个通道输入做四则运算/数学函数, 输出单通道结果
+/// 算术控件 — 显示后端图评估的运算结果
 ///
-/// 数据流:
-///   1. 从 rfEdges 读取所有连到本 widget 的 edge
-///   2. 对每条 edge:
-///      - sourceHandle 形如 "ch0": 从 waveformWindow 读最新通道值
-///      - sourceHandle 形如 "result"/"value": 从 widgetOutputCache 读上游 widget 输出
-///   3. 调用 computeMathResult(op, inputs) 计算结果
-///   4. 写入 widgetOutputCache 供下游 widget 读取
-export function MathWidget({ widget, onRemove, onEdit }: MathWidgetProps) {
-  const { op, unit, precision, inputCount, label, id } = widget.params;
-  const [result, setResult] = useState<number>(0);
-  const [inputs, setInputs] = useState<Record<string, number>>({});
-  const rfEdges = useAppStore((s) => s.rfEdges);
-  const widgetOutputCache = useAppStore((s) => s.widgetOutputCache);
-  const setWidgetOutput = useAppStore((s) => s.setWidgetOutput);
-
-  // 定时读取上游值 + 计算结果 + 写入 cache (50ms 节流)
-  useEffect(() => {
-    const tick = () => {
-      const next = readAllInputs(id, rfEdges, widgetOutputCache);
-      setInputs(next);
-      const inputArr = Object.values(next);
-      const r = computeMathResult(op, inputArr);
-      setResult(r);
-      // 写入 cache 供下游 widget 读取
-      setWidgetOutput(id, 'result', r);
-    };
-    tick();
-    const interval = setInterval(tick, 50);
-    return () => clearInterval(interval);
-  }, [op, id, rfEdges, widgetOutputCache, setWidgetOutput]);
+/// 数据流 (后端评估, 60 FPS 推送):
+///   1. 后端 CompiledGraph 按拓扑序评估: 收集本节点的输入 → 调用 MathOp::evaluate → 写入输出端口 "result"
+///   2. 后端 graph_output_ticker 每 16ms 将所有节点输出快照推送至前端
+///   3. 本组件直接读 graphOutputs[id].result 显示结果
+///   4. 输入端口值 (用于展开显示) 通过 useGraphInputs 读上游输出
+export function MathWidget({ widget, onEdit }: MathWidgetProps) {
+  const { op, unit, precision, inputCount, id } = widget.params;
+  const graphOutputs = useAppStore((s) => s.graphOutputs);
 
   // 输入端口展示 (单目运算只显示 1 个端口)
   const inputPorts = useMemo(
@@ -73,14 +51,17 @@ export function MathWidget({ widget, onRemove, onEdit }: MathWidgetProps) {
     [inputCount, op]
   );
 
-  const isConnected = Object.keys(inputs).length > 0;
+  // 读取各输入端口的值 (用于显示, 后端已用这些值算出 result)
+  const inputs = useGraphInputs(id, inputPorts.map((p) => p.id), 0);
+  // 后端计算的结果
+  const result = graphOutputs[id]?.result ?? 0;
+
+  const isConnected = Object.keys(inputs).length > 0 &&
+    Object.values(inputs).some((v) => v !== 0);
   const symbol = OP_SYMBOLS[op];
 
   return (
     <div className="widget-card math-widget">
-      <button className="btn-icon widget-remove" onClick={onRemove} title="Remove">
-        <X size={12} />
-      </button>
       {onEdit && (
         <button
           className="btn-icon widget-edit"
@@ -91,10 +72,7 @@ export function MathWidget({ widget, onRemove, onEdit }: MathWidgetProps) {
           <Settings2 size={11} />
         </button>
       )}
-      <div className="widget-label">
-        {label}
-        <span className="math-widget-op-symbol">{symbol}</span>
-      </div>
+      <div className="math-widget-op-symbol">{symbol}</div>
       <div className="math-widget-body">
         <div className="math-widget-result">
           <span

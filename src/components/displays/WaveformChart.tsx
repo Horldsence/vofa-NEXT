@@ -8,7 +8,7 @@ import type { WidgetConfig } from '../../types';
 import { TIME_BASES_SEC, V_PER_DIV, formatVPerDiv, getEffectiveChannel, type ScopeAxisConfig } from '../../types';
 import { timeBaseToWindowSec, VERTICAL_DIVS } from '../../lib/scopeUtils';
 import {
-  CHANNEL_COLORS, TEXT_COLOR, GRID_COLOR, TICK_COLOR, CURSOR_COLOR, getContainerSize,
+  CHANNEL_COLORS, DERIVED_COLORS, TEXT_COLOR, GRID_COLOR, TICK_COLOR, CURSOR_COLOR, getContainerSize,
 } from './waveformConstants';
 import { WaveformTimeline } from './WaveformTimeline';
 
@@ -16,6 +16,27 @@ interface WaveformChartProps {
   widget: Extract<WidgetConfig, { kind: 'Waveform' }>;
   axisConfig: ScopeAxisConfig;
   onConfigChange?: (next: ScopeAxisConfig) => void;
+}
+
+/// 波形图连接的输入 — 可以是原始通道或派生节点 (Math/Filter 等)
+type ConnectedInput =
+  | { kind: 'channel'; idx: number }
+  | { kind: 'derived'; sourceId: string; sourceHandle: string };
+
+/// 系列 slot — 用于 series 创建/数据获取/游标读数
+/// channelIdx: 通道索引 (用于颜色和 effective channel 配置)
+/// derivedIdx: 派生 series 索引 (用于颜色, -1 表示非派生)
+interface SeriesSlot {
+  input: ConnectedInput;
+  /// 通道颜色索引 (channel 用 idx, derived 用 derivedIdx)
+  colorIdx: number;
+  /// 是否为派生 series
+  isDerived: boolean;
+  /// 显示标签 (CH0 / MATH:widgetId)
+  label: string;
+  /// 用于 effective channel 配置查询的索引
+  /// channel: 用 idx; derived: 用 widget.params.channels + derivedIdx
+  cfgIdx: number;
 }
 
 /// 示波器风格波形图 — 每通道独立 V/div 与 position
@@ -29,9 +50,13 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   const plotRef = useRef<uPlot | null>(null);
   const axisConfigRef = useRef(axisConfig);
   const lastVersionRef = useRef(-1);
-  const frozenDataRef = useRef<{ ts: number[]; chs: number[][] } | null>(null);
+  const frozenDataRef = useRef<{
+    ts: number[];
+    chs: number[][];
+    derived?: Record<string, Record<string, number[]>>;
+  } | null>(null);
 
-  // 鼠标悬停读数 — { leftPx, topPx, xSec, yDiv, channelValues: [{idx, val, color}] }
+  // 鼠标悬停读数 — { leftPx, topPx, xSec, yDiv, channelValues: [{label, val, color, isDerived}] }
   const [cursorReadout, setCursorReadout] = useState<{
     leftPx: number;
     topPx: number;
@@ -39,7 +64,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     yDiv: number;
     yVal: number;
     yUnit: string;
-    channels: { idx: number; val: number; color: string }[];
+    channels: { label: string; val: number; color: string; isDerived: boolean }[];
   } | null>(null);
 
   // tooltip 实际渲染位置 (经边界检测后的像素坐标, 相对 waveform-container)
@@ -56,31 +81,124 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
   const lang = useAppStore((s) => s.lang);
   const rfEdges = useAppStore((s) => s.rfEdges);
+  const updateWidget = useAppStore((s) => s.updateWidget);
 
   const viewEndSec = axisConfig.running ? 0 : -axisConfig.hPosition;
   const timeWindowSec = timeBaseToWindowSec(axisConfig.timeBase);
 
-  // 解析连接的通道
-  const connectedChannels = useMemo(() => {
+  // 解析连接的输入 — 通道 + 派生 (Math/Filter 等)
+  const connectedInputs = useMemo<ConnectedInput[]>(() => {
     if (widget.params.id === 'default-waveform') {
       const win = waveformWindow.get();
       const count = win.channel_count || widget.params.channels;
-      return Array.from({ length: count }, (_, i) => i);
+      return Array.from({ length: count }, (_, i) => ({ kind: 'channel' as const, idx: i }));
     }
-    return rfEdges
-      .filter((e) => e.target === widget.params.id)
-      .map((e) => {
-        const m = /^ch(\d+)$/.exec(e.sourceHandle ?? '');
-        return m ? parseInt(m[1], 10) : -1;
-      })
-      .filter((i) => i >= 0);
+    const channels: ConnectedInput[] = [];
+    const derived: ConnectedInput[] = [];
+    for (const e of rfEdges) {
+      if (e.target !== widget.params.id) continue;
+      const handle = e.sourceHandle ?? '';
+      const m = /^ch(\d+)$/.exec(handle);
+      if (m) {
+        channels.push({ kind: 'channel', idx: parseInt(m[1], 10) });
+      } else {
+        derived.push({ kind: 'derived', sourceId: e.source, sourceHandle: handle });
+      }
+    }
+    // 通道在前, 派生在后
+    return [...channels, ...derived];
   }, [rfEdges, widget.params.id, widget.params.channels]);
 
-  const isConnected = widget.params.id === 'default-waveform' || connectedChannels.length > 0;
+  // 派生的通道索引列表 (供 WaveformTimeline 缩略图使用)
+  const connectedChannels = useMemo(
+    () => connectedInputs
+      .filter((i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel')
+      .map((i) => i.idx),
+    [connectedInputs]
+  );
 
-  // 缓存 connectedChannels 供 getDisplayData (useCallback) 使用, 避免 effect 重建
-  const connectedChannelsRef = useRef(connectedChannels);
-  useEffect(() => { connectedChannelsRef.current = connectedChannels; }, [connectedChannels]);
+  // 构建 series slots — 决定实际显示的 series 数量和顺序
+  // dynamicSeries=false (默认): widget.params.channels 通道槽 + 派生槽 (未连接通道填 NaN)
+  // dynamicSeries=true: 仅连接的通道 + 派生 (无未连接槽)
+  const seriesSlots = useMemo<SeriesSlot[]>(() => {
+    const isDynamic = widget.params.dynamicSeries ?? false;
+    const channelInputs = connectedInputs.filter(
+      (i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel'
+    );
+    const derivedInputs = connectedInputs.filter(
+      (i): i is Extract<ConnectedInput, { kind: 'derived' }> => i.kind === 'derived'
+    );
+    const slots: SeriesSlot[] = [];
+
+    if (isDynamic) {
+      // 动态: 仅连接的通道 + 派生
+      for (const input of channelInputs) {
+        slots.push({
+          input,
+          colorIdx: input.idx,
+          isDerived: false,
+          label: `CH${input.idx}`,
+          cfgIdx: input.idx,
+        });
+      }
+      for (let i = 0; i < derivedInputs.length; i++) {
+        const input = derivedInputs[i];
+        slots.push({
+          input,
+          colorIdx: i,
+          isDerived: true,
+          label: `MATH:${input.sourceId}`,
+          cfgIdx: widget.params.channels + i,
+        });
+      }
+    } else {
+      // 固定: widget.params.channels 通道槽 + 派生槽
+      for (let i = 0; i < widget.params.channels; i++) {
+        const input = channelInputs.find((x) => x.idx === i);
+        if (input) {
+          slots.push({
+            input,
+            colorIdx: i,
+            isDerived: false,
+            label: `CH${i}`,
+            cfgIdx: i,
+          });
+        } else {
+          // 未连接的占位槽 (data 将填 NaN)
+          slots.push({
+            input: { kind: 'channel', idx: i },
+            colorIdx: i,
+            isDerived: false,
+            label: `CH${i}`,
+            cfgIdx: i,
+          });
+        }
+      }
+      for (let i = 0; i < derivedInputs.length; i++) {
+        const input = derivedInputs[i];
+        slots.push({
+          input,
+          colorIdx: i,
+          isDerived: true,
+          label: `MATH:${input.sourceId}`,
+          cfgIdx: widget.params.channels + i,
+        });
+      }
+    }
+    return slots;
+  }, [connectedInputs, widget.params.channels, widget.params.dynamicSeries]);
+
+  const isConnected = widget.params.id === 'default-waveform' || connectedInputs.length > 0;
+
+  // series signature — 用于 useLayoutEffect 依赖, 在 slots 数量/标签变化时重建 uPlot
+  const seriesSignature = useMemo(
+    () => seriesSlots.map((s) => `${s.isDerived ? 'd' : 'c'}${s.label}`).join(','),
+    [seriesSlots]
+  );
+
+  // 缓存 seriesSlots 供 getDisplayData (useCallback) 使用, 避免 effect 重建
+  const seriesSlotsRef = useRef(seriesSlots);
+  useEffect(() => { seriesSlotsRef.current = seriesSlots; }, [seriesSlots]);
 
   // 监听 Ctrl/Cmd 按键 — 按下时隐藏光标十字线与读数, 方便观察波形
   // 忽略输入框中的按键 (避免影响表单编辑)
@@ -136,40 +254,56 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     setTooltipPos({ left, top });
   }, [cursorReadout]);
 
-  /// 取数据 — 始终返回 widget.params.channels + 1 个等长数组
-  /// 未连接的通道填 NaN (不显示), 仅连接的通道有数据
+  /// 取数据 — 返回 [timestamps, ...seriesSlots.length 个等长数组]
+  /// 通道输入: 从 win.channels[idx] 取; 派生输入: 从 win.derived[widgetId]?.[sourceId] 取
+  /// 未连接的占位槽填 NaN
   const getDisplayData = useCallback((): number[][] => {
     const cfg = axisConfigRef.current;
-    const totalCh = widget.params.channels;
+    const slots = seriesSlotsRef.current;
+    const totalSlots = slots.length;
     let timestamps: number[];
     let channelArrays: number[][];
+    let derivedMap: Record<string, Record<string, number[]>> | undefined;
 
     if (cfg.running) {
       const win = waveformWindow.get();
       if (win.timestamps.length === 0) {
-        return [[0], ...Array.from({ length: totalCh }, () => [NaN])];
+        return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
       }
       timestamps = win.timestamps;
-      channelArrays = padChannels(win.channels, timestamps.length, totalCh);
+      channelArrays = win.channels;
+      derivedMap = win.derived;
     } else {
       const frozen = frozenDataRef.current;
       if (!frozen || frozen.ts.length === 0) {
-        return [[0], ...Array.from({ length: totalCh }, () => [NaN])];
+        return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
       }
       timestamps = frozen.ts;
-      channelArrays = padChannels(frozen.chs, timestamps.length, totalCh);
+      channelArrays = frozen.chs;
+      derivedMap = frozen.derived;
     }
 
-    // 按 connectedChannels 过滤: 未连接通道填 NaN
-    const connected = connectedChannelsRef.current;
-    const connectedSet = new Set(connected);
-    const filteredArrays = channelArrays.map((arr, i) =>
-      connectedSet.has(i) ? arr : arr.map(() => NaN)
-    );
+    const tsLen = timestamps.length;
+    // 为每个 slot 构建 data array
+    const seriesArrays = slots.map((slot) => {
+      let arr: number[] | undefined;
+      if (slot.input.kind === 'channel') {
+        arr = channelArrays[slot.input.idx];
+      } else {
+        arr = derivedMap?.[widget.params.id]?.[slot.input.sourceId];
+      }
+      if (!arr) return Array(tsLen).fill(NaN);
+      if (arr.length === tsLen) return arr;
+      // 对齐: 截断或补 NaN
+      const padded = arr.slice(0, tsLen);
+      while (padded.length < tsLen) padded.push(NaN);
+      return padded;
+    });
 
     const tsSec = timestamps.map((ms) => ms / 1000);
-    const channelDivs = filteredArrays.map((arr, i) => {
-      const chCfg = getEffectiveChannel(cfg, i);
+    const seriesDivs = seriesArrays.map((arr, i) => {
+      const slot = slots[i];
+      const chCfg = getEffectiveChannel(cfg, slot.cfgIdx);
       const vPerDiv = chCfg.vPerDiv;
       const pos = chCfg.position;
       // sharedY=true: 不归一化, 直接画真实值 (Y 轴 range 用真实值)
@@ -177,8 +311,8 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       if (cfg.sharedY) return arr;
       return arr.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
     });
-    return [tsSec, ...channelDivs];
-  }, [widget.params.channels]);
+    return [tsSec, ...seriesDivs];
+  }, [widget.params.channels, widget.params.id]);
 
   // 配置变化 → 更新 ref + 通道可见性 + 重新归一化数据
   // 关键: V/div 或 position 变化时, 必须重新 setData, 否则波形不会按新档位重绘
@@ -186,15 +320,16 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     axisConfigRef.current = axisConfig;
     const plot = plotRef.current;
     if (!plot) return;
-    for (let i = 0; i < widget.params.channels; i++) {
-      plot.setSeries(i + 1, { show: axisConfig.channels[i]?.show ?? true });
+    const slots = seriesSlotsRef.current;
+    for (let i = 0; i < slots.length; i++) {
+      plot.setSeries(i + 1, { show: axisConfig.channels[slots[i].cfgIdx]?.show ?? true });
     }
     // 重新归一化数据 (用新的 vPerDiv / position 重新计算 div 值)
     plot.setData(getDisplayData() as unknown as uPlot.AlignedData);
     plot.redraw();
-  }, [axisConfig, widget.params.channels, getDisplayData]);
+  }, [axisConfig, seriesSlots, getDisplayData]);
 
-  // 冻结快照 — Stop 时拍下当前数据, Run 时清空
+  // 冻结快照 — Stop 时拍下当前数据 (含 derived), Run 时清空
   // 关键: 拍快照后必须立即重绘, 因为 axisConfig effect 可能先于本 effect 执行
   // (此时 frozenDataRef 还是 null, 导致 setData 空数据使图变黑)
   useEffect(() => {
@@ -204,6 +339,16 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         frozenDataRef.current = {
           ts: [...win.timestamps],
           chs: win.channels.map((ch) => [...ch]),
+          derived: win.derived
+            ? Object.fromEntries(
+                Object.entries(win.derived).map(([k1, v1]) => [
+                  k1,
+                  Object.fromEntries(
+                    Object.entries(v1).map(([k2, v2]) => [k2, [...v2]])
+                  ),
+                ])
+              )
+            : undefined,
         };
         // 拍快照后立即用冻结数据重绘
         const plot = plotRef.current;
@@ -228,19 +373,23 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     const createSeries = (): uPlot.Series[] => {
       const cfg0 = axisConfigRef.current;
       const yUnit = cfg0.yUnit ?? '';
+      const slots = seriesSlotsRef.current;
       const series: uPlot.Series[] = [{
         label: 't', stroke: TEXT_COLOR,
         value: (_u, v) => (v == null ? '--' : formatTimeMs(v * 1000)),
       }];
-      for (let i = 0; i < widget.params.channels; i++) {
-        const chCfg = getEffectiveChannel(cfg0, i);
+      for (const slot of slots) {
+        const chCfg = getEffectiveChannel(cfg0, slot.cfgIdx);
         const vPerDiv = chCfg.vPerDiv;
         const pos = chCfg.position;
-        // 通道可见性始终 per-channel (不共用)
-        const show = cfg0.channels[i]?.show ?? true;
+        // 通道可见性始终 per-slot (不共用)
+        const show = cfg0.channels[slot.cfgIdx]?.show ?? true;
+        const color = slot.isDerived
+          ? DERIVED_COLORS[slot.colorIdx % DERIVED_COLORS.length]
+          : CHANNEL_COLORS[slot.colorIdx % CHANNEL_COLORS.length];
         series.push({
-          label: `CH${i} ${formatVPerDiv(vPerDiv, yUnit)}`,
-          stroke: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+          label: `${slot.label} ${formatVPerDiv(vPerDiv, yUnit)}`,
+          stroke: color,
           width: 1.5,
           // value 用于 legend/tooltip: sharedY 时数据已是真实值, 直接显示; 否则反归一化
           value: (_u, v) => {
@@ -349,26 +498,32 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
               const plotTop = bbox?.top ?? 0;
               const canvasLeft = left + plotLeft;
               const canvasTop = top + plotTop;
-              // 用第一可见通道反归一化 Y 像素位置 (独立 Y 时)
-              const firstVisible = c.channels.findIndex((ch) => ch.show);
-              const chIdx = firstVisible >= 0 ? firstVisible : 0;
-              const chCfg = getEffectiveChannel(c, chIdx);
+              // 用第一可见 slot 反归一化 Y 像素位置 (独立 Y 时)
+              const slots = seriesSlotsRef.current;
+              const firstVisibleIdx = slots.findIndex((s) => c.channels[s.cfgIdx]?.show ?? true);
+              const slotIdx = firstVisibleIdx >= 0 ? firstVisibleIdx : 0;
+              const firstSlot = slots[slotIdx];
+              const chCfg = firstSlot
+                ? getEffectiveChannel(c, firstSlot.cfgIdx)
+                : { vPerDiv: 1, position: 0 };
               const yVal = c.sharedY ? yPixelVal : yPixelVal * chCfg.vPerDiv + chCfg.position;
-              // 收集所有可见通道在 idx 处的值 (反归一化为实际值)
-              const connected = connectedChannelsRef.current;
-              const connectedSet = new Set(connected);
-              const channels: { idx: number; val: number; color: string }[] = [];
-              for (let i = 0; i < widget.params.channels; i++) {
-                const ownCh = c.channels[i];
-                if (!ownCh?.show || !connectedSet.has(i)) continue;
+              // 收集所有可见 slot 在 idx 处的值 (反归一化为实际值)
+              const channels: { label: string; val: number; color: string; isDerived: boolean }[] = [];
+              for (let i = 0; i < slots.length; i++) {
+                const slot = slots[i];
+                const ownCh = c.channels[slot.cfgIdx];
+                if (ownCh && !ownCh.show) continue;
                 const divVal = u.data[i + 1]?.[idx];
                 if (divVal == null || isNaN(divVal)) continue;
-                const eff = getEffectiveChannel(c, i);
+                const eff = getEffectiveChannel(c, slot.cfgIdx);
                 const realVal = c.sharedY ? divVal : divVal * eff.vPerDiv + eff.position;
                 channels.push({
-                  idx: i,
+                  label: slot.label,
                   val: realVal,
-                  color: CHANNEL_COLORS[i % CHANNEL_COLORS.length],
+                  color: slot.isDerived
+                    ? DERIVED_COLORS[slot.colorIdx % DERIVED_COLORS.length]
+                    : CHANNEL_COLORS[slot.colorIdx % CHANNEL_COLORS.length],
+                  isDerived: slot.isDerived,
                 });
               }
               setCursorReadout({
@@ -420,7 +575,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       plotRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [widget.params.channels]);
+  }, [seriesSignature]);
 
   // 数据更新 (运行模式)
   useEffect(() => {
@@ -631,6 +786,27 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
             : (isMac ? '⌘ ' : 'Ctrl ') + t(lang, 'cursorHideHint')}
         </div>
 
+        {/* 右下角动态 series 开关 (仅用户创建的波形图, default-waveform 不显示) */}
+        {widget.params.id !== 'default-waveform' && (
+          <button
+            className={`dynamic-series-toggle ${widget.params.dynamicSeries ? 'active' : ''}`}
+            onClick={() => {
+              updateWidget(widget.params.id, {
+                ...widget,
+                params: {
+                  ...widget.params,
+                  dynamicSeries: !widget.params.dynamicSeries,
+                },
+              });
+            }}
+            title={t(lang, 'dynamicSeriesToggle')}
+          >
+            {widget.params.dynamicSeries
+              ? t(lang, 'dynamicSeriesOn')
+              : t(lang, 'dynamicSeriesOff')}
+          </button>
+        )}
+
         {/* 鼠标悬停读数: 合并到单个 tooltip 放在十字线右下角 (边界翻转), 避免遮住中间波形 */}
         {cursorReadout && !cursorHidden && (
           <div
@@ -660,13 +836,13 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
             {cursorReadout.channels.length > 1 && (
               <div className="cursor-readout-divider" />
             )}
-            {cursorReadout.channels.map((ch) => (
-              <div key={ch.idx} className="cursor-readout-channel">
+            {cursorReadout.channels.map((ch, i) => (
+              <div key={ch.label + i} className="cursor-readout-channel">
                 <span
                   className="cursor-readout-dot"
                   style={{ background: ch.color }}
                 />
-                <span className="cursor-readout-ch-label">CH{ch.idx}</span>
+                <span className="cursor-readout-ch-label">{ch.label}</span>
                 <span className="cursor-readout-ch-val">
                   {formatYValue(ch.val, cursorReadout.yUnit)}
                 </span>
@@ -690,18 +866,6 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       />
     </div>
   );
-}
-
-/// 将每通道数据对齐到 targetLen (短补 NaN, 长截断)
-function padChannels(channels: number[][], targetLen: number, totalCh: number): number[][] {
-  return Array.from({ length: totalCh }, (_, idx) => {
-    const ch = channels[idx];
-    if (!ch) return Array(targetLen).fill(NaN);
-    if (ch.length === targetLen) return ch;
-    const padded = ch.slice(0, targetLen);
-    while (padded.length < targetLen) padded.push(NaN);
-    return padded;
-  });
 }
 
 /// 格式化时间 (毫秒) — 示波器风格: 自动选择 µs/ms/s 单位, 负数表示过去时间

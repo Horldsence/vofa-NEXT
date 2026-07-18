@@ -1,7 +1,6 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
-import { X, Settings2, AlertCircle } from 'lucide-react';
+import { Settings2, AlertCircle } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
-import { waveformWindow } from '../../lib/dataBuffer';
 import { useAppStore } from '../../store/appStore';
 
 /// 自定义 JS 控件渲染器
@@ -186,7 +185,7 @@ function buildSrcDoc(code: string, def: CustomWidgetDef): string {
 </html>`;
 }
 
-export function CustomWidget({ widget, onRemove, onEdit, height = 120 }: CustomWidgetProps) {
+export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -195,53 +194,18 @@ export function CustomWidget({ widget, onRemove, onEdit, height = 120 }: CustomW
   // 解析 def (用于 schema 展示)
   const { def, error: defError } = useMemo(() => evalCustomWidgetDef(widget.params.code), [widget.params.code]);
 
-  // 从节点编辑器读取当前输入映射
-  // 支持两种数据源:
-  //   1. ChannelSource: sourceHandle 形如 "ch0", "ch1"
-  //   2. 上游 Widget (Math/Knob/Slider/...): sourceHandle 形如 "result"/"value", source 是 widgetId
-  const rfEdges = useAppStore((s) => s.rfEdges);
-  const setWidgetOutput = useAppStore((s) => s.setWidgetOutput);
+  // 后端图评估桥接:
+  //   - customInputs[widgetId] 由后端 30 FPS 推送 (后端已解析 rfEdges, 收集本 widget 的输入)
+  //   - submitCustomOutput 用于将 iframe 的 ctx.send 回传到后端图
+  const customInputs = useAppStore((s) => s.customInputs);
+  const submitCustomOutput = useAppStore((s) => s.submitCustomOutput);
 
-  interface InputMapping {
-    sourceType: 'channel' | 'widget';
-    channelIdx?: number;          // sourceType='channel' 时使用
-    sourceWidgetId?: string;       // sourceType='widget' 时使用
-    sourcePortId?: string;         // sourceType='widget' 时使用
-  }
+  // 本 widget 的输入端口值 (后端推送, 已合并所有上游源)
+  const inputs = customInputs[widget.params.id] ?? {};
 
-  const inputMappings = useMemo(() => {
-    const map: Record<string, InputMapping> = {};
-    rfEdges
-      .filter((e) => e.target === widget.params.id)
-      .forEach((e) => {
-        const targetPortId = e.targetHandle ?? 'value';
-        const sourceHandle = e.sourceHandle ?? 'value';
-        const chMatch = /^ch(\d+)$/.exec(sourceHandle);
-        if (chMatch) {
-          map[targetPortId] = {
-            sourceType: 'channel',
-            channelIdx: parseInt(chMatch[1], 10),
-          };
-        } else {
-          map[targetPortId] = {
-            sourceType: 'widget',
-            sourceWidgetId: e.source,
-            sourcePortId: sourceHandle,
-          };
-        }
-      });
-    return map;
-  }, [rfEdges, widget.params.id]);
-
-  // 缓存最新 inputMappings 与 settings 到 ref, 供定时器读取 (避免回调依赖)
-  const inputMappingsRef = useRef(inputMappings);
-  useEffect(() => { inputMappingsRef.current = inputMappings; }, [inputMappings]);
+  // 缓存最新 settings 到 ref, 供 sendUpdate 读取
   const settingsRef = useRef(widget.params.settings);
   useEffect(() => { settingsRef.current = widget.params.settings; }, [widget.params.settings]);
-  const cacheRef = useRef<Record<string, Record<string, number>>>({});
-  // 订阅 cache (用于触发 sendUpdate 重新计算输入)
-  const widgetOutputCache = useAppStore((s) => s.widgetOutputCache);
-  useEffect(() => { cacheRef.current = widgetOutputCache; }, [widgetOutputCache]);
 
   // 监听 iframe 消息
   useEffect(() => {
@@ -256,9 +220,9 @@ export function CustomWidget({ widget, onRemove, onEdit, height = 120 }: CustomW
           sendUpdate();
           break;
         case 'output':
-          // 用户代码调用了 ctx.send — 写入 cache 供下游 widget 读取
+          // 用户代码调用了 ctx.send — 回传到后端图 (供下游 widget 读取)
           if (typeof msg.port === 'string' && typeof msg.value === 'number') {
-            setWidgetOutput(widget.params.id, msg.port, msg.value);
+            submitCustomOutput(widget.params.id, { [msg.port]: msg.value });
           }
           break;
         case 'error':
@@ -274,46 +238,22 @@ export function CustomWidget({ widget, onRemove, onEdit, height = 120 }: CustomW
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 发送更新到 iframe — 实时读取上游值 (ChannelSource 或上游 widget)
+  // 发送更新到 iframe — 输入值由后端推送 (无需前端解析 edges)
   const sendUpdate = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe || !iframe.contentWindow || !readyRef.current) return;
-    const win = waveformWindow.get();
-    const cache = cacheRef.current;
-    const inputs: Record<string, number> = {};
-    for (const [portId, mapping] of Object.entries(inputMappingsRef.current)) {
-      if (mapping.sourceType === 'channel') {
-        const chIdx = mapping.channelIdx ?? 0;
-        const ch = win.channels[chIdx];
-        inputs[portId] = ch && ch.length > 0 ? ch[ch.length - 1] : 0;
-      } else {
-        // 上游 widget 输出: 从 cache 读取
-        const sourceId = mapping.sourceWidgetId ?? '';
-        const sourcePort = mapping.sourcePortId ?? 'value';
-        inputs[portId] = cache[sourceId]?.[sourcePort] ?? 0;
-      }
-    }
     iframe.contentWindow.postMessage({
       source: 'custom-widget-parent',
       type: 'update',
       inputs,
       settings: settingsRef.current,
     }, '*');
-  }, []);
+  }, [inputs]);
 
-  // inputMappings / settings / cache 变化 → 通知 iframe 重渲染
+  // 后端推送输入变化 → 通知 iframe 重渲染 (替代旧 50ms 轮询)
   useEffect(() => {
     sendUpdate();
-  }, [sendUpdate, inputMappings, widget.params.settings, widgetOutputCache]);
-
-  // 定时刷新 (实时输入数据) — 节流 50ms 避免淹没 iframe
-  useEffect(() => {
-    if (!def || Object.keys(inputMappings).length === 0) return;
-    const interval = setInterval(() => {
-      sendUpdate();
-    }, 50);
-    return () => clearInterval(interval);
-  }, [def, inputMappings, sendUpdate]);
+  }, [sendUpdate, widget.params.settings]);
 
   // srcdoc 内容
   const srcDoc = useMemo(() => {
@@ -325,15 +265,12 @@ export function CustomWidget({ widget, onRemove, onEdit, height = 120 }: CustomW
   if (defError) {
     return (
       <div className="widget-card custom-widget-error">
-        <button className="btn-icon widget-remove" onClick={onRemove}>
-          <X size={12} />
-        </button>
         {onEdit && (
           <button className="btn-icon widget-edit" onClick={onEdit} style={{ right: 24 }}>
             <Settings2 size={11} />
           </button>
         )}
-        <div className="widget-label">{widget.params.label || 'Custom'}</div>
+        <div className="custom-widget-name">{widget.params.label || 'Custom'}</div>
         <div className="custom-error">
           <AlertCircle size={14} />
           <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 10 }}>{defError}</pre>
@@ -349,15 +286,12 @@ export function CustomWidget({ widget, onRemove, onEdit, height = 120 }: CustomW
 
   return (
     <div className="widget-card custom-widget">
-      <button className="btn-icon widget-remove" onClick={onRemove}>
-        <X size={12} />
-      </button>
       {onEdit && (
         <button className="btn-icon widget-edit" onClick={onEdit} style={{ right: 24 }}>
           <Settings2 size={11} />
         </button>
       )}
-      <div className="widget-label">
+      <div className="custom-widget-name">
         {def?.name || widget.params.label || 'Custom'}
       </div>
       <iframe

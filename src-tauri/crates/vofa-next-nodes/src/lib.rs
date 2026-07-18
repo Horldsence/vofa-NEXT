@@ -1,0 +1,902 @@
+//! # vofa-next-nodes
+//!
+//! 节点图 DAG 引擎 — 后端计算所有节点的输出值。
+//!
+//! 核心类型:
+//! - [`NodeKind`]: 节点种类 (ChannelSource/Input/Math/Custom/Filter/SpectrumSink/Sink)
+//! - [`NodeDef`]: 节点定义 (含 id/tab_id/kind/params)
+//! - [`CompiledGraph`]: 编译后的 DAG, 含拓扑序, 提供 evaluate 方法
+//!
+//! 数据流:
+//!   DataFrame → CompiledGraph.evaluate(frame, input_values, custom_outputs, filter_states)
+//!            → HashMap<widgetId, HashMap<portId, f32>>  (所有节点的输出)
+//!
+//! 节点输出约定:
+//! - ChannelSource: 输出端口 "ch0", "ch1", ... (帧通道值)
+//! - Input: 输出端口 "value" (来自前端 invoke)
+//! - Math: 输出端口 "result"
+//! - Custom: 输出端口由前端回传 (custom_outputs)
+//! - Filter: 输出端口 "result" (逐点滤波, 融入 eval_order)
+//! - SpectrumSink: 无输出 (块运算, 独立 30 FPS ticker 触发 FFT, 不在 eval_order)
+//! - Sink: 无输出 (纯消费, 不在 DAG 中评估)
+//!
+//! 前端通过 edges 自行解析 Sink 的输入: 上游 widgetId + sourceHandle → 输出快照查值
+
+pub mod math_op;
+
+pub use math_op::MathOp;
+pub use vofa_next_dsp::{
+    DigitalFilter, FilterKind, FilterPreset, SpectrumOutput, WindowType,
+};
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use vofa_next_buffer::graph::Edge;
+use vofa_next_core::DataFrame;
+
+/// 节点种类 — 决定节点如何被评估
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", content = "params")]
+pub enum NodeKind {
+    /// 通道源 (虚拟, 每个 tab 一个, 输出 ch0..chN)
+    /// params: 通道数
+    ChannelSource { channels: usize },
+    /// 输入控件 (Knob/Slider/Button/Radio/Checkbox)
+    /// 输出端口固定 "value", 值来自前端 invoke('set_input_value')
+    Input,
+    /// 算术节点
+    /// 输出端口 "result"
+    Math { op: MathOp, input_count: usize },
+    /// 自定义 JS 节点
+    /// 输入端口由用户代码定义, 输出端口由前端 iframe 回传
+    /// 后端使用 custom_outputs 中的值作为节点输出
+    Custom {
+        /// 输入端口 id 列表 (前端解析代码后告诉后端)
+        inputs: Vec<String>,
+        /// 输出端口 id 列表
+        outputs: Vec<String>,
+    },
+    /// 数字滤波器节点 (逐点运算, 融入 eval_order)
+    /// 输入端口 "in0", 输出端口 "result"
+    /// 后端维护滤波器状态 (FIR 延迟线 / IIR biquad 状态), 跨帧持久化
+    /// 状态存储在 evaluate 的 filter_states 参数中, 由调用方管理生命周期
+    Filter {
+        /// 滤波器配置 (FIR coeffs 或 IIR biquad)
+        kind: FilterKind,
+    },
+    /// 频谱分析节点 (块运算, 不在 eval_order)
+    /// 输入端口 "in0", 无输出端口
+    /// 后端维护滑动窗口, 由独立 30 FPS ticker 触发 FFT, 结果存入 spectrum_snapshot
+    /// 通过 collect_spectrum_inputs 在每帧后从 output_snapshot 取输入值推入分析器
+    SpectrumSink {
+        /// FFT 窗口大小 (建议 2 的幂, 如 256/512/1024/2048)
+        window_size: usize,
+        /// 窗函数类型
+        window_type: WindowType,
+        /// 频谱输出模式
+        output: SpectrumOutput,
+        /// 采样率 (Hz), 用于计算频率轴
+        sample_rate: f32,
+    },
+    /// Sink 节点 (Label/Gauge/LED/NumberDisplay/PieChart/Image/Waveform)
+    /// 这些节点没有输出, 后端 DAG 不评估它们, 前端通过 edges 自行查值
+    Sink,
+}
+
+/// 节点定义 — 通过 IPC 从前端同步到后端
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeDef {
+    pub id: String,
+    pub tab_id: String,
+    pub kind: NodeKind,
+}
+
+/// 编译后的图 — 包含拓扑序的评估计划
+pub struct CompiledGraph {
+    pub tab_id: String,
+    /// 所有节点 (含 Sink, 便于前端查询)
+    nodes: HashMap<String, NodeDef>,
+    /// 边集合
+    edges: Vec<Edge>,
+    /// 拓扑序 — 仅包含有输出的节点 (ChannelSource/Input/Math/Custom)
+    /// Sink 节点不参与评估
+    eval_order: Vec<String>,
+    /// 反向索引: target_node + target_handle → (source_node, source_handle)
+    /// 用于查询某节点某输入端口的上游
+    input_index: HashMap<(String, String), (String, String)>,
+    /// ChannelSource 节点 ID (每个 tab 一个)
+    channel_source_id: Option<String>,
+}
+
+/// 评估错误
+#[derive(Debug, thiserror::Error)]
+pub enum CompileError {
+    #[error("节点 {0} 不存在于图中")]
+    NodeNotFound(String),
+    #[error("检测到循环连接")]
+    Cycle,
+    #[error("通道源节点缺失 (tab_id={0})")]
+    NoChannelSource(String),
+}
+
+impl CompiledGraph {
+    /// 编译图 — 构建拓扑序 + 索引, 检测循环
+    pub fn compile(tab_id: String, nodes: Vec<NodeDef>, edges: Vec<Edge>) -> Result<Self, CompileError> {
+        let mut node_map: HashMap<String, NodeDef> = HashMap::new();
+        let mut channel_source_id: Option<String> = None;
+
+        for n in nodes {
+            if matches!(n.kind, NodeKind::ChannelSource { .. }) {
+                channel_source_id = Some(n.id.clone());
+            }
+            node_map.insert(n.id.clone(), n);
+        }
+
+        // 构建 input_index: (target, target_handle) → (source, source_handle)
+        let mut input_index: HashMap<(String, String), (String, String)> = HashMap::new();
+        for e in &edges {
+            input_index.insert(
+                (e.target.clone(), e.target_handle.clone()),
+                (e.source.clone(), e.source_handle.clone()),
+            );
+        }
+
+        // 拓扑排序 — 仅对有输出的节点
+        // 使用 DFS 后序
+        let mut visited: HashMap<String, u8> = HashMap::new(); // 0=未访问, 1=访问中, 2=已完成
+        let mut order: Vec<String> = Vec::new();
+
+        fn dfs(
+            id: &str,
+            nodes: &HashMap<String, NodeDef>,
+            edges: &[Edge],
+            visited: &mut HashMap<String, u8>,
+            order: &mut Vec<String>,
+        ) -> Result<(), CompileError> {
+            match visited.get(id) {
+                Some(&1) => return Err(CompileError::Cycle),
+                Some(&2) => return Ok(()),
+                _ => {}
+            }
+            visited.insert(id.to_string(), 1);
+
+            // 访问上游 (有 edge 指向本节点的源节点)
+            for e in edges {
+                if e.target == id {
+                    if nodes.contains_key(&e.source) {
+                        dfs(&e.source, nodes, edges, visited, order)?;
+                    }
+                }
+            }
+
+            visited.insert(id.to_string(), 2);
+            order.push(id.to_string());
+            Ok(())
+        }
+
+        // 仅对有输出的节点启动 DFS (避免 Sink / SpectrumSink 进入拓扑序)
+        // - Sink: 纯消费, 无输出
+        // - SpectrumSink: 块运算, 无输出端口, 由独立 30 FPS ticker 触发 FFT
+        let output_node_ids: Vec<String> = node_map
+            .iter()
+            .filter(|(_, n)| !matches!(n.kind, NodeKind::Sink | NodeKind::SpectrumSink { .. }))
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        for id in &output_node_ids {
+            dfs(id, &node_map, &edges, &mut visited, &mut order)?;
+        }
+
+        Ok(Self {
+            tab_id,
+            nodes: node_map,
+            edges,
+            eval_order: order,
+            input_index,
+            channel_source_id,
+        })
+    }
+
+    /// 评估图 — 给定数据帧 + 输入值 + Custom 回传值 + Filter 状态, 返回所有节点的输出端口值
+    ///
+    /// 返回: HashMap<widgetId, HashMap<portId, f32>>
+    ///   - 包含 ChannelSource/Input/Math/Custom/Filter 的输出
+    ///   - 不包含 Sink / SpectrumSink (无输出)
+    ///
+    /// `filter_states`: 滤波器状态 (跨帧持久化), key = Filter 节点 id
+    ///   首次遇到 Filter 节点时按其 kind 创建 DigitalFilter 并存入;
+    ///   后续帧复用同一状态, 实现逐点滤波的连续性。
+    ///   当 Filter 节点的 kind 变化时 (用户修改配置), 自动重建状态。
+    pub fn evaluate(
+        &self,
+        frame: &DataFrame,
+        input_values: &HashMap<String, f32>,
+        custom_outputs: &HashMap<String, HashMap<String, f32>>,
+        filter_states: &mut HashMap<String, DigitalFilter>,
+    ) -> HashMap<String, HashMap<String, f32>> {
+        let mut out: HashMap<String, HashMap<String, f32>> = HashMap::new();
+
+        for node_id in &self.eval_order {
+            let node = match self.nodes.get(node_id) {
+                Some(n) => n,
+                None => continue,
+            };
+
+            let node_out: HashMap<String, f32> = match &node.kind {
+                NodeKind::ChannelSource { channels } => {
+                    let mut m = HashMap::with_capacity(*channels);
+                    for i in 0..*channels {
+                        let v = frame.channels.get(i).copied().unwrap_or(0.0);
+                        m.insert(format!("ch{}", i), v);
+                    }
+                    m
+                }
+                NodeKind::Input => {
+                    let v = input_values.get(node_id).copied().unwrap_or(0.0);
+                    let mut m = HashMap::with_capacity(1);
+                    m.insert("value".to_string(), v);
+                    m
+                }
+                NodeKind::Math { op, input_count } => {
+                    // 收集输入端口 in0..inN 的上游值
+                    let mut inputs: Vec<f32> = Vec::with_capacity(*input_count);
+                    for i in 0..*input_count {
+                        let port = format!("in{}", i);
+                        let val = self.resolve_input(node_id, &port, &out);
+                        inputs.push(val);
+                    }
+                    let result = op.evaluate(&inputs);
+                    let mut m = HashMap::with_capacity(1);
+                    m.insert("result".to_string(), result);
+                    m
+                }
+                NodeKind::Custom { outputs, .. } => {
+                    // 输出来自前端回传
+                    custom_outputs.get(node_id).cloned().unwrap_or_else(|| {
+                        // 默认: 所有输出端口为 0
+                        outputs.iter().map(|p| (p.clone(), 0.0)).collect()
+                    })
+                }
+                NodeKind::Filter { kind } => {
+                    // 取输入 "in0" 的上游值
+                    let input_val = self.resolve_input(node_id, "in0", &out);
+                    // 懒初始化 / kind 变化时重建滤波器状态
+                    // 通过 kind() 比较当前配置与状态中存的配置是否一致
+                    let need_rebuild = filter_states
+                        .get(node_id)
+                        .map(|f| f.kind() != kind)
+                        .unwrap_or(true);
+                    if need_rebuild {
+                        filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
+                    }
+                    let filter = filter_states.get_mut(node_id).unwrap();
+                    let result = filter.process(input_val);
+                    let mut m = HashMap::with_capacity(1);
+                    m.insert("result".to_string(), result);
+                    m
+                }
+                NodeKind::SpectrumSink { .. } => {
+                    // SpectrumSink 不应出现在 eval_order 中, 但防御性处理
+                    continue;
+                }
+                NodeKind::Sink => {
+                    // Sink 不应出现在 eval_order 中, 但防御性处理
+                    continue;
+                }
+            };
+
+            out.insert(node_id.clone(), node_out);
+        }
+
+        out
+    }
+
+    /// 解析某节点某输入端口的上游输出值
+    /// (在 evaluate 过程中, 上游必然已计算完成)
+    fn resolve_input(
+        &self,
+        node_id: &str,
+        port_id: &str,
+        computed: &HashMap<String, HashMap<String, f32>>,
+    ) -> f32 {
+        if let Some((src_node, src_port)) = self.input_index.get(&(node_id.to_string(), port_id.to_string())) {
+            computed
+                .get(src_node)
+                .and_then(|m| m.get(src_port))
+                .copied()
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        }
+    }
+
+    /// 收集所有 Custom 节点的当前输入值 (供推送到前端 iframe)
+    /// 返回: HashMap<custom_widget_id, HashMap<input_port_id, value>>
+    pub fn collect_custom_inputs(
+        &self,
+        computed: &HashMap<String, HashMap<String, f32>>,
+    ) -> HashMap<String, HashMap<String, f32>> {
+        let mut result = HashMap::new();
+        for (node_id, node) in &self.nodes {
+            if let NodeKind::Custom { inputs, .. } = &node.kind {
+                let mut m = HashMap::with_capacity(inputs.len());
+                for port in inputs {
+                    let val = self.resolve_input(node_id, port, computed);
+                    m.insert(port.clone(), val);
+                }
+                result.insert(node_id.clone(), m);
+            }
+        }
+        result
+    }
+
+    /// 收集所有 SpectrumSink 节点的当前输入值 (供 data_loop 推入频谱分析器)
+    ///
+    /// SpectrumSink 的输入端口固定为 "in0", 取上游输出值。
+    /// 返回: HashMap<sink_widget_id, input_value>
+    /// 调用方 (data_loop) 在每帧 evaluate 后调用本方法,
+    /// 将值 push 到对应的 SpectrumAnalyzer 的滑动窗口。
+    pub fn collect_spectrum_inputs(
+        &self,
+        computed: &HashMap<String, HashMap<String, f32>>,
+    ) -> HashMap<String, f32> {
+        let mut result = HashMap::new();
+        for (node_id, node) in &self.nodes {
+            if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
+                let val = self.resolve_input(node_id, "in0", computed);
+                result.insert(node_id.clone(), val);
+            }
+        }
+        result
+    }
+
+    /// 获取所有 Custom 节点 id
+    pub fn custom_node_ids(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| matches!(n.kind, NodeKind::Custom { .. }))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// 获取所有 SpectrumSink 节点 id
+    pub fn spectrum_sink_ids(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| matches!(n.kind, NodeKind::SpectrumSink { .. }))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// 获取所有 Filter 节点 id (供状态清理: 删除节点时移除对应 filter_states)
+    pub fn filter_node_ids(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| matches!(n.kind, NodeKind::Filter { .. }))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// 获取 SpectrumSink 节点的配置 (window_size, window_type, output, sample_rate)
+    /// 用于 state.rs 在节点变更时重建 SpectrumAnalyzer
+    pub fn spectrum_sink_config(
+        &self,
+        node_id: &str,
+    ) -> Option<(usize, WindowType, SpectrumOutput, f32)> {
+        let node = self.nodes.get(node_id)?;
+        if let NodeKind::SpectrumSink {
+            window_size,
+            window_type,
+            output,
+            sample_rate,
+        } = &node.kind
+        {
+            Some((*window_size, *window_type, *output, *sample_rate))
+        } else {
+            None
+        }
+    }
+
+    pub fn nodes(&self) -> &HashMap<String, NodeDef> {
+        &self.nodes
+    }
+
+    pub fn edges(&self) -> &[Edge] {
+        &self.edges
+    }
+
+    pub fn channel_source_id(&self) -> Option<&str> {
+        self.channel_source_id.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vofa_next_buffer::graph::Edge;
+
+    fn make_channel_source(tab_id: &str, channels: usize) -> NodeDef {
+        NodeDef {
+            id: format!("__channel_source__-{}", tab_id),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::ChannelSource { channels },
+        }
+    }
+
+    fn make_math(id: &str, tab_id: &str, op: MathOp, input_count: usize) -> NodeDef {
+        NodeDef {
+            id: id.to_string(),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::Math { op, input_count },
+        }
+    }
+
+    fn make_input(id: &str, tab_id: &str) -> NodeDef {
+        NodeDef {
+            id: id.to_string(),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::Input,
+        }
+    }
+
+    fn make_sink(id: &str, tab_id: &str) -> NodeDef {
+        NodeDef {
+            id: id.to_string(),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::Sink,
+        }
+    }
+
+    fn make_custom(id: &str, tab_id: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeDef {
+        NodeDef {
+            id: id.to_string(),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::Custom {
+                inputs: inputs.iter().map(|s| s.to_string()).collect(),
+                outputs: outputs.iter().map(|s| s.to_string()).collect(),
+            },
+        }
+    }
+
+    fn make_filter(id: &str, tab_id: &str, kind: FilterKind) -> NodeDef {
+        NodeDef {
+            id: id.to_string(),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::Filter { kind },
+        }
+    }
+
+    fn make_spectrum_sink(
+        id: &str,
+        tab_id: &str,
+        window_size: usize,
+        window_type: WindowType,
+        output: SpectrumOutput,
+        sample_rate: f32,
+    ) -> NodeDef {
+        NodeDef {
+            id: id.to_string(),
+            tab_id: tab_id.to_string(),
+            kind: NodeKind::SpectrumSink {
+                window_size,
+                window_type,
+                output,
+                sample_rate,
+            },
+        }
+    }
+
+    fn edge(id: &str, src: &str, src_h: &str, tgt: &str, tgt_h: &str) -> Edge {
+        Edge {
+            id: id.to_string(),
+            source: src.to_string(),
+            source_handle: src_h.to_string(),
+            target: tgt.to_string(),
+            target_handle: tgt_h.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_compile_empty() {
+        let g = CompiledGraph::compile("t1".into(), vec![], vec![]).unwrap();
+        assert!(g.eval_order.is_empty());
+    }
+
+    #[test]
+    fn test_cycle_detection() {
+        let nodes = vec![
+            make_math("a", "t1", MathOp::Add, 1),
+            make_math("b", "t1", MathOp::Add, 1),
+        ];
+        let edges = vec![
+            edge("e1", "a", "result", "b", "in0"),
+            edge("e2", "b", "result", "a", "in0"),
+        ];
+        let result = CompiledGraph::compile("t1".into(), nodes, edges);
+        assert!(matches!(result, Err(CompileError::Cycle)));
+    }
+
+    #[test]
+    fn test_evaluate_channel_source() {
+        let nodes = vec![make_channel_source("t1", 2)];
+        let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+        let frame = DataFrame::new(vec![10.0, 20.0]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let cs_id = "__channel_source__-t1";
+        assert_eq!(out.get(cs_id).and_then(|m| m.get("ch0")), Some(&10.0));
+        assert_eq!(out.get(cs_id).and_then(|m| m.get("ch1")), Some(&20.0));
+    }
+
+    #[test]
+    fn test_evaluate_input_node() {
+        let nodes = vec![make_input("knob1", "t1")];
+        let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+        let frame = DataFrame::new(vec![]);
+        let mut input_values = HashMap::new();
+        input_values.insert("knob1".to_string(), 42.0_f32);
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        assert_eq!(out.get("knob1").and_then(|m| m.get("value")), Some(&42.0));
+    }
+
+    #[test]
+    fn test_evaluate_math_add() {
+        let nodes = vec![
+            make_channel_source("t1", 2),
+            make_math("m1", "t1", MathOp::Add, 2),
+        ];
+        let edges = vec![
+            edge("e1", "__channel_source__-t1", "ch0", "m1", "in0"),
+            edge("e2", "__channel_source__-t1", "ch1", "m1", "in1"),
+        ];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![10.0, 20.0]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        // m1.result = 10 + 20 = 30
+        assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&30.0));
+    }
+
+    #[test]
+    fn test_evaluate_math_chain() {
+        // m1 = ch0 + ch1, m2 = m1 * 2
+        let nodes = vec![
+            make_channel_source("t1", 2),
+            make_math("m1", "t1", MathOp::Add, 2),
+            make_math("m2", "t1", MathOp::Mul, 2),
+        ];
+        let edges = vec![
+            edge("e1", "__channel_source__-t1", "ch0", "m1", "in0"),
+            edge("e2", "__channel_source__-t1", "ch1", "m1", "in1"),
+            edge("e3", "m1", "result", "m2", "in0"),
+            edge("e4", "m1", "result", "m2", "in1"),  // m2 = m1 * m1
+        ];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![3.0, 4.0]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        // m1 = 3 + 4 = 7, m2 = 7 * 7 = 49
+        assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&7.0));
+        assert_eq!(out.get("m2").and_then(|m| m.get("result")), Some(&49.0));
+    }
+
+    #[test]
+    fn test_evaluate_custom_node() {
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_custom("c1", "t1", vec!["value"], vec!["out"]),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "c1", "value")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![5.0]);
+        let input_values = HashMap::new();
+        let mut custom_outputs: HashMap<String, HashMap<String, f32>> = HashMap::new();
+        let mut m = HashMap::new();
+        m.insert("out".to_string(), 99.0);
+        custom_outputs.insert("c1".to_string(), m);
+
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        assert_eq!(out.get("c1").and_then(|m| m.get("out")), Some(&99.0));
+
+        // collect_custom_inputs 应返回 c1.value = 5.0
+        let custom_inputs = g.collect_custom_inputs(&out);
+        assert_eq!(
+            custom_inputs.get("c1").and_then(|m| m.get("value")),
+            Some(&5.0)
+        );
+    }
+
+    #[test]
+    fn test_sink_not_in_eval_order() {
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_sink("gauge1", "t1"),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "gauge1", "value")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        // Sink 不应在 eval_order 中
+        assert!(!g.eval_order.contains(&"gauge1".to_string()));
+        // ChannelSource 应在 eval_order 中
+        assert!(g.eval_order.contains(&"__channel_source__-t1".to_string()));
+    }
+
+    #[test]
+    fn test_unary_math() {
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_math("m1", "t1", MathOp::Abs, 1),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "m1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![-5.0]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&5.0));
+    }
+
+    // ============ Filter 节点测试 ============
+
+    #[test]
+    fn test_filter_fir_passthrough() {
+        // FIR b=[1.0] → 通过 (y = x)
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_filter("f1", "t1", FilterKind::FIR { b: vec![1.0] }),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "f1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![7.5]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        assert_eq!(out.get("f1").and_then(|m| m.get("result")), Some(&7.5));
+        // filter_states 应包含 f1
+        assert!(filter_states.contains_key("f1"));
+    }
+
+    #[test]
+    fn test_filter_fir_delay_state_persistence() {
+        // FIR b=[0.0, 1.0] → 延迟一拍 (y[n] = x[n-1])
+        // 验证 filter_states 跨帧持久化
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_filter("f1", "t1", FilterKind::FIR { b: vec![0.0, 1.0] }),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "f1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+
+        // 帧 1: x=1.0, y=0.0 (x[-1]=0)
+        let out1 = g.evaluate(
+            &DataFrame::new(vec![1.0]),
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+        );
+        assert_eq!(out1.get("f1").and_then(|m| m.get("result")), Some(&0.0));
+
+        // 帧 2: x=2.0, y=1.0 (x[0]=1, 状态持久化生效)
+        let out2 = g.evaluate(
+            &DataFrame::new(vec![2.0]),
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+        );
+        assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&1.0));
+
+        // 帧 3: x=3.0, y=2.0
+        let out3 = g.evaluate(
+            &DataFrame::new(vec![3.0]),
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+        );
+        assert_eq!(out3.get("f1").and_then(|m| m.get("result")), Some(&2.0));
+    }
+
+    #[test]
+    fn test_filter_kind_change_rebuilds_state() {
+        // 用户修改 Filter 配置时, 状态应重建
+        // 初始: FIR b=[1.0] (通过)
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_filter("f1", "t1", FilterKind::FIR { b: vec![1.0] }),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "f1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+
+        // 帧 1: 通过, y=5.0
+        let _ = g.evaluate(
+            &DataFrame::new(vec![5.0]),
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+        );
+        assert!(filter_states.contains_key("f1"));
+
+        // 重新编译图: 修改 Filter kind 为 b=[2.0] (放大 2 倍)
+        let nodes2 = vec![
+            make_channel_source("t1", 1),
+            make_filter("f1", "t1", FilterKind::FIR { b: vec![2.0] }),
+        ];
+        let edges2 = vec![edge("e1", "__channel_source__-t1", "ch0", "f1", "in0")];
+        let g2 = CompiledGraph::compile("t1".into(), nodes2, edges2).unwrap();
+        // 帧 2: 新 kind, 应重建状态, y = 2.0 * 3.0 = 6.0
+        let out2 = g2.evaluate(
+            &DataFrame::new(vec![3.0]),
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+        );
+        assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&6.0));
+    }
+
+    #[test]
+    fn test_filter_lowpass_preserves_dc() {
+        // 低通滤波器对直流信号 (常数) 应基本保持原值
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_filter(
+                "f1",
+                "t1",
+                FilterKind::IIR {
+                    b: vofa_next_dsp::filter::lowpass_biquad(100.0, 1000.0).0,
+                    a: vofa_next_dsp::filter::lowpass_biquad(100.0, 1000.0).1,
+                },
+            ),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "f1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+
+        // 连续输入 1.0 (直流), 稳态后应接近 1.0
+        let mut last_y = 0.0;
+        for _ in 0..200 {
+            let out = g.evaluate(
+                &DataFrame::new(vec![1.0]),
+                &input_values,
+                &custom_outputs,
+                &mut filter_states,
+            );
+            last_y = out.get("f1").and_then(|m| m.get("result")).copied().unwrap_or(0.0);
+        }
+        assert!(
+            (last_y - 1.0).abs() < 0.01,
+            "低通滤波器直流稳态应接近 1.0, 实际 {}",
+            last_y
+        );
+    }
+
+    #[test]
+    fn test_filter_in_eval_order() {
+        // Filter 应在 eval_order 中 (有输出)
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_filter("f1", "t1", FilterKind::FIR { b: vec![1.0] }),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "f1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        assert!(g.eval_order.contains(&"f1".to_string()));
+        assert!(g.filter_node_ids().contains(&"f1".to_string()));
+    }
+
+    // ============ SpectrumSink 节点测试 ============
+
+    #[test]
+    fn test_spectrum_sink_not_in_eval_order() {
+        // SpectrumSink 不应在 eval_order 中 (无输出, 块运算)
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_spectrum_sink(
+                "s1",
+                "t1",
+                256,
+                WindowType::Hann,
+                SpectrumOutput::Magnitude,
+                1000.0,
+            ),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "s1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        assert!(!g.eval_order.contains(&"s1".to_string()));
+        assert!(g.eval_order.contains(&"__channel_source__-t1".to_string()));
+        assert!(g.spectrum_sink_ids().contains(&"s1".to_string()));
+    }
+
+    #[test]
+    fn test_collect_spectrum_inputs() {
+        // collect_spectrum_inputs 应返回 SpectrumSink 的输入值
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_spectrum_sink(
+                "s1",
+                "t1",
+                256,
+                WindowType::Hann,
+                SpectrumOutput::Magnitude,
+                1000.0,
+            ),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "s1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![42.0]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+
+        // collect_spectrum_inputs 应返回 s1 → 42.0
+        let spectrum_inputs = g.collect_spectrum_inputs(&out);
+        assert_eq!(spectrum_inputs.get("s1"), Some(&42.0));
+    }
+
+    #[test]
+    fn test_spectrum_sink_config() {
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_spectrum_sink(
+                "s1",
+                "t1",
+                512,
+                WindowType::Blackman,
+                SpectrumOutput::PSD,
+                2000.0,
+            ),
+        ];
+        let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+        let cfg = g.spectrum_sink_config("s1").expect("应能获取配置");
+        assert_eq!(cfg.0, 512); // window_size
+        assert_eq!(cfg.1, WindowType::Blackman); // window_type
+        assert_eq!(cfg.2, SpectrumOutput::PSD); // output
+        assert!((cfg.3 - 2000.0).abs() < 1e-6); // sample_rate
+
+        // 不存在的节点应返回 None
+        assert!(g.spectrum_sink_config("nonexistent").is_none());
+    }
+
+    #[test]
+    fn test_spectrum_sink_no_output_in_evaluate() {
+        // evaluate 不应包含 SpectrumSink 的输出
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_spectrum_sink(
+                "s1",
+                "t1",
+                256,
+                WindowType::Hann,
+                SpectrumOutput::Magnitude,
+                1000.0,
+            ),
+        ];
+        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "s1", "in0")];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        let frame = DataFrame::new(vec![1.0]);
+        let input_values = HashMap::new();
+        let custom_outputs = HashMap::new();
+        let mut filter_states = HashMap::new();
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        // s1 不应在 evaluate 输出中
+        assert!(!out.contains_key("s1"));
+        // 但 ChannelSource 应在
+        assert!(out.contains_key("__channel_source__-t1"));
+    }
+}

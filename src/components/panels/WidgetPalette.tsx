@@ -19,8 +19,16 @@ import {
   Minus,
   Divide,
   Sigma,
+  Filter as FilterIcon,
+  Activity,
+  ArrowDownToLine,
+  ArrowUpToLine,
+  ArrowRightLeft,
+  Ban,
+  Box,
+  Send,
 } from 'lucide-react';
-import type { WidgetConfig, WidgetCategory, MathOp } from '../../types';
+import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 
 /// 控件面板 — 按 tab 分组分类, 不同类别颜色不同
@@ -61,12 +69,25 @@ export function WidgetPalette() {
     { op: 'log', icon: <Sigma />, label: t(lang, 'mathLog'), isUnary: true },
   ];
 
+  /// 滤波器预设子项 — 每种 preset 一个快捷入口
+  const filterItems: {
+    preset: FilterPresetKind;
+    icon: React.ReactNode;
+    label: string;
+  }[] = [
+    { preset: 'Lowpass', icon: <ArrowDownToLine />, label: t(lang, 'filterLowpass') },
+    { preset: 'Highpass', icon: <ArrowUpToLine />, label: t(lang, 'filterHighpass') },
+    { preset: 'Bandpass', icon: <ArrowRightLeft />, label: t(lang, 'filterBandpass') },
+    { preset: 'Bandstop', icon: <Ban />, label: t(lang, 'filterBandstop') },
+  ];
+
   const inputItems: { kind: WidgetConfig['kind']; icon: React.ReactNode; label: string }[] = [
     { kind: 'Knob', icon: <KnobIcon />, label: t(lang, 'knob') },
     { kind: 'Button', icon: <Square />, label: t(lang, 'button') },
     { kind: 'Radio', icon: <RadioIcon />, label: t(lang, 'radio') },
     { kind: 'Checkbox', icon: <CheckSquare />, label: t(lang, 'checkbox') },
     { kind: 'Slider', icon: <Sliders />, label: t(lang, 'slider') },
+    { kind: 'Command', icon: <Send size={14} />, label: t(lang, 'command') },
   ];
 
   const displayItems: { kind: WidgetConfig['kind']; icon: React.ReactNode; label: string }[] = [
@@ -77,6 +98,8 @@ export function WidgetPalette() {
     { kind: 'LED', icon: <Lightbulb />, label: t(lang, 'led') },
     { kind: 'NumberDisplay', icon: <Hash />, label: t(lang, 'numberDisplay') },
     { kind: 'Label', icon: <Tag />, label: t(lang, 'label') },
+    { kind: 'Spectrum', icon: <Activity />, label: t(lang, 'spectrum') },
+    { kind: 'Model3D', icon: <Box />, label: t(lang, 'model3d') },
   ];
 
   const customItems: {
@@ -104,14 +127,25 @@ export function WidgetPalette() {
     { id: 'custom', label: t(lang, 'catCustom'), color: '#ba68c8' },
   ];
 
-  const handleDragStart = (e: React.DragEvent, kind: WidgetConfig['kind'], op?: MathOp) => {
+  const handleDragStart = (
+    e: React.DragEvent,
+    kind: WidgetConfig['kind'],
+    op?: MathOp,
+    preset?: FilterPresetKind
+  ) => {
     e.dataTransfer.setData('application/widget-kind', kind);
     if (op) e.dataTransfer.setData('application/widget-op', op);
+    if (preset) e.dataTransfer.setData('application/widget-preset', preset);
     e.dataTransfer.effectAllowed = 'copy';
     e.stopPropagation();
   };
 
-  const handleClickAdd = (kind: WidgetConfig['kind'], op?: MathOp, onAdd?: () => void) => {
+  const handleClickAdd = (
+    kind: WidgetConfig['kind'],
+    op?: MathOp,
+    onAdd?: () => void,
+    preset?: FilterPresetKind
+  ) => {
     if (onAdd) {
       onAdd();
       return;
@@ -127,6 +161,12 @@ export function WidgetPalette() {
       } else {
         mathWidget.params.label = `Math ${op}`;
       }
+    }
+    // 滤波器控件: 应用所选 preset
+    if (kind === 'Filter' && preset) {
+      const filterWidget = widget as Extract<WidgetConfig, { kind: 'Filter' }>;
+      filterWidget.params.preset = preset;
+      filterWidget.params.label = `Filter ${preset}`;
     }
     addWidget(widget, activeControlTabId, { x: 280, y: 80 + Math.random() * 100 });
   };
@@ -162,20 +202,36 @@ export function WidgetPalette() {
       {/* 控件网格 */}
       <div className="palette-grid">
         {activeCategory === 'math' ? (
-          // 算术控件: 每个 op 一个项
-          mathItems.map((item) => (
-            <div
-              key={item.op}
-              className="palette-item palette-item-math"
-              draggable
-              onDragStart={(e) => handleDragStart(e, 'Math', item.op)}
-              onClick={() => handleClickAdd('Math', item.op)}
-              title={`${item.label} (${item.isUnary ? t(lang, 'mathUnary') : t(lang, 'mathBinary')})`}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </div>
-          ))
+          <>
+            {/* 算术控件: 每个 op 一个项 */}
+            {mathItems.map((item) => (
+              <div
+                key={item.op}
+                className="palette-item palette-item-math"
+                draggable
+                onDragStart={(e) => handleDragStart(e, 'Math', item.op)}
+                onClick={() => handleClickAdd('Math', item.op)}
+                title={`${item.label} (${item.isUnary ? t(lang, 'mathUnary') : t(lang, 'mathBinary')})`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </div>
+            ))}
+            {/* 滤波器: 每个 preset 一个项 */}
+            {filterItems.map((item) => (
+              <div
+                key={item.preset}
+                className="palette-item palette-item-math palette-item-filter"
+                draggable
+                onDragStart={(e) => handleDragStart(e, 'Filter', undefined, item.preset)}
+                onClick={() => handleClickAdd('Filter', undefined, undefined, item.preset)}
+                title={`${t(lang, 'filter')}: ${item.label}`}
+              >
+                <FilterIcon size={14} />
+                <span>{item.label}</span>
+              </div>
+            ))}
+          </>
         ) : (
           activeItems.map((item) => (
             <div

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Image as ImageIcon } from 'lucide-react';
+import { Image as ImageIcon } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 
 interface ImageViewerProps {
@@ -8,16 +8,12 @@ interface ImageViewerProps {
 }
 
 /// 图像控件 — 占位实现, 后续可扩展为图像数据流显示
-export function ImageViewer({ widget, onRemove }: ImageViewerProps) {
-  const { label, width, height, format } = widget.params;
+export function ImageViewer({ widget }: ImageViewerProps) {
+  const { width, height, format } = widget.params;
   const [hasImage] = useState(false);
 
   return (
     <div className="widget-card">
-      <button className="btn-icon widget-remove" onClick={onRemove}>
-        <X size={12} />
-      </button>
-      <div className="widget-label">{label}</div>
       <div
         style={{
           width: '100%',

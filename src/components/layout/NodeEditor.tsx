@@ -14,7 +14,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useAppStore, createWidget } from '../../store/appStore';
 import { t } from '../../i18n';
-import type { WidgetConfig, MathOp } from '../../types';
+import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
 import { WidgetNode } from '../nodes/WidgetNode';
@@ -87,6 +87,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       const kind = e.dataTransfer.getData('application/widget-kind') as WidgetConfig['kind'] | '';
       if (!kind) return;
       const op = e.dataTransfer.getData('application/widget-op') as MathOp | '';
+      const preset = e.dataTransfer.getData('application/widget-preset') as FilterPresetKind | '';
 
       // 用 screenToFlowPosition 正确处理 zoom/pan 后的坐标转换
       const position = reactFlow.screenToFlowPosition({
@@ -103,6 +104,12 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           mathWidget.params.inputCount = 1;
         }
         mathWidget.params.label = `Math ${op}`;
+      }
+      // 滤波器控件: 应用拖拽时携带的 preset
+      if (widget.kind === 'Filter' && preset) {
+        const filterWidget = widget as Extract<WidgetConfig, { kind: 'Filter' }>;
+        filterWidget.params.preset = preset as FilterPresetKind;
+        filterWidget.params.label = `Filter ${preset}`;
       }
       addWidget(widget, tabId, position);
     },

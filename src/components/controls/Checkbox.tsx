@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
@@ -9,14 +10,17 @@ interface CheckboxProps {
 }
 
 /// 多选控件 — 切换时发送 checked_value 或 unchecked_value
+/// 当前值通过 setInputValue 推送到后端图 (事件驱动, 供下游 widget 读取)
 export function Checkbox({ widget, onRemove }: CheckboxProps) {
-  const { label, checked_value, unchecked_value, binding } = widget.params;
+  const { label, checked_value, unchecked_value, binding, id } = widget.params;
   const checked = useAppStore((s) => {
     const w = s.widgets.find((w) => w.params.id === widget.params.id);
     if (w && w.kind === 'Checkbox') return w.params.default;
     return widget.params.default;
   });
   const updateWidget = useAppStore((s) => s.updateWidget);
+  const setInputValue = useAppStore((s) => s.setInputValue);
+  const value = checked ? checked_value : unchecked_value;
 
   const handleToggle = () => {
     const next = !checked;
@@ -26,6 +30,11 @@ export function Checkbox({ widget, onRemove }: CheckboxProps) {
     });
     sendBindingValue(binding, next ? checked_value : unchecked_value);
   };
+
+  // 同步当前值到后端图 (事件驱动)
+  useEffect(() => {
+    setInputValue(id, value);
+  }, [id, value, setInputValue]);
 
   return (
     <div className="widget-card">

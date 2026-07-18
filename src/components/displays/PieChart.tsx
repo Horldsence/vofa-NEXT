@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { waveformWindow } from '../../lib/dataBuffer';
 
@@ -14,8 +13,8 @@ const COLORS = [
 ];
 
 /// 饼图控件 — 实时显示各通道最新值占比
-export function PieChart({ widget, onRemove }: PieChartProps) {
-  const { label, segments, channels } = widget.params;
+export function PieChart({ widget }: PieChartProps) {
+  const { segments, channels } = widget.params;
   const [values, setValues] = useState<number[]>(channels.map(() => 0));
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -85,10 +84,6 @@ export function PieChart({ widget, onRemove }: PieChartProps) {
 
   return (
     <div className="widget-card">
-      <button className="btn-icon widget-remove" onClick={onRemove}>
-        <X size={12} />
-      </button>
-      <div className="widget-label">{label}</div>
       <div className="pie-chart-container">
         <canvas ref={canvasRef} style={{ width: 120, height: 120 }} />
         <div className="pie-chart-legend">

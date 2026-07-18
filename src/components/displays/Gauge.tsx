@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
-import { X, Settings2 } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
-import { useWidgetInputValue } from '../../lib/useWidgetInputValue';
+import { useGraphInput } from '../../lib/useGraphInput';
 
 interface GaugeProps {
   widget: Extract<WidgetConfig, { kind: 'Gauge' }>;
@@ -10,10 +10,10 @@ interface GaugeProps {
 }
 
 /// 仪表盘控件 — 半圆指针 + 弧形进度, 显示单通道实时值
-/// 数据源: edge 连线 (上游 widget 输出) 优先, 否则回退到 channel 参数
-export function Gauge({ widget, onRemove, onEdit }: GaugeProps) {
-  const { label, min, max, unit, channel } = widget.params;
-  const value = useWidgetInputValue(widget.params.id, 'value', channel, min);
+/// 数据源: edge 连线 (后端图输出) 优先, 否则回退到 channel 参数
+export function Gauge({ widget, onEdit }: GaugeProps) {
+  const { min, max, unit, channel } = widget.params;
+  const value = useGraphInput(widget.params.id, 'value', channel, min);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // 绘制半圆仪表盘
@@ -104,9 +104,6 @@ export function Gauge({ widget, onRemove, onEdit }: GaugeProps) {
 
   return (
     <div className="widget-card">
-      <button className="btn-icon widget-remove" onClick={onRemove} title="Remove">
-        <X size={12} />
-      </button>
       {onEdit && (
         <button
           className="btn-icon widget-edit"
@@ -117,7 +114,6 @@ export function Gauge({ widget, onRemove, onEdit }: GaugeProps) {
           <Settings2 size={11} />
         </button>
       )}
-      <div className="widget-label">{label}</div>
       <div className="gauge-container">
         <canvas ref={canvasRef} style={{ width: '100%', height: 90 }} />
         <div className="gauge-value">

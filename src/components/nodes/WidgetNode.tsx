@@ -16,6 +16,7 @@ import { LED } from '../displays/LED';
 import { NumberDisplay } from '../displays/NumberDisplay';
 import { CustomWidget, evalCustomWidgetDef } from '../displays/CustomWidget';
 import { MathWidget } from '../displays/MathWidget';
+import { FilterWidget } from '../displays/FilterWidget';
 
 /// 获取模块的端口定义
 function getWidgetPorts(widget: WidgetConfig): {
@@ -64,6 +65,31 @@ function getWidgetPorts(widget: WidgetConfig): {
         outputs: [{ id: 'result', label: 'result' }],
       };
     }
+    case 'Filter':
+      // 滤波器: 单输入 in0 + 单输出 result
+      return {
+        inputs: [{ id: 'in0', label: 'in0' }],
+        outputs: [{ id: 'result', label: 'result' }],
+      };
+    case 'Spectrum':
+      // 频谱分析: 单输入 in0, 无输出 (块运算, 后端独立 ticker 触发 FFT)
+      return {
+        inputs: [{ id: 'in0', label: 'in0' }],
+        outputs: [],
+      };
+    case 'Model3D':
+      // 3D 模型: 三通道输入 x/y/z, 无输出 (前端 Three.js 直接渲染)
+      return {
+        inputs: [
+          { id: 'x', label: 'x' },
+          { id: 'y', label: 'y' },
+          { id: 'z', label: 'z' },
+        ],
+        outputs: [],
+      };
+    case 'Command':
+      // 命令发送: 无输入端口 (主动发送), 无输出 (前端 → transport)
+      return { inputs: [], outputs: [] };
     case 'Custom': {
       // Custom: 从用户代码中解析端口定义
       const { def } = evalCustomWidgetDef(widget.params.code);
@@ -133,11 +159,22 @@ export function WidgetNode({ id, data }: NodeProps) {
             onEdit={handleEditCustom}
           />
         );
-      case 'Waveform':
-        // 波形图在节点内仅显示占位, 实际波形在 DataPanel 显示
+      case 'Filter':
+        return (
+          <FilterWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'Filter' }>}
+            onRemove={onRemove}
+            onEdit={handleEditCustom}
+          />
+        );
+      case 'Model3D':
+    case 'Spectrum':
+    case 'Waveform':
+    case 'Command':
+        // 这些控件在节点内仅显示占位, 实际渲染在 DataPanel
         return (
           <div className="rf-waveform-placeholder">
-            <span>{widget.params.channels} channels</span>
+            <span>{widget.kind}</span>
             <span className="rf-waveform-placeholder-hint">→ DataPanel</span>
           </div>
         );
@@ -146,10 +183,20 @@ export function WidgetNode({ id, data }: NodeProps) {
     }
   };
 
+  // 获取 widget 显示名称 (LabelConfig 用 text, WaveformConfig 无 label 字段)
+  const widgetLabel =
+    widget.kind === 'Label'
+      ? widget.params.text
+      : 'label' in widget.params
+      ? widget.params.label
+      : widget.kind;
+
   return (
     <div className="rf-widget-node">
       <div className="rf-widget-node-header">
-        <span className="rf-widget-node-kind">{widget.kind}</span>
+        <span className="rf-widget-node-kind" title={widget.kind}>
+          {widgetLabel || widget.kind}
+        </span>
         <button
           className="btn-icon rf-widget-node-close"
           onClick={(e) => {

@@ -143,6 +143,9 @@ export interface WaveformConfig {
   channels: number;
   max_points: number;
   visible_channels: boolean[];
+  /// 动态 series 开关 — false(默认) 固定 widget.params.channels 通道槽 + 派生槽;
+  /// true 时按实际连接数决定 series 数 (未连接通道不显示)
+  dynamicSeries?: boolean;
 }
 
 export interface PieChartConfig {
@@ -226,6 +229,162 @@ export interface MathConfig {
   precision: number;      // 输出小数位
 }
 
+// ============ 频域 DSP 类型 ============
+//
+// 与 Rust vofa_next_dsp 对应, 使用 serde 默认 (externally-tagged) 表示:
+//   { "FIR": { "b": [...] } }
+//   { "IIR": { "b": [...], "a": [...] } }
+//   { "Lowpass": { "cutoff": 100, "sample_rate": 1000 } }
+//   { "Hann": null }  (unit variant)
+//
+// 这些类型通过 IPC 与后端交换, 字段名与 Rust 端 snake_case 一致
+
+/// 窗函数类型 (与 Rust WindowType 对应)
+export type WindowType = 'Rect' | 'Hann' | 'Hamming' | 'Blackman';
+
+/// 频谱输出模式 (与 Rust SpectrumOutput 对应)
+export type SpectrumOutput = 'Magnitude' | 'Power' | 'PSD' | 'Decibel';
+
+/// 滤波器预设类型 (前端友好, 与 Rust FilterPreset 对应)
+export type FilterPresetKind = 'Lowpass' | 'Highpass' | 'Bandpass' | 'Bandstop';
+
+/// 滤波器配置 (前端友好形式, 同步到后端时转为 IIR biquad coeffs)
+export interface FilterConfig {
+  id: string;
+  label: string;
+  /// 预设类型 (低通/高通/带通/带阻)
+  preset: FilterPresetKind;
+  /// 截止频率 (Hz) — 用于 Lowpass/Highpass
+  cutoff: number;
+  /// 通带/阻带下限 (Hz) — 用于 Bandpass/Bandstop
+  low: number;
+  /// 通带/阻带上限 (Hz) — 用于 Bandpass/Bandstop
+  high: number;
+  /// 采样率 (Hz)
+  sampleRate: number;
+  /// 输出小数位 (显示用)
+  precision: number;
+}
+
+/// 频谱分析配置
+export interface SpectrumConfig {
+  id: string;
+  label: string;
+  /// FFT 窗口大小 (2 的幂, 256/512/1024/2048)
+  windowSize: number;
+  /// 窗函数类型
+  windowType: WindowType;
+  /// 输出模式
+  output: SpectrumOutput;
+  /// 采样率 (Hz)
+  sampleRate: number;
+}
+
+// ============ 3D 模型显示 ============
+
+/// 3D 显示模式
+/// - trajectory: 三通道作为 (x, y, z) 坐标, 渲染拖尾散点轨迹
+/// - attitude:   三通道作为欧拉角 (roll=x, pitch=y, yaw=z, 弧度), 渲染姿态立方体
+export type Model3DMode = 'trajectory' | 'attitude';
+
+/// 3D 模型控件配置
+/// 输入端口固定为 x / y / z, 缺失通道补 0
+export interface Model3DConfig {
+  id: string;
+  label: string;
+  /// 显示模式
+  mode: Model3DMode;
+  /// 拖尾长度 (trajectory 模式, 默认 200)
+  trailLength: number;
+  /// 拖尾/立方体颜色 (HEX, 如 '#75beff')
+  color: string;
+  /// 坐标轴长度 (默认 1.0)
+  axisLength: number;
+}
+
+// ============ 命令发送控件 ============
+
+/// 输入格式
+/// - hex:         HEX 字节流, 空格分隔 (如 "AA 01 02 BB")
+/// - ascii:       ASCII 文本 + 转义字符 (\n \t \r \xHH)
+/// - template:    模板字符串 (${VAR} 变量插值)
+/// - structured:  结构化字段定义 (按字节序打包)
+export type CommandFormat = 'hex' | 'ascii' | 'template' | 'structured';
+
+/// 校验算法类型 (与 lib/checksum.ts 对应)
+export type ChecksumType =
+  | 'none'
+  | 'sum8'
+  | 'xor8'
+  | 'crc8'
+  | 'crc16Modbus'
+  | 'crc16CCITT'
+  | 'crc32'
+  | 'lrc'
+  | 'custom';
+
+/// 校验位置
+/// - append:  追加到字节流末尾
+/// - prepend: 插入到字节流开头
+/// - none:    不附加 (仅用于显示)
+export type ChecksumPosition = 'append' | 'prepend' | 'none';
+
+/// 结构化字段类型
+export type FieldType =
+  | 'uint8'
+  | 'int8'
+  | 'uint16LE'
+  | 'uint16BE'
+  | 'int16LE'
+  | 'int16BE'
+  | 'uint32LE'
+  | 'uint32BE'
+  | 'int32LE'
+  | 'int32BE'
+  | 'float32LE'
+  | 'float32BE'
+  | 'bytes';
+
+/// 结构化字段定义
+export interface CommandField {
+  id: string;
+  name: string;
+  type: FieldType;
+  value: string;  // 字符串形式, 解析时转换
+}
+
+/// 命令发送控件配置
+/// 支持多格式输入 + 校验计算 + 发送到嵌入式设备
+export interface CommandConfig {
+  id: string;
+  label: string;
+  format: CommandFormat;
+  /// HEX 模式内容 (如 "AA 01 02 BB")
+  hexContent: string;
+  /// ASCII 模式内容 (支持 \n \t \r \xHH 转义)
+  asciiContent: string;
+  /// 模板模式内容 (如 "SET ${CH0} ${VALUE}\n")
+  templateContent: string;
+  /// 结构化模式字段列表
+  fields: CommandField[];
+  /// 校验算法
+  checksum: ChecksumType;
+  /// 校验位置
+  checksumPosition: ChecksumPosition;
+  /// 自定义校验脚本 (checksum === 'custom' 时使用)
+  customScript: string;
+  /// 发送后追加 \n
+  appendNewline: boolean;
+}
+
+/// 频谱计算结果 — 与 Rust SpectrumResult 对应
+export interface SpectrumResult {
+  /// 频率 (Hz), 长度 = windowSize / 2 + 1
+  frequencies: number[];
+  /// 频谱值 (Magnitude/Power/PSD/Decibel), 与 frequencies 对齐
+  values: number[];
+}
+
 /// 控件类别 — 用于 WidgetPalette 分组与颜色区分
 export type WidgetCategory =
   | 'input'      // 输入控件 (Knob/Button/Radio/Checkbox/Slider)
@@ -247,7 +406,11 @@ export type WidgetConfig =
   | { kind: 'LED'; params: LEDConfig }
   | { kind: 'NumberDisplay'; params: NumberDisplayConfig }
   | { kind: 'Custom'; params: CustomConfig }
-  | { kind: 'Math'; params: MathConfig };
+  | { kind: 'Math'; params: MathConfig }
+  | { kind: 'Filter'; params: FilterConfig }
+  | { kind: 'Spectrum'; params: SpectrumConfig }
+  | { kind: 'Model3D'; params: Model3DConfig }
+  | { kind: 'Command'; params: CommandConfig };
 
 /// 获取控件所属类别 (用于 palette 分组与着色)
 export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
@@ -257,6 +420,7 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'Radio':
     case 'Checkbox':
     case 'Slider':
+    case 'Command':
       return 'input';
     case 'Waveform':
     case 'PieChart':
@@ -265,8 +429,11 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'LED':
     case 'NumberDisplay':
     case 'Label':
+    case 'Spectrum':
+    case 'Model3D':
       return 'display';
     case 'Math':
+    case 'Filter':
       return 'math';
     case 'Custom':
       return 'custom';
@@ -275,6 +442,98 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
 
 /// 单目运算集合 — 这些 op 只使用第一个输入
 export const UNARY_MATH_OPS: MathOp[] = ['abs', 'neg', 'square', 'sqrt', 'sin', 'cos', 'tan', 'log'];
+
+// ============ Biquad 滤波器系数计算 (与 Rust RBJ Audio EQ Cookbook 一致) ============
+//
+// 前端在 syncTabGraph 时将 FilterConfig (preset + cutoff + sampleRate) 转为 IIR biquad 系数,
+// 通过 IPC 同步到后端。后端 DigitalFilter::new(FilterKind::IIR { b, a }) 直接使用这些系数。
+//
+// 公式参考: https://www.musicdsp.org/en/latest/Filters/197-rbj-audio-eq-cookbook.html
+
+const PI_F32 = Math.PI;
+const DEFAULT_Q = 0.70710678; // 1/sqrt(2), Butterworth 响应
+
+function w0(cutoff: number, sampleRate: number): number {
+  return 2.0 * PI_F32 * cutoff / sampleRate;
+}
+
+function alpha(w0: number, q: number): number {
+  return Math.sin(w0) / (2.0 * q);
+}
+
+/// 低通 biquad 系数 (fc=截止频率, fs=采样率)
+export function lowpassBiquad(cutoff: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
+  const w = w0(cutoff, sampleRate);
+  const a = alpha(w, DEFAULT_Q);
+  const cosW = Math.cos(w);
+  const b0 = (1.0 - cosW) / 2.0;
+  const b1 = 1.0 - cosW;
+  const b2 = (1.0 - cosW) / 2.0;
+  const a0 = 1.0 + a;
+  const a1 = -2.0 * cosW;
+  const a2 = 1.0 - a;
+  return { b: [b0, b1, b2], a: [a0, a1, a2] };
+}
+
+/// 高通 biquad 系数
+export function highpassBiquad(cutoff: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
+  const w = w0(cutoff, sampleRate);
+  const a = alpha(w, DEFAULT_Q);
+  const cosW = Math.cos(w);
+  const b0 = (1.0 + cosW) / 2.0;
+  const b1 = -(1.0 + cosW);
+  const b2 = (1.0 + cosW) / 2.0;
+  const a0 = 1.0 + a;
+  const a1 = -2.0 * cosW;
+  const a2 = 1.0 - a;
+  return { b: [b0, b1, b2], a: [a0, a1, a2] };
+}
+
+/// 带通 biquad 系数 (常量 0 dB 峰值)
+/// low, high: 通带 [low, high]
+export function bandpassBiquad(low: number, high: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
+  const fc = Math.sqrt(low * high);
+  const bw = high - low;
+  const w = w0(fc, sampleRate);
+  const q = bw > 0 ? fc / bw : DEFAULT_Q;
+  const a = alpha(w, q);
+  const cosW = Math.cos(w);
+  const b0 = a;
+  const b1 = 0.0;
+  const b2 = -a;
+  const a0 = 1.0 + a;
+  const a1 = -2.0 * cosW;
+  const a2 = 1.0 - a;
+  return { b: [b0, b1, b2], a: [a0, a1, a2] };
+}
+
+/// 带阻 (陷波) biquad 系数
+export function bandstopBiquad(low: number, high: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
+  const fc = Math.sqrt(low * high);
+  const bw = high - low;
+  const w = w0(fc, sampleRate);
+  const q = bw > 0 ? fc / bw : DEFAULT_Q;
+  const a = alpha(w, q);
+  const cosW = Math.cos(w);
+  const b0 = 1.0;
+  const b1 = -2.0 * cosW;
+  const b2 = 1.0;
+  const a0 = 1.0 + a;
+  const a1 = -2.0 * cosW;
+  const a2 = 1.0 - a;
+  return { b: [b0, b1, b2], a: [a0, a1, a2] };
+}
+
+/// 根据 FilterConfig 计算对应的 IIR biquad 系数
+/// 用于 widgetToNodeKind: 将前端友好的 preset/cutoff 形式转为后端 FilterKind::IIR
+export function biquadFromFilterConfig(cfg: FilterConfig): { b: [number, number, number]; a: [number, number, number] } {
+  switch (cfg.preset) {
+    case 'Lowpass':  return lowpassBiquad(cfg.cutoff, cfg.sampleRate);
+    case 'Highpass': return highpassBiquad(cfg.cutoff, cfg.sampleRate);
+    case 'Bandpass': return bandpassBiquad(cfg.low, cfg.high, cfg.sampleRate);
+    case 'Bandstop': return bandstopBiquad(cfg.low, cfg.high, cfg.sampleRate);
+  }
+}
 
 /// 计算数学运算结果 (输入为 number[], 输出为单 number)
 export function computeMathResult(op: MathOp, inputs: number[]): number {
@@ -315,6 +574,9 @@ export interface WaveformWindow {
   channels: number[][];
   /// 当前通道数
   channel_count: number;
+  /// 派生通道数据 (Math/Filter 等节点的输出, 作为 Waveform sink 的输入)
+  /// key1 = sink_widget_id, key2 = source_widget_id, value = 与 timestamps 对齐的数据
+  derived?: Record<string, Record<string, number[]>>;
 }
 
 // ============ 示波器风格轴配置 ============
@@ -507,7 +769,7 @@ export interface ControlTab {
 
 // ============ 数据显示区 Tab ============
 
-export type DataTabType = 'waveform' | 'raw' | 'pie' | 'image' | 'waveform-extra';
+export type DataTabType = 'waveform' | 'raw' | 'pie' | 'image' | 'waveform-extra' | 'model3d' | 'spectrum' | 'command';
 
 export interface DataTab {
   id: string;
