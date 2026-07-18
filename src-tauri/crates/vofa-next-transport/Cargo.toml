@@ -14,3 +14,4 @@ anyhow = { workspace = true }
 serialport = "4"
 async-trait = "0.1"
 parking_lot = "0.12"
+nusb = "0.2"

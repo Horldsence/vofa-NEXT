@@ -1,7 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats};
+use tokio::sync::{broadcast, mpsc, Notify};
+use vofa_next_core::{
+    ConnectionState, Error, PortInfo, ProtocolConfig, Result, TransportConfig, TransportStats,
+};
 
 /// 传输管理器 — 统一管理所有传输类型
 pub struct TransportManager {
@@ -10,6 +12,10 @@ pub struct TransportManager {
     cancel: Option<Arc<AtomicBool>>,
     state: parking_lot::Mutex<ConnectionState>,
     stats: parking_lot::Mutex<TransportStats>,
+    /// 测试数据生成器运行状态 (仅 TestData 有效)
+    test_data_running: Option<Arc<AtomicBool>>,
+    /// 测试数据生成器恢复通知 (仅 TestData 有效)
+    test_data_notify: Option<Arc<Notify>>,
 }
 
 impl TransportManager {
@@ -20,6 +26,8 @@ impl TransportManager {
             cancel: None,
             state: parking_lot::Mutex::new(ConnectionState::Disconnected),
             stats: parking_lot::Mutex::new(TransportStats::default()),
+            test_data_running: None,
+            test_data_notify: None,
         }
     }
 
@@ -29,22 +37,53 @@ impl TransportManager {
     }
 
     /// 打开连接
-    pub async fn open(&mut self, config: TransportConfig) -> Result<()> {
+    ///
+    /// `protocol` 仅被 TestData 用作生成数据的线缆格式参考, 其他传输类型忽略此参数
+    pub async fn open(
+        &mut self,
+        config: TransportConfig,
+        protocol: ProtocolConfig,
+    ) -> Result<()> {
         self.close().await;
 
         self.set_state(ConnectionState::Connecting);
 
-        let (write_tx, data_tx, cancel) = match &config {
-            TransportConfig::Serial(c) => crate::serial::spawn(c.clone())?,
-            TransportConfig::Udp(c) => crate::udp::spawn(c.clone()).await?,
-            TransportConfig::TcpClient(c) => crate::tcp::spawn_client(c.clone()).await?,
-            TransportConfig::TcpServer(c) => crate::tcp::spawn_server(c.clone()).await?,
-            TransportConfig::TestData(c) => crate::test_data::spawn(c.clone()).await?,
+        let (write_tx, data_tx, cancel, test_data_running, test_data_notify) = match &config {
+            TransportConfig::Serial(c) => {
+                let (w, d, c) = crate::serial::spawn(c.clone())?;
+                (w, d, c, None, None)
+            }
+            TransportConfig::Udp(c) => {
+                let (w, d, c) = crate::udp::spawn(c.clone()).await?;
+                (w, d, c, None, None)
+            }
+            TransportConfig::TcpClient(c) => {
+                let (w, d, c) = crate::tcp::spawn_client(c.clone()).await?;
+                (w, d, c, None, None)
+            }
+            TransportConfig::TcpServer(c) => {
+                let (w, d, c) = crate::tcp::spawn_server(c.clone()).await?;
+                (w, d, c, None, None)
+            }
+            TransportConfig::TestData(c) => {
+                let (w, d, c, r, n) = crate::test_data::spawn(c.clone(), protocol).await?;
+                (w, d, c, Some(r), Some(n))
+            }
+            TransportConfig::Slcan(c) => {
+                let (w, d, c) = crate::slcan::spawn(c.clone())?;
+                (w, d, c, None, None)
+            }
+            TransportConfig::CandleLight(c) => {
+                let (w, d, c) = crate::candle::spawn(c.clone()).await?;
+                (w, d, c, None, None)
+            }
         };
 
         self.write_tx = Some(write_tx);
         self.data_tx = Some(data_tx);
         self.cancel = Some(cancel);
+        self.test_data_running = test_data_running;
+        self.test_data_notify = test_data_notify;
         self.set_state(ConnectionState::Connected);
 
         log::info!("连接已建立: {:?}", config);
@@ -58,7 +97,29 @@ impl TransportManager {
         }
         self.write_tx = None;
         self.data_tx = None;
+        self.test_data_running = None;
+        self.test_data_notify = None;
         self.set_state(ConnectionState::Disconnected);
+    }
+
+    /// 设置测试数据生成器运行状态 (仅 TestData 有效)
+    pub fn set_test_data_running(&self, running: bool) {
+        if let Some(r) = &self.test_data_running {
+            r.store(running, Ordering::Relaxed);
+        }
+        if running {
+            if let Some(n) = &self.test_data_notify {
+                n.notify_one();
+            }
+        }
+    }
+
+    /// 获取测试数据生成器当前运行状态
+    pub fn is_test_data_running(&self) -> bool {
+        self.test_data_running
+            .as_ref()
+            .map(|r| r.load(Ordering::Relaxed))
+            .unwrap_or(false)
     }
 
     /// 发送数据

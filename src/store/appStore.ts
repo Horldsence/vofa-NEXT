@@ -21,6 +21,10 @@ import {
   setInputValue as apiSetInputValue,
   submitCustomOutput as apiSubmitCustomOutput,
 } from '../lib/graphSubscription';
+import { canFrameBuffer } from '../lib/canBuffer';
+import { subscribeCanFrames } from '../lib/canSubscription';
+import { logicSampleBuffer, decodedEventBuffer } from '../lib/logicBuffer';
+import { subscribeLogicSamples, subscribeDecodedEvents } from '../lib/logicSubscription';
 import { widgetToNodeKind, makeChannelSourceNodeDef, edgeToGraphEdge, type NodeDef } from '../lib/nodeDef';
 import { nanoid } from 'nanoid';
 import { t } from '../i18n';
@@ -40,6 +44,9 @@ import type {
   SpectrumResult,
   WindowType,
   SpectrumOutput,
+  CanFrame,
+  LogicSample,
+  DecodedEvent,
 } from '../types';
 
 const DEFAULT_SERIAL: TransportConfig = {
@@ -63,13 +70,11 @@ const DEFAULT_PROTOCOL: ProtocolConfig = {
 /// 通道源节点 ID (全局唯一, 不可删除)
 export const CHANNEL_SOURCE_ID = '__channel_source__';
 
-/// 侧边栏视图类型 — 顺序符合配置操作流: 接口 → 协议 → 串口
+/// 侧边栏视图类型 — 顺序符合配置操作流: 数据接口 → 协议引擎 → 控件
 export type SidebarView =
   | 'transport'
   | 'protocol'
-  | 'port'
-  | 'widgets'
-  | 'ai';
+  | 'widgets';
 
 interface AppStore {
   // Language
@@ -125,6 +130,17 @@ interface AppStore {
   /// 由 subscribeSpectrum 推送 (30 FPS), 供 SpectrumChart 读取
   spectrumResults: Record<string, SpectrumResult>;
 
+  // CAN 帧相关
+  canFrames: CanFrame[];
+  canFramesVersion: number;
+  addCanTab: () => void;
+
+  // 逻辑分析仪相关
+  logicSamples: LogicSample[];
+  decodedEvents: DecodedEvent[];
+  logicSamplesVersion: number;
+  addLogicTab: () => void;
+
   // Actions
   refreshPorts: () => Promise<void>;
   connect: () => Promise<void>;
@@ -136,6 +152,11 @@ interface AppStore {
   sendWidgetValue: (binding: WidgetBinding, value: number) => Promise<void>;
   selectPort: (index: number) => void;
   pollDetectedChannels: () => Promise<void>;
+
+  // Test data
+  testDataRunning: boolean;
+  startTestData: () => Promise<void>;
+  stopTestData: () => Promise<void>;
 
   // Widget management
   addWidget: (widget: WidgetConfig, tabId: string, position?: { x: number; y: number }) => void;
@@ -188,6 +209,9 @@ let waveformSub: { cancel: () => void } | null = null;
 let graphOutputSub: { cancel: () => void } | null = null;
 let customInputSub: { cancel: () => void } | null = null;
 let spectrumSub: { cancel: () => void } | null = null;
+let canFramesSub: { cancel: () => void } | null = null;
+let logicSamplesSub: { cancel: () => void } | null = null;
+let decodedEventsSub: { cancel: () => void } | null = null;
 let detectedChannelsPoller: ReturnType<typeof setInterval> | null = null;
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -253,7 +277,7 @@ function getEffectiveChannels(
   protocolConfig: ProtocolConfig,
   detectedChannels: number | null
 ): number {
-  if (protocolConfig.kind === 'RawData') return 4;
+  if (protocolConfig.kind === 'RawData' || protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight' || protocolConfig.kind === 'LogicDecode') return 4;
   const configured = protocolConfig.channels;
   if (configured != null) return configured;
   return detectedChannels ?? 4;
@@ -263,7 +287,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   lang: 'zh',
   setLang: (lang) => set({ lang }),
 
-  // 侧边栏导航 — 默认从数据接口开始配置
+  // 侧边栏导航 — 默认从数据接口开始
   sidebarView: 'transport',
   sidebarVisible: true,
   setSidebarView: (view) => set({ sidebarView: view, sidebarVisible: true }),
@@ -282,8 +306,11 @@ export const useAppStore = create<AppStore>((set, get) => ({
   transportConfig: DEFAULT_SERIAL,
   protocolConfig: DEFAULT_PROTOCOL,
   ports: [],
-  selectedPortIndex: 0,
+  /// -1 表示未选中任何端口 (避免 Windows 下默认高亮首项但不生效的问题)
+  selectedPortIndex: -1,
   detectedChannels: null,
+
+  testDataRunning: false,
 
   widgets: [],
 
@@ -335,6 +362,49 @@ export const useAppStore = create<AppStore>((set, get) => ({
   customInputs: {},
   spectrumResults: {},
 
+  canFrames: [],
+  canFramesVersion: 0,
+
+  addCanTab: () => {
+    const existing = get().dataTabs.find((t) => t.type === 'can');
+    if (existing) {
+      set({ activeDataTabId: existing.id });
+      return;
+    }
+    const tab: DataTab = {
+      id: `can-${Date.now()}`,
+      type: 'can',
+      name: t(get().lang, 'canFrames'),
+      closable: true,
+    };
+    set({
+      dataTabs: [...get().dataTabs, tab],
+      activeDataTabId: tab.id,
+    });
+  },
+
+  logicSamples: [],
+  decodedEvents: [],
+  logicSamplesVersion: 0,
+
+  addLogicTab: () => {
+    const existing = get().dataTabs.find((t) => t.type === 'logic');
+    if (existing) {
+      set({ activeDataTabId: existing.id });
+      return;
+    }
+    const tab: DataTab = {
+      id: `logic-${Date.now()}`,
+      type: 'logic',
+      name: t(get().lang, 'logicAnalyzer'),
+      closable: true,
+    };
+    set({
+      dataTabs: [...get().dataTabs, tab],
+      activeDataTabId: tab.id,
+    });
+  },
+
   // 图同步 actions
   syncTabGraph: (tabId) => {
     void syncTabGraphToBackend(tabId);
@@ -352,7 +422,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
   refreshPorts: async () => {
     try {
       const ports = await api.listPorts();
-      set({ ports });
+      // 刷新端口列表后, 按 port_name 保留选中状态 (而非依赖 index)
+      const { transportConfig, selectedPortIndex } = get();
+      const isSerialLike = transportConfig.kind === 'Serial' || transportConfig.kind === 'Slcan';
+      const currentName = isSerialLike
+        ? (transportConfig.params as { port_name: string }).port_name
+        : '';
+      let newIndex = -1;
+      if (currentName) {
+        newIndex = ports.findIndex((p) => p.name === currentName);
+      } else if (selectedPortIndex >= 0 && selectedPortIndex < ports.length) {
+        // 兜底: 旧 index 仍有效则保留
+        newIndex = selectedPortIndex;
+      }
+      set({ ports, selectedPortIndex: newIndex });
     } catch (e) {
       const lang = get().lang;
       notify.error(
@@ -376,6 +459,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
       await api.openTransport(transportConfig);
       set({
         connectionState: 'Connected',
+        sidebarView: 'protocol',
+        sidebarVisible: true,
+        testDataRunning: false,
         stats: { rx_bytes: 0, tx_bytes: 0, rx_frames: 0, tx_frames: 0 },
         rawDataVersion: Date.now(),
       });
@@ -414,7 +500,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         clearInterval(detectedChannelsPoller);
         detectedChannelsPoller = null;
       }
-      set({ connectionState: 'Disconnected' });
+      set({ connectionState: 'Disconnected', testDataRunning: false });
     } catch (e) {
       const lang = get().lang;
       notify.error(
@@ -430,12 +516,32 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
   setTransportConfig: (config) => set({ transportConfig: config }),
 
+  startTestData: async () => {
+    try {
+      await api.startTestData();
+      set({ testDataRunning: true });
+    } catch (e) {
+      const lang = get().lang;
+      notify.error(t(lang, 'notifStartTestDataFailed'), formatError(e), { source: 'startTestData' });
+    }
+  },
+
+  stopTestData: async () => {
+    try {
+      await api.stopTestData();
+      set({ testDataRunning: false });
+    } catch (e) {
+      const lang = get().lang;
+      notify.error(t(lang, 'notifStopTestDataFailed'), formatError(e), { source: 'stopTestData' });
+    }
+  },
+
   setProtocolConfig: async (config) => {
     set({ protocolConfig: config });
     try {
       await api.setProtocol(config);
       // 手动模式: 设置后端缓冲区通道数; 自动模式: 由后端动态扩展
-      if (config.kind !== 'RawData' && config.channels != null) {
+      if ((config.kind === 'JustFloat' || config.kind === 'FireWater') && config.channels != null) {
         await api.setBufferChannels(config.channels);
         set({ detectedChannels: null });
       }
@@ -491,15 +597,21 @@ export const useAppStore = create<AppStore>((set, get) => ({
   selectPort: (index) => {
     const { ports, transportConfig } = get();
     if (index >= 0 && index < ports.length) {
+      // Serial 与 Slcan 都基于 USB-CDC 串口, 选中时同步 port_name
       if (transportConfig.kind === 'Serial') {
         set({
           selectedPortIndex: index,
           transportConfig: {
-            ...transportConfig,
-            params: {
-              ...transportConfig.params,
-              port_name: ports[index].name,
-            },
+            kind: 'Serial',
+            params: { ...transportConfig.params, port_name: ports[index].name },
+          },
+        });
+      } else if (transportConfig.kind === 'Slcan') {
+        set({
+          selectedPortIndex: index,
+          transportConfig: {
+            kind: 'Slcan',
+            params: { ...transportConfig.params, port_name: ports[index].name },
           },
         });
       } else {
@@ -511,7 +623,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   /// 轮询自动检测到的通道数 (仅在自动模式下查询)
   pollDetectedChannels: async () => {
     const { protocolConfig } = get();
-    if (protocolConfig.kind === 'RawData') return;
+    if (protocolConfig.kind === 'RawData' || protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight' || protocolConfig.kind === 'LogicDecode') return;
     if (protocolConfig.channels != null) return; // 手动模式不轮询
 
     if (detectedChannelsPoller) clearInterval(detectedChannelsPoller);
@@ -843,7 +955,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
       }));
     });
 
-    unlistenFns = [unlistenData, unlistenFrames, unlistenState, unlistenStats];
+    // 监听 transport:can-frames 事件 (实时推送, 用于即时更新)
+    const unlistenCanFrames = await listen<{ frames: CanFrame[] }>('transport:can-frames', (event) => {
+      canFrameBuffer.push(event.payload.frames);
+    });
+
+    // 监听 transport:logic-samples 事件 (实时推送逻辑采样)
+    const unlistenLogic = await listen<{ samples: LogicSample[] }>('transport:logic-samples', (event) => {
+      logicSampleBuffer.push(event.payload.samples);
+    });
+
+    // 监听 transport:decoded-events 事件 (实时推送解码事件)
+    const unlistenDecoded = await listen<{ events: DecodedEvent[] }>('transport:decoded-events', (event) => {
+      decodedEventBuffer.push(event.payload.events);
+    });
+
+    unlistenFns = [unlistenData, unlistenFrames, unlistenState, unlistenStats, unlistenCanFrames, unlistenLogic, unlistenDecoded];
 
     // 启动后端图输出订阅 (60 FPS 推送)
     // 后端在每帧评估所有 tab 的图, 并将合并快照推送至此
@@ -869,6 +996,33 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ spectrumResults: batch.spectra });
     });
 
+    // 启动 CAN 帧订阅 (后端周期性推送 can_buffer 中的最近帧)
+    if (canFramesSub) canFramesSub.cancel();
+    canFramesSub = subscribeCanFrames((batch) => {
+      canFrameBuffer.push(batch.frames);
+      set({
+        canFrames: canFrameBuffer.getRecent(500),
+        canFramesVersion: canFrameBuffer.version,
+      });
+    });
+
+    // 启动逻辑采样订阅 (后端周期性推送 logic_buffer 中的最近采样)
+    if (logicSamplesSub) logicSamplesSub.cancel();
+    logicSamplesSub = subscribeLogicSamples((batch) => {
+      logicSampleBuffer.push(batch.samples);
+      set({
+        logicSamples: logicSampleBuffer.getRecent(1000),
+        logicSamplesVersion: logicSampleBuffer.version,
+      });
+    });
+
+    // 启动解码事件订阅 (后端周期性推送 decoded_buffer 中的最近事件)
+    if (decodedEventsSub) decodedEventsSub.cancel();
+    decodedEventsSub = subscribeDecodedEvents((batch) => {
+      decodedEventBuffer.push(batch.events);
+      set({ decodedEvents: decodedEventBuffer.getRecent(500) });
+    });
+
     // 启动时同步所有现有 tab 的图到后端
     get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
 
@@ -890,6 +1044,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (spectrumSub) {
         spectrumSub.cancel();
         spectrumSub = null;
+      }
+      if (canFramesSub) {
+        canFramesSub.cancel();
+        canFramesSub = null;
+      }
+      if (logicSamplesSub) {
+        logicSamplesSub.cancel();
+        logicSamplesSub = null;
+      }
+      if (decodedEventsSub) {
+        decodedEventsSub.cancel();
+        decodedEventsSub = null;
       }
       if (detectedChannelsPoller) {
         clearInterval(detectedChannelsPoller);

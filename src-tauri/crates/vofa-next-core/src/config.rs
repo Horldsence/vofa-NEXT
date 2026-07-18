@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::can::CanBitrate;
+
 // ============ 传输层配置 ============
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -10,6 +12,8 @@ pub enum TransportConfig {
     TcpClient(TcpClientConfig),
     TcpServer(TcpServerConfig),
     TestData(TestDataConfig),
+    Slcan(SlcanConfig),
+    CandleLight(CandleConfig),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -127,8 +131,45 @@ impl Default for TestDataConfig {
     }
 }
 
+/// slcan 配置 — 基于 USB-CDC 串口
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlcanConfig {
+    pub port_name: String,
+    pub baud_rate: u32, // 串口波特率 (通常 115200 或 1M)
+    pub can_bitrate: CanBitrate,
+}
+
+impl Default for SlcanConfig {
+    fn default() -> Self {
+        Self {
+            port_name: String::new(),
+            baud_rate: 115200,
+            can_bitrate: CanBitrate::Bps500k,
+        }
+    }
+}
+
+/// candleLight 配置 — 原生 USB
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CandleConfig {
+    pub bus: u8,
+    pub address: u8,
+    pub can_bitrate: CanBitrate,
+    pub channel: u8, // CAN 通道 (0/1)
+}
+
+impl Default for CandleConfig {
+    fn default() -> Self {
+        Self {
+            bus: 0,
+            address: 0,
+            can_bitrate: CanBitrate::Bps500k,
+            channel: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
 pub enum TestSignal {
     Sine,
     Square,
@@ -157,6 +198,9 @@ pub enum ProtocolConfig {
     JustFloat { channels: Option<usize> },
     FireWater { channels: Option<usize> },
     RawData,
+    Slcan,
+    CandleLight,
+    LogicDecode { decoder: crate::logic::LogicDecoderConfig },
 }
 
 impl Default for ProtocolConfig {

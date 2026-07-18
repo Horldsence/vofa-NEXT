@@ -1,6 +1,6 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X } from 'lucide-react';
+import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X, Cpu, CircuitBoard } from 'lucide-react';
 import { WaveformChart } from '../displays/WaveformChart';
 import { RawDataView } from '../displays/RawDataView';
 import { PieChart } from '../displays/PieChart';
@@ -8,6 +8,8 @@ import { ImageViewer } from '../displays/ImageViewer';
 import { Model3DWidget } from '../displays/Model3DWidget';
 import { SpectrumChart } from '../displays/SpectrumChart';
 import { CommandSender } from '../displays/CommandSender';
+import { CanView } from '../displays/CanView';
+import { LogicView } from '../displays/LogicView';
 import { AxisSettings } from '../displays/AxisSettings';
 import { useState, useEffect, useCallback } from 'react';
 import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements } from '../../types';
@@ -56,7 +58,7 @@ export function DataPanel() {
 
   // 计算默认波形的通道数: 自动模式优先用检测到的通道数, 其次用窗口缓存, 最后兜底 4
   const defaultChannelCount =
-    protocolConfig.kind === 'RawData'
+    protocolConfig.kind === 'RawData' || protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight' || protocolConfig.kind === 'LogicDecode'
       ? 4
       : (protocolConfig.channels ?? detectedChannels ?? (winChannelCount || 4));
 
@@ -283,6 +285,20 @@ export function DataPanel() {
           </div>
         );
       }
+      case 'can': {
+        return (
+          <div className="flex h-full">
+            <CanView />
+          </div>
+        );
+      }
+      case 'logic': {
+        return (
+          <div className="flex h-full">
+            <LogicView />
+          </div>
+        );
+      }
       default:
         return null;
     }
@@ -305,6 +321,10 @@ export function DataPanel() {
         return <BarChart3 size={12} />;
       case 'command':
         return <Send size={12} />;
+      case 'can':
+        return <Cpu size={12} />;
+      case 'logic':
+        return <CircuitBoard size={12} />;
       default:
         return null;
     }
@@ -334,6 +354,20 @@ export function DataPanel() {
             )}
           </div>
         ))}
+        <button
+          className="px-2 h-7 text-xs cursor-pointer flex items-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+          onClick={() => useAppStore.getState().addCanTab()}
+          title={t(useAppStore.getState().lang, 'addCanTab')}
+        >
+          <Cpu size={12} />
+        </button>
+        <button
+          className="px-2 h-7 text-xs cursor-pointer flex items-center text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+          onClick={() => useAppStore.getState().addLogicTab()}
+          title={t(useAppStore.getState().lang, 'addLogicTab')}
+        >
+          <CircuitBoard size={12} />
+        </button>
       </div>
       <div className="flex-1 overflow-hidden relative min-h-0">
         {renderTabContent()}

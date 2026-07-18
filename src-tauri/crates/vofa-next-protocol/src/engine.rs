@@ -1,4 +1,4 @@
-use vofa_next_core::DataFrame;
+use vofa_next_core::{CanFrame, DataFrame, DecodedEvent, LogicSample};
 
 /// 协议引擎 trait — 解析接收数据 / 编码发送数据
 pub trait ProtocolEngine: Send {
@@ -23,5 +23,26 @@ pub trait ProtocolEngine: Send {
     /// 是否为自动检测模式
     fn is_auto_mode(&self) -> bool {
         false
+    }
+
+    /// 解析 CAN 帧 (仅 Slcan/CandleLight 引擎重写)
+    fn feed_can(&mut self, _data: &[u8]) -> Vec<CanFrame> {
+        Vec::new()
+    }
+
+    /// 编码 CAN 帧为传输字节 (仅 Slcan/CandleLight 引擎重写)
+    fn encode_can(&mut self, _frame: &CanFrame) -> Vec<u8> {
+        Vec::new()
+    }
+
+    /// 解析逻辑分析仪采样 (仅 LogicDecoder 引擎重写)
+    fn feed_logic(&mut self, _data: &[u8]) -> Vec<LogicSample> {
+        Vec::new()
+    }
+
+    /// 解析协议解码事件 (仅 LogicDecoder 引擎重写)
+    /// 输入原始字节流, 输出 UART/I2C/SPI 解码事件
+    fn feed_decoded(&mut self, _data: &[u8]) -> Vec<DecodedEvent> {
+        Vec::new()
     }
 }

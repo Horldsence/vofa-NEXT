@@ -1,9 +1,14 @@
 # 侧边栏
 portConfig: 串口配置
+deviceConfig: 设备配置
+dataInterface: 数据接口
 protocolEngine: 协议引擎
 transportType: 数据接口
 widgetPalette: 控件面板
 aiAssistant: AI 助手
+backToDataInput: 返回数据输入
+nextDevice: "下一步: 设备配置"
+nextWidgets: "下一步: 控件面板"
 
 # 连接
 connect: 连接
@@ -11,6 +16,11 @@ disconnect: 断开
 connecting: 连接中...
 connected: 已连接
 disconnected: 已断开
+notConnected: 未连接
+startTestData: 开始生成
+stopTestData: 停止生成
+testDataRunning: 运行中
+testDataStopped: 已停止
 
 # 串口配置
 portName: 端口
@@ -206,6 +216,8 @@ notifSetProtocolFailed: 协议配置失败
 notifClearBufferFailed: 清空数据失败
 notifNodeGraphSyncFailed: 节点图同步失败
 notifPollChannelsFailed: 通道检测轮询失败
+notifStartTestDataFailed: 启动测试数据失败
+notifStopTestDataFailed: 停止测试数据失败
 notifRetry: 重试
 notifDismiss: 关闭
 notifDismissAll: 关闭全部
@@ -494,3 +506,53 @@ helpSecuritySandbox: 沙箱隔离, 无法访问父窗口 DOM 与 cookie
 helpSecurityNoDom: 不能修改父应用界面, 只能操作 ctx.el 内的元素
 helpSecurityPostMessage: 与父应用通过 postMessage 通信, 仅支持 ctx 提供的 API
 helpSecurityError: 代码异常会被捕获并显示在编辑器错误区, 不会崩溃主应用
+
+# CAN
+canFrames: CAN 帧
+canSender: CAN 发送器
+frameList: 帧列表
+busActivity: 总线活动
+idDistribution: ID 分布统计
+extendedFrame: 扩展帧
+remoteFrame: 远程帧
+dataHex: 数据 (HEX)
+sendHistory: 发送历史
+noSendHistory: 暂无发送记录
+noCanFrames: 暂无 CAN 帧
+all: 全部
+time: 时间
+addCanTab: 添加 CAN 帧 Tab
+slcan: Slcan
+candleLight: CandleLight
+canBitrate: CAN 波特率
+serialPort: 串口路径
+candleDevice: USB 设备
+noCandleDevices: 未发现设备
+slcanDesc: 通过 slcan ASCII 协议与 CANable 设备通信 (串口转 CAN)
+candleLightDesc: 通过 candleLight 二进制协议与 CANable 设备通信 (原生 USB)
+
+# 逻辑分析仪
+logicAnalyzer: 逻辑分析仪
+timingDiagram: 时序图
+decodedEvents: 解码事件
+noLogicSamples: 暂无逻辑采样
+noDecodedEvents: 暂无解码事件
+addLogicTab: 添加逻辑分析仪 Tab
+decoderType: 解码器类型
+uartConfig: UART
+i2cConfig: I2C
+spiConfig: SPI
+sdaChannel: SDA 通道
+sclChannel: SCL 通道
+sclkChannel: SCLK 通道
+mosiChannel: MOSI 通道
+misoChannel: MISO 通道
+csChannel: CS 通道
+spiMode: SPI 模式
+parityNone: 无
+parityEven: 偶校验
+parityOdd: 奇校验
+stopBits0_5: 0.5
+stopBits1: 1
+stopBits1_5: 1.5
+stopBits2: 2

@@ -1,12 +1,15 @@
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tauri::ipc::Channel;
 use tokio::sync::{mpsc, oneshot};
 use vofa_next_buffer::DataBuffer;
-use vofa_next_core::{ConnectionState, DataFrame, ProtocolConfig, RawData, TransportStats};
+use vofa_next_core::{
+    CanBuffer, CanFrameBatch, ConnectionState, DataFrame, DecodedBuffer,
+    DecodedEventBatch, LogicBuffer, LogicSampleBatch, ProtocolConfig, RawData, TransportStats,
+};
 use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
 use vofa_next_nodes::CompiledGraph;
 use vofa_next_protocol::ProtocolEngine;
@@ -105,6 +108,18 @@ pub struct AppState {
     /// 前端调用 unsubscribe_waveform 时, 通过 channel_id 取出 sender 发送取消信号,
     /// 让 tokio::spawn 的 task 优雅退出, 避免向已关闭的 channel send 产生警告。
     pub waveform_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    /// CAN 帧缓冲区
+    pub can_buffer: Arc<Mutex<CanBuffer>>,
+    /// CAN 订阅任务的取消句柄 — key: channel_id
+    pub can_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    /// 逻辑采样缓冲区
+    pub logic_buffer: Arc<Mutex<LogicBuffer>>,
+    /// 解码事件缓冲区
+    pub decoded_buffer: Arc<Mutex<DecodedBuffer>>,
+    /// 逻辑采样订阅任务的取消句柄
+    pub logic_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    /// 解码事件订阅任务的取消句柄
+    pub decoded_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
 }
 
 impl AppState {
@@ -128,6 +143,12 @@ impl AppState {
             spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
             spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
             waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
+            can_buffer: Arc::new(Mutex::new(CanBuffer::new(10_000))),
+            can_tasks: Arc::new(Mutex::new(HashMap::new())),
+            logic_buffer: Arc::new(Mutex::new(LogicBuffer::new(20_000))),
+            decoded_buffer: Arc::new(Mutex::new(DecodedBuffer::new(10_000))),
+            logic_tasks: Arc::new(Mutex::new(HashMap::new())),
+            decoded_tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -237,6 +258,9 @@ pub async fn data_loop(
     protocol: Arc<Mutex<Box<dyn ProtocolEngine>>>,
     buffer: Arc<Mutex<DataBuffer>>,
     eval_state: GraphEvalState,
+    can_buffer: Arc<Mutex<CanBuffer>>,
+    logic_buffer: Arc<Mutex<LogicBuffer>>,
+    decoded_buffer: Arc<Mutex<DecodedBuffer>>,
 ) {
     log::info!("数据循环已启动");
 
@@ -246,6 +270,9 @@ pub async fn data_loop(
     let proto2 = protocol.clone();
     let buf2 = buffer.clone();
     let eval2 = eval_state;
+    let can_buffer2 = can_buffer;
+    let logic_buffer2 = logic_buffer;
+    let decoded_buffer2 = decoded_buffer;
 
     let parse_task = tokio::spawn(async move {
         let mut detection_notified = false;
@@ -268,6 +295,51 @@ pub async fn data_loop(
             let frames = proto2.lock().feed(&data);
             acc_bytes += data.len() as u64;
             acc_frames += frames.len() as u64;
+
+            // 2.x CAN 帧解析 (slcan/candleLight) — 非 CAN 协议返回空 Vec
+            let can_frames = proto2.lock().feed_can(&data);
+            if !can_frames.is_empty() {
+                // push 到 can_buffer
+                {
+                    let mut buf = can_buffer2.lock();
+                    for f in &can_frames {
+                        buf.push(f.clone());
+                    }
+                }
+                // emit 批次事件 (实时推送到前端, 供监听 transport:can-frames 的组件使用)
+                let _ = app2.emit(
+                    "transport:can-frames",
+                    &CanFrameBatch { frames: can_frames.clone() },
+                );
+            }
+
+            // 2.x 逻辑采样 + 解码事件 (LogicDecoder 协议)
+            let logic_samples = proto2.lock().feed_logic(&data);
+            if !logic_samples.is_empty() {
+                {
+                    let mut lb = logic_buffer2.lock();
+                    for s in &logic_samples {
+                        lb.push(s.clone());
+                    }
+                }
+                let _ = app2.emit(
+                    "transport:logic-samples",
+                    &LogicSampleBatch { samples: logic_samples },
+                );
+            }
+            let decoded_events = proto2.lock().feed_decoded(&data);
+            if !decoded_events.is_empty() {
+                {
+                    let mut db = decoded_buffer2.lock();
+                    for e in &decoded_events {
+                        db.push(e.clone());
+                    }
+                }
+                let _ = app2.emit(
+                    "transport:decoded-events",
+                    &DecodedEventBatch { events: decoded_events },
+                );
+            }
 
             // 2.1 自动通道检测通知 (一次性)
             if !detection_notified {
@@ -533,6 +605,37 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
         };
         let mut subs = state.spectrum_subscribers.lock();
         subs.retain(|ch| ch.send(batch.clone()).is_ok());
+    }
+}
+
+/// CAN 帧订阅推送循环 — 按 interval_ms 推送最近 max_frames 个 CAN 帧
+///
+/// 由 subscribe_can_frames 命令 spawn, 通过 oneshot 接收取消信号优雅退出。
+/// 推送的是缓冲区快照 (get_recent), 与 data_loop 的实时 emit 互补:
+/// - data_loop emit "transport:can-frames": 实时批次 (适合需要逐帧处理的场景)
+/// - can_frames_loop via Channel: 周期性快照 (适合 UI 列表展示, 控制刷新频率)
+pub async fn can_frames_loop(
+    buffer: Arc<Mutex<CanBuffer>>,
+    on_event: Channel<CanFrameBatch>,
+    interval: Duration,
+    max_frames: usize,
+    cancel_rx: oneshot::Receiver<()>,
+) {
+    let mut ticker = tokio::time::interval(interval);
+    let mut cancel_rx = cancel_rx;
+    loop {
+        tokio::select! {
+            _ = &mut cancel_rx => break,
+            _ = ticker.tick() => {
+                let frames = {
+                    let buf = buffer.lock();
+                    buf.get_recent(max_frames)
+                };
+                if on_event.send(CanFrameBatch { frames }).is_err() {
+                    break;
+                }
+            }
+        }
     }
 }
 

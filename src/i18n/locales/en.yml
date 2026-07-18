@@ -1,9 +1,14 @@
 # Sidebar
 portConfig: Port Config
+deviceConfig: Device Config
+dataInterface: Transport
 protocolEngine: Protocol Engine
 transportType: Transport
 widgetPalette: Widgets
 aiAssistant: AI Assistant
+backToDataInput: Back to Data Input
+nextDevice: "Next: Device Config"
+nextWidgets: "Next: Widgets"
 
 # Connection
 connect: Connect
@@ -11,6 +16,11 @@ disconnect: Disconnect
 connecting: Connecting...
 connected: Connected
 disconnected: Disconnected
+notConnected: Not connected
+startTestData: Start Generation
+stopTestData: Stop Generation
+testDataRunning: Running
+testDataStopped: Stopped
 
 # Port Config
 portName: Port
@@ -202,10 +212,12 @@ notifRefreshPortsFailed: Failed to refresh ports
 notifConnectFailed: Connection failed
 notifDisconnectFailed: Disconnect failed
 notifSendFailed: Send failed
-notifSetProtocolFailed: Protocol config failed
+notifSetProtocolFailed: Protocol setup failed
 notifClearBufferFailed: Clear buffer failed
 notifNodeGraphSyncFailed: Node graph sync failed
-notifPollChannelsFailed: Channel detection poll failed
+notifPollChannelsFailed: Channel detection polling failed
+notifStartTestDataFailed: Failed to start test data
+notifStopTestDataFailed: Failed to stop test data
 notifRetry: Retry
 notifDismiss: Dismiss
 notifDismissAll: Dismiss All
@@ -494,3 +506,53 @@ helpSecuritySandbox: Sandbox isolation, cannot access parent window DOM or cooki
 helpSecurityNoDom: Cannot modify the parent app UI, only elements within ctx.el
 helpSecurityPostMessage: Communicates with parent via postMessage, only ctx APIs are available
 helpSecurityError: Code exceptions are caught and shown in the editor error area, won't crash the main app
+
+# CAN
+canFrames: CAN Frames
+canSender: CAN Sender
+frameList: Frame List
+busActivity: Bus Activity
+idDistribution: ID Distribution
+extendedFrame: Extended Frame
+remoteFrame: Remote Frame
+dataHex: Data (HEX)
+sendHistory: Send History
+noSendHistory: No send history
+noCanFrames: No CAN frames
+all: All
+time: Time
+addCanTab: Add CAN Frame Tab
+slcan: Slcan
+candleLight: CandleLight
+canBitrate: CAN Bitrate
+serialPort: Serial Port
+candleDevice: USB Device
+noCandleDevices: No devices found
+slcanDesc: Communicate with CANable devices via slcan ASCII protocol (serial-to-CAN)
+candleLightDesc: Communicate with CANable devices via candleLight binary protocol (native USB)
+
+# Logic Analyzer
+logicAnalyzer: Logic Analyzer
+timingDiagram: Timing Diagram
+decodedEvents: Decoded Events
+noLogicSamples: No logic samples
+noDecodedEvents: No decoded events
+addLogicTab: Add Logic Analyzer Tab
+decoderType: Decoder Type
+uartConfig: UART
+i2cConfig: I2C
+spiConfig: SPI
+sdaChannel: SDA Channel
+sclChannel: SCL Channel
+sclkChannel: SCLK Channel
+mosiChannel: MOSI Channel
+misoChannel: MISO Channel
+csChannel: CS Channel
+spiMode: SPI Mode
+parityNone: None
+parityEven: Even
+parityOdd: Odd
+stopBits0_5: 0.5
+stopBits1: 1
+stopBits1_5: 1.5
+stopBits2: 2

@@ -86,9 +86,9 @@ impl DigitalFilter {
             FilterKind::FIR { b } => {
                 // y[n] = b[0]*x[n] + b[1]*x[n-1] + ... + b[N]*x[n-N]
                 let mut y = b[0] * input;
-                for i in 1..b.len() {
+                for (i, &bi) in b.iter().enumerate().skip(1) {
                     let s = self.fir_state.get(i - 1).copied().unwrap_or(0.0);
-                    y += b[i] * s;
+                    y += bi * s;
                 }
                 // 更新延迟线 (新输入 push 到 front, 旧的下移)
                 if !self.fir_state.is_empty() {
@@ -147,8 +147,8 @@ impl DigitalFilter {
 
 const PI_F32: f32 = std::f32::consts::PI;
 
-/// Q 因子 (默认 Butterworth)
-const DEFAULT_Q: f32 = 0.70710678; // 1/sqrt(2)
+/// Q 因子 (默认 Butterworth, 1/√2)
+const DEFAULT_Q: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
 /// 计算归一化角频率 w0 = 2*pi*fc/fs
 fn w0(cutoff: f32, sample_rate: f32) -> f32 {

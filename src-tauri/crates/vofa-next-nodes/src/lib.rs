@@ -162,11 +162,10 @@ impl CompiledGraph {
 
             // 访问上游 (有 edge 指向本节点的源节点)
             for e in edges {
-                if e.target == id {
-                    if nodes.contains_key(&e.source) {
+                if e.target == id
+                    && nodes.contains_key(&e.source) {
                         dfs(&e.source, nodes, edges, visited, order)?;
                     }
-                }
             }
 
             visited.insert(id.to_string(), 2);

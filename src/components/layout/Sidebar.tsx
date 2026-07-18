@@ -1,11 +1,9 @@
 import { useAppStore } from '../../store/appStore';
 import type { SidebarView } from '../../store/appStore';
 import { t } from '../../i18n';
-import { PortConfig } from '../panels/PortConfig';
-import { ProtocolConfigPanel } from '../panels/ProtocolConfigPanel';
 import { TransportConfigPanel } from '../panels/TransportConfigPanel';
+import { ProtocolSection } from '../panels/ProtocolSection';
 import { WidgetPalette } from '../panels/WidgetPalette';
-import { Bot } from 'lucide-react';
 
 interface SidebarProps {
   view: SidebarView;
@@ -16,11 +14,9 @@ export function Sidebar({ view }: SidebarProps) {
   const lang = useAppStore((s) => s.lang);
 
   const titleMap: Record<SidebarView, Parameters<typeof t>[1]> = {
-    port: 'portConfig',
+    transport: 'dataInterface',
     protocol: 'protocolEngine',
-    transport: 'transportType',
     widgets: 'widgetPalette',
-    ai: 'aiAssistant',
   };
 
   return (
@@ -29,16 +25,9 @@ export function Sidebar({ view }: SidebarProps) {
         <span>{t(lang, titleMap[view])}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {view === 'port' && <PortConfig />}
-        {view === 'protocol' && <ProtocolConfigPanel />}
         {view === 'transport' && <TransportConfigPanel />}
+        {view === 'protocol' && <ProtocolSection />}
         {view === 'widgets' && <WidgetPalette />}
-        {view === 'ai' && (
-          <div className="p-4 text-text-secondary text-xs flex flex-col items-center gap-2 mt-8">
-            <Bot size={32} className="opacity-40" />
-            <p className="text-center">{t(lang, 'aiPlaceholder')}</p>
-          </div>
-        )}
       </div>
     </div>
   );

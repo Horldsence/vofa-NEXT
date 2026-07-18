@@ -11,7 +11,7 @@ export function ChannelSourceNode({ data }: NodeProps) {
   const detectedChannels = useAppStore((s) => s.detectedChannels);
   const protocolConfig = useAppStore((s) => s.protocolConfig);
 
-  const isAuto = protocolConfig.kind !== 'RawData' && protocolConfig.channels == null;
+  const isAuto = (protocolConfig.kind === 'JustFloat' || protocolConfig.kind === 'FireWater') && protocolConfig.channels == null;
   const label = isAuto
     ? (detectedChannels != null
       ? `${t(lang, 'channelSource')} (${detectedChannels})`

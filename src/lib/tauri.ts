@@ -58,6 +58,12 @@ export const api = {
 
   getStats: () => invoke<TransportStats>('get_stats'),
 
+  startTestData: () => invoke<void>('start_test_data'),
+
+  stopTestData: () => invoke<void>('stop_test_data'),
+
+  getTestDataState: () => invoke<boolean>('get_test_data_state'),
+
   // ===== 协议 =====
   setProtocol: (config: ProtocolConfig) =>
     invoke<void>('set_protocol', { config }),

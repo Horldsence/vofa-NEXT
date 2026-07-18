@@ -99,7 +99,7 @@ impl NodeGraph {
 
             // 查找所有 source_handle == "chN" 的边
             // 遍历所有源节点 (因为通道源节点可能有多个实例)
-            for (_src, edges) in &self.source_index {
+            for edges in self.source_index.values() {
                 for (handle, edge) in edges {
                     if handle == &source_handle {
                         results.push(RoutedData {
@@ -144,11 +144,10 @@ impl NodeGraph {
             }
             visited.insert(node.to_string(), 1);
             for edge in edges {
-                if edge.source == node {
-                    if dfs(&edge.target, edges, visited) {
+                if edge.source == node
+                    && dfs(&edge.target, edges, visited) {
                         return true;
                     }
-                }
             }
             visited.insert(node.to_string(), 2);
             false

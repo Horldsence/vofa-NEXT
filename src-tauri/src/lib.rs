@@ -63,6 +63,9 @@ pub fn run() {
             commands::send_widget_value,
             commands::get_connection_state,
             commands::get_stats,
+            commands::start_test_data,
+            commands::stop_test_data,
+            commands::get_test_data_state,
             // 协议
             commands::set_protocol,
             commands::get_protocol,
@@ -86,6 +89,25 @@ pub fn run() {
             commands::unsubscribe_custom_inputs,
             commands::unsubscribe_spectrum,
             commands::unsubscribe_waveform,
+            // CAN 帧
+            commands::send_can_frame,
+            commands::subscribe_can_frames,
+            commands::unsubscribe_can_frames,
+            commands::get_recent_can_frames,
+            commands::clear_can_buffer,
+            commands::get_can_buffer_info,
+            commands::list_candle_devices,
+            // 逻辑分析仪
+            commands::subscribe_logic_samples,
+            commands::unsubscribe_logic_samples,
+            commands::get_recent_logic_samples,
+            commands::clear_logic_buffer,
+            commands::get_logic_buffer_info,
+            commands::subscribe_decoded_events,
+            commands::unsubscribe_decoded_events,
+            commands::get_recent_decoded_events,
+            commands::clear_decoded_buffer,
+            commands::get_decoded_buffer_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

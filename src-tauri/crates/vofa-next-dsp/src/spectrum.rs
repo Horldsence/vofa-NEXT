@@ -16,9 +16,10 @@ use std::sync::Arc;
 pub use crate::window::WindowType;
 
 /// 频谱输出模式
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum SpectrumOutput {
     /// 振幅谱 |X(k)| / N
+    #[default]
     Magnitude,
     /// 功率谱 |X(k)|^2 / N^2
     Power,
@@ -26,12 +27,6 @@ pub enum SpectrumOutput {
     PSD,
     /// 10 * log10(Power + eps), 单位 dB
     Decibel,
-}
-
-impl Default for SpectrumOutput {
-    fn default() -> Self {
-        SpectrumOutput::Magnitude
-    }
 }
 
 /// 频谱计算结果 — 一组 (频率, 值) 配对

@@ -54,5 +54,7 @@ pub fn transport_kind_str(config: &TransportConfig) -> &'static str {
         TransportConfig::TcpClient(_) => "TCP Client",
         TransportConfig::TcpServer(_) => "TCP Server",
         TransportConfig::TestData(_) => "Test Data",
+        TransportConfig::Slcan(_) => "slcan",
+        TransportConfig::CandleLight(_) => "candleLight",
     }
 }

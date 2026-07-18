@@ -50,13 +50,13 @@
 
 ## 项目简介
 
-VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基于 React + TypeScript + Vite，后端由 Rust + Tauri 提供高性能串口 / TCP / UDP 数据读写与协议解析。项目支持节点式数据流编排、实时波形显示、多通道采样以及 VOFA 协议（FireWater、JustFloat）解析。
+VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基于 React + TypeScript + Vite，后端由 Rust + Tauri 提供高性能串口 / TCP / UDP / CAN / 逻辑分析仪数据读写与协议解析。项目支持节点式数据流编排、实时波形显示、多通道采样以及 VOFA 协议（FireWater、JustFloat）解析。
 
 ## 核心特性
 
-- **多传输层支持**：串口（Serial）、TCP 客户端、UDP，支持自动重连与连接状态通知。
+- **多传输层支持**：串口（Serial）、TCP 客户端、UDP、CAN、逻辑分析仪，支持自动重连与连接状态通知。
 - **协议解析引擎**：内置 VOFA FireWater、JustFloat 协议，支持通道自动检测与原始数据查看。
-- **示波器式波形显示**：基于 uPlot，支持时基缩放、游标测量、Run/Stop 冻结、通道 Y 轴独立/共享模式。
+- **示波器式波形显示**：基于 uPlot，支持时基缩放、游标测量、Run/Stop 冻结、通道 Y 轴独立/共享模式。支持缩略图调整缩放。
 - **节点编辑器**：基于 React Flow，支持从侧边栏拖拽控件到画布并连接数据流。
 - **国际化**：通过 YAML 管理中文 / 英文界面文案。
 - **Tauri 插件集成**：使用 `tauri-plugin-log`、`tauri-plugin-notification`、`tauri-plugin-store` 实现日志、通知与配置持久化。

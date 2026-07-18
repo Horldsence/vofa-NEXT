@@ -48,7 +48,7 @@ export interface TcpServerConfig {
 export interface TestDataConfig {
   channels: number;
   sample_rate: number;
-  signal: 'sine' | 'square' | 'triangle' | 'sawtooth' | 'random' | 'dc' | 'chirp' | 'steps' | 'noise' | 'multitone';
+  signal: 'Sine' | 'Square' | 'Triangle' | 'Sawtooth' | 'Random' | 'Dc' | 'Chirp' | 'Steps' | 'Noise' | 'MultiTone';
 }
 
 export type TransportConfig =
@@ -56,7 +56,9 @@ export type TransportConfig =
   | { kind: 'Udp'; params: UdpConfig }
   | { kind: 'TcpClient'; params: TcpClientConfig }
   | { kind: 'TcpServer'; params: TcpServerConfig }
-  | { kind: 'TestData'; params: TestDataConfig };
+  | { kind: 'TestData'; params: TestDataConfig }
+  | { kind: 'Slcan'; params: SlcanConfig }
+  | { kind: 'CandleLight'; params: CandleConfig };
 
 // ============ 协议层类型 ============
 
@@ -64,7 +66,10 @@ export type TransportConfig =
 export type ProtocolConfig =
   | { kind: 'JustFloat'; channels: number | null }
   | { kind: 'FireWater'; channels: number | null }
-  | { kind: 'RawData' };
+  | { kind: 'RawData' }
+  | { kind: 'Slcan' }
+  | { kind: 'CandleLight' }
+  | { kind: 'LogicDecode'; decoder: LogicDecoderConfig };
 
 // ============ 数据帧 ============
 
@@ -301,6 +306,105 @@ export interface Model3DConfig {
   /// 坐标轴长度 (默认 1.0)
   axisLength: number;
 }
+
+// ============ CAN 类型 ============
+
+/// CAN 帧方向
+export type CanDirection = 'Rx' | 'Tx';
+
+/// CAN 帧 — 与 Rust CanFrame 对应
+export interface CanFrame {
+  /// 微秒时间戳
+  timestamp: number;
+  /// CAN ID (11 位标准 / 29 位扩展)
+  id: number;
+  /// true = 扩展帧
+  extended: boolean;
+  /// true = 远程帧
+  rtr: boolean;
+  /// 数据长度 (0-8)
+  dlc: number;
+  /// 数据字节
+  data: number[];
+  /// 收/发方向
+  direction: CanDirection;
+}
+
+/// CAN 帧批次 — 与 Rust CanFrameBatch 对应
+export interface CanFrameBatch {
+  frames: CanFrame[];
+}
+
+/// candleLight USB 设备信息 — 与 Rust CandleDeviceInfo 对应
+export interface CandleDeviceInfo {
+  bus: number;
+  address: number;
+  vid: number;
+  pid: number;
+  manufacturer: string | null;
+  product: string | null;
+  serial_number: string | null;
+}
+
+/// CAN 波特率预设
+export type CanBitrate = 'bps100k' | 'bps125k' | 'bps250k' | 'bps500k' | 'bps1m';
+
+/// slcan 传输配置
+export interface SlcanConfig {
+  port_name: string;
+  baud_rate: number;
+  can_bitrate: CanBitrate;
+}
+
+/// candleLight 传输配置
+export interface CandleConfig {
+  bus: number;
+  address: number;
+  can_bitrate: CanBitrate;
+  channel: number;
+}
+
+// ============ 逻辑分析仪类型 ============
+
+/// 逻辑采样 — 与 Rust LogicSample 对应
+export interface LogicSample {
+  /// 微秒时间戳
+  timestamp: number;
+  /// 通道位图, bit i = 通道 i 的电平 (0/1)
+  channels: number;
+  /// 实际通道数
+  channel_count: number;
+}
+
+/// 逻辑采样批次 — 与 Rust LogicSampleBatch 对应
+export interface LogicSampleBatch {
+  samples: LogicSample[];
+}
+
+/// I2C 事件 — 与 Rust I2cEvent 对应
+export type I2cEvent =
+  | { Start: null }
+  | { Stop: null }
+  | { Address: { addr: number; read: boolean; ack: boolean } }
+  | { Data: { byte: number; ack: boolean } };
+
+/// 解码事件 — 与 Rust DecodedEvent 对应
+/// 注意: Rust serde 用 externally-tagged, 形如 { "Uart": { timestamp, byte, parity_ok } }
+export type DecodedEvent =
+  | { Uart: { timestamp: number; byte: number; parity_ok: boolean } }
+  | { I2c: { timestamp: number; event: I2cEvent } }
+  | { Spi: { timestamp: number; mosi: number; miso: number } };
+
+/// 解码事件批次 — 与 Rust DecodedEventBatch 对应
+export interface DecodedEventBatch {
+  events: DecodedEvent[];
+}
+
+/// 逻辑解码器配置 — 与 Rust LogicDecoderConfig 对应
+export type LogicDecoderConfig =
+  | { kind: 'Uart'; params: { baud_rate: number; data_bits: number; parity: 'none' | 'odd' | 'even'; stop_bits: 'one' | 'two'; channel: number } }
+  | { kind: 'I2c'; params: { sda_channel: number; scl_channel: number } }
+  | { kind: 'Spi'; params: { sclk_channel: number; mosi_channel: number; miso_channel: number; cs_channel: number; mode: number } };
 
 // ============ 命令发送控件 ============
 
@@ -783,7 +887,7 @@ export interface ControlTab {
 
 // ============ 数据显示区 Tab ============
 
-export type DataTabType = 'waveform' | 'raw' | 'pie' | 'image' | 'waveform-extra' | 'model3d' | 'spectrum' | 'command';
+export type DataTabType = 'waveform' | 'raw' | 'pie' | 'image' | 'waveform-extra' | 'model3d' | 'spectrum' | 'command' | 'can' | 'logic';
 
 export interface DataTab {
   id: string;

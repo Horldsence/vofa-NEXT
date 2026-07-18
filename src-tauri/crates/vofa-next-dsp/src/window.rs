@@ -9,22 +9,17 @@
 use serde::{Deserialize, Serialize};
 
 /// 窗函数类型
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum WindowType {
     /// 矩形窗 (不加窗)
     Rect,
     /// 汉宁窗 — 通用, 主瓣宽旁瓣低
+    #[default]
     Hann,
     /// 汉明窗 — 端点不为零
     Hamming,
     /// 布莱克曼窗 — 主瓣最宽, 旁瓣最低
     Blackman,
-}
-
-impl Default for WindowType {
-    fn default() -> Self {
-        WindowType::Hann
-    }
 }
 
 impl WindowType {
@@ -76,8 +71,8 @@ impl WindowType {
 /// ```
 pub fn apply_window(window: &WindowType, data: &mut [f32]) {
     let n = data.len();
-    for i in 0..n {
-        data[i] *= window.coeff(i, n);
+    for (i, sample) in data.iter_mut().enumerate() {
+        *sample *= window.coeff(i, n);
     }
 }
 

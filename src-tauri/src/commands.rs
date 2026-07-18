@@ -4,8 +4,9 @@ use std::time::Duration;
 use tauri::{ipc::Channel, AppHandle, Emitter, State};
 use vofa_next_buffer::{graph::Edge, WaveformWindow};
 use vofa_next_core::{
-    ConnectionState, PortInfo, ProtocolConfig, Result, TransportConfig, TransportStats,
-    WidgetBinding,
+    CanFrame, CanFrameBatch, CandleDeviceInfo, ConnectionState, DecodedEventBatch,
+    LogicSampleBatch, PortInfo, ProtocolConfig, Result, TransportConfig,
+    TransportStats, WidgetBinding,
 };
 use vofa_next_nodes::NodeDef;
 use vofa_next_transport::TransportManager;
@@ -24,8 +25,10 @@ pub async fn open_transport(
     config: TransportConfig,
 ) -> Result<()> {
     let kind = notify::transport_kind_str(&config);
+    // 读取当前协议配置 — TestData 需要按协议格式生成线缆字节
+    let protocol = state.protocol_config.lock().clone();
     let mut manager = state.transport.lock().await;
-    if let Err(e) = manager.open(config).await {
+    if let Err(e) = manager.open(config, protocol).await {
         log::error!("连接失败: {}", e);
         notify::error(&app, format!("连接失败: {}", e));
         return Err(e);
@@ -40,8 +43,11 @@ pub async fn open_transport(
         let protocol = state.protocol.clone();
         let buffer = state.buffer.clone();
         let eval_state = state.eval_state();
+        let can_buffer = state.can_buffer.clone();
+        let logic_buffer = state.logic_buffer.clone();
+        let decoded_buffer = state.decoded_buffer.clone();
         tokio::spawn(async move {
-            data_loop(app, rx, protocol, buffer, eval_state).await;
+            data_loop(app, rx, protocol, buffer, eval_state, can_buffer, logic_buffer, decoded_buffer).await;
         });
     }
 
@@ -105,6 +111,29 @@ pub async fn get_connection_state(state: State<'_, AppState>) -> Result<Connecti
 pub async fn get_stats(state: State<'_, AppState>) -> Result<TransportStats> {
     let manager = state.transport.lock().await;
     Ok(manager.stats())
+}
+
+/// 启动测试数据生成
+#[tauri::command]
+pub async fn start_test_data(state: State<'_, AppState>) -> Result<()> {
+    let manager = state.transport.lock().await;
+    manager.set_test_data_running(true);
+    Ok(())
+}
+
+/// 停止测试数据生成
+#[tauri::command]
+pub async fn stop_test_data(state: State<'_, AppState>) -> Result<()> {
+    let manager = state.transport.lock().await;
+    manager.set_test_data_running(false);
+    Ok(())
+}
+
+/// 获取测试数据生成状态
+#[tauri::command]
+pub async fn get_test_data_state(state: State<'_, AppState>) -> Result<bool> {
+    let manager = state.transport.lock().await;
+    Ok(manager.is_test_data_running())
 }
 
 /// 设置协议引擎
@@ -361,4 +390,244 @@ pub async fn unsubscribe_waveform(
         let _ = tx.send(());
     }
     Ok(())
+}
+
+// ============ CAN 帧相关 ============
+
+/// 发送 CAN 帧
+///
+/// 通过当前协议引擎的 encode_can 编码为字节, 再通过传输层发送。
+/// 若当前协议不是 CAN 协议 (encode_can 返回空), 直接返回 Ok。
+#[tauri::command]
+pub async fn send_can_frame(state: State<'_, AppState>, frame: CanFrame) -> Result<()> {
+    let data = state.protocol.lock().encode_can(&frame);
+    if data.is_empty() {
+        return Ok(()); // 非 CAN 协议, 忽略
+    }
+    let manager = state.transport.lock().await;
+    manager.send(&data).await
+}
+
+/// 订阅 CAN 帧推送 — 通过 Channel 定期推送最近 N 帧
+///
+/// - interval_ms: 推送间隔 (默认 100ms)
+/// - max_frames: 单次推送最大帧数 (默认 500)
+///
+/// 取消方式: 前端调用 unsubscribe_can_frames(channel_id)
+#[tauri::command]
+pub async fn subscribe_can_frames(
+    state: State<'_, AppState>,
+    on_event: Channel<CanFrameBatch>,
+    interval_ms: Option<u64>,
+    max_frames: Option<usize>,
+) -> Result<()> {
+    let buffer = state.can_buffer.clone();
+    let interval = Duration::from_millis(interval_ms.unwrap_or(100));
+    let max_n = max_frames.unwrap_or(500);
+    let channel_id = on_event.id();
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.can_tasks.lock().insert(channel_id, cancel_tx);
+
+    tokio::spawn(async move {
+        crate::state::can_frames_loop(buffer, on_event, interval, max_n, cancel_rx).await;
+    });
+    Ok(())
+}
+
+/// 取消订阅 CAN 帧
+#[tauri::command]
+pub async fn unsubscribe_can_frames(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
+    if let Some(tx) = state.can_tasks.lock().remove(&channel_id) {
+        let _ = tx.send(());
+    }
+    Ok(())
+}
+
+/// 同步查询: 获取最近 N 个 CAN 帧
+#[tauri::command]
+pub async fn get_recent_can_frames(
+    state: State<'_, AppState>,
+    count: usize,
+) -> Result<Vec<CanFrame>> {
+    Ok(state.can_buffer.lock().get_recent(count))
+}
+
+/// 清空 CAN 帧缓冲区
+#[tauri::command]
+pub async fn clear_can_buffer(state: State<'_, AppState>) -> Result<()> {
+    state.can_buffer.lock().clear();
+    Ok(())
+}
+
+/// 获取 CAN 缓冲区当前帧数
+#[tauri::command]
+pub async fn get_can_buffer_info(state: State<'_, AppState>) -> Result<usize> {
+    Ok(state.can_buffer.lock().len())
+}
+
+/// 列出所有 candleLight 设备
+#[tauri::command]
+pub async fn list_candle_devices() -> Result<Vec<CandleDeviceInfo>> {
+    vofa_next_transport::candle::list_devices()
+}
+
+// ============ 逻辑分析仪命令 ============
+
+/// 订阅逻辑采样数据 — 通过 Tauri Channel 周期性推送
+#[tauri::command]
+pub async fn subscribe_logic_samples(
+    state: State<'_, AppState>,
+    on_event: Channel<LogicSampleBatch>,
+    interval_ms: Option<u64>,
+    max_samples: Option<usize>,
+) -> Result<()> {
+    let logic_buffer = state.logic_buffer.clone();
+    let interval = Duration::from_millis(interval_ms.unwrap_or(100));
+    let max_n = max_samples.unwrap_or(500);
+    let channel_id = on_event.id();
+
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.logic_tasks.lock().insert(channel_id, cancel_tx);
+
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        log::info!("逻辑采样订阅已启动, channel_id={}", channel_id);
+        loop {
+            tokio::select! {
+                _ = &mut cancel_rx => {
+                    log::info!("逻辑采样订阅被取消, channel_id={}", channel_id);
+                    break;
+                }
+                _ = ticker.tick() => {
+                    let samples = {
+                        let buf = logic_buffer.lock();
+                        buf.get_recent(max_n)
+                    };
+                    if samples.is_empty() {
+                        continue;
+                    }
+                    if on_event.send(LogicSampleBatch { samples }).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// 取消订阅逻辑采样
+#[tauri::command]
+pub async fn unsubscribe_logic_samples(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    if let Some(tx) = state.logic_tasks.lock().remove(&channel_id) {
+        let _ = tx.send(());
+    }
+    Ok(())
+}
+
+/// 同步查询: 获取最近 N 个逻辑采样
+#[tauri::command]
+pub async fn get_recent_logic_samples(
+    state: State<'_, AppState>,
+    count: usize,
+) -> Result<LogicSampleBatch> {
+    let samples = state.logic_buffer.lock().get_recent(count);
+    Ok(LogicSampleBatch { samples })
+}
+
+/// 清空逻辑采样缓冲区
+#[tauri::command]
+pub async fn clear_logic_buffer(state: State<'_, AppState>) -> Result<()> {
+    state.logic_buffer.lock().clear();
+    Ok(())
+}
+
+/// 获取逻辑采样缓冲区当前数量
+#[tauri::command]
+pub async fn get_logic_buffer_info(state: State<'_, AppState>) -> Result<usize> {
+    Ok(state.logic_buffer.lock().len())
+}
+
+/// 订阅解码事件 — 通过 Tauri Channel 周期性推送
+#[tauri::command]
+pub async fn subscribe_decoded_events(
+    state: State<'_, AppState>,
+    on_event: Channel<DecodedEventBatch>,
+    interval_ms: Option<u64>,
+    max_events: Option<usize>,
+) -> Result<()> {
+    let decoded_buffer = state.decoded_buffer.clone();
+    let interval = Duration::from_millis(interval_ms.unwrap_or(100));
+    let max_n = max_events.unwrap_or(200);
+    let channel_id = on_event.id();
+
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.decoded_tasks.lock().insert(channel_id, cancel_tx);
+
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        log::info!("解码事件订阅已启动, channel_id={}", channel_id);
+        loop {
+            tokio::select! {
+                _ = &mut cancel_rx => {
+                    log::info!("解码事件订阅被取消, channel_id={}", channel_id);
+                    break;
+                }
+                _ = ticker.tick() => {
+                    let events = {
+                        let buf = decoded_buffer.lock();
+                        buf.get_recent(max_n)
+                    };
+                    if events.is_empty() {
+                        continue;
+                    }
+                    if on_event.send(DecodedEventBatch { events }).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    Ok(())
+}
+
+/// 取消订阅解码事件
+#[tauri::command]
+pub async fn unsubscribe_decoded_events(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    if let Some(tx) = state.decoded_tasks.lock().remove(&channel_id) {
+        let _ = tx.send(());
+    }
+    Ok(())
+}
+
+/// 同步查询: 获取最近 N 个解码事件
+#[tauri::command]
+pub async fn get_recent_decoded_events(
+    state: State<'_, AppState>,
+    count: usize,
+) -> Result<DecodedEventBatch> {
+    let events = state.decoded_buffer.lock().get_recent(count);
+    Ok(DecodedEventBatch { events })
+}
+
+/// 清空解码事件缓冲区
+#[tauri::command]
+pub async fn clear_decoded_buffer(state: State<'_, AppState>) -> Result<()> {
+    state.decoded_buffer.lock().clear();
+    Ok(())
+}
+
+/// 获取解码事件缓冲区当前数量
+#[tauri::command]
+pub async fn get_decoded_buffer_info(state: State<'_, AppState>) -> Result<usize> {
+    Ok(state.decoded_buffer.lock().len())
 }

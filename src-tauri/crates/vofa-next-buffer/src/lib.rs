@@ -244,7 +244,7 @@ impl DataBuffer {
             }
             result
                 .entry(sink.clone())
-                .or_insert_with(HashMap::new)
+                .or_default()
                 .insert(source.clone(), v);
         }
         result
@@ -265,12 +265,12 @@ impl DataBuffer {
                 v.extend_from_slice(&data);
                 result
                     .entry(sink.clone())
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .insert(source.clone(), v);
             } else {
                 result
                     .entry(sink.clone())
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .insert(source.clone(), data);
             }
         }
