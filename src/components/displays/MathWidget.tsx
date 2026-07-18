@@ -39,7 +39,8 @@ const OP_SYMBOLS: Record<MathOp, string> = {
 ///   4. 输入端口值 (用于展开显示) 通过 useGraphInputs 读上游输出
 export function MathWidget({ widget, onEdit }: MathWidgetProps) {
   const { op, unit, precision, inputCount, id } = widget.params;
-  const graphOutputs = useAppStore((s) => s.graphOutputs);
+  // 只订阅本 widget 的结果, 避免 graphOutputs 全局更新时所有 MathWidget 重渲染
+  const result = useAppStore((s) => s.graphOutputs[id]?.result ?? 0);
 
   // 输入端口展示 (单目运算只显示 1 个端口)
   const inputPorts = useMemo(
@@ -53,8 +54,6 @@ export function MathWidget({ widget, onEdit }: MathWidgetProps) {
 
   // 读取各输入端口的值 (用于显示, 后端已用这些值算出 result)
   const inputs = useGraphInputs(id, inputPorts.map((p) => p.id), 0);
-  // 后端计算的结果
-  const result = graphOutputs[id]?.result ?? 0;
 
   const isConnected = Object.keys(inputs).length > 0 &&
     Object.values(inputs).some((v) => v !== 0);

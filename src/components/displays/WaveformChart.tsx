@@ -86,6 +86,9 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   const viewEndSec = axisConfig.running ? 0 : -axisConfig.hPosition;
   const timeWindowSec = timeBaseToWindowSec(axisConfig.timeBase);
 
+  // 保持 ref 与最新配置同步 (避免在 effect 依赖中引入整个 axisConfig)
+  axisConfigRef.current = axisConfig;
+
   // 解析连接的输入 — 通道 + 派生 (Math/Filter 等)
   const connectedInputs = useMemo<ConnectedInput[]>(() => {
     if (widget.params.id === 'default-waveform') {
@@ -314,20 +317,21 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     return [tsSec, ...seriesDivs];
   }, [widget.params.channels, widget.params.id]);
 
-  // 配置变化 → 更新 ref + 通道可见性 + 重新归一化数据
+  // 配置变化 → 更新通道可见性 + 重新归一化数据
   // 关键: V/div 或 position 变化时, 必须重新 setData, 否则波形不会按新档位重绘
+  // 仅监听会改变数据映射的字段, timeBase/hPosition/cursors 由其他 effect 处理
+  const channelConfig = axisConfig.channels;
   useEffect(() => {
-    axisConfigRef.current = axisConfig;
     const plot = plotRef.current;
     if (!plot) return;
     const slots = seriesSlotsRef.current;
     for (let i = 0; i < slots.length; i++) {
-      plot.setSeries(i + 1, { show: axisConfig.channels[slots[i].cfgIdx]?.show ?? true });
+      plot.setSeries(i + 1, { show: channelConfig[slots[i].cfgIdx]?.show ?? true });
     }
-    // 重新归一化数据 (用新的 vPerDiv / position 重新计算 div 值)
+    // 重新归一化数据 (用新的 vPerDiv / position / sharedY / yUnit 重新计算)
     plot.setData(getDisplayData() as unknown as uPlot.AlignedData);
     plot.redraw();
-  }, [axisConfig, seriesSlots, getDisplayData]);
+  }, [channelConfig, axisConfig.sharedY, axisConfig.yUnit, seriesSlots, getDisplayData]);
 
   // 冻结快照 — Stop 时拍下当前数据 (含 derived), Run 时清空
   // 关键: 拍快照后必须立即重绘, 因为 axisConfig effect 可能先于本 effect 执行

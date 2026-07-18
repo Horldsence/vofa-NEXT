@@ -197,13 +197,13 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
   // 后端图评估桥接:
   //   - customInputs[widgetId] 由后端 30 FPS 推送 (后端已解析 rfEdges, 收集本 widget 的输入)
   //   - submitCustomOutput 用于将 iframe 的 ctx.send 回传到后端图
-  const customInputs = useAppStore((s) => s.customInputs);
+  // 只订阅本 widget 的输入, 避免全局 customInputs 更新时所有 CustomWidget 重渲染
+  const inputs = useAppStore((s) => s.customInputs[widget.params.id] ?? {});
   const submitCustomOutput = useAppStore((s) => s.submitCustomOutput);
 
-  // 本 widget 的输入端口值 (后端推送, 已合并所有上游源)
-  const inputs = customInputs[widget.params.id] ?? {};
-
-  // 缓存最新 settings 到 ref, 供 sendUpdate 读取
+  // 缓存最新 inputs / settings 到 ref, 供 sendUpdate 读取, 避免 callback 依赖频繁变化
+  const inputsRef = useRef(inputs);
+  useEffect(() => { inputsRef.current = inputs; }, [inputs]);
   const settingsRef = useRef(widget.params.settings);
   useEffect(() => { settingsRef.current = widget.params.settings; }, [widget.params.settings]);
 
@@ -245,15 +245,15 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
     iframe.contentWindow.postMessage({
       source: 'custom-widget-parent',
       type: 'update',
-      inputs,
+      inputs: inputsRef.current,
       settings: settingsRef.current,
     }, '*');
-  }, [inputs]);
+  }, []);
 
   // 后端推送输入变化 → 通知 iframe 重渲染 (替代旧 50ms 轮询)
   useEffect(() => {
     sendUpdate();
-  }, [sendUpdate, widget.params.settings]);
+  }, [sendUpdate, inputs, widget.params.settings]);
 
   // srcdoc 内容
   const srcDoc = useMemo(() => {

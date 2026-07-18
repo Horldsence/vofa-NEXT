@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Settings2 } from 'lucide-react';
-import type { WidgetConfig, WindowType, SpectrumOutput, SpectrumResult } from '../../types';
+import type { WidgetConfig, WindowType, SpectrumOutput } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 
@@ -42,14 +42,13 @@ const OUTPUT_OPTIONS: { value: SpectrumOutput; labelKey: string }[] = [
 ///   4. 本组件从 store.spectrumResults[id] 读取最新结果并绘制
 export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
   const { windowSize, windowType, output, sampleRate, id } = widget.params;
-  const spectrumResults = useAppStore((s) => s.spectrumResults);
+  // 只订阅本 widget 的频谱结果, 避免全局 spectrumResults 更新时所有 SpectrumChart 重渲染
+  const result = useAppStore((s) => s.spectrumResults[id]);
   const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 跟踪容器尺寸, 触发 canvas 重绘 (响应式)
   const [size, setSize] = useState({ w: 0, h: 0 });
-
-  const result: SpectrumResult | undefined = spectrumResults[id];
 
   // ResizeObserver: 容器尺寸变化时更新 size, 触发重绘
   useEffect(() => {

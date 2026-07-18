@@ -1,5 +1,18 @@
 import type { DataFrame, WaveformWindow } from '../types';
 
+/// 原始数据单行结构
+export interface RawDataLine {
+  offset: number;
+  timestamp: number;
+  bytes: number[];
+}
+
+/// 原始数据快照
+export interface RawDataSnapshot {
+  lines: RawDataLine[];
+  totalBytes: number;
+}
+
 /// 波形窗口缓存 — 接收来自后端 Tauri Channel 的推送, 由订阅者维护
 /// 不同于旧的 WaveformBuffer (前端持有完整数据), 此处仅缓存最新窗口快照
 class WaveformWindowCache {
@@ -86,7 +99,7 @@ export class RawDataBuffer {
     return result ? result.time : this.timeEntries[0].time;
   }
 
-  /** 获取最近的 N 个字节, 格式化为 hex + ascii + 时间戳 */
+  /** 获取最近的 N 个字节, 返回结构化行数据 */
   getRecentLines(maxBytes = 4096): RawDataSnapshot {
     const count = Math.min(maxBytes, this.totalWritten);
     const bytes: number[] = [];
@@ -97,25 +110,17 @@ export class RawDataBuffer {
 
     const baseOffset = Math.max(0, this.totalWritten - count);
 
-    // 格式化为 hex + ascii + 时间戳, 每 16 字节一行
-    const lines: string[] = [];
-    const asciiLines: string[] = [];
-    const timestamps: number[] = [];
+    // 每 16 字节一行
+    const lines: RawDataLine[] = [];
     for (let i = 0; i < bytes.length; i += 16) {
-      const chunk = bytes.slice(i, i + 16);
-      const hex = chunk.map((b) => b.toString(16).padStart(2, '0')).join(' ');
-      const ascii = chunk.map((b) => (b >= 32 && b < 127) ? String.fromCharCode(b) : '.').join('');
-      lines.push(hex.padEnd(47, ' '));
-      asciiLines.push(ascii);
-      timestamps.push(this.getTimeForOffset(baseOffset + i) ?? 0);
+      lines.push({
+        offset: baseOffset + i,
+        timestamp: this.getTimeForOffset(baseOffset + i) ?? 0,
+        bytes: bytes.slice(i, i + 16),
+      });
     }
 
-    return {
-      hex: lines.join('\n'),
-      ascii: asciiLines.join('\n'),
-      timestamps,
-      offset: baseOffset,
-    };
+    return { lines, totalBytes: this.totalWritten };
   }
 
   get totalBytes(): number {
@@ -138,13 +143,6 @@ export class RawDataBuffer {
     const data = this.getRecentLines();
     this.listeners.forEach((fn) => fn(data));
   }
-}
-
-export interface RawDataSnapshot {
-  hex: string;
-  ascii: string;
-  timestamps: number[];
-  offset: number;
 }
 
 export const rawDataBuffer = new RawDataBuffer();

@@ -1,15 +1,23 @@
 import type { CanFrame } from '../types';
 
-/// CAN 帧环形缓冲区 — 接收来自后端 transport:can-frames 事件和 subscribe_can_frames Channel
-/// 支持订阅通知 + 最近 N 帧查询 + 过滤
+/// CAN 帧环形缓冲区 — 接收来自后端 subscribe_can_frames Channel
+/// RAF 节流: 同一帧内多次 push 只通知一次, 避免高频批次导致 React 过度渲染
+/// 引用稳定: 数据未变化时不创建新数组, 避免 zustand 浅比较失效
 class CanFrameBuffer {
   private frames: CanFrame[] = [];
-  private capacity: number;
+  private _capacity: number;
   private listeners = new Set<(frames: CanFrame[]) => void>();
   private _version = 0;
+  /// 最近一次 notify 发出的引用 (用于引用稳定化)
+  private lastSnapshot: CanFrame[] = [];
+  private lastSnapshotCount = -1;
+  /// RAF 节流标志
+  private rafScheduled = false;
+  /// 状态栏订阅: 缓存使用量 (0-1) + 长度
+  private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
 
   constructor(capacity = 5000) {
-    this.capacity = capacity;
+    this._capacity = capacity;
   }
 
   /// 批量推入帧
@@ -17,14 +25,15 @@ class CanFrameBuffer {
     if (batch.length === 0) return;
     this.frames.push(...batch);
     // 超容量时丢弃旧帧
-    if (this.frames.length > this.capacity) {
-      this.frames.splice(0, this.frames.length - this.capacity);
+    if (this.frames.length > this._capacity) {
+      this.frames.splice(0, this.frames.length - this._capacity);
     }
     this._version++;
-    this.notify();
+    this.scheduleNotify();
   }
 
   /// 获取最近 N 帧 (返回顺序: 旧→新)
+  /// 注意: 每次调用都返回新数组, 组件应缓存结果或通过 subscribe 订阅
   getRecent(count: number): CanFrame[] {
     const n = Math.min(count, this.frames.length);
     return this.frames.slice(this.frames.length - n);
@@ -43,25 +52,62 @@ class CanFrameBuffer {
   clear() {
     this.frames = [];
     this._version++;
-    this.notify();
+    this.lastSnapshot = [];
+    this.lastSnapshotCount = -1;
+    this.scheduleNotify();
   }
 
   get length(): number {
     return this.frames.length;
   }
 
+  get capacity(): number {
+    return this._capacity;
+  }
+
   get version(): number {
     return this._version;
   }
 
+  /// 订阅帧数据更新 (RAF 节流后触发)
   subscribe(fn: (frames: CanFrame[]) => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
 
-  private notify() {
-    const recent = this.getRecent(200);
-    this.listeners.forEach((fn) => fn(recent));
+  /// 订阅缓存使用量统计 (RAF 节流后触发), usage ∈ [0,1]
+  subscribeStats(fn: (usage: number, length: number, capacity: number) => void): () => void {
+    this.statsListeners.add(fn);
+    // 立即推送一次当前状态
+    fn(this.frames.length / this._capacity, this.frames.length, this._capacity);
+    return () => this.statsListeners.delete(fn);
+  }
+
+  /// RAF 节流: 同一帧内多次 push 合并为一次通知
+  private scheduleNotify() {
+    if (this.rafScheduled) return;
+    this.rafScheduled = true;
+    // requestAnimationFrame 在浏览器环境可用; 在 Tauri webview 中同样可用
+    requestAnimationFrame(() => {
+      this.rafScheduled = false;
+      this.flushNotify();
+    });
+  }
+
+  private flushNotify() {
+    const count = this.frames.length;
+    // 引用稳定化: 如果长度未变 (例如 clear 后又 push 等量数据), 复用上一次快照
+    // 但 version 变化时仍需通知, 这里用长度作为快速判断
+    if (count !== this.lastSnapshotCount) {
+      this.lastSnapshot = this.getRecent(200);
+      this.lastSnapshotCount = count;
+    }
+    const snapshot = this.lastSnapshot;
+    this.listeners.forEach((fn) => fn(snapshot));
+
+    // 通知统计订阅者
+    const usage = count / this._capacity;
+    this.statsListeners.forEach((fn) => fn(usage, count, this._capacity));
   }
 }
 

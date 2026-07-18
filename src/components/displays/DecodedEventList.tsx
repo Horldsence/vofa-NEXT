@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/appStore';
 import { decodedEventBuffer } from '../../lib/logicBuffer';
 import { clearDecodedBuffer } from '../../lib/logicSubscription';
 import { t } from '../../i18n';
+import { ToolbarIconButton } from '../ui/ToolbarIconButton';
 import { Trash2, ArrowDown } from 'lucide-react';
 import type { DecodedEvent, I2cEvent } from '../../types';
 
@@ -79,12 +80,14 @@ export function DecodedEventList() {
     if ('Uart' in e) {
       const u = e.Uart;
       return (
-        <div key={i} className="flex gap-2 px-2 py-0.5 border-b border-border/30 hover:bg-bg-hover font-mono text-xs">
-          <span className="text-text-secondary w-28">{formatTs(u.timestamp)}</span>
-          <span className="text-green w-12">UART</span>
-          <span className="text-text-bright">0x{u.byte.toString(16).toUpperCase().padStart(2, '0')}</span>
-          <span className="text-text-secondary">({String.fromCharCode(u.byte)})</span>
-          {!u.parity_ok && <span className="text-red">PERR</span>}
+        <div key={i} className="grid grid-cols-[7rem_4rem_1fr] sm:grid-cols-[8rem_4rem_1fr] gap-2 px-3 sm:px-4 py-1 border-b border-border/30 hover:bg-bg-hover/60 transition-colors font-mono text-xs items-center">
+          <span className="text-text-secondary">{formatTs(u.timestamp)}</span>
+          <span className="text-green font-semibold">UART</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="text-text-bright">0x{u.byte.toString(16).toUpperCase().padStart(2, '0')}</span>
+            <span className="text-text-secondary">({String.fromCharCode(u.byte)})</span>
+            {!u.parity_ok && <span className="text-red text-[10px] border border-red/50 rounded px-1">PERR</span>}
+          </span>
         </div>
       );
     }
@@ -92,21 +95,23 @@ export function DecodedEventList() {
       const i2c = e.I2c;
       const { text, color } = formatI2cEvent(i2c.event);
       return (
-        <div key={i} className="flex gap-2 px-2 py-0.5 border-b border-border/30 hover:bg-bg-hover font-mono text-xs">
-          <span className="text-text-secondary w-28">{formatTs(i2c.timestamp)}</span>
-          <span style={{ color }} className="w-12">I2C</span>
-          <span style={{ color }}>{text}</span>
+        <div key={i} className="grid grid-cols-[7rem_4rem_1fr] sm:grid-cols-[8rem_4rem_1fr] gap-2 px-3 sm:px-4 py-1 border-b border-border/30 hover:bg-bg-hover/60 transition-colors font-mono text-xs items-center">
+          <span className="text-text-secondary">{formatTs(i2c.timestamp)}</span>
+          <span style={{ color }} className="font-semibold">I2C</span>
+          <span style={{ color }} className="truncate">{text}</span>
         </div>
       );
     }
     if ('Spi' in e) {
       const s = e.Spi;
       return (
-        <div key={i} className="flex gap-2 px-2 py-0.5 border-b border-border/30 hover:bg-bg-hover font-mono text-xs">
-          <span className="text-text-secondary w-28">{formatTs(s.timestamp)}</span>
-          <span className="text-orange w-12">SPI</span>
-          <span className="text-text-bright">MOSI:0x{s.mosi.toString(16).toUpperCase().padStart(2, '0')}</span>
-          <span className="text-text-bright">MISO:0x{s.miso.toString(16).toUpperCase().padStart(2, '0')}</span>
+        <div key={i} className="grid grid-cols-[7rem_4rem_1fr] sm:grid-cols-[8rem_4rem_1fr] gap-2 px-3 sm:px-4 py-1 border-b border-border/30 hover:bg-bg-hover/60 transition-colors font-mono text-xs items-center">
+          <span className="text-text-secondary">{formatTs(s.timestamp)}</span>
+          <span className="text-orange font-semibold">SPI</span>
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="text-text-bright">MOSI:0x{s.mosi.toString(16).toUpperCase().padStart(2, '0')}</span>
+            <span className="text-text-primary">MISO:0x{s.miso.toString(16).toUpperCase().padStart(2, '0')}</span>
+          </span>
         </div>
       );
     }
@@ -114,16 +119,17 @@ export function DecodedEventList() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex gap-1 p-1 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
+    <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
+      <div className="flex flex-wrap gap-2 p-2 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
         <div className="flex items-center gap-0.5">
           {(['all', 'Uart', 'I2c', 'Spi'] as const).map((tp) => (
             <button
               key={tp}
-              className={`px-1.5 py-0.5 text-xs border rounded cursor-pointer transition-all ${
+              type="button"
+              className={`px-2 py-0.5 text-[11px] border rounded cursor-pointer transition-all ${
                 filterType === tp
                   ? 'bg-accent border-accent text-text-bright'
-                  : 'bg-bg-input text-text-secondary border-border hover:bg-bg-hover'
+                  : 'bg-bg-input text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary'
               }`}
               onClick={() => setFilterType(tp)}
             >
@@ -131,33 +137,41 @@ export function DecodedEventList() {
             </button>
           ))}
         </div>
-        <div className="flex-1" />
+
+        <div className="flex-1 min-w-2" />
+
         <span className="text-xs text-text-secondary font-mono">{events.length} events</span>
-        <button
-          className={`w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${autoScroll && !userScrolledRef.current ? 'text-text-bright' : ''}`}
+        <ToolbarIconButton
+          icon={<ArrowDown />}
+          active={autoScroll && !userScrolledRef.current}
           title={t(lang, 'autoScroll')}
           onClick={() => {
             setAutoScroll(!autoScroll);
             userScrolledRef.current = false;
           }}
-        >
-          <ArrowDown size={14} />
-        </button>
-        <button
-          className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
+        />
+        <ToolbarIconButton
+          icon={<Trash2 />}
+          variant="danger"
           title={t(lang, 'clear')}
           onClick={handleClear}
-        >
-          <Trash2 size={14} />
-        </button>
+        />
       </div>
+
+      {/* 表头 */}
+      <div className="grid grid-cols-[7rem_4rem_1fr] sm:grid-cols-[8rem_4rem_1fr] gap-2 px-3 sm:px-4 py-1 border-b border-border bg-bg-panel-header text-[10px] font-semibold uppercase tracking-wide text-text-secondary flex-shrink-0">
+        <span>{t(lang, 'time')}</span>
+        <span>Protocol</span>
+        <span>Data</span>
+      </div>
+
       <div
         className="flex-1 overflow-y-auto min-h-0"
         ref={listRef}
         onScroll={handleScroll}
       >
         {filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-text-secondary text-xs">
+          <div className="flex items-center justify-center h-48 text-text-secondary text-xs">
             {t(lang, 'noDecodedEvents')}
           </div>
         ) : (

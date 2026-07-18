@@ -141,11 +141,21 @@ noSignal: 暂无信号
 
 # 原始数据扩展
 showTimestamp: 时间戳
+showOffset: 地址偏移
 appendNone: 无
 appendNewline: \n
 appendTab: \t
 appendNewlineTab: \n\t
 appendSuffix: 附加
+hexColorMode: Hex 着色
+hexColorNone: 无
+hexColorPrintable: 可打印区分
+hexColorRange: 数值范围
+sendPanelMode: 发送面板
+sendPanelBottom: 底部
+sendPanelSeparate: 右侧
+rawDataEmpty: 暂无原始数据
+displayOptions: 显示选项
 
 # 节点编辑器
 addInputModule: 添加输入模块

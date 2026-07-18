@@ -956,18 +956,20 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
 
     // 监听 transport:can-frames 事件 (实时推送, 用于即时更新)
-    const unlistenCanFrames = await listen<{ frames: CanFrame[] }>('transport:can-frames', (event) => {
-      canFrameBuffer.push(event.payload.frames);
+    // 注: 已改为仅通过 subscribe_can_frames Channel 路径推送 buffer,
+    // 避免双重订阅导致重复 setState 与卡顿。
+    const unlistenCanFrames = await listen<{ frames: CanFrame[] }>('transport:can-frames', (_event) => {
+      // no-op: buffer 已由 Channel 路径维护
     });
 
     // 监听 transport:logic-samples 事件 (实时推送逻辑采样)
-    const unlistenLogic = await listen<{ samples: LogicSample[] }>('transport:logic-samples', (event) => {
-      logicSampleBuffer.push(event.payload.samples);
+    const unlistenLogic = await listen<{ samples: LogicSample[] }>('transport:logic-samples', (_event) => {
+      // no-op: buffer 已由 Channel 路径维护
     });
 
     // 监听 transport:decoded-events 事件 (实时推送解码事件)
-    const unlistenDecoded = await listen<{ events: DecodedEvent[] }>('transport:decoded-events', (event) => {
-      decodedEventBuffer.push(event.payload.events);
+    const unlistenDecoded = await listen<{ events: DecodedEvent[] }>('transport:decoded-events', (_event) => {
+      // no-op: buffer 已由 Channel 路径维护
     });
 
     unlistenFns = [unlistenData, unlistenFrames, unlistenState, unlistenStats, unlistenCanFrames, unlistenLogic, unlistenDecoded];
@@ -997,30 +999,22 @@ export const useAppStore = create<AppStore>((set, get) => ({
     });
 
     // 启动 CAN 帧订阅 (后端周期性推送 can_buffer 中的最近帧)
+    // buffer 内部已做 RAF 节流与引用稳定化, 组件直接订阅 canFrameBuffer
     if (canFramesSub) canFramesSub.cancel();
     canFramesSub = subscribeCanFrames((batch) => {
       canFrameBuffer.push(batch.frames);
-      set({
-        canFrames: canFrameBuffer.getRecent(500),
-        canFramesVersion: canFrameBuffer.version,
-      });
     });
 
     // 启动逻辑采样订阅 (后端周期性推送 logic_buffer 中的最近采样)
     if (logicSamplesSub) logicSamplesSub.cancel();
     logicSamplesSub = subscribeLogicSamples((batch) => {
       logicSampleBuffer.push(batch.samples);
-      set({
-        logicSamples: logicSampleBuffer.getRecent(1000),
-        logicSamplesVersion: logicSampleBuffer.version,
-      });
     });
 
     // 启动解码事件订阅 (后端周期性推送 decoded_buffer 中的最近事件)
     if (decodedEventsSub) decodedEventsSub.cancel();
     decodedEventsSub = subscribeDecodedEvents((batch) => {
       decodedEventBuffer.push(batch.events);
-      set({ decodedEvents: decodedEventBuffer.getRecent(500) });
     });
 
     // 启动时同步所有现有 tab 的图到后端

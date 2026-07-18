@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { LogicTimingChart } from './LogicTimingChart';
 import { DecodedEventList } from './DecodedEventList';
+import { PanelTabs } from '../ui/PanelTabs';
 import { Activity, List } from 'lucide-react';
 
 type ViewMode = 'timing' | 'events';
@@ -12,24 +13,14 @@ export function LogicView() {
   const lang = useAppStore((s) => s.lang);
   const [mode, setMode] = useState<ViewMode>('timing');
 
+  const tabs = [
+    { value: 'timing' as const, label: t(lang, 'timingDiagram'), icon: <Activity /> },
+    { value: 'events' as const, label: t(lang, 'decodedEvents'), icon: <List /> },
+  ];
+
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex gap-1 p-1 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
-        <button
-          className={`px-2 py-1 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors ${mode === 'timing' ? 'bg-accent text-text-bright' : 'text-text-secondary hover:bg-bg-hover'}`}
-          onClick={() => setMode('timing')}
-        >
-          <Activity size={12} />
-          {t(lang, 'timingDiagram')}
-        </button>
-        <button
-          className={`px-2 py-1 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors ${mode === 'events' ? 'bg-accent text-text-bright' : 'text-text-secondary hover:bg-bg-hover'}`}
-          onClick={() => setMode('events')}
-        >
-          <List size={12} />
-          {t(lang, 'decodedEvents')}
-        </button>
-      </div>
+    <div className="h-full w-full flex flex-col overflow-hidden bg-bg-editor">
+      <PanelTabs tabs={tabs} active={mode} onChange={setMode} />
       <div className="flex-1 overflow-hidden min-h-0">
         {mode === 'timing' && <LogicTimingChart />}
         {mode === 'events' && <DecodedEventList />}

@@ -141,11 +141,21 @@ noSignal: No Signal
 
 # Raw Data Extension
 showTimestamp: Timestamp
+showOffset: Offset
 appendNone: None
 appendNewline: \n
 appendTab: \t
 appendNewlineTab: \n\t
 appendSuffix: Append
+hexColorMode: Hex Color
+hexColorNone: None
+hexColorPrintable: Printable
+hexColorRange: Range
+sendPanelMode: Send Panel
+sendPanelBottom: Bottom
+sendPanelSeparate: Side
+rawDataEmpty: No raw data yet
+displayOptions: Display
 
 # Node Editor
 addInputModule: Add Input

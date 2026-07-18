@@ -2,12 +2,17 @@ import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { RefreshCw } from 'lucide-react';
 import clsx from 'clsx';
+import { BufferUsageStats } from './BufferUsageStats';
 
 /// 底部状态栏 — 显示连接状态、统计数据
 export function StatusBar() {
   const lang = useAppStore((s) => s.lang);
   const connectionState = useAppStore((s) => s.connectionState);
-  const stats = useAppStore((s) => s.stats);
+  // 单独订阅 stats 字段, 避免 transport:rx 每次创建新 stats 对象导致整个 StatusBar 重渲染
+  const rxBytes = useAppStore((s) => s.stats.rx_bytes);
+  const txBytes = useAppStore((s) => s.stats.tx_bytes);
+  const rxFrames = useAppStore((s) => s.stats.rx_frames);
+  const txFrames = useAppStore((s) => s.stats.tx_frames);
   const transportConfig = useAppStore((s) => s.transportConfig);
   const protocolConfig = useAppStore((s) => s.protocolConfig);
   const refreshPorts = useAppStore((s) => s.refreshPorts);
@@ -60,14 +65,20 @@ export function StatusBar() {
       </div>
       <div className="flex-1" />
       <div className="flex items-center gap-1">
-        {t(lang, 'rxBytes')}: {formatBytes(stats.rx_bytes)}
+        {t(lang, 'rxBytes')}: {formatBytes(rxBytes)}
       </div>
       <div className="flex items-center gap-1">
-        {t(lang, 'txBytes')}: {formatBytes(stats.tx_bytes)}
+        {t(lang, 'txBytes')}: {formatBytes(txBytes)}
       </div>
       <div className="flex items-center gap-1">
-        {t(lang, 'rxFrames')}: {stats.rx_frames}
+        {t(lang, 'rxFrames')}: {rxFrames}
       </div>
+      <div className="flex items-center gap-1">
+        {t(lang, 'txFrames')}: {txFrames}
+      </div>
+      <div className="w-px h-3 bg-border mx-1" />
+      <BufferUsageStats />
+      <div className="w-px h-3 bg-border mx-1" />
       <button
         className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-150"
         style={{ color: 'var(--text-bright)' }}

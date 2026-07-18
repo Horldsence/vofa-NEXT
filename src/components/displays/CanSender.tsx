@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { sendCanFrame } from '../../lib/canSubscription';
 import { t } from '../../i18n';
-import { Send, Clock } from 'lucide-react';
+import { Send, Clock, AlertCircle } from 'lucide-react';
 import type { CanFrame, CanDirection } from '../../types';
 
 /// 格式化数据为 HEX 字符串
@@ -60,71 +60,79 @@ export function CanSender() {
   };
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="p-3 border-b border-border bg-bg-panel-header flex-shrink-0">
-        <h3 className="text-sm font-semibold text-text-primary mb-2">{t(lang, 'canSender')}</h3>
-        <div className="grid grid-cols-2 gap-2 mb-2">
+    <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
+      {/* 发送表单 */}
+      <div className="p-3 sm:p-4 border-b border-border bg-bg-panel-header flex-shrink-0 overflow-y-auto">
+        <h3 className="text-sm font-semibold text-text-primary mb-3">{t(lang, 'canSender')}</h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-[10px] text-text-secondary mb-0.5">CAN ID (HEX)</label>
+            <label className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">CAN ID (HEX)</label>
             <input
               type="text"
-              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-mono focus:outline-none focus:border-accent"
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-mono focus:outline-none focus:border-accent transition-colors"
               value={idText}
               onChange={(e) => setIdText(e.target.value)}
               placeholder="123"
             />
           </div>
           <div>
-            <label className="block text-[10px] text-text-secondary mb-0.5">DLC</label>
+            <label className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">DLC</label>
             <input
               type="number"
               min={0}
               max={8}
-              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent"
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors"
               value={rtr ? 0 : (parseData(dataText).length || 0)}
               readOnly
             />
           </div>
         </div>
-        <div className="flex gap-3 mb-2 text-xs">
-          <label className="flex items-center gap-1 cursor-pointer">
+
+        <div className="flex flex-wrap gap-4 mb-3 text-xs">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={extended}
               onChange={(e) => setExtended(e.target.checked)}
-              className="accent-accent"
+              className="accent-accent w-3.5 h-3.5"
             />
-            <span>{t(lang, 'extendedFrame')}</span>
+            <span className="text-text-secondary">{t(lang, 'extendedFrame')}</span>
           </label>
-          <label className="flex items-center gap-1 cursor-pointer">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={rtr}
               onChange={(e) => setRtr(e.target.checked)}
-              className="accent-accent"
+              className="accent-accent w-3.5 h-3.5"
             />
-            <span>{t(lang, 'remoteFrame')}</span>
+            <span className="text-text-secondary">{t(lang, 'remoteFrame')}</span>
           </label>
         </div>
+
         {!rtr && (
-          <div className="mb-2">
-            <label className="block text-[10px] text-text-secondary mb-0.5">{t(lang, 'dataHex')}</label>
+          <div className="mb-3">
+            <label className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">{t(lang, 'dataHex')}</label>
             <input
               type="text"
-              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-mono focus:outline-none focus:border-accent"
+              className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-mono focus:outline-none focus:border-accent transition-colors"
               value={dataText}
               onChange={(e) => setDataText(e.target.value)}
               placeholder="11 22 33 44 55 66 77 88"
             />
           </div>
         )}
+
         {error && (
-          <div className="mb-2 px-2 py-1 bg-red-900/30 border border-red text-red text-xs rounded">
-            {error}
+          <div className="mb-3 px-2.5 py-1.5 bg-bg-danger/30 border border-red/50 rounded flex items-start gap-2 text-xs text-red">
+            <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+            <span>{error}</span>
           </div>
         )}
+
         <button
-          className="w-full px-3 py-1.5 bg-blue text-white border-none rounded cursor-pointer text-sm flex items-center justify-center gap-1.5 hover:bg-blue/80 transition-colors"
+          type="button"
+          className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm flex items-center justify-center gap-1.5 hover:bg-bg-button-hover transition-colors"
           onClick={handleSend}
         >
           <Send size={14} />
@@ -134,9 +142,10 @@ export function CanSender() {
 
       {/* 发送历史 */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="px-3 py-1.5 border-b border-border text-[10px] font-semibold uppercase text-text-secondary flex items-center gap-1">
+        <div className="px-3 sm:px-4 py-1.5 border-b border-border text-[10px] font-semibold uppercase tracking-wide text-text-secondary flex items-center gap-1.5 sticky top-0 bg-bg-panel-header z-10">
           <Clock size={11} />
           {t(lang, 'sendHistory')}
+          <span className="ml-auto text-text-secondary font-mono">{history.length}</span>
         </div>
         {history.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-text-secondary text-xs">
@@ -145,13 +154,16 @@ export function CanSender() {
         ) : (
           <div className="font-mono text-xs">
             {history.slice().reverse().map((f, i) => (
-              <div key={i} className="px-3 py-1 border-b border-border/30 hover:bg-bg-hover flex gap-2 items-center">
-                <span className="text-blue">→ Tx</span>
+              <div
+                key={i}
+                className="px-3 sm:px-4 py-1.5 border-b border-border/30 hover:bg-bg-hover/60 transition-colors flex flex-wrap gap-x-3 gap-y-0.5 items-center"
+              >
+                <span className="text-purple font-semibold">→ Tx</span>
                 <span className="text-text-bright">
-                  {f.extended ? f.id.toString(16).toUpperCase().padStart(8, '0') : f.id.toString(16).toUpperCase().padStart(3, '0')}
+                  0x{f.extended ? f.id.toString(16).toUpperCase().padStart(8, '0') : f.id.toString(16).toUpperCase().padStart(3, '0')}
                 </span>
-                {f.extended && <span className="text-text-secondary text-[10px]">EXT</span>}
-                {f.rtr && <span className="text-text-secondary text-[10px]">RTR</span>}
+                {f.extended && <span className="text-text-secondary text-[10px] border border-border rounded px-1">EXT</span>}
+                {f.rtr && <span className="text-text-secondary text-[10px] border border-border rounded px-1">RTR</span>}
                 <span className="text-text-secondary">[{f.dlc}]</span>
                 <span className="text-text-primary">{f.rtr ? '(remote)' : formatDataHex(f.data)}</span>
               </div>

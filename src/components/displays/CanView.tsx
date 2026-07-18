@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { t } from '../../i18n';
 import { CanFrameList } from './CanFrameList';
 import { CanSender } from './CanSender';
+import { PanelTabs } from '../ui/PanelTabs';
 import { List, Send, BarChart3 } from 'lucide-react';
 import type { CanFrame } from '../../types';
 
@@ -14,31 +15,15 @@ export function CanView() {
   const lang = useAppStore((s) => s.lang);
   const [mode, setMode] = useState<ViewMode>('list');
 
+  const tabs = [
+    { value: 'list' as const, label: t(lang, 'frameList'), icon: <List /> },
+    { value: 'send' as const, label: t(lang, 'canSender'), icon: <Send /> },
+    { value: 'chart' as const, label: t(lang, 'busActivity'), icon: <BarChart3 /> },
+  ];
+
   return (
-    <div className="h-full flex flex-col overflow-hidden">
-      <div className="flex gap-1 p-1 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
-        <button
-          className={`px-2 py-1 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors ${mode === 'list' ? 'bg-accent text-text-bright' : 'text-text-secondary hover:bg-bg-hover'}`}
-          onClick={() => setMode('list')}
-        >
-          <List size={12} />
-          {t(lang, 'frameList')}
-        </button>
-        <button
-          className={`px-2 py-1 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors ${mode === 'send' ? 'bg-accent text-text-bright' : 'text-text-secondary hover:bg-bg-hover'}`}
-          onClick={() => setMode('send')}
-        >
-          <Send size={12} />
-          {t(lang, 'canSender')}
-        </button>
-        <button
-          className={`px-2 py-1 text-xs rounded cursor-pointer flex items-center gap-1 transition-colors ${mode === 'chart' ? 'bg-accent text-text-bright' : 'text-text-secondary hover:bg-bg-hover'}`}
-          onClick={() => setMode('chart')}
-        >
-          <BarChart3 size={12} />
-          {t(lang, 'busActivity')}
-        </button>
-      </div>
+    <div className="h-full w-full flex flex-col overflow-hidden bg-bg-editor">
+      <PanelTabs tabs={tabs} active={mode} onChange={setMode} />
       <div className="flex-1 overflow-hidden min-h-0">
         {mode === 'list' && <CanFrameList />}
         {mode === 'send' && <CanSender />}
@@ -81,28 +66,48 @@ function CanBusChart() {
   const maxCount = Math.max(...idStats.map((s) => s.count), 1);
 
   return (
-    <div className="h-full overflow-y-auto p-3">
-      <h3 className="text-sm font-semibold text-text-primary mb-3">{t(lang, 'idDistribution')}</h3>
+    <div className="h-full overflow-y-auto p-4">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-text-primary">{t(lang, 'idDistribution')}</h3>
+        <span className="text-xs text-text-secondary font-mono">{frames.length} frames</span>
+      </div>
       {idStats.length === 0 ? (
-        <div className="flex items-center justify-center h-32 text-text-secondary text-xs">
+        <div className="flex items-center justify-center h-48 text-text-secondary text-xs rounded border border-dashed border-border bg-bg-panel-header/50">
           {t(lang, 'noCanFrames')}
         </div>
       ) : (
-        <div className="space-y-1">
-          {idStats.map((s) => (
-            <div key={s.id} className="flex items-center gap-2 text-xs font-mono">
-              <span className="text-text-bright w-20 flex-shrink-0">{s.id}{s.extended ? 'X' : ''}</span>
-              <div className="flex-1 bg-bg-input rounded h-4 overflow-hidden relative">
-                <div
-                  className="h-full bg-blue/60 flex items-center"
-                  style={{ width: `${(s.count / maxCount) * 100}%` }}
-                />
-                <div className="absolute inset-0 flex items-center px-1.5 text-[10px] text-text-bright">
-                  {s.count} (Rx:{s.rx} Tx:{s.tx})
+        <div className="space-y-1.5">
+          {idStats.map((s) => {
+            const rxPct = (s.rx / maxCount) * 100;
+            const txPct = (s.tx / maxCount) * 100;
+            return (
+              <div key={s.id} className="grid grid-cols-[4rem_1fr] sm:grid-cols-[5rem_1fr] items-center gap-3 text-xs font-mono">
+                <span className="text-text-bright truncate">
+                  0x{s.id}
+                  {s.extended && <span className="ml-1 text-accent text-[10px]">X</span>}
+                </span>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex-1 bg-bg-input rounded h-5 overflow-hidden relative min-w-0">
+                    <div className="absolute inset-y-0 left-0 flex">
+                      <div
+                        className="h-full bg-blue/70"
+                        style={{ width: `${rxPct}px` }}
+                      />
+                      <div
+                        className="h-full bg-purple/70"
+                        style={{ width: `${txPct}px` }}
+                      />
+                    </div>
+                    <div className="absolute inset-0 flex items-center px-1.5 text-[10px] text-text-bright gap-2">
+                      <span>{s.count}</span>
+                      <span className="text-blue hidden sm:inline">Rx:{s.rx}</span>
+                      <span className="text-purple hidden sm:inline">Tx:{s.tx}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

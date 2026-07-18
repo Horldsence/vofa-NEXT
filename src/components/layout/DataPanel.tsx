@@ -11,8 +11,8 @@ import { CommandSender } from '../displays/CommandSender';
 import { CanView } from '../displays/CanView';
 import { LogicView } from '../displays/LogicView';
 import { AxisSettings } from '../displays/AxisSettings';
-import { useState, useEffect, useCallback } from 'react';
-import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements } from '../../types';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
 import { createDefaultScopeConfig } from '../../types';
 import { waveformWindow } from '../../lib/dataBuffer';
 import { computeMeasurements, computeAutoSetConfig } from '../../lib/scopeUtils';
@@ -46,9 +46,7 @@ export function DataPanel() {
   const widgets = useAppStore((s) => s.widgets);
   const protocolConfig = useAppStore((s) => s.protocolConfig);
   const detectedChannels = useAppStore((s) => s.detectedChannels);
-  // 订阅 waveformWindow 版本以触发 rerender (获取最新 channel_count)
-  const waveformVersion = useAppStore((s) => s.rawDataVersion);
-  void waveformVersion;
+  // 不订阅 rawDataVersion: DataPanel 本身不需要 raw data 刷新, channel_count 仅在协议/检测变化时改变
   const winChannelCount = waveformWindow.get().channel_count;
 
   // 每个 waveform widget 独立配置, key = widgetId (固定 Tab 用 'default-waveform')
@@ -57,21 +55,27 @@ export function DataPanel() {
   });
 
   // 计算默认波形的通道数: 自动模式优先用检测到的通道数, 其次用窗口缓存, 最后兜底 4
-  const defaultChannelCount =
-    protocolConfig.kind === 'RawData' || protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight' || protocolConfig.kind === 'LogicDecode'
-      ? 4
-      : (protocolConfig.channels ?? detectedChannels ?? (winChannelCount || 4));
+  // 用 useMemo 稳定, 避免每次渲染创建新的 defaultWaveformWidget 导致 WaveformChart 重新计算
+  const defaultChannelCount = useMemo(() => {
+    if (protocolConfig.kind === 'RawData' || protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight' || protocolConfig.kind === 'LogicDecode') {
+      return 4;
+    }
+    return ((protocolConfig as Extract<ProtocolConfig, { channels?: number | null }>).channels ?? detectedChannels ?? (winChannelCount || 4));
+  }, [protocolConfig, detectedChannels, winChannelCount]);
 
   // 默认波形控件（固定 Tab 使用）
-  const defaultWaveformWidget: Extract<WidgetConfig, { kind: 'Waveform' }> = {
-    kind: 'Waveform',
-    params: {
-      id: 'default-waveform',
-      channels: defaultChannelCount,
-      max_points: 10000,
-      visible_channels: Array.from({ length: defaultChannelCount }, () => true),
-    },
-  };
+  const defaultWaveformWidget: Extract<WidgetConfig, { kind: 'Waveform' }> = useMemo(
+    () => ({
+      kind: 'Waveform',
+      params: {
+        id: 'default-waveform',
+        channels: defaultChannelCount,
+        max_points: 10000,
+        visible_channels: Array.from({ length: defaultChannelCount }, () => true),
+      },
+    }),
+    [defaultChannelCount]
+  );
 
   // 当前活动 Tab 的 widgetId
   const activeTab = dataTabs.find((t) => t.id === activeDataTabId);
@@ -287,14 +291,14 @@ export function DataPanel() {
       }
       case 'can': {
         return (
-          <div className="flex h-full">
+          <div className="flex h-full w-full">
             <CanView />
           </div>
         );
       }
       case 'logic': {
         return (
-          <div className="flex h-full">
+          <div className="flex h-full w-full">
             <LogicView />
           </div>
         );
