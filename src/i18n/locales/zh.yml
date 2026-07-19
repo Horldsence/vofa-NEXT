@@ -203,7 +203,6 @@ resetZoom: 重置缩放
 timeWindow: 时间窗口
 zoomIn: 放大
 zoomOut: 缩小
-resetZoom: 重置缩放
 scrollLeft: 左移
 scrollRight: 右移
 timeRange: 时间范围
