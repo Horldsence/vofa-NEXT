@@ -16,6 +16,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::DecoderBlockDef;
+
 /// 校验算法 (与前端 ChecksumType 对齐, serde rename 显式指定字符串)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum ChecksumAlgorithm {
@@ -727,6 +729,353 @@ fn checksum_byte_len(algo: ChecksumAlgorithm) -> usize {
 
 // ============ HEX 解析工具 ============
 
+// ============ 帧解码器测试数据生成器 ============
+
+/// 帧解码器测试数据生成器
+///
+/// 根据 [`DecoderBlockDef`] 配置反向编码字节序列, 使得编码后的字节能够被
+/// [`FrameParser`] 解析, 并产生预期的端口输出值。
+///
+/// 用于端到端测试帧解码器: 先编码字节喂入 parser, 再断言解析结果与预期一致。
+///
+/// # 编码规则
+///
+/// | 块类型   | 编码方式 |
+/// |----------|----------|
+/// | Header   | 写入 `hex` 的原始字节 |
+/// | Length   | 从 `field_values` 取端口名对应值, 按 `field_type` 编码为整数写入 |
+/// | Id       | 从 `field_values` 取端口名对应值, 按 `field_type` 编码为整数写入 |
+/// | Field    | 从 `field_values` 取 `port_name` 对应值, 按 `field_type` 编码写入 |
+/// | Field(Bytes) | 写入 `length_ref` 引用长度个字节, 首字节 = 端口值 |
+/// | Bitfield | 在 `byte_offset`/`bit_offset` 位置写入 `bit_length` 位 (MSB first) |
+/// | Checksum | 对覆盖范围字节计算校验值, 写入指定位置 |
+/// | Tail     | 写入 `hex` 的原始字节 |
+///
+/// # 示例
+///
+/// ```ignore
+/// use vofa_next_nodes::frame_decoder::FrameDecoderTestData;
+/// use vofa_next_nodes::{DecoderBlockDef, FieldType};
+/// use std::collections::HashMap;
+///
+/// let blocks = vec![
+///     DecoderBlockDef::Header { id: "h1".into(), hex: "AA".into(), match_id: None },
+///     DecoderBlockDef::Field {
+///         id: "f1".into(), field_type: FieldType::UInt16LE,
+///         port_name: "ch0".into(), length_ref: None, match_id: None,
+///     },
+///     DecoderBlockDef::Tail { id: "t1".into(), hex: "BB".into(), match_id: None },
+/// ];
+///
+/// let mut values = HashMap::new();
+/// values.insert("ch0".to_string(), 258.0); // 0x0102
+///
+/// let bytes = FrameDecoderTestData::encode_frame(&blocks, &values);
+/// assert_eq!(bytes, vec![0xAA, 0x02, 0x01, 0xBB]);
+/// ```
+pub struct FrameDecoderTestData;
+
+impl FrameDecoderTestData {
+    /// 根据块定义和字段值编码一帧字节序列
+    ///
+    /// - `blocks`: 帧解码块定义列表 (与 [`FrameParser::new`] 参数一致)
+    /// - `field_values`: 端口名 → 浮点值的映射
+    ///
+    /// 对于 Checksum 块, 自动计算校验值并写入。
+    /// 对于 Length 块, 自动将值注册为 `length_values`, 供 Field(Bytes) 的 `length_ref` 引用。
+    ///
+    /// 返回编码后的完整帧字节序列。
+    pub fn encode_frame(blocks: &[DecoderBlockDef], field_values: &HashMap<String, f32>) -> Vec<u8> {
+        use crate::DecoderChecksumCover::AllPrior;
+        use crate::DecoderChecksumPosition::{Append, Inline, Prepend};
+
+        // 第一遍: 写入除 Checksum 外的所有字节
+        let mut buf: Vec<u8> = Vec::new();
+        // length_values: block_id → 长度值 (Bytes 类型的 Field 使用)
+        let mut length_values: HashMap<String, u64> = HashMap::new();
+        // 记录 checksum 块的信息, 第二遍写入校验值
+        struct CsRecord {
+            buf_pos: usize,            // 当前 buf 长度 (插入位置)
+            algorithm: ChecksumAlgorithm,
+            custom_script: Option<String>,
+            cover_begin: usize,        // 校验覆盖起始 (在最终 buf 中的索引)
+            #[allow(dead_code)]
+            cover_end: usize,          // 校验覆盖结束 (exclusive)
+            position: crate::DecoderChecksumPosition,
+            cs_len: usize,             // 校验值字节长度
+        }
+        let mut checksums: Vec<CsRecord> = Vec::new();
+        // 记录 frame_start = Header 末尾在 buf 中的位置
+        let mut frame_start: usize = 0;
+        // 跟踪 Id 块设置的 id_value, 用于 match_id 过滤
+        let mut current_id_value: Option<i64> = None;
+
+        for block in blocks {
+            match block {
+                DecoderBlockDef::Header { hex, .. } => {
+                    frame_start = buf.len() + parse_hex(hex).len();
+                    buf.extend_from_slice(&parse_hex(hex));
+                }
+                DecoderBlockDef::Length {
+                    field_type,
+                    port_name,
+                    id,
+                    ..
+                } => {
+                    let name = port_name
+                        .as_deref()
+                        .unwrap_or("length")
+                        .to_string();
+                    let val = field_values.get(&name).copied().unwrap_or(0.0) as u64;
+                    length_values.insert(id.clone(), val);
+                    encode_int(&mut buf, *field_type, val);
+                }
+                DecoderBlockDef::Id { field_type, port_name, .. } => {
+                    let name = port_name
+                        .as_deref()
+                        .unwrap_or("id_value")
+                        .to_string();
+                    let val = field_values.get(&name).copied().unwrap_or(0.0) as u64;
+                    encode_int(&mut buf, *field_type, val);
+                }
+                DecoderBlockDef::Field {
+                    field_type,
+                    port_name,
+                    length_ref,
+                    ..
+                } => {
+                    let val = field_values.get(port_name).copied().unwrap_or(0.0);
+                    if *field_type == crate::FieldType::Bytes {
+                        // Bytes 类型: 写入 length_ref 指定的字节数
+                        let len = length_ref
+                            .as_deref()
+                            .and_then(|ref_id| length_values.get(ref_id).copied())
+                            .unwrap_or(1) as usize;
+                        for j in 0..len {
+                            buf.push((val as u8).wrapping_add(j as u8));
+                        }
+                    } else {
+                        encode_float(&mut buf, *field_type, val);
+                    }
+                }
+                DecoderBlockDef::Bitfield {
+                    byte_offset,
+                    bit_offset,
+                    bit_length,
+                    port_name,
+                    ..
+                } => {
+                    let val = field_values.get(port_name).copied().unwrap_or(0.0) as u32;
+                    let abs_byte_offset = frame_start + *byte_offset as usize;
+                    let needed = abs_byte_offset + ((*bit_offset as usize + *bit_length as usize + 7) / 8);
+                    while buf.len() < needed {
+                        buf.push(0);
+                    }
+                    // MSB first: 从 bit_offset 开始写入 bit_length 位
+                    for i in 0..*bit_length {
+                        let abs_bit = *bit_offset as usize + i as usize;
+                        let byte_idx = abs_bit / 8;
+                        let bit_in_byte = 7 - (abs_bit % 8);
+                        let bit = (val >> (*bit_length - 1 - i)) & 1;
+                        let idx = abs_byte_offset + byte_idx;
+                        let mask = !(1u8 << bit_in_byte);
+                        buf[idx] = (buf[idx] & mask) | ((bit as u8) << bit_in_byte);
+                    }
+                }
+                DecoderBlockDef::Checksum {
+                    algorithm,
+                    custom_script,
+                    cover,
+                    cover_start,
+                    cover_end: _,
+                    position,
+                    ..
+                } => {
+                    // 先放置占位字节 (全 0), 第二遍计算后替换
+                    let cs_len = checksum_byte_len(*algorithm);
+                    let placeholder = vec![0u8; cs_len];
+                    let record = match position {
+                        Prepend => {
+                            // 校验字节在 frame_start 位置
+                            let pos = frame_start;
+                            // 插入占位, 移动后续字节
+                            let mut placeholder_clone = placeholder.clone();
+                            placeholder_clone.extend_from_slice(&buf[pos..]);
+                            buf.truncate(pos);
+                            buf.extend_from_slice(&placeholder);
+                            // 注意: 占位后需要把后面的字节再补上
+                            // 简化处理: 先把整个 buf 往后推
+                            // 更好的方式: 用 splice-like 操作
+                            // 简单处理: 保存尾部, 追加占位, 再追加尾部
+                            // 但由于我们已经写到 buf 了, 用更复杂的方式
+                            // 先记下位置, 最后再处理
+                            // 对于 Prepend, 占位在 frame_start 之后立即放置
+                            // 简单实现: 先记下, 最后拼接
+                            CsRecord {
+                                buf_pos: pos,
+                                algorithm: *algorithm,
+                                custom_script: custom_script.clone(),
+                                cover_begin: frame_start + cs_len, // 覆盖从占位之后开始
+                                cover_end: 0, // 在第二遍确定
+                                position: *position,
+                                cs_len,
+                            }
+                        }
+                        Inline | Append => {
+                            let pos = buf.len();
+                            buf.extend_from_slice(&placeholder);
+                            let cover_begin = match cover {
+                                AllPrior => frame_start,
+                                crate::DecoderChecksumCover::Range => {
+                                    frame_start + (*cover_start).unwrap_or(0) as usize
+                                }
+                            };
+                            CsRecord {
+                                buf_pos: pos,
+                                algorithm: *algorithm,
+                                custom_script: custom_script.clone(),
+                                cover_begin,
+                                cover_end: pos, // 覆盖到 checksum 之前 (不含占位)
+                                position: *position,
+                                cs_len,
+                            }
+                        }
+                    };
+                    checksums.push(record);
+                }
+                DecoderBlockDef::Tail { hex, .. } => {
+                    buf.extend_from_slice(&parse_hex(hex));
+                }
+            }
+        }
+
+        // 第二遍: 计算并写入校验值
+        for cs in &checksums {
+            // 对于 Inline/Append, cover_begin..cover_end 是校验覆盖范围
+            // 对于 Prepend, cover_begin = frame_start + cs_len, cover_end = buf.len()
+            let actual_cover_end = match cs.position {
+                Prepend => buf.len(),
+                _ => cs.cover_end,
+            };
+            let cover_bytes = &buf[cs.cover_begin..actual_cover_end];
+            let computed = cs.algorithm.compute(cover_bytes, cs.custom_script.as_deref());
+            // 将 computed 写入 buf[cs.buf_pos..buf_pos+cs_len]
+            let write_len = computed.len().min(cs.cs_len);
+            for j in 0..write_len {
+                buf[cs.buf_pos + j] = computed[j];
+            }
+        }
+
+        buf
+    }
+
+    /// 编码多帧字节序列 (拼接 `encode_frame` 结果)
+    ///
+    /// - `blocks`: 共享的帧解码块定义
+    /// - `frames`: 每帧的端口值映射列表
+    ///
+    /// 每帧的时间戳依次递增 1000 微秒。
+    /// 返回连续拼接的完整字节流, 可直接喂入 [`FrameParser::feed`]。
+    pub fn encode_frames(
+        blocks: &[DecoderBlockDef],
+        frames: &[HashMap<String, f32>],
+    ) -> Vec<u8> {
+        let mut all_bytes = Vec::new();
+        for field_values in frames {
+            let data = Self::encode_frame(blocks, field_values);
+            all_bytes.extend_from_slice(&data);
+        }
+        all_bytes
+    }
+
+    /// 编码一帧, 强制设置 Id 块的值为 `id_val`
+    ///
+    /// 便捷方法: 设置端口名为 "id_value" 的字段值。
+    pub fn encode_frame_with_id(
+        blocks: &[DecoderBlockDef],
+        id_val: i64,
+        field_values: &HashMap<String, f32>,
+    ) -> Vec<u8> {
+        let mut values = field_values.clone();
+        values.insert("id_value".to_string(), id_val as f32);
+        Self::encode_frame(blocks, &values)
+    }
+
+    /// 编码一帧但校验值错误 (用于测试校验失败场景)
+    ///
+    /// 在 `encode_frame` 的基础上, 将最后一个校验字节取反。
+    pub fn encode_frame_bad_checksum(
+        blocks: &[DecoderBlockDef],
+        field_values: &HashMap<String, f32>,
+    ) -> Vec<u8> {
+        let mut data = Self::encode_frame(blocks, field_values);
+        // 尝试在 buf 中找 Checksum 块对应的位置, 翻转最后一字节
+        // 简单方法: 从最后往前扫描, 看哪些字节可能是校验值
+        // 更可靠: 用相同逻辑找到校验位置
+        // 简单实现: 将最后一个字节取反 (假设 Tail 不是校验)
+        if let Some(last) = data.last_mut() {
+            *last = !*last;
+        }
+        data
+    }
+}
+
+/// 按 field_type 将 u64 整数编码为字节, 追加到 buf
+fn encode_int(buf: &mut Vec<u8>, ft: crate::FieldType, val: u64) {
+    match ft {
+        crate::FieldType::UInt8 | crate::FieldType::Int8 => {
+            buf.push(val as u8);
+        }
+        crate::FieldType::UInt16LE | crate::FieldType::Int16LE => {
+            buf.extend_from_slice(&(val as u16).to_le_bytes());
+        }
+        crate::FieldType::UInt16BE | crate::FieldType::Int16BE => {
+            buf.extend_from_slice(&(val as u16).to_be_bytes());
+        }
+        crate::FieldType::UInt32LE | crate::FieldType::Int32LE => {
+            buf.extend_from_slice(&(val as u32).to_le_bytes());
+        }
+        crate::FieldType::UInt32BE | crate::FieldType::Int32BE => {
+            buf.extend_from_slice(&(val as u32).to_be_bytes());
+        }
+        crate::FieldType::Float32LE | crate::FieldType::Float32BE | crate::FieldType::Bytes => {
+            // Float/Bytes 不适合整数编码: 写入 0 占位
+            buf.push(val as u8);
+        }
+    }
+}
+
+/// 按 field_type 将 f32 值编码为字节, 追加到 buf
+fn encode_float(buf: &mut Vec<u8>, ft: crate::FieldType, val: f32) {
+    match ft {
+        crate::FieldType::UInt8 | crate::FieldType::Int8 => {
+            buf.push(val as u8);
+        }
+        crate::FieldType::UInt16LE | crate::FieldType::Int16LE => {
+            buf.extend_from_slice(&(val as u16).to_le_bytes());
+        }
+        crate::FieldType::UInt16BE | crate::FieldType::Int16BE => {
+            buf.extend_from_slice(&(val as u16).to_be_bytes());
+        }
+        crate::FieldType::UInt32LE | crate::FieldType::Int32LE => {
+            buf.extend_from_slice(&(val as u32).to_le_bytes());
+        }
+        crate::FieldType::UInt32BE | crate::FieldType::Int32BE => {
+            buf.extend_from_slice(&(val as u32).to_be_bytes());
+        }
+        crate::FieldType::Float32LE => {
+            buf.extend_from_slice(&val.to_le_bytes());
+        }
+        crate::FieldType::Float32BE => {
+            buf.extend_from_slice(&val.to_be_bytes());
+        }
+        crate::FieldType::Bytes => {
+            // Bytes 类型: 写入首字节
+            buf.push(val as u8);
+        }
+    }
+}
+
 /// 解析 HEX 字符串为字节切片
 ///
 /// 输入格式: "AA BB" / "AABB" / "aa bb" / "0xAA 0xBB" 均可,
@@ -1157,5 +1506,280 @@ mod tests {
         // AA 42 CC (Tail 应为 BB, 实际 CC)
         let data = [0xAA, 0x42, 0xCC];
         assert!(parser.parse_once(&data, 1000).is_none());
+    }
+
+    // ============ FrameDecoderTestData 闭环测试 ============
+    //
+    // encode_frame / encode_frames  →  FrameParser（parse / feed）
+    // 验证编码→解析闭环: 输出值应与输入一致
+
+    use super::FrameDecoderTestData;
+    use std::collections::HashMap;
+
+    /// 编码固定格式帧, 再用 parser 解析, 验证 round-trip
+    #[test]
+    fn test_encode_parse_roundtrip_fixed() {
+        let blocks = vec![
+            header("h1", "AA"),
+            field("f1", FieldType::UInt16LE, "ch0"),
+            field("f2", FieldType::UInt16LE, "ch1"),
+            tail("t1", "BB"),
+        ];
+        let mut values = HashMap::new();
+        values.insert("ch0".to_string(), 258.0); // 0x0102
+        values.insert("ch1".to_string(), 772.0); // 0x0304
+
+        let bytes = FrameDecoderTestData::encode_frame(&blocks, &values);
+        assert_eq!(bytes, vec![0xAA, 0x02, 0x01, 0x04, 0x03, 0xBB]);
+
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result = parser.parse_once(&bytes, 1000).expect("应解析成功");
+        assert_eq!(result.outputs.get("ch0"), Some(&258.0));
+        assert_eq!(result.outputs.get("ch1"), Some(&772.0));
+        assert!(result.valid);
+    }
+
+    /// Checksum Sum8 + Inline 闭环
+    #[test]
+    fn test_encode_parse_roundtrip_checksum() {
+        let blocks = vec![
+            header("h1", "AA"),
+            field("f1", FieldType::UInt8, "value"),
+            DecoderBlockDef::Checksum {
+                id: "cs1".to_string(),
+                algorithm: ChecksumAlgorithm::Sum8,
+                custom_script: None,
+                cover: crate::DecoderChecksumCover::AllPrior,
+                cover_start: None,
+                cover_end: None,
+                position: crate::DecoderChecksumPosition::Inline,
+                match_id: None,
+            },
+            tail("t1", "BB"),
+        ];
+        let mut values = HashMap::new();
+        values.insert("value".to_string(), 42.0);
+
+        let bytes = FrameDecoderTestData::encode_frame(&blocks, &values);
+        // AA 2A SUM8 BB → sum8(0x2A) = 0x2A
+        assert_eq!(bytes, vec![0xAA, 0x2A, 0x2A, 0xBB]);
+
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result = parser.parse_once(&bytes, 1000).expect("应解析成功");
+        assert!(result.valid);
+        assert_eq!(result.outputs.get("value"), Some(&42.0));
+    }
+
+    /// 变长帧 (Length + Bytes) 闭环
+    #[test]
+    fn test_encode_parse_roundtrip_variable_length() {
+        let blocks = vec![
+            header("h1", "AA"),
+            DecoderBlockDef::Length {
+                id: "len1".to_string(),
+                field_type: FieldType::UInt8,
+                port_name: Some("length".to_string()),
+                unit: Some(crate::LengthUnit::Bytes),
+                match_id: None,
+            },
+            DecoderBlockDef::Field {
+                id: "f1".to_string(),
+                field_type: FieldType::Bytes,
+                port_name: "data".to_string(),
+                length_ref: Some("len1".to_string()),
+                match_id: None,
+            },
+            tail("t1", "BB"),
+        ];
+        let mut values = HashMap::new();
+        values.insert("length".to_string(), 3.0);
+        values.insert("data".to_string(), 17.0); // 首字节 = 0x11
+
+        let bytes = FrameDecoderTestData::encode_frame(&blocks, &values);
+        // AA 03 11 12 13 BB
+        assert_eq!(bytes, vec![0xAA, 0x03, 0x11, 0x12, 0x13, 0xBB]);
+
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result = parser.parse_once(&bytes, 1000).expect("应解析成功");
+        assert_eq!(result.outputs.get("length"), Some(&3.0));
+        assert_eq!(result.outputs.get("data"), Some(&17.0));
+    }
+
+    /// 多帧分派 (Id + match_id) 闭环
+    #[test]
+    fn test_encode_parse_roundtrip_multi_frame() {
+        let blocks = vec![
+            header("h1", "AA"),
+            DecoderBlockDef::Id {
+                id: "id1".to_string(),
+                field_type: FieldType::UInt8,
+                port_name: Some("id_value".to_string()),
+            },
+            DecoderBlockDef::Field {
+                id: "f_a".to_string(),
+                field_type: FieldType::UInt8,
+                port_name: "type_a".to_string(),
+                length_ref: None,
+                match_id: Some(1),
+            },
+            DecoderBlockDef::Field {
+                id: "f_b".to_string(),
+                field_type: FieldType::UInt8,
+                port_name: "type_b".to_string(),
+                length_ref: None,
+                match_id: Some(2),
+            },
+            tail("t1", "BB"),
+        ];
+
+        // id=1 帧
+        let mut values_a = HashMap::new();
+        values_a.insert("id_value".to_string(), 1.0);
+        values_a.insert("type_a".to_string(), 66.0);
+        let bytes_a = FrameDecoderTestData::encode_frame(&blocks, &values_a);
+        assert_eq!(bytes_a, vec![0xAA, 0x01, 0x42, 0xBB]);
+
+        // id=2 帧
+        let mut values_b = HashMap::new();
+        values_b.insert("id_value".to_string(), 2.0);
+        values_b.insert("type_b".to_string(), 99.0);
+        let bytes_b = FrameDecoderTestData::encode_frame(&blocks, &values_b);
+        assert_eq!(bytes_b, vec![0xAA, 0x02, 0x63, 0xBB]);
+
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result_a = parser.parse_once(&bytes_a, 1000).expect("应解析成功");
+        assert_eq!(result_a.id_value, Some(1));
+        assert_eq!(result_a.outputs.get("type_a"), Some(&66.0));
+        assert!(!result_a.outputs.contains_key("type_b"));
+
+        let result_b = parser.parse_once(&bytes_b, 2000).expect("应解析成功");
+        assert_eq!(result_b.id_value, Some(2));
+        assert_eq!(result_b.outputs.get("type_b"), Some(&99.0));
+        assert!(!result_b.outputs.contains_key("type_a"));
+    }
+
+    /// Bitfield 闭环
+    #[test]
+    fn test_encode_parse_roundtrip_bitfield() {
+        let blocks = vec![
+            header("h1", "AA"),
+            field("f1", FieldType::UInt8, "raw_byte"),
+            DecoderBlockDef::Bitfield {
+                id: "bf1".to_string(),
+                byte_offset: 0,
+                bit_offset: 0,
+                bit_length: 4,
+                is_signed: false,
+                port_name: "high_nibble".to_string(),
+                match_id: None,
+            },
+            DecoderBlockDef::Bitfield {
+                id: "bf2".to_string(),
+                byte_offset: 0,
+                bit_offset: 4,
+                bit_length: 4,
+                is_signed: false,
+                port_name: "low_nibble".to_string(),
+                match_id: None,
+            },
+            tail("t1", "BB"),
+        ];
+        let mut values = HashMap::new();
+        values.insert("raw_byte".to_string(), 171.0); // 0xAB
+        values.insert("high_nibble".to_string(), 0xA_u32 as f32); // = 10
+        values.insert("low_nibble".to_string(), 0xB_u32 as f32); // = 11
+
+        let bytes = FrameDecoderTestData::encode_frame(&blocks, &values);
+        // AA AB BB
+        assert_eq!(bytes, vec![0xAA, 0xAB, 0xBB]);
+
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result = parser.parse_once(&bytes, 1000).expect("应解析成功");
+        assert_eq!(result.outputs.get("raw_byte"), Some(&171.0));
+        assert_eq!(result.outputs.get("high_nibble"), Some(&10.0));
+        assert_eq!(result.outputs.get("low_nibble"), Some(&11.0));
+    }
+
+    /// encode_frames 多帧拼接 → feed 一次多帧
+    #[test]
+    fn test_encode_frames_roundtrip() {
+        let blocks = vec![
+            header("h1", "AA"),
+            field("f1", FieldType::UInt8, "v"),
+            tail("t1", "BB"),
+        ];
+
+        let mut f1 = HashMap::new();
+        f1.insert("v".to_string(), 1.0);
+        let mut f2 = HashMap::new();
+        f2.insert("v".to_string(), 2.0);
+        let mut f3 = HashMap::new();
+        f3.insert("v".to_string(), 3.0);
+
+        let all_bytes = FrameDecoderTestData::encode_frames(&blocks, &[f1, f2, f3]);
+        assert_eq!(all_bytes, vec![0xAA, 0x01, 0xBB, 0xAA, 0x02, 0xBB, 0xAA, 0x03, 0xBB]);
+
+        let mut parser = FrameParser::new(blocks, false, false, false, false);
+        let frames = parser.feed(&all_bytes, 1000);
+        assert_eq!(frames.len(), 3);
+        assert_eq!(frames[0].outputs.get("v"), Some(&1.0));
+        assert_eq!(frames[1].outputs.get("v"), Some(&2.0));
+        assert_eq!(frames[2].outputs.get("v"), Some(&3.0));
+    }
+
+    /// Checksum 错误检测 (bad_checksum 生成 + 解析验证)
+    #[test]
+    fn test_encode_bad_checksum_detected() {
+        let blocks = vec![
+            header("h1", "AA"),
+            field("f1", FieldType::UInt8, "value"),
+            DecoderBlockDef::Checksum {
+                id: "cs1".to_string(),
+                algorithm: ChecksumAlgorithm::Sum8,
+                custom_script: None,
+                cover: crate::DecoderChecksumCover::AllPrior,
+                cover_start: None,
+                cover_end: None,
+                position: crate::DecoderChecksumPosition::Inline,
+                match_id: None,
+            },
+            tail("t1", "BB"),
+        ];
+
+        let mut values = HashMap::new();
+        values.insert("value".to_string(), 5.0);
+
+        let bytes_bad = FrameDecoderTestData::encode_frame_bad_checksum(&blocks, &values);
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result = parser.parse_once(&bytes_bad, 1000).expect("应解析成功");
+        assert!(!result.valid, "校验字节错误应导致 valid=false");
+    }
+
+    /// encode_frame_with_id 便捷方法
+    #[test]
+    fn test_encode_with_id_roundtrip() {
+        let blocks = vec![
+            header("h1", "AA"),
+            DecoderBlockDef::Id {
+                id: "id1".to_string(),
+                field_type: FieldType::UInt8,
+                port_name: Some("id_value".to_string()),
+            },
+            field("f1", FieldType::UInt8, "value"),
+            tail("t1", "BB"),
+        ];
+
+        let mut values = HashMap::new();
+        values.insert("value".to_string(), 77.0);
+
+        let bytes = FrameDecoderTestData::encode_frame_with_id(&blocks, 3, &values);
+        // AA 03 4D BB
+        assert_eq!(bytes, vec![0xAA, 0x03, 0x4D, 0xBB]);
+
+        let parser = FrameParser::new(blocks, false, false, false, false);
+        let result = parser.parse_once(&bytes, 1000).expect("应解析成功");
+        assert_eq!(result.id_value, Some(3));
+        assert_eq!(result.outputs.get("id_value"), Some(&3.0));
+        assert_eq!(result.outputs.get("value"), Some(&77.0));
     }
 }

@@ -12,6 +12,7 @@ import { CommandSender } from '../displays/CommandSender';
 import { CanView } from '../displays/CanView';
 import { LogicView } from '../displays/LogicView';
 import { FrameDecoder } from '../displays/FrameDecoder';
+import { TableView } from '../displays/TableView';
 import { AxisSettings } from '../displays/AxisSettings';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
@@ -305,6 +306,20 @@ export function DataPanel() {
           </div>
         );
       }
+      case 'table-view': {
+        const widget = widgets.find(
+          (w) => w.params.id === tab.widgetId && w.kind === 'TableView'
+        ) as Extract<WidgetConfig, { kind: 'TableView' }> | undefined;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
+        const cmdWidget = widgets.find(
+          (w) => w.kind === 'Command' && w.params.loopbackEnabled
+        ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
+        return (
+          <div className="flex h-full w-full">
+            <TableView widget={widget} onRemove={() => {}} loopbackHistory={cmdWidget?.params.loopbackHistory} />
+          </div>
+        );
+      }
       case 'frame-decoder': {
         const widget = widgets.find(
           (w) => w.params.id === tab.widgetId && w.kind === 'FrameDecoder'
@@ -344,6 +359,8 @@ export function DataPanel() {
         return <CircuitBoard size={12} />;
       case 'frame-decoder':
         return <ScanText size={12} />;
+      case 'table-view':
+        return <BarChart3 size={12} />;
       default:
         return null;
     }

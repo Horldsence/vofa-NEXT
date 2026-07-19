@@ -793,3 +793,23 @@ stopBits0_5: 0.5
 stopBits1: 1
 stopBits1_5: 1.5
 stopBits2: 2
+
+# TableView
+tableViewNoColumns: No columns
+tableViewShowRaw: Show Raw Bytes
+tableViewHideRaw: Hide Raw Bytes
+tableViewTimestamp: Timestamp
+tableViewEmpty: Waiting for data...
+tableViewRows: rows
+tableViewLoopbackRows: loopback
+tableViewLabel: Table
+tableViewDesc: Display upstream node outputs in table form
+closeTableViewTab: Close Table
+
+# Loopback
+cmdLoopback: Loopback
+cmdLoopbackDesc: Capture protocol parsed results after sending
+cmdLoopbackManual: Manual send
+cmdLoopbackOnChange: Send on change
+cmdLoopbackTimer: Timed send
+cmdLoopbackInterval: Interval (ms)

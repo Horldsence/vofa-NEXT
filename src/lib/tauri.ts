@@ -69,6 +69,9 @@ export const api = {
 
   getTestDataState: () => invoke<boolean>('get_test_data_state'),
 
+  sendAndCapture: (data: number[]) =>
+    invoke<import('../types').LoopbackResult>('send_and_capture', { data }),
+
   // ===== 协议 =====
   setProtocol: (config: ProtocolConfig) =>
     invoke<void>('set_protocol', { config }),

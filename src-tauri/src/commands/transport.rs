@@ -1,5 +1,6 @@
 use crate::notify;
 use crate::state::AppState;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use vofa_next_core::{
     ConnectionState, PortInfo, Result, TransportConfig, TransportStats, WidgetBinding,
@@ -143,4 +144,45 @@ pub async fn stop_test_data(state: State<'_, AppState>) -> Result<()> {
 pub async fn get_test_data_state(state: State<'_, AppState>) -> Result<bool> {
     let manager = state.transport.lock().await;
     Ok(manager.is_test_data_running())
+}
+
+/// 协议回环：发送字节并立即捕获协议引擎解析结果
+///
+/// 用于协议调试场景 — 将用户构造的字节发送到 transport,
+/// 同时直接调用协议引擎解析, 返回发送字节与解析结果对照。
+///
+/// TestData 模式: 发送的字节通过 transport 回环, data_loop 也会再次解析;
+/// 本命令返回的是**即时同步**解析结果, 不等 data_loop 管道。
+#[derive(Debug, Clone, Serialize)]
+pub struct LoopbackResult {
+    pub sent_hex: String,
+    pub rx_bytes: Vec<u8>,
+    pub frame_count: usize,
+    pub channels: Vec<f32>,
+    pub can_count: usize,
+}
+
+#[tauri::command]
+pub async fn send_and_capture(
+    state: State<'_, AppState>,
+    data: Vec<u8>,
+) -> Result<LoopbackResult> {
+    // 1. 发送到 transport (TestData 模式下回环)
+    {
+        let manager = state.transport.lock().await;
+        manager.send(&data).await?;
+    }
+
+    // 2. 即时调用协议引擎解析 (同步, 不依赖 data_loop 管道)
+    let mut proto = state.protocol.lock();
+    let frames = proto.feed(&data);
+    let can_count = proto.feed_can(&data).len();
+
+    Ok(LoopbackResult {
+        sent_hex: data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" "),
+        rx_bytes: data.clone(),
+        frame_count: frames.len(),
+        channels: frames.first().map(|f| f.channels.clone()).unwrap_or_default(),
+        can_count,
+    })
 }

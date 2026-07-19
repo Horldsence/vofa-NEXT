@@ -12,7 +12,8 @@ import {
   Panel,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { useAppStore, createWidget } from '../../store/appStore';
+import { useAppStore } from '../../store/appStore';
+import { createWidget } from '../../lib/createWidget';
 import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/useContextMenu';
 import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';

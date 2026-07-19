@@ -4,10 +4,6 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
-  Hexagon,
-  Variable,
-  Hash,
-  ShieldCheck,
   GripVertical,
   ChevronDown,
   ChevronRight,
@@ -16,8 +12,6 @@ import type {
   WidgetConfig,
   BlockType,
   CommandBlock,
-  ChecksumType,
-  FieldType,
 } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { useGraphInputs } from '../../lib/useGraphInput';
@@ -25,74 +19,12 @@ import { computeChecksum, type ChecksumKind } from '../../lib/checksum';
 import { parseHex, packField, bytesToHex, bytesToAscii } from '../../lib/commandParser';
 import { t } from '../../i18n';
 import { nanoid } from 'nanoid';
+import { BLOCK_TYPE_CONFIG, concatChunks, blockSummary } from './commandSenderShared';
+import { CommandBlockEditor } from './CommandSenderBlockEditor';
 
 interface CommandSenderProps {
   widget: Extract<WidgetConfig, { kind: 'Command' }>;
   onRemove: () => void;
-}
-
-/// 块类型配置: 图标 / Tailwind 静态类名 / 标签 key
-/// 颜色全部使用 @theme 内已定义的语义色 (blue/green/yellow/red)
-const BLOCK_TYPE_CONFIG: Record<
-  BlockType,
-  {
-    icon: React.ReactNode;
-    badgeClass: string;   // 标签: bg-{c}/20 text-{c} border-{c}/40
-    blockClass: string;   // 块容器: border-{c}/40 bg-{c}/10
-    iconClass: string;    // 图标: text-{c}
-    labelKey: string;
-    addLabelKey: string;
-  }
-> = {
-  const_hex:   { icon: <Hexagon size={12} />,     badgeClass: 'bg-blue/20 text-blue border-blue/40',       blockClass: 'border-blue/40 bg-blue/10',       iconClass: 'text-blue',   labelKey: 'cmdBlockConstHex',   addLabelKey: 'cmdAddBlockConstHex' },
-  var_ref:     { icon: <Variable size={12} />,    badgeClass: 'bg-green/20 text-green border-green/40',   blockClass: 'border-green/40 bg-green/10',     iconClass: 'text-green',  labelKey: 'cmdBlockVarRef',     addLabelKey: 'cmdAddBlockVarRef' },
-  typed_const: { icon: <Hash size={12} />,        badgeClass: 'bg-yellow/20 text-yellow border-yellow/40', blockClass: 'border-yellow/40 bg-yellow/10',   iconClass: 'text-yellow', labelKey: 'cmdBlockTypedConst', addLabelKey: 'cmdAddBlockTypedConst' },
-  checksum:    { icon: <ShieldCheck size={12} />, badgeClass: 'bg-red/20 text-red border-red/40',         blockClass: 'border-red/40 bg-red/10',         iconClass: 'text-red',    labelKey: 'cmdBlockChecksum',   addLabelKey: 'cmdAddBlockChecksum' },
-};
-
-const CHECKSUM_OPTIONS: { value: ChecksumType; labelKey: string }[] = [
-  { value: 'sum8', labelKey: 'cmdChecksumSum8' },
-  { value: 'xor8', labelKey: 'cmdChecksumXor8' },
-  { value: 'crc8', labelKey: 'cmdChecksumCRC8' },
-  { value: 'crc16Modbus', labelKey: 'cmdChecksumCRC16Modbus' },
-  { value: 'crc16CCITT', labelKey: 'cmdChecksumCRC16CCITT' },
-  { value: 'crc32', labelKey: 'cmdChecksumCRC32' },
-  { value: 'lrc', labelKey: 'cmdChecksumLRC' },
-  { value: 'custom', labelKey: 'cmdChecksumCustom' },
-];
-
-const FIELD_TYPE_OPTIONS: FieldType[] = [
-  'uint8', 'int8',
-  'uint16LE', 'uint16BE', 'int16LE', 'int16BE',
-  'uint32LE', 'uint32BE', 'int32LE', 'int32BE',
-  'float32LE', 'float32BE',
-  'bytes',
-];
-
-/// 拼接多个 Uint8Array
-function concatChunks(chunks: Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((s, c) => s + c.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    result.set(c, offset);
-    offset += c.length;
-  }
-  return result;
-}
-
-/// 块摘要 (列表中单行显示)
-function blockSummary(block: CommandBlock): string {
-  switch (block.type) {
-    case 'const_hex':
-      return block.hex ?? '';
-    case 'var_ref':
-      return `${block.portName ?? 'value'} : ${block.fieldType ?? 'uint16LE'}`;
-    case 'typed_const':
-      return `${block.value ?? '0'} : ${block.fieldType ?? 'uint8'}`;
-    case 'checksum':
-      return block.checksum ?? 'sum8';
-  }
 }
 
 /// 命令发送控件 — 数据块拼接方式
@@ -110,6 +42,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const { id, blocks } = params;
   const updateWidget = useAppStore((s) => s.updateWidget);
   const sendData = useAppStore((s) => s.sendData);
+  const sendAndCapture = useAppStore((s) => s.sendAndCapture);
   const lang = useAppStore((s) => s.lang);
 
   // 从 var_ref 块推导输入端口名, 读取连入值
@@ -189,7 +122,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
       return;
     }
     try {
-      await sendData(Array.from(computed.bytes));
+      if (params.loopbackEnabled) { await sendAndCapture(Array.from(computed.bytes)); } else { await sendData(Array.from(computed.bytes)); }
       sendCountRef.current += 1;
       setLastSent(`${new Date().toLocaleTimeString()} #${sendCountRef.current} [${computed.bytes.length}B] ${bytesToHex(computed.bytes)}`);
     } catch (e) {
@@ -369,135 +302,12 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
                 {/* 块编辑区 (展开时) */}
                 {isExpanded && (
-                  <div className="px-2 pb-2 flex flex-col gap-1.5">
-                    {/* 通用: label */}
-                    <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                      <label className="text-[10px] text-text-secondary">{t(lang, 'cmdBlockLabel')}</label>
-                      <input
-                        type="text"
-                        value={block.label ?? ''}
-                        onChange={(e) => updateBlock(block.id, { label: e.target.value })}
-                        className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs focus:outline-none focus:border-accent"
-                        placeholder={t(lang, 'cmdBlockLabelPlaceholder')}
-                      />
-                    </div>
-
-                    {/* const_hex */}
-                    {block.type === 'const_hex' && (
-                      <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                        <label className="text-[10px] text-text-secondary">HEX</label>
-                        <input
-                          type="text"
-                          value={block.hex ?? ''}
-                          onChange={(e) => updateBlock(block.id, { hex: e.target.value })}
-                          className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs font-mono focus:outline-none focus:border-accent"
-                          placeholder="AA 01 02"
-                          spellCheck={false}
-                        />
-                      </div>
-                    )}
-
-                    {/* var_ref */}
-                    {block.type === 'var_ref' && (
-                      <>
-                        <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                          <label className="text-[10px] text-text-secondary">{t(lang, 'cmdBlockPortName')}</label>
-                          <input
-                            type="text"
-                            value={block.portName ?? ''}
-                            onChange={(e) => updateBlock(block.id, { portName: e.target.value })}
-                            className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs font-mono focus:outline-none focus:border-accent"
-                            placeholder="speed"
-                            spellCheck={false}
-                          />
-                        </div>
-                        <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                          <label className="text-[10px] text-text-secondary">{t(lang, 'cmdBlockType')}</label>
-                          <select
-                            value={block.fieldType ?? 'uint16LE'}
-                            onChange={(e) => updateBlock(block.id, { fieldType: e.target.value as FieldType })}
-                            className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs focus:outline-none focus:border-accent"
-                          >
-                            {FIELD_TYPE_OPTIONS.map((ft) => (
-                              <option key={ft} value={ft}>{ft}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="text-[10px] text-text-secondary opacity-70 px-1">
-                          {t(lang, 'cmdBlockVarRefHint')}: {String(graphInputs[block.portName ?? 'value'] ?? 0)}
-                        </div>
-                      </>
-                    )}
-
-                    {/* typed_const */}
-                    {block.type === 'typed_const' && (
-                      <>
-                        <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                          <label className="text-[10px] text-text-secondary">{t(lang, 'cmdBlockType')}</label>
-                          <select
-                            value={block.fieldType ?? 'uint8'}
-                            onChange={(e) => updateBlock(block.id, { fieldType: e.target.value as FieldType })}
-                            className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs focus:outline-none focus:border-accent"
-                          >
-                            {FIELD_TYPE_OPTIONS.map((ft) => (
-                              <option key={ft} value={ft}>{ft}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                          <label className="text-[10px] text-text-secondary">{t(lang, 'cmdBlockValue')}</label>
-                          <input
-                            type="text"
-                            value={block.value ?? ''}
-                            onChange={(e) => updateBlock(block.id, { value: e.target.value })}
-                            className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs font-mono focus:outline-none focus:border-accent"
-                            placeholder="0"
-                            spellCheck={false}
-                          />
-                        </div>
-                      </>
-                    )}
-
-                    {/* checksum */}
-                    {block.type === 'checksum' && (
-                      <>
-                        <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-                          <label className="text-[10px] text-text-secondary">{t(lang, 'cmdChecksum')}</label>
-                          <select
-                            value={block.checksum ?? 'sum8'}
-                            onChange={(e) => updateBlock(block.id, { checksum: e.target.value as ChecksumType })}
-                            className="w-full px-1.5 py-0.5 bg-bg-input text-text-primary border border-border rounded-sm text-xs focus:outline-none focus:border-accent"
-                          >
-                            {CHECKSUM_OPTIONS.map((opt) => (
-                              <option key={opt.value} value={opt.value}>
-                                {t(lang, opt.labelKey)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        {block.checksum === 'custom' && (
-                          <div className="flex flex-col gap-1">
-                            <label className="text-[10px] text-text-secondary">{t(lang, 'cmdCustomScript')}</label>
-                            <textarea
-                              className="w-full font-mono text-xs bg-bg-input text-text-primary border border-border rounded-sm px-1.5 py-1 outline-none focus:border-accent resize-y min-h-[60px] leading-relaxed"
-                              value={block.customScript ?? ''}
-                              onChange={(e) => updateBlock(block.id, { customScript: e.target.value })}
-                              spellCheck={false}
-                              rows={4}
-                              placeholder={'// bytes: 输入字节数组\n// 返回: 校验字节数组\nlet s = 0;\nfor (const b of bytes) s = (s + b) & 0xff;\nreturn [s];'}
-                            />
-                            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-yellow/10 border border-yellow/30 text-yellow text-[10px] rounded-sm">
-                              <AlertTriangle size={10} />
-                              <span>{t(lang, 'cmdCustomWarn')}</span>
-                            </div>
-                          </div>
-                        )}
-                        <div className="text-[10px] text-text-secondary opacity-70 px-1">
-                          {t(lang, 'cmdBlockChecksumHint')}
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  <CommandBlockEditor
+                    block={block}
+                    updateBlock={updateBlock}
+                    lang={lang}
+                    graphInputs={graphInputs}
+                  />
                 )}
               </div>
             );
@@ -600,6 +410,49 @@ export function CommandSender({ widget }: CommandSenderProps) {
               {params.appendNewline ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
             </button>
           </div>
+          </div>
+
+        {/* 回环模式设置 */}
+        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-2">{t(lang, 'cmdLoopback')}</div>
+        <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-xs text-text-secondary">{t(lang, 'cmdLoopback')}</label>
+            <button
+              className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${params.loopbackEnabled ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
+              onClick={() => updateParams({ loopbackEnabled: !params.loopbackEnabled })}
+            >
+              {params.loopbackEnabled ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
+            </button>
+          </div>
+          {params.loopbackEnabled && (
+            <>
+              <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+                <label className="text-xs text-text-secondary">{t(lang, 'cmdLoopbackManual')}</label>
+                <select
+                  value={params.loopbackSendMode}
+                  onChange={(e) => updateParams({ loopbackSendMode: e.target.value as 'manual' | 'onChange' | 'timer' })}
+                  className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
+                >
+                  <option value="manual">{t(lang, 'cmdLoopbackManual')}</option>
+                  <option value="onChange">{t(lang, 'cmdLoopbackOnChange')}</option>
+                  <option value="timer">{t(lang, 'cmdLoopbackTimer')}</option>
+                </select>
+              </div>
+              {params.loopbackSendMode === 'timer' && (
+                <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+                  <label className="text-xs text-text-secondary">{t(lang, 'cmdLoopbackInterval')}</label>
+                  <input
+                    type="number"
+                    min={10}
+                    max={10000}
+                    value={params.loopbackTimerMs}
+                    onChange={(e) => updateParams({ loopbackTimerMs: parseInt(e.target.value) || 100 })}
+                    className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
+                  />
+                </div>
+              )}
+            </>
+          )}
         </div>
       </div>
     </div>

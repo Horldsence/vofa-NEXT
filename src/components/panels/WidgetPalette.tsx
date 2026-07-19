@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import clsx from 'clsx';
-import { useAppStore, createWidget } from '../../store/appStore';
+import { useAppStore } from '../../store/appStore';
+import { createWidget } from '../../lib/createWidget';
 import { t } from '../../i18n';
 import {
   Gauge as KnobIcon,

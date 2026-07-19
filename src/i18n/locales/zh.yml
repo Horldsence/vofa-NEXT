@@ -793,3 +793,23 @@ stopBits0_5: 0.5
 stopBits1: 1
 stopBits1_5: 1.5
 stopBits2: 2
+
+# TableView
+tableViewNoColumns: 未配置列
+tableViewShowRaw: 显示原始字节
+tableViewHideRaw: 隐藏原始字节
+tableViewTimestamp: 时间戳
+tableViewEmpty: 等待数据...
+tableViewRows: 行
+tableViewLoopbackRows: 回环
+tableViewLabel: 表格
+tableViewDesc: 以表格形式展示上游节点的输出值
+closeTableViewTab: 关闭表格
+
+# Loopback
+cmdLoopback: 回环模式
+cmdLoopbackDesc: 发送后捕获协议引擎解析结果
+cmdLoopbackManual: 手动发送
+cmdLoopbackOnChange: 值变化发送
+cmdLoopbackTimer: 定时发送
+cmdLoopbackInterval: 定时间隔 (ms)
