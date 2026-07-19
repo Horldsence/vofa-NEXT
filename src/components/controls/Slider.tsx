@@ -1,8 +1,8 @@
 import { useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
 import { useAppStore } from '../../store/appStore';
+import { WidgetCard } from '../ui/WidgetCard';
 
 interface SliderProps {
   widget: Extract<WidgetConfig, { kind: 'Slider' }>;
@@ -59,14 +59,7 @@ export function Slider({ widget, onRemove }: SliderProps) {
   }, [widget.params.id, value, setInputValue]);
 
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      <button
-        className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-        onClick={onRemove}
-      >
-        <X size={12} />
-      </button>
-      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
+    <WidgetCard label={label} onRemove={onRemove}>
       <div className="flex flex-col gap-1 w-full">
         <input
           type="range"
@@ -82,6 +75,6 @@ export function Slider({ widget, onRemove }: SliderProps) {
         />
         <div className="text-xl font-semibold text-text-bright font-mono text-center">{value.toFixed(2)}</div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

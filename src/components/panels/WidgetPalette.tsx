@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import clsx from 'clsx';
 import { useAppStore, createWidget } from '../../store/appStore';
 import { t } from '../../i18n';
 import {
@@ -194,7 +195,10 @@ export function WidgetPalette() {
         {categories.map((cat) => (
           <button
             key={cat.id}
-            className={`flex-1 flex items-center justify-center gap-1 py-2 px-1 text-xs font-medium text-text-secondary bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all select-none hover:bg-bg-hover hover:text-text-primary ${activeCategory === cat.id ? 'font-semibold' : ''}`}
+            className={clsx(
+              'flex-1 flex items-center justify-center gap-1 py-2 px-1 text-xs font-medium text-text-secondary bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all select-none hover:bg-bg-hover hover:text-text-primary',
+              activeCategory === cat.id && 'font-semibold',
+            )}
             data-category={cat.id}
             onClick={() => setActiveCategory(cat.id)}
             style={{
@@ -216,7 +220,7 @@ export function WidgetPalette() {
             {mathItems.map((item) => (
               <div
                 key={item.op}
-                className={`border-l-[3px] border-l-orange bg-gradient-to-r from-orange/10 to-bg-input via-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:from-orange/20 hover:text-text-primary active:cursor-grabbing`}
+                className="border-l-[3px] border-l-orange bg-gradient-to-r from-orange/10 to-bg-input via-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:from-orange/20 hover:text-text-primary active:cursor-grabbing"
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Math', item.op)}
                 onClick={() => handleClickAdd('Math', item.op)}
@@ -232,7 +236,7 @@ export function WidgetPalette() {
             {filterItems.map((item) => (
               <div
                 key={item.preset}
-                className={`bg-bg-input border border-[rgba(255,140,66,0.3)] rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:text-orange active:cursor-grabbing`}
+                className="bg-bg-input border border-[rgba(255,140,66,0.3)] rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:text-orange active:cursor-grabbing"
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Filter', undefined, item.preset)}
                 onClick={() => handleClickAdd('Filter', undefined, undefined, item.preset)}
@@ -249,7 +253,10 @@ export function WidgetPalette() {
           activeItems.map((item) => (
             <div
               key={item.kind}
-              className={`bg-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:bg-bg-hover hover:border-accent hover:text-text-primary active:cursor-grabbing ${categoryBorderClass[activeCategory]}`}
+              className={clsx(
+                'bg-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:bg-bg-hover hover:border-accent hover:text-text-primary active:cursor-grabbing',
+                categoryBorderClass[activeCategory],
+              )}
               draggable
               onDragStart={(e) => handleDragStart(e, item.kind)}
               onClick={() => {

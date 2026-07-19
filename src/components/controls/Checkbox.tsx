@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
 import { useAppStore } from '../../store/appStore';
+import { WidgetCard } from '../ui/WidgetCard';
 
 interface CheckboxProps {
   widget: Extract<WidgetConfig, { kind: 'Checkbox' }>;
@@ -37,20 +37,13 @@ export function Checkbox({ widget, onRemove }: CheckboxProps) {
   }, [id, value, setInputValue]);
 
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      <button
-        className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-        onClick={onRemove}
-      >
-        <X size={12} />
-      </button>
-      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
+    <WidgetCard label={label} onRemove={onRemove}>
       <label className="flex items-center gap-1.5 cursor-pointer text-xs">
         <input type="checkbox" checked={checked} onChange={handleToggle} className="accent-accent" />
         <span>
           {checked ? checked_value : unchecked_value}
         </span>
       </label>
-    </div>
+    </WidgetCard>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { WidgetCard } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
 import { waveformWindow } from '../../lib/dataBuffer';
 
@@ -56,6 +57,10 @@ export function PieChart({ widget, full = false }: PieChartProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    const cssVar = (name: string) => {
+      if (typeof document === 'undefined') return '';
+      return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    };
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
@@ -87,11 +92,11 @@ export function PieChart({ widget, full = false }: PieChartProps) {
 
     const total = values.reduce((a, b) => a + Math.max(0, b), 0);
     if (total <= 0) {
-      ctx.strokeStyle = '#3c3c3c';
+      ctx.strokeStyle = cssVar('--color-border') || '#3c3c3c';
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#858585';
+      ctx.fillStyle = cssVar('--color-text-secondary') || '#858585';
       ctx.font = `${full ? 13 : 12}px sans-serif`;
       ctx.textAlign = 'center';
       ctx.fillText('No data', cx, cy);
@@ -109,7 +114,7 @@ export function PieChart({ widget, full = false }: PieChartProps) {
       ctx.closePath();
       ctx.fillStyle = COLORS[i % COLORS.length];
       ctx.fill();
-      ctx.strokeStyle = '#1e1e1e';
+      ctx.strokeStyle = cssVar('--color-bg-editor') || '#1e1e1e';
       ctx.lineWidth = 2;
       ctx.stroke();
       startAngle += sliceAngle;
@@ -156,11 +161,11 @@ export function PieChart({ widget, full = false }: PieChartProps) {
 
   // 紧凑模式: 节点编辑器内, 保持原竖排布局
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
+    <WidgetCard noMinWidth>
       <div className="flex flex-col items-center gap-2 p-2">
         <canvas ref={canvasRef} style={{ width: 120, height: 120 }} />
         {legend}
       </div>
-    </div>
+    </WidgetCard>
   );
 }

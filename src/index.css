@@ -155,7 +155,8 @@ body {
   font-size: 12px !important;
 }
 
-/* ============ React Flow 基础适配 ============ */
+/* ============ React Flow 全局默认值 ============ */
+/* 节点编辑器内的 React Flow 使用 .node-editor-rf 作用域覆盖 */
 .react-flow__node {
   font-family: var(--font-ui);
 }
@@ -541,7 +542,8 @@ body {
   display: none !important;
 }
 
-/* ============ React Flow Node Editor 覆盖 (node-editor-rf) ============ */
+/* ============ React Flow Node Editor 专用覆盖 (node-editor-rf) ============ */
+/* 覆盖全局默认值, 只对 .node-editor-rf 内的 React Flow 生效 */
 .node-editor-rf {
   position: absolute;
   inset: 0;

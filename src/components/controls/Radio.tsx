@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
-import { X } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { sendBindingValue } from './binding';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
+import { WidgetCard } from '../ui/WidgetCard';
 
 interface RadioProps {
   widget: Extract<WidgetConfig, { kind: 'Radio' }>;
@@ -38,14 +38,7 @@ export function Radio({ widget, onRemove }: RadioProps) {
   }, [id, value, setInputValue]);
 
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      <button
-        className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-        onClick={onRemove}
-      >
-        <X size={12} />
-      </button>
-      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
+    <WidgetCard label={label} onRemove={onRemove}>
       <div className="flex flex-col gap-1">
         {options.map(([text, val]) => (
           <label key={val} className="flex items-center gap-1.5 cursor-pointer text-xs">
@@ -63,6 +56,6 @@ export function Radio({ widget, onRemove }: RadioProps) {
       <div className="text-xs text-text-secondary">
         {t(lang, 'channel')}: {current}
       </div>
-    </div>
+    </WidgetCard>
   );
 }

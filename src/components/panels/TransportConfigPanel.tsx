@@ -195,8 +195,8 @@ export function TransportConfigPanel() {
     }
   })();
 
-  const inputClass = 'w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors';
-  const selectClass = inputClass;
+  const inputClass = 'form-input';
+  const selectClass = 'form-select';
 
   return (
     <div>

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
+import { WidgetCard } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
 
 interface ImageViewerProps {
@@ -75,7 +76,7 @@ export function ImageViewer({ widget, full = false }: ImageViewerProps) {
 
   // 紧凑模式: 节点编辑器内
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
+    <WidgetCard>
       <div
         className="w-full bg-black border border-border rounded flex items-center justify-center text-text-secondary text-xs"
         style={{ aspectRatio: `${width} / ${height}` }}
@@ -91,6 +92,6 @@ export function ImageViewer({ widget, full = false }: ImageViewerProps) {
           </div>
         )}
       </div>
-    </div>
+    </WidgetCard>
   );
 }

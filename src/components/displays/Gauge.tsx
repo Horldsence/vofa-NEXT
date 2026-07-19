@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Settings2 } from 'lucide-react';
+import { WidgetCard } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
 import { useGraphInput } from '../../lib/useGraphInput';
 
@@ -21,6 +21,7 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    const cssVar = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
@@ -43,7 +44,7 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
     const totalAngle = startAngle - endAngle;
 
     // 背景弧 (灰色)
-    ctx.strokeStyle = '#3c3c3c';
+    ctx.strokeStyle = cssVar('--color-border') || '#3c3c3c';
     ctx.lineWidth = 8;
     ctx.lineCap = 'round';
     ctx.beginPath();
@@ -53,15 +54,15 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
     // 进度弧 (蓝色)
     const ratio = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
     const valueAngle = startAngle - ratio * totalAngle;
-    ctx.strokeStyle = '#75beff';
+    ctx.strokeStyle = cssVar('--color-blue') || '#75beff';
     ctx.beginPath();
     ctx.arc(cx, cy, radius, valueAngle, startAngle);
     ctx.stroke();
 
     // 刻度 (5 段)
-    ctx.strokeStyle = '#858585';
+    ctx.strokeStyle = cssVar('--color-text-secondary') || '#858585';
     ctx.lineWidth = 1;
-    ctx.fillStyle = '#858585';
+    ctx.fillStyle = cssVar('--color-text-secondary') || '#858585';
     ctx.font = '9px sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i <= 4; i++) {
@@ -85,7 +86,7 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
     }
 
     // 指针
-    ctx.strokeStyle = '#f48771';
+    ctx.strokeStyle = cssVar('--color-red') || '#f48771';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(cx, cy);
@@ -96,24 +97,14 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
     ctx.stroke();
 
     // 中心圆
-    ctx.fillStyle = '#cccccc';
+    ctx.fillStyle = cssVar('--color-text-primary') || '#cccccc';
     ctx.beginPath();
     ctx.arc(cx, cy, 4, 0, Math.PI * 2);
     ctx.fill();
   }, [value, min, max]);
 
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      {onEdit && (
-        <button
-          className="absolute top-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-          onClick={onEdit}
-          title="Edit"
-          style={{ right: 24 }}
-        >
-          <Settings2 size={11} />
-        </button>
-      )}
+    <WidgetCard onEdit={onEdit} noMinWidth>
       <div className="flex flex-col items-center gap-1">
         <canvas ref={canvasRef} style={{ width: '100%', height: 90 }} />
         <div className="font-mono text-lg font-semibold text-text-bright text-center">
@@ -121,6 +112,6 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
           {unit && <span className="ml-1 text-[10px] text-text-secondary font-normal">{unit}</span>}
         </div>
       </div>
-    </div>
+    </WidgetCard>
   );
 }

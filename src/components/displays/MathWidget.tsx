@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Settings2, Plus } from 'lucide-react';
+import { Plus } from 'lucide-react';
+import { WidgetCard } from '../ui/WidgetCard';
 import type { WidgetConfig, MathOp } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { useAppStore } from '../../store/appStore';
@@ -60,17 +61,7 @@ export function MathWidget({ widget, onEdit }: MathWidgetProps) {
   const symbol = OP_SYMBOLS[op];
 
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      {onEdit && (
-        <button
-          className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-          onClick={onEdit}
-          title="Edit"
-        >
-          <Settings2 size={11} />
-        </button>
-      )}
-      <div className="ml-1.5 px-1.5 py-0.5 text-xs text-[#ffb74d] bg-[#ffb74d]/15 rounded-sm font-mono w-fit">{symbol}</div>
+    <WidgetCard badge={symbol} badgeColor="yellow" onEdit={onEdit}>
       <div className="flex flex-col gap-1.5">
         <div className="flex items-baseline gap-1 justify-center py-1.5">
           <span
@@ -100,6 +91,6 @@ export function MathWidget({ widget, onEdit }: MathWidgetProps) {
           </div>
         )}
       </div>
-    </div>
+    </WidgetCard>
   );
 }

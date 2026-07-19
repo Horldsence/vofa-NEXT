@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
+import { WidgetCard } from '../ui/WidgetCard';
 import type { WidgetConfig, FilterPresetKind } from '../../types';
 import { useAppStore } from '../../store/appStore';
 import { useGraphInput } from '../../lib/useGraphInput';
@@ -61,17 +62,7 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
   const presetLabel = t(lang, PRESET_OPTIONS.find((o) => o.value === preset)?.labelKey ?? 'filterLowpass');
 
   return (
-    <div className="group bg-bg-sidebar border border-[#ff8c42] rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      {onEdit && (
-        <button
-          className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-          onClick={onEdit}
-          title={t(lang, 'settings')}
-        >
-          <Settings2 size={11} />
-        </button>
-      )}
-      <div className="inline-block ml-1.5 px-1.5 py-0.5 bg-[#ff8c42]/15 text-[#ff8c42] border border-[#ff8c42]/40 rounded-sm text-[10px] font-semibold w-fit">{presetLabel}</div>
+    <WidgetCard badge={presetLabel} badgeColor="orange" className="border-[#ff8c42]" onEdit={onEdit}>
       <div className="flex flex-col gap-1 px-1.5 py-1">
         <div className="flex items-baseline justify-center gap-1 py-1">
           <span className="text-[22px] font-semibold text-[#ff8c42] font-mono">
@@ -163,6 +154,6 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
           </div>
         )}
       </div>
-    </div>
+    </WidgetCard>
   );
 }
