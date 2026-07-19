@@ -648,7 +648,11 @@ mod tests {
         data.push(i2c_bit(false, true)); // START
         // 地址 0xA0, 从机 NACK (ack=false → SDA 高)
         data.extend(i2c_byte_samples(0xA0, false));
-        data.push(i2c_bit(true, true)); // STOP
+        // NACK 后 SDA 已为高, 需先拉低 SDA 才能产生 STOP 上升沿
+        // (STOP 条件 = SDA 从低到高 + SCL 高)
+        data.push(i2c_bit(false, false)); // SDA=0, SCL=0 (准备 STOP)
+        data.push(i2c_bit(false, true)); // SDA=0, SCL=1 (SCL 上升)
+        data.push(i2c_bit(true, true)); // SDA 0→1, SCL=1 → STOP 上升沿
 
         let samples: Vec<LogicSample> = data
             .iter()

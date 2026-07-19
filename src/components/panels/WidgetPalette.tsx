@@ -27,6 +27,7 @@ import {
   Ban,
   Box,
   Send,
+  ScanText,
 } from 'lucide-react';
 import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
@@ -88,6 +89,7 @@ export function WidgetPalette() {
     { kind: 'Checkbox', icon: <CheckSquare />, label: t(lang, 'checkbox') },
     { kind: 'Slider', icon: <Sliders />, label: t(lang, 'slider') },
     { kind: 'Command', icon: <Send size={14} />, label: t(lang, 'command') },
+    { kind: 'FrameDecoder', icon: <ScanText size={14} />, label: t(lang, 'frameDecoder') },
   ];
 
   const displayItems: { kind: WidgetConfig['kind']; icon: React.ReactNode; label: string }[] = [

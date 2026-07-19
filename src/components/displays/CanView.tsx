@@ -4,14 +4,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { t } from '../../i18n';
 import { CanFrameList } from './CanFrameList';
 import { CanSender } from './CanSender';
+import { CanLoadView } from './CanLoadView';
 import { PanelTabs } from '../ui/PanelTabs';
 import { ContextualHint } from '../onboarding/ContextualHint';
-import { List, Send, BarChart3 } from 'lucide-react';
+import { List, Send, BarChart3, Gauge } from 'lucide-react';
 import type { CanFrame } from '../../types';
 
-type ViewMode = 'list' | 'send' | 'chart';
+type ViewMode = 'list' | 'send' | 'chart' | 'load';
 
-/// CAN 综合视图 — 帧列表 / 发送器 / 总线活动 三种视图模式切换
+/// CAN 综合视图 — 帧列表 / 发送器 / 总线活动 / 负载分析 四种视图模式切换
 export function CanView() {
   const lang = useAppStore((s) => s.lang);
   const protocolConfig = useAppStore((s) => s.protocolConfig);
@@ -22,6 +23,7 @@ export function CanView() {
     { value: 'list' as const, label: t(lang, 'frameList'), icon: <List /> },
     { value: 'send' as const, label: t(lang, 'canSender'), icon: <Send /> },
     { value: 'chart' as const, label: t(lang, 'busActivity'), icon: <BarChart3 /> },
+    { value: 'load' as const, label: t(lang, 'canLoadAnalysis'), icon: <Gauge /> },
   ];
 
   const isCanProtocol = protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight';
@@ -43,6 +45,7 @@ export function CanView() {
         {mode === 'list' && <CanFrameList />}
         {mode === 'send' && <CanSender />}
         {mode === 'chart' && <CanBusChart />}
+        {mode === 'load' && <CanLoadView />}
       </div>
     </div>
   );

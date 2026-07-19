@@ -7,7 +7,7 @@ pub mod rawdata;
 pub mod slcan;
 
 pub use candle::CandleEngine;
-pub use engine::ProtocolEngine;
+pub use engine::{InputFormat, ParsedInput, ProtocolEngine};
 pub use firewater::FireWaterEngine;
 pub use justfloat::JustFloatEngine;
 pub use logic_decoder::LogicDecoderEngine;

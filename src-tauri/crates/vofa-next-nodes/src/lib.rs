@@ -3,7 +3,7 @@
 //! 节点图 DAG 引擎 — 后端计算所有节点的输出值。
 //!
 //! 核心类型:
-//! - [`NodeKind`]: 节点种类 (ChannelSource/Input/Math/Custom/Filter/SpectrumSink/Sink)
+//! - [`NodeKind`]: 节点种类 (ChannelSource/Input/Math/Custom/Filter/SpectrumSink/FrameDecoder/Sink)
 //! - [`NodeDef`]: 节点定义 (含 id/tab_id/kind/params)
 //! - [`CompiledGraph`]: 编译后的 DAG, 含拓扑序, 提供 evaluate 方法
 //!
@@ -18,12 +18,16 @@
 //! - Custom: 输出端口由前端回传 (custom_outputs)
 //! - Filter: 输出端口 "result" (逐点滤波, 融入 eval_order)
 //! - SpectrumSink: 无输出 (块运算, 独立 30 FPS ticker 触发 FFT, 不在 eval_order)
+//! - FrameDecoder: 输出端口来自 blocks 中的 field/bitfield + 可选 valid/frame_count/last_timestamp/fps
+//!   (跨帧状态由 data_loop 喂入字节流, 解析结果缓存在 decoder_states 中)
 //! - Sink: 无输出 (纯消费, 不在 DAG 中评估)
 //!
 //! 前端通过 edges 自行解析 Sink 的输入: 上游 widgetId + sourceHandle → 输出快照查值
 
+pub mod frame_decoder;
 pub mod math_op;
 
+pub use frame_decoder::{ChecksumAlgorithm, FrameParser, ParsedFrame};
 pub use math_op::MathOp;
 pub use vofa_next_dsp::{
     DigitalFilter, FilterKind, FilterPreset, SpectrumOutput, WindowType,
@@ -78,9 +82,325 @@ pub enum NodeKind {
         /// 采样率 (Hz), 用于计算频率轴
         sample_rate: f32,
     },
+    /// 帧解码节点 (SOURCE 类型, 无输入端口, 输出来自字节流解析)
+    ///
+    /// 设计动机: 类似 CommandSender 但反向 — 字节流 → 按块定义解析 → 输出端口。
+    /// 每个 field/bitfield 块对应一个输出端口, 另有可选 valid/frame_count/last_timestamp/fps 端口。
+    ///
+    /// 跨帧状态: FrameParser 状态机由调用方 (data_loop) 管理,
+    /// 字节流通过 feed_frame_decoders 推入, 解析完成后输出缓存到 decoder_states,
+    /// evaluate 时从缓存读取最近一次解析结果。
+    FrameDecoder {
+        /// 块列表 (按顺序定义帧布局)
+        blocks: Vec<DecoderBlockDef>,
+        /// 附加输出端口开关 (与前端 FrameDecoderConfig 对应)
+        enable_valid: bool,
+        enable_frame_count: bool,
+        enable_last_timestamp: bool,
+        enable_fps: bool,
+    },
     /// Sink 节点 (Label/Gauge/LED/NumberDisplay/PieChart/Image/Waveform)
     /// 这些节点没有输出, 后端 DAG 不评估它们, 前端通过 edges 自行查值
     Sink,
+}
+
+// ============ 帧解码块类型 (FrameDecoder) ============
+//
+// 与前端 `DecoderBlock` 类型对齐 (src/types/index.ts),
+// serde 使用 `tag = "type" content = "params"` 与前端 discriminant 字段 "type" 一致。
+//
+// 块类型:
+// - Header:   匹配帧头固定字节序列 (帧起始标志)
+// - Length:   读 N 字节为整数, 输出到 length 端口 + 决定后续变长字段长度
+// - Id:       读 N 字节为整数, 输出到 id_value 端口 + 设置 match_id 上下文
+// - Field:    按 field_type 读 N 字节并解码为 f32, 输出到 port_name 端口
+// - Bitfield: 从指定字节按 bit 偏移+位长读取, 输出到 port_name 端口
+// - Checksum: 对前序累计字节校验, 输出 valid 端口 (1.0/0.0)
+// - Tail:     匹配帧尾固定字节序列 (可选, 帧结束标志)
+
+/// 整数字段类型 (与前端 FieldType 对应)
+///
+/// serde rename_all="kebab-case" 与前端 PascalCase 不同 —
+/// 这里使用 serde rename 显式指定每个变体的字符串, 确保与前端 TS 联合类型字符串完全一致。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FieldType {
+    #[serde(rename = "uint8")]
+    UInt8,
+    #[serde(rename = "int8")]
+    Int8,
+    #[serde(rename = "uint16LE")]
+    UInt16LE,
+    #[serde(rename = "uint16BE")]
+    UInt16BE,
+    #[serde(rename = "int16LE")]
+    Int16LE,
+    #[serde(rename = "int16BE")]
+    Int16BE,
+    #[serde(rename = "uint32LE")]
+    UInt32LE,
+    #[serde(rename = "uint32BE")]
+    UInt32BE,
+    #[serde(rename = "int32LE")]
+    Int32LE,
+    #[serde(rename = "int32BE")]
+    Int32BE,
+    #[serde(rename = "float32LE")]
+    Float32LE,
+    #[serde(rename = "float32BE")]
+    Float32BE,
+    /// 变长字节序列 (长度由 length_ref 决定)
+    #[serde(rename = "bytes")]
+    Bytes,
+}
+
+impl FieldType {
+    /// 该字段类型的固定字节长度 (Bytes 返回 None, 需由 length_ref 决定)
+    pub fn byte_len(self) -> Option<usize> {
+        match self {
+            FieldType::UInt8 | FieldType::Int8 => Some(1),
+            FieldType::UInt16LE | FieldType::UInt16BE
+            | FieldType::Int16LE | FieldType::Int16BE => Some(2),
+            FieldType::UInt32LE | FieldType::UInt32BE
+            | FieldType::Int32LE | FieldType::Int32BE
+            | FieldType::Float32LE | FieldType::Float32BE => Some(4),
+            FieldType::Bytes => None,
+        }
+    }
+
+    /// 从字节切片解析为 f32 (按字段类型解码)
+    /// 长度不足时返回 None
+    pub fn decode(self, bytes: &[u8]) -> Option<f32> {
+        match self {
+            FieldType::UInt8 => bytes.get(0).map(|&b| b as f32),
+            FieldType::Int8 => bytes.get(0).map(|&b| (b as i8) as f32),
+            FieldType::UInt16LE => {
+                if bytes.len() < 2 { return None; }
+                Some(u16::from_le_bytes([bytes[0], bytes[1]]) as f32)
+            }
+            FieldType::UInt16BE => {
+                if bytes.len() < 2 { return None; }
+                Some(u16::from_be_bytes([bytes[0], bytes[1]]) as f32)
+            }
+            FieldType::Int16LE => {
+                if bytes.len() < 2 { return None; }
+                Some((i16::from_le_bytes([bytes[0], bytes[1]])) as f32)
+            }
+            FieldType::Int16BE => {
+                if bytes.len() < 2 { return None; }
+                Some((i16::from_be_bytes([bytes[0], bytes[1]])) as f32)
+            }
+            FieldType::UInt32LE => {
+                if bytes.len() < 4 { return None; }
+                Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f32)
+            }
+            FieldType::UInt32BE => {
+                if bytes.len() < 4 { return None; }
+                Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f32)
+            }
+            FieldType::Int32LE => {
+                if bytes.len() < 4 { return None; }
+                Some((i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])) as f32)
+            }
+            FieldType::Int32BE => {
+                if bytes.len() < 4 { return None; }
+                Some((i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])) as f32)
+            }
+            FieldType::Float32LE => {
+                if bytes.len() < 4 { return None; }
+                Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+            }
+            FieldType::Float32BE => {
+                if bytes.len() < 4 { return None; }
+                Some(f32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+            }
+            FieldType::Bytes => {
+                // Bytes 类型输出第一字节 (作为数值预览), 长度由 length_ref 决定
+                bytes.get(0).map(|&b| b as f32)
+            }
+        }
+    }
+}
+
+/// 帧解码块的覆盖范围 (校验计算的字节范围)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecoderChecksumCover {
+    /// 从帧开头到本校验块之前的所有字节
+    AllPrior,
+    /// 用户指定字节偏移范围 [cover_start, cover_end)
+    Range,
+}
+
+/// 帧解码校验位置
+/// - Append:  校验字节位于帧末尾 (在 tail 之前)
+/// - Inline:  校验字节位于当前位置 (在块列表中该 checksum 块的位置)
+/// - Prepend: 校验字节位于帧头之后 (在 header 之后)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DecoderChecksumPosition {
+    Append,
+    Inline,
+    Prepend,
+}
+
+/// 长度块的单位
+/// - Bytes:  字节数 (length 值表示后续字段的字节长度)
+/// - Fields: 后续 field 块重复次数 (length 值表示后续 field 块重复 N 次)
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum LengthUnit {
+    Bytes,
+    Fields,
+}
+
+/// 帧解码块定义 (与前端 DecoderBlock 对应, serde tag="type" + camelCase)
+///
+/// 使用 `tag = "type"` (无 content) 模式: 每个 variant 的所有字段直接在对象顶层,
+/// 与前端 DecoderBlock 结构一致 (id/type/fieldType/portName/... 同级)。
+///
+/// 每个块都有 `id` 字段 (前端生成的唯一标识, 用于 length_ref 引用)。
+/// 每个块可选 `match_id` 字段 (Id 块除外) — 仅当当前帧的 id_value 等于 match_id 时该块执行。
+/// 未设置 match_id 的块始终执行 (用于多帧类型分派)。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum DecoderBlockDef {
+    /// 帧头: 匹配固定字节序列 (帧起始标志)
+    Header {
+        /// 块 id (前端生成, 用于 UI 引用)
+        id: String,
+        /// HEX 字符串, 如 "AA BB" (空格可选)
+        hex: String,
+        /// 可选 match_id (用于多帧类型分派)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        match_id: Option<i64>,
+    },
+    /// 长度字段: 读 N 字节为整数, 输出到 length 端口 + 决定后续变长字段长度
+    Length {
+        id: String,
+        field_type: FieldType,
+        /// 输出端口名 (默认 "length")
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port_name: Option<String>,
+        /// 长度单位 (默认 bytes)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        unit: Option<LengthUnit>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        match_id: Option<i64>,
+    },
+    /// 帧类型 ID: 读 N 字节为整数, 输出到 id_value 端口 + 设置 match_id 上下文
+    Id {
+        id: String,
+        field_type: FieldType,
+        /// 输出端口名 (默认 "id_value")
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port_name: Option<String>,
+    },
+    /// 数据字段: 按 field_type 读 N 字节并解码为 f32, 输出到 port_name 端口
+    Field {
+        id: String,
+        field_type: FieldType,
+        /// 输出端口名 (节点上暴露的 Handle id)
+        port_name: String,
+        /// 若设置, 引用某个 Length 块的 id — 该字段读取 length_value 字节而非 field_type 固定长度
+        /// (仅 field_type=Bytes 时生效, 输出第一字节为 f32; 其他类型忽略此字段)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        length_ref: Option<String>,
+        /// 仅当 id_value === match_id 时执行 (多帧分派)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        match_id: Option<i64>,
+    },
+    /// 位域字段: 从指定字节按 bit 偏移+位长读取, 输出到 port_name 端口
+    Bitfield {
+        id: String,
+        /// 字节偏移 (相对于帧头之后的位置)
+        byte_offset: u32,
+        /// 位偏移 (0-7)
+        bit_offset: u8,
+        /// 位长度 (1-32)
+        bit_length: u8,
+        /// 是否带符号 (true=最高位为符号位, 二补码)
+        is_signed: bool,
+        /// 输出端口名
+        port_name: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        match_id: Option<i64>,
+    },
+    /// 校验: 对前序累计字节校验, 输出 valid 端口 (1.0/0.0)
+    Checksum {
+        id: String,
+        /// 校验算法
+        algorithm: ChecksumAlgorithm,
+        /// 自定义脚本 (algorithm=Custom 时使用)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        custom_script: Option<String>,
+        /// 校验覆盖范围
+        cover: DecoderChecksumCover,
+        /// cover=Range 时的起始字节偏移 (相对帧头之后)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cover_start: Option<u32>,
+        /// cover=Range 时的结束字节偏移 (exclusive)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        cover_end: Option<u32>,
+        /// 校验字节在帧中的位置
+        position: DecoderChecksumPosition,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        match_id: Option<i64>,
+    },
+    /// 帧尾: 匹配固定字节序列 (可选, 帧结束标志)
+    Tail {
+        id: String,
+        /// HEX 字符串
+        hex: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        match_id: Option<i64>,
+    },
+}
+
+impl DecoderBlockDef {
+    /// 返回块的 id
+    pub fn id(&self) -> &str {
+        match self {
+            DecoderBlockDef::Header { id, .. }
+            | DecoderBlockDef::Length { id, .. }
+            | DecoderBlockDef::Id { id, .. }
+            | DecoderBlockDef::Field { id, .. }
+            | DecoderBlockDef::Bitfield { id, .. }
+            | DecoderBlockDef::Checksum { id, .. }
+            | DecoderBlockDef::Tail { id, .. } => id,
+        }
+    }
+
+    /// 返回该块的 match_id (Id 块返回 None)
+    pub fn match_id(&self) -> Option<i64> {
+        match self {
+            DecoderBlockDef::Header { match_id, .. }
+            | DecoderBlockDef::Length { match_id, .. }
+            | DecoderBlockDef::Field { match_id, .. }
+            | DecoderBlockDef::Bitfield { match_id, .. }
+            | DecoderBlockDef::Checksum { match_id, .. }
+            | DecoderBlockDef::Tail { match_id, .. } => *match_id,
+            DecoderBlockDef::Id { .. } => None,
+        }
+    }
+
+    /// 返回该块的输出端口名 (有输出端口的块: Length/Id/Field/Bitfield)
+    /// Header/Checksum/Tail 无输出端口, 返回 None
+    /// Length 默认 "length", Id 默认 "id_value"
+    pub fn output_port_name(&self) -> Option<&str> {
+        match self {
+            DecoderBlockDef::Length { port_name, .. } => {
+                Some(port_name.as_deref().unwrap_or("length"))
+            }
+            DecoderBlockDef::Id { port_name, .. } => {
+                Some(port_name.as_deref().unwrap_or("id_value"))
+            }
+            DecoderBlockDef::Field { port_name, .. } => Some(port_name.as_str()),
+            DecoderBlockDef::Bitfield { port_name, .. } => Some(port_name.as_str()),
+            DecoderBlockDef::Header { .. }
+            | DecoderBlockDef::Checksum { .. }
+            | DecoderBlockDef::Tail { .. } => None,
+        }
+    }
 }
 
 /// 节点定义 — 通过 IPC 从前端同步到后端
@@ -196,22 +516,27 @@ impl CompiledGraph {
         })
     }
 
-    /// 评估图 — 给定数据帧 + 输入值 + Custom 回传值 + Filter 状态, 返回所有节点的输出端口值
+    /// 评估图 — 给定数据帧 + 输入值 + Custom 回传值 + Filter 状态 + Decoder 状态, 返回所有节点的输出端口值
     ///
     /// 返回: HashMap<widgetId, HashMap<portId, f32>>
-    ///   - 包含 ChannelSource/Input/Math/Custom/Filter 的输出
+    ///   - 包含 ChannelSource/Input/Math/Custom/Filter/FrameDecoder 的输出
     ///   - 不包含 Sink / SpectrumSink (无输出)
     ///
     /// `filter_states`: 滤波器状态 (跨帧持久化), key = Filter 节点 id
     ///   首次遇到 Filter 节点时按其 kind 创建 DigitalFilter 并存入;
     ///   后续帧复用同一状态, 实现逐点滤波的连续性。
     ///   当 Filter 节点的 kind 变化时 (用户修改配置), 自动重建状态。
+    ///
+    /// `decoder_states`: 帧解码器状态 (跨帧持久化), key = FrameDecoder 节点 id
+    ///   由调用方 (data_loop) 通过 feed_frame_decoders 喂入字节流并更新 last_frame。
+    ///   evaluate 阶段仅读取 last_frame 缓存的 outputs + 附加端口 (valid/frame_count/last_timestamp/fps)。
     pub fn evaluate(
         &self,
         frame: &DataFrame,
         input_values: &HashMap<String, f32>,
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
+        decoder_states: &HashMap<String, FrameParser>,
     ) -> HashMap<String, HashMap<String, f32>> {
         let mut out: HashMap<String, HashMap<String, f32>> = HashMap::new();
 
@@ -272,6 +597,51 @@ impl CompiledGraph {
                     let result = filter.process(input_val);
                     let mut m = HashMap::with_capacity(1);
                     m.insert("result".to_string(), result);
+                    m
+                }
+                NodeKind::FrameDecoder {
+                    blocks,
+                    enable_valid,
+                    enable_frame_count,
+                    enable_last_timestamp,
+                    enable_fps,
+                } => {
+                    // FrameDecoder 的输出由 data_loop 喂入字节流后缓存到 decoder_states,
+                    // evaluate 阶段仅读取 last_frame 缓存。
+                    // 若 decoder_states 中无此节点 (尚未收到字节), 返回空 outputs + 默认 valid=0。
+                    let mut m: HashMap<String, f32> = HashMap::new();
+                    if let Some(parser) = decoder_states.get(node_id) {
+                        // 复制 last_frame.outputs
+                        for (k, &v) in &parser.last_frame.outputs {
+                            m.insert(k.clone(), v);
+                        }
+                        // 附加输出端口
+                        if *enable_valid {
+                            m.insert("valid".to_string(), if parser.last_frame.valid { 1.0 } else { 0.0 });
+                        }
+                        if *enable_frame_count {
+                            m.insert("frame_count".to_string(), parser.frame_count as f32);
+                        }
+                        if *enable_last_timestamp {
+                            m.insert("last_timestamp".to_string(), parser.last_frame.timestamp_us as f32);
+                        }
+                        if *enable_fps {
+                            m.insert("fps".to_string(), parser.fps());
+                        }
+                    } else {
+                        // 节点刚加入但尚未喂入字节: 输出所有端口的默认 0
+                        for b in blocks {
+                            if let Some(port) = b.output_port_name() {
+                                m.insert(port.to_string(), 0.0);
+                            }
+                        }
+                        if *enable_valid { m.insert("valid".to_string(), 0.0); }
+                        if *enable_frame_count { m.insert("frame_count".to_string(), 0.0); }
+                        if *enable_last_timestamp { m.insert("last_timestamp".to_string(), 0.0); }
+                        if *enable_fps { m.insert("fps".to_string(), 0.0); }
+                    }
+                    // 触发 unused_variable 警告的 blocks 在 else 分支已使用
+                    let _ = blocks;
                     m
                 }
                 NodeKind::SpectrumSink { .. } => {
@@ -374,6 +744,43 @@ impl CompiledGraph {
             .filter(|(_, n)| matches!(n.kind, NodeKind::Filter { .. }))
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// 获取所有 FrameDecoder 节点 id
+    /// (供 data_loop 同步 decoder_states: 创建/重建/清理 FrameParser)
+    pub fn decoder_node_ids(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| matches!(n.kind, NodeKind::FrameDecoder { .. }))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// 获取 FrameDecoder 节点的配置 (blocks + 附加端口开关)
+    /// 用于 state.rs 在节点变更时重建 FrameParser
+    pub fn decoder_config(
+        &self,
+        node_id: &str,
+    ) -> Option<(&[DecoderBlockDef], bool, bool, bool, bool)> {
+        let node = self.nodes.get(node_id)?;
+        if let NodeKind::FrameDecoder {
+            blocks,
+            enable_valid,
+            enable_frame_count,
+            enable_last_timestamp,
+            enable_fps,
+        } = &node.kind
+        {
+            Some((
+                blocks.as_slice(),
+                *enable_valid,
+                *enable_frame_count,
+                *enable_last_timestamp,
+                *enable_fps,
+            ))
+        } else {
+            None
+        }
     }
 
     /// 获取 SpectrumSink 节点的配置 (window_size, window_type, output, sample_rate)
@@ -523,7 +930,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         let cs_id = "__channel_source__-t1";
         assert_eq!(out.get(cs_id).and_then(|m| m.get("ch0")), Some(&10.0));
         assert_eq!(out.get(cs_id).and_then(|m| m.get("ch1")), Some(&20.0));
@@ -538,7 +945,7 @@ mod tests {
         input_values.insert("knob1".to_string(), 42.0_f32);
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         assert_eq!(out.get("knob1").and_then(|m| m.get("value")), Some(&42.0));
     }
 
@@ -557,7 +964,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         // m1.result = 10 + 20 = 30
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&30.0));
     }
@@ -581,7 +988,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         // m1 = 3 + 4 = 7, m2 = 7 * 7 = 49
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&7.0));
         assert_eq!(out.get("m2").and_then(|m| m.get("result")), Some(&49.0));
@@ -603,7 +1010,7 @@ mod tests {
         custom_outputs.insert("c1".to_string(), m);
 
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         assert_eq!(out.get("c1").and_then(|m| m.get("out")), Some(&99.0));
 
         // collect_custom_inputs 应返回 c1.value = 5.0
@@ -640,7 +1047,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&5.0));
     }
 
@@ -659,7 +1066,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         assert_eq!(out.get("f1").and_then(|m| m.get("result")), Some(&7.5));
         // filter_states 应包含 f1
         assert!(filter_states.contains_key("f1"));
@@ -685,6 +1092,7 @@ mod tests {
             &input_values,
             &custom_outputs,
             &mut filter_states,
+            &HashMap::new(),
         );
         assert_eq!(out1.get("f1").and_then(|m| m.get("result")), Some(&0.0));
 
@@ -694,6 +1102,7 @@ mod tests {
             &input_values,
             &custom_outputs,
             &mut filter_states,
+            &HashMap::new(),
         );
         assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&1.0));
 
@@ -703,6 +1112,7 @@ mod tests {
             &input_values,
             &custom_outputs,
             &mut filter_states,
+            &HashMap::new(),
         );
         assert_eq!(out3.get("f1").and_then(|m| m.get("result")), Some(&2.0));
     }
@@ -727,6 +1137,7 @@ mod tests {
             &input_values,
             &custom_outputs,
             &mut filter_states,
+            &HashMap::new(),
         );
         assert!(filter_states.contains_key("f1"));
 
@@ -743,6 +1154,7 @@ mod tests {
             &input_values,
             &custom_outputs,
             &mut filter_states,
+            &HashMap::new(),
         );
         assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&6.0));
     }
@@ -775,6 +1187,7 @@ mod tests {
                 &input_values,
                 &custom_outputs,
                 &mut filter_states,
+                &HashMap::new(),
             );
             last_y = out.get("f1").and_then(|m| m.get("result")).copied().unwrap_or(0.0);
         }
@@ -841,7 +1254,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
 
         // collect_spectrum_inputs 应返回 s1 → 42.0
         let spectrum_inputs = g.collect_spectrum_inputs(&out);
@@ -892,7 +1305,7 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
         // s1 不应在 evaluate 输出中
         assert!(!out.contains_key("s1"));
         // 但 ChannelSource 应在

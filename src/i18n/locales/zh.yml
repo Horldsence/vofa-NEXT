@@ -685,6 +685,70 @@ noCandleDevices: 未发现设备
 slcanDesc: 通过 slcan ASCII 协议与 CANable 设备通信 (串口转 CAN)
 candleLightDesc: 通过 candleLight 二进制协议与 CANable 设备通信 (原生 USB)
 
+# CAN 负载分析
+canLoadAnalysis: 负载分析
+canLoadWindow: 时间窗口
+canLoadAutoBitrate: 自动波特率
+canLoadClear: 清空统计
+canLoadBitrate: 波特率
+canLoadTotalBits: 总位数
+canLoadTotalBytes: 总字节数
+canLoadFps: 帧率
+canLoadHistory: 负载历史
+canLoadPerId: 按 ID 负载分布
+canLoadIdFilterHint: 点击切换时序图叠加
+canLoadThreshold: 阈值
+canLoadThresholdAlarm: 负载告警
+canLoadExport: 导出 CSV
+canLoadExportFailed: 导出失败
+canLoadExportSuccess: 已导出
+
+# 帧解码器 (FrameDecoder)
+frameDecoder: 帧解码器
+fdModeLive: 实时模式
+fdModeManual: 手动测试
+fdSettings: 全局设置
+fdEnableValid: 输出 valid 端口
+fdEnableFrameCount: 输出 frame_count 端口
+fdEnableLastTimestamp: 输出 last_timestamp 端口
+fdEnableFps: 输出 fps 端口
+fdBlocksEmpty: 暂无块, 点击下方按钮添加
+fdLiveOutputs: 实时输出
+fdLiveHint: 连接传输后, 解析结果将实时显示在下方端口
+fdNoPorts: 无输出端口
+fdManualInput: 手动输入
+fdFormat: 格式
+fdAutoFormat: 自动
+fdParse: 解析
+fdClear: 清空
+fdHexPlaceholder: "HEX 字节流 (例如: AA 01 02 BB 或 AA0102BB, 支持 0x 前缀和逗号)"
+fdAsciiPlaceholder: "ASCII 文本 (支持转义: \\n \\r \\t \\xHH \\0 \\\\)"
+fdShortcutHint: 按 Ctrl/Cmd + Enter 立即解析
+fdExamples: 示例
+fdHistory: 历史
+fdClearHistory: 清空历史
+fdHistoryEmpty: 暂无历史
+fdParseResult: 解析结果
+fdResultValid: 校验通过
+fdConsumedBytes: 消耗字节
+fdNoOutputs: 无输出字段
+fdLengthUnit: 长度单位
+fdLengthUnitBytes: 字节
+fdLengthUnitFields: 字段数
+fdLengthRef: 变长引用
+fdLengthRefPlaceholder: 引用 length 块的 id (可选)
+fdByteOffset: 字节偏移
+fdBitOffset: 位偏移
+fdBitLength: 位长度
+fdSigned: 是否带符号
+fdSignedYes: 带符号
+fdSignedNo: 无符号
+fdChecksumCover: 校验范围
+fdCoverStart: 起始字节
+fdCoverEnd: 结束字节
+fdMatchId: 匹配 ID
+fdMatchIdPlaceholder: 仅当 id_value 等于此值时执行 (可选)
+
 # 逻辑分析仪
 logicAnalyzer: 逻辑分析仪
 timingDiagram: 时序图

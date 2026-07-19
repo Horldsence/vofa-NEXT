@@ -1,6 +1,10 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import type {
+  CanLoadSnapshot,
   ConnectionState,
+  DecoderBlock,
+  FrameDecoderManualResult,
+  InputFormat,
   PortInfo,
   ProtocolConfig,
   TransportConfig,
@@ -139,5 +143,71 @@ export const api = {
   /// 移除指定 tab 的节点图 (tab 删除时调用)
   removeTabGraph: (tabId: string) =>
     invoke<void>('remove_tab_graph', { tabId }),
+
+  // ===== CAN 负载分析 =====
+  /// 获取 CAN 负载统计快照
+  /// bitrateBps: 可选手动覆盖波特率; null/0 = 自动从 TransportConfig 读取
+  getCanLoadStats: (bitrateBps?: number | null) =>
+    invoke<CanLoadSnapshot>('get_can_load_stats', { bitrateBps: bitrateBps ?? null }),
+
+  /// 设置 CAN 负载统计滑动窗口大小 (微秒)
+  setCanLoadWindow: (windowUs: number) =>
+    invoke<void>('set_can_load_window', { windowUs }),
+
+  /// 清空 CAN 负载统计
+  clearCanLoadStats: () => invoke<void>('clear_can_load_stats'),
+
+  /// 获取当前 CAN 波特率 (从 TransportConfig 提取)
+  /// 返回 [bps, source] — source = "slcan" / "candle" / "default"
+  getCurrentCanBitrate: () => invoke<[number, string]>('get_current_can_bitrate'),
+
+  /// 订阅 CAN 负载统计推送 — 周期性推送 CanLoadSnapshot
+  /// intervalMs: 推送间隔 (默认 500ms)
+  /// bitrateBps: 可选手动覆盖波特率; null/0 = 自动从 TransportConfig 读取
+  subscribeCanLoad: (
+    onEvent: (snap: CanLoadSnapshot) => void,
+    options?: { intervalMs?: number; bitrateBps?: number | null }
+  ) => {
+    const channel = new Channel<CanLoadSnapshot>();
+    channel.onmessage = onEvent;
+    const promise = invoke<void>('subscribe_can_load', {
+      onEvent: channel,
+      intervalMs: options?.intervalMs,
+      bitrateBps: options?.bitrateBps ?? null,
+    });
+    return {
+      promise,
+      cancel: () => {
+        void closeTauriChannel(channel, 'unsubscribe_can_load', channel.id);
+      },
+    };
+  },
+
+  /// 导出 CAN 负载统计为 CSV (自动保存到下载目录, 返回完整文件路径)
+  /// bitrateBps: 可选手动覆盖波特率; null/0 = 自动从 TransportConfig 读取
+  exportCanLoadCsv: (bitrateBps?: number | null) =>
+    invoke<string>('export_can_load_csv', { bitrateBps: bitrateBps ?? null }),
+
+  // ===== 帧解码器手动测试 =====
+  /// 解析用户输入字符串为帧 (使用 blocks 配置创建临时 FrameParser, 调用 parse_once)
+  /// 返回 outputs (端口→值) + valid + consumedBytes + 可选 error
+  parseFrameDecoderInput: (
+    blocks: DecoderBlock[],
+    input: string,
+    format: InputFormat,
+    enableValid: boolean,
+    enableFrameCount: boolean,
+    enableLastTimestamp: boolean,
+    enableFps: boolean,
+  ) =>
+    invoke<FrameDecoderManualResult>('parse_frame_decoder_input', {
+      blocks,
+      input,
+      format,
+      enableValid,
+      enableFrameCount,
+      enableLastTimestamp,
+      enableFps,
+    }),
 };
 

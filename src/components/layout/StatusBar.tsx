@@ -4,6 +4,7 @@ import { useContextMenu } from '../../lib/useContextMenu';
 import { RefreshCw, Settings, Info } from 'lucide-react';
 import clsx from 'clsx';
 import { BufferUsageStats } from './BufferUsageStats';
+import { CanLoadAlarm } from './CanLoadAlarm';
 import { useSettingsStore } from '../../store/settingsStore';
 
 /// 底部状态栏 — 显示连接状态、统计数据
@@ -103,6 +104,7 @@ export function StatusBar() {
         {t(lang, 'txFrames')}: {txFrames}
       </div>
       <div className="w-px h-3 bg-border mx-1" />
+      <CanLoadAlarm />
       <BufferUsageStats />
       <div className="w-px h-3 bg-border mx-1" />
       <button

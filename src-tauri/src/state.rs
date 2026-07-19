@@ -7,11 +7,11 @@ use tauri::ipc::Channel;
 use tokio::sync::{mpsc, oneshot};
 use vofa_next_buffer::{DataBuffer, RawDataCollector};
 use vofa_next_core::{
-    CanBuffer, CanFrameBatch, ConnectionState, DataFrame, DecodedBuffer,
+    CanBuffer, CanFrameBatch, CanLoadStats, ConnectionState, DataFrame, DecodedBuffer,
     DecodedEventBatch, LogicBuffer, LogicSampleBatch, ProtocolConfig, TransportStats,
 };
 use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
-use vofa_next_nodes::CompiledGraph;
+use vofa_next_nodes::{CompiledGraph, FrameParser};
 use vofa_next_protocol::ProtocolEngine;
 use vofa_next_transport::TransportManager;
 
@@ -59,6 +59,10 @@ pub struct GraphEvalState {
     /// Filter 节点状态 (跨帧持久化, 逐点滤波)
     /// key: Filter widget id, value: DigitalFilter (含 FIR 延迟线 / IIR biquad 状态)
     pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
+    /// FrameDecoder 节点状态 (跨帧持久化, 字节流解析状态机)
+    /// key: FrameDecoder widget id, value: FrameParser (含 buf/state/last_frame)
+    /// 由 data_loop 在每包数据上调用 feed_frame_decoders 同步并喂入字节
+    pub decoder_states: Arc<Mutex<HashMap<String, FrameParser>>>,
     /// SpectrumSink 节点对应的频谱分析器
     /// key: SpectrumSink widget id, value: SpectrumAnalyzer (含滑动窗口)
     /// 由 spectrum_ticker 在每 tick 开头与 graphs 同步 (增删)
@@ -98,6 +102,8 @@ pub struct AppState {
     pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
     /// Filter 节点状态 (跨帧持久化)
     pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
+    /// FrameDecoder 节点状态 (跨帧持久化)
+    pub decoder_states: Arc<Mutex<HashMap<String, FrameParser>>>,
     /// SpectrumSink 节点对应的频谱分析器
     pub spectrum_analyzers: Arc<Mutex<HashMap<String, SpectrumAnalyzer>>>,
     /// 最新一次 FFT 结果快照
@@ -114,6 +120,10 @@ pub struct AppState {
     pub raw_data_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// CAN 帧缓冲区
     pub can_buffer: Arc<Mutex<CanBuffer>>,
+    /// CAN 负载统计器 (滑动窗口)
+    pub can_load_stats: Arc<Mutex<CanLoadStats>>,
+    /// CAN 负载统计订阅任务的取消句柄 — key: channel_id
+    pub can_load_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// CAN 订阅任务的取消句柄 — key: channel_id
     pub can_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// 逻辑采样缓冲区
@@ -143,6 +153,7 @@ impl AppState {
             output_subscribers: Arc::new(Mutex::new(Vec::new())),
             custom_input_subscribers: Arc::new(Mutex::new(Vec::new())),
             filter_states: Arc::new(Mutex::new(HashMap::new())),
+            decoder_states: Arc::new(Mutex::new(HashMap::new())),
             spectrum_analyzers: Arc::new(Mutex::new(HashMap::new())),
             spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
             spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
@@ -150,6 +161,8 @@ impl AppState {
             raw_data_collector: Arc::new(Mutex::new(RawDataCollector::new())),
             raw_data_tasks: Arc::new(Mutex::new(HashMap::new())),
             can_buffer: Arc::new(Mutex::new(CanBuffer::new(100_000))),
+            can_load_stats: Arc::new(Mutex::new(CanLoadStats::new(1_000_000, 120))),
+            can_load_tasks: Arc::new(Mutex::new(HashMap::new())),
             can_tasks: Arc::new(Mutex::new(HashMap::new())),
             logic_buffer: Arc::new(Mutex::new(LogicBuffer::new(20_000))),
             decoded_buffer: Arc::new(Mutex::new(DecodedBuffer::new(10_000))),
@@ -168,6 +181,7 @@ impl AppState {
             output_subscribers: self.output_subscribers.clone(),
             custom_input_subscribers: self.custom_input_subscribers.clone(),
             filter_states: self.filter_states.clone(),
+            decoder_states: self.decoder_states.clone(),
             spectrum_analyzers: self.spectrum_analyzers.clone(),
             spectrum_snapshot: self.spectrum_snapshot.clone(),
             spectrum_subscribers: self.spectrum_subscribers.clone(),
@@ -187,7 +201,7 @@ const STATS_THROTTLE_MS: u128 = 100;
 /// 评估所有图 (静态函数版本, 供 GraphEvalState 使用)
 ///
 /// 步骤:
-/// 1. 对每个图调用 evaluate (传入 filter_states, 逐点滤波跨帧持久化)
+/// 1. 对每个图调用 evaluate (传入 filter_states + decoder_states, 逐点滤波/解码跨帧持久化)
 /// 2. 合并所有图输出到 output_snapshot
 /// 3. 遍历所有图的 SpectrumSink, 从 output_snapshot 取输入值, push 到对应 analyzer
 fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) {
@@ -195,10 +209,11 @@ fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) {
     let custom_outputs = eval_state.custom_outputs.lock().clone();
     let graphs = eval_state.graphs.lock();
     let mut filter_states = eval_state.filter_states.lock();
+    let mut decoder_states = eval_state.decoder_states.lock();
 
     let mut combined: HashMap<String, HashMap<String, f32>> = HashMap::new();
     for (_, graph) in graphs.iter() {
-        let out = graph.evaluate(frame, &input_values, &custom_outputs, &mut filter_states);
+        let out = graph.evaluate(frame, &input_values, &custom_outputs, &mut filter_states, &mut decoder_states);
         for (k, v) in out {
             combined.insert(k, v);
         }
@@ -229,7 +244,7 @@ fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) {
 /// 从 output_snapshot 收集派生值, push 到 buffer 的 derived_buffers
 ///
 /// 遍历所有 graph 的 edges, 对每条 edge:
-///   若 source 在 output_snapshot 中 (即 source 是有输出的节点: Math/Input/Custom/ChannelSource):
+///   若 source 在 output_snapshot 中 (即 source 是有输出的节点: Math/Input/Custom/ChannelSource/FrameDecoder):
 ///     取 snapshot[source][sourceHandle], push 到 buffer.derived_buffers[(target, source)]
 ///
 /// **时间对齐**: 本函数在每帧 evaluate_all_graphs_with 后调用,
@@ -249,6 +264,65 @@ fn push_derived_from_snapshot(eval_state: &GraphEvalState, buffer: &mut DataBuff
     }
 }
 
+/// 同步 decoder_states 与 graphs 中的 FrameDecoder 节点, 并喂入新字节
+///
+/// 步骤:
+/// 1. 收集所有 graph 中当前的 FrameDecoder id → config (blocks + 附加端口开关)
+/// 2. 删除已不存在的 decoder 对应的 parser
+/// 3. 对每个 decoder:
+///    - 若 parser 不存在 → 按当前 config 创建
+///    - 若 parser 存在但 config 变了 → 重建
+///    - 调用 parser.feed(data, ts) 喂入字节, 更新 last_frame
+///
+/// 由 data_loop 在每包数据上调用, 保证 parser 与图拓扑一致。
+///
+/// 返回: 是否存在 FrameDecoder 节点 (供 data_loop 决定是否在 frames 为空时仍调用 evaluate)
+fn feed_frame_decoders(eval_state: &GraphEvalState, data: &[u8], ts_us: u64) -> bool {
+    let graphs = eval_state.graphs.lock();
+    let mut decoder_states = eval_state.decoder_states.lock();
+
+    // 收集所有 graph 中当前的 FrameDecoder id → config
+    let mut current_configs: HashMap<String, (Vec<vofa_next_nodes::DecoderBlockDef>, bool, bool, bool, bool)> = HashMap::new();
+    for (_, graph) in graphs.iter() {
+        for dec_id in graph.decoder_node_ids() {
+            if let Some(cfg) = graph.decoder_config(&dec_id) {
+                current_configs.insert(dec_id, (
+                    cfg.0.to_vec(),
+                    cfg.1, cfg.2, cfg.3, cfg.4,
+                ));
+            }
+        }
+    }
+
+    // 删除已不存在的 decoder 对应的 parser
+    decoder_states.retain(|id, _| current_configs.contains_key(id));
+
+    // 新建/重建 parser, 并喂入字节
+    for (dec_id, (blocks, ev, efc, elt, efps)) in &current_configs {
+        let need_rebuild = match decoder_states.get(dec_id) {
+            None => true,
+            Some(p) => !p.matches_config(blocks, *ev, *efc, *elt, *efps),
+        };
+        if need_rebuild {
+            let parser = FrameParser::new(
+                blocks.clone(),
+                *ev, *efc, *elt, *efps,
+            );
+            decoder_states.insert(dec_id.clone(), parser);
+            log::info!(
+                "帧解码器已 (重新)创建: decoder={} blocks={} valid={} count={} ts={} fps={}",
+                dec_id, blocks.len(), ev, efc, elt, efps
+            );
+        }
+        // 喂入字节 (无论是否重建, 都要喂 — 重建后 buf 为空, 直接从新数据开始解析)
+        if let Some(parser) = decoder_states.get_mut(dec_id) {
+            parser.feed(data, ts_us);
+        }
+    }
+
+    !current_configs.is_empty()
+}
+
 /// 数据循环 — 快速消费传输层 broadcast, 转发到解析 task
 ///
 /// 架构 (节点图后端化重构):
@@ -266,6 +340,7 @@ pub async fn data_loop(
     eval_state: GraphEvalState,
     raw_data_collector: Arc<Mutex<RawDataCollector>>,
     can_buffer: Arc<Mutex<CanBuffer>>,
+    can_load_stats: Arc<Mutex<CanLoadStats>>,
     logic_buffer: Arc<Mutex<LogicBuffer>>,
     decoded_buffer: Arc<Mutex<DecodedBuffer>>,
 ) {
@@ -279,6 +354,7 @@ pub async fn data_loop(
     let eval2 = eval_state;
     let raw_collector2 = raw_data_collector;
     let can_buffer2 = can_buffer;
+    let can_load_stats2 = can_load_stats;
     let logic_buffer2 = logic_buffer;
     let decoded_buffer2 = decoded_buffer;
 
@@ -306,6 +382,15 @@ pub async fn data_loop(
                     let mut buf = can_buffer2.lock();
                     for f in &can_frames {
                         buf.push(f.clone());
+                    }
+                }
+                // push 到负载统计器 (仅统计 Rx 方向, 避免发送帧重复计入)
+                {
+                    let mut stats = can_load_stats2.lock();
+                    for f in &can_frames {
+                        if f.direction == vofa_next_core::CanDirection::Rx {
+                            stats.push(f);
+                        }
                     }
                 }
                 // emit 批次事件 (实时推送到前端, 供监听 transport:can-frames 的组件使用)
@@ -354,6 +439,11 @@ pub async fn data_loop(
                 }
             }
 
+            // 2.2 帧解码器: 喂入原始字节, 更新 decoder_states.last_frame
+            //     必须在 evaluate 之前完成, evaluate 阶段从 last_frame 读取输出
+            //     返回 has_decoders: 是否存在 FrameDecoder 节点 (供 frames 空时决策)
+            let has_decoders = feed_frame_decoders(&eval2, &data, now_us());
+
             // 3. 推入缓冲区 + 评估节点图 + 收集派生值 (每帧实时计算)
             //    三步必须在同一帧内顺序执行, 保证 derived 与 timestamps 对齐
             if !frames.is_empty() {
@@ -374,6 +464,11 @@ pub async fn data_loop(
                     }
                 }
                 frame_batch.extend(frames);
+            } else if has_decoders {
+                // RawData 等协议下 frames 为空, 但 FrameDecoder 节点存在时
+                // 仍需 evaluate 一次以更新 output_snapshot (decoder 输出来自 last_frame 缓存)
+                evaluate_all_graphs_with(&eval2, &DataFrame::new(vec![]));
+                // 不 push_derived (无 push_frame, 时间戳未对齐)
             }
 
             // 4. 批量 emit 帧 (一次 IPC 替代 N 次)

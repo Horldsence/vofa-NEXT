@@ -16,6 +16,8 @@ pub struct TransportManager {
     test_data_running: Option<Arc<AtomicBool>>,
     /// 测试数据生成器恢复通知 (仅 TestData 有效)
     test_data_notify: Option<Arc<Notify>>,
+    /// 当前活动连接的配置 (close 后清空) — 供外部查询 (如 CAN 波特率)
+    config: parking_lot::Mutex<Option<TransportConfig>>,
 }
 
 impl TransportManager {
@@ -28,6 +30,7 @@ impl TransportManager {
             stats: parking_lot::Mutex::new(TransportStats::default()),
             test_data_running: None,
             test_data_notify: None,
+            config: parking_lot::Mutex::new(None),
         }
     }
 
@@ -84,6 +87,7 @@ impl TransportManager {
         self.cancel = Some(cancel);
         self.test_data_running = test_data_running;
         self.test_data_notify = test_data_notify;
+        *self.config.lock() = Some(config.clone());
         self.set_state(ConnectionState::Connected);
 
         log::info!("连接已建立: {:?}", config);
@@ -99,7 +103,13 @@ impl TransportManager {
         self.data_tx = None;
         self.test_data_running = None;
         self.test_data_notify = None;
+        *self.config.lock() = None;
         self.set_state(ConnectionState::Disconnected);
+    }
+
+    /// 当前活动连接的配置 (close 后返回 None) — 供外部查询 CAN 波特率等
+    pub fn config(&self) -> Option<TransportConfig> {
+        self.config.lock().clone()
     }
 
     /// 设置测试数据生成器运行状态 (仅 TestData 有效)

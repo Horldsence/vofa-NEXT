@@ -3,7 +3,7 @@
 /// 用于 IPC: 前端把每个 tab 的 nodes + edges 通过 invoke('update_tab_graph') 同步到后端
 /// 后端编译为 CompiledGraph, 在每帧数据到达时评估
 
-import type { WidgetConfig, MathOp, WindowType, SpectrumOutput } from '../types';
+import type { WidgetConfig, MathOp, WindowType, SpectrumOutput, DecoderBlock } from '../types';
 import { UNARY_MATH_OPS, biquadFromFilterConfig } from '../types';
 import { evalCustomWidgetDef } from '../components/displays/CustomWidget';
 import { CHANNEL_SOURCE_ID } from '../store/appStore';
@@ -14,6 +14,7 @@ import type { Edge } from '@xyflow/react';
 /// FilterKind/IIR 系数使用 serde 默认 externally-tagged 表示:
 ///   { "IIR": { "b": [b0, b1, b2], "a": [a0, a1, a2] } }
 /// WindowType/SpectrumOutput 是 unit variant: { "Hann": null }
+/// FrameDecoder 子字段使用 snake_case (Rust 端无 rename_all), blocks 元素遵循 DecoderBlockDef 的 tag="type" + camelCase
 export type NodeKind =
   | { kind: 'ChannelSource'; params: { channels: number } }
   | { kind: 'Input' }
@@ -21,6 +22,7 @@ export type NodeKind =
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
   | { kind: 'Filter'; params: { kind: { IIR: { b: [number, number, number]; a: [number, number, number] } } } }
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
+  | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean } }
   | { kind: 'Sink' };
 
 /// 节点定义 DTO (IPC)
@@ -102,6 +104,19 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     case 'Model3D':
     case 'Command':
       return { kind: 'Sink' };
+
+    case 'FrameDecoder': {
+      return {
+        kind: 'FrameDecoder',
+        params: {
+          blocks: widget.params.blocks,
+          enable_valid: widget.params.enableValid,
+          enable_frame_count: widget.params.enableFrameCount,
+          enable_last_timestamp: widget.params.enableLastTimestamp,
+          enable_fps: widget.params.enableFps,
+        },
+      };
+    }
   }
 }
 

@@ -116,6 +116,16 @@ pub fn run() {
             commands::get_recent_decoded_events,
             commands::clear_decoded_buffer,
             commands::get_decoded_buffer_info,
+            // CAN 负载分析
+            commands::get_can_load_stats,
+            commands::set_can_load_window,
+            commands::clear_can_load_stats,
+            commands::subscribe_can_load,
+            commands::unsubscribe_can_load,
+            commands::get_current_can_bitrate,
+            commands::export_can_load_csv,
+            // 帧解码器手动测试 (FrameDecoder 面板)
+            commands::parse_frame_decoder_input,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

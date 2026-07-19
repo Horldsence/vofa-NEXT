@@ -31,15 +31,23 @@ interface CommandSenderProps {
   onRemove: () => void;
 }
 
-/// 块类型配置: 图标 / 颜色 / 标签 key
+/// 块类型配置: 图标 / Tailwind 静态类名 / 标签 key
+/// 颜色全部使用 @theme 内已定义的语义色 (blue/green/yellow/red)
 const BLOCK_TYPE_CONFIG: Record<
   BlockType,
-  { icon: React.ReactNode; color: string; labelKey: string; addLabelKey: string }
+  {
+    icon: React.ReactNode;
+    badgeClass: string;   // 标签: bg-{c}/20 text-{c} border-{c}/40
+    blockClass: string;   // 块容器: border-{c}/40 bg-{c}/10
+    iconClass: string;    // 图标: text-{c}
+    labelKey: string;
+    addLabelKey: string;
+  }
 > = {
-  const_hex: { icon: <Hexagon size={12} />, color: '#75beff', labelKey: 'cmdBlockConstHex', addLabelKey: 'cmdAddBlockConstHex' },
-  var_ref: { icon: <Variable size={12} />, color: '#89d185', labelKey: 'cmdBlockVarRef', addLabelKey: 'cmdAddBlockVarRef' },
-  typed_const: { icon: <Hash size={12} />, color: '#e2c08d', labelKey: 'cmdBlockTypedConst', addLabelKey: 'cmdAddBlockTypedConst' },
-  checksum: { icon: <ShieldCheck size={12} />, color: '#f48771', labelKey: 'cmdBlockChecksum', addLabelKey: 'cmdAddBlockChecksum' },
+  const_hex:   { icon: <Hexagon size={12} />,     badgeClass: 'bg-blue/20 text-blue border-blue/40',       blockClass: 'border-blue/40 bg-blue/10',       iconClass: 'text-blue',   labelKey: 'cmdBlockConstHex',   addLabelKey: 'cmdAddBlockConstHex' },
+  var_ref:     { icon: <Variable size={12} />,    badgeClass: 'bg-green/20 text-green border-green/40',   blockClass: 'border-green/40 bg-green/10',     iconClass: 'text-green',  labelKey: 'cmdBlockVarRef',     addLabelKey: 'cmdAddBlockVarRef' },
+  typed_const: { icon: <Hash size={12} />,        badgeClass: 'bg-yellow/20 text-yellow border-yellow/40', blockClass: 'border-yellow/40 bg-yellow/10',   iconClass: 'text-yellow', labelKey: 'cmdBlockTypedConst', addLabelKey: 'cmdAddBlockTypedConst' },
+  checksum:    { icon: <ShieldCheck size={12} />, badgeClass: 'bg-red/20 text-red border-red/40',         blockClass: 'border-red/40 bg-red/10',         iconClass: 'text-red',    labelKey: 'cmdBlockChecksum',   addLabelKey: 'cmdAddBlockChecksum' },
 };
 
 const CHECKSUM_OPTIONS: { value: ChecksumType; labelKey: string }[] = [
@@ -312,8 +320,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
               <div
                 key={block.id}
                 data-block-id={block.id}
-                className={`border rounded-sm transition-all ${isDragging ? 'opacity-40' : ''} ${isOver ? 'border-t-2 border-t-blue' : ''}`}
-                style={{ borderColor: `${cfg.color}40`, background: `${cfg.color}1a` }}
+                className={`border rounded-sm transition-all ${cfg.blockClass} ${isDragging ? 'opacity-40' : ''} ${isOver ? 'border-t-2 border-t-blue' : ''}`}
                 onDragOver={handleDragOver(block.id)}
                 onDrop={handleDrop(block.id)}
               >
@@ -332,8 +339,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
                     <GripVertical size={12} className="pointer-events-none" />
                   </div>
                   <span
-                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wide flex-shrink-0"
-                    style={{ background: `${cfg.color}20`, color: cfg.color, border: `1px solid ${cfg.color}40` }}
+                    className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wide flex-shrink-0 border ${cfg.badgeClass}`}
                   >
                     {cfg.icon}
                     {t(lang, cfg.labelKey)}
@@ -510,7 +516,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
                 title={t(lang, cfg.addLabelKey)}
               >
                 <Plus size={11} />
-                <span className="inline-flex items-center gap-0.5" style={{ color: cfg.color }}>
+                <span className={`inline-flex items-center gap-0.5 ${cfg.iconClass}`}>
                   {cfg.icon}
                 </span>
                 <span>{t(lang, cfg.addLabelKey)}</span>
@@ -567,7 +573,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
           </div>
         )}
         {lastSent && (
-          <div className="flex items-center gap-1 px-1.5 py-1 bg-black/20 rounded-sm text-[10px]" title={lastSent}>
+          <div className="flex items-center gap-1 px-1.5 py-1 bg-bg-editor rounded-sm text-[10px]" title={lastSent}>
             <span className="text-text-secondary flex-shrink-0">{t(lang, 'cmdLastSent')}:</span>
             <span className="font-mono text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{lastSent}</span>
           </div>
@@ -575,7 +581,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
         {/* 全局设置 (始终展开) */}
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-1">{t(lang, 'cmdSettings')}</div>
-        <div className="flex flex-col gap-2 p-2 bg-black/20 border border-border rounded">
+        <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
           <div className="grid grid-cols-[80px_1fr] items-center gap-2">
             <label className="text-xs text-text-secondary">{t(lang, 'cmdLabel')}</label>
             <input

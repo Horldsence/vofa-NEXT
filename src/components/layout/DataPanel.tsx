@@ -1,7 +1,7 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { useContextMenu, showContextMenu } from '../../lib/useContextMenu';
-import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X, Cpu, CircuitBoard, Trash2 } from 'lucide-react';
+import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X, Cpu, CircuitBoard, Trash2, ScanText } from 'lucide-react';
 import { WaveformChart } from '../displays/WaveformChart';
 import { RawDataView } from '../displays/RawDataView';
 import { PieChart } from '../displays/PieChart';
@@ -11,6 +11,7 @@ import { SpectrumChart } from '../displays/SpectrumChart';
 import { CommandSender } from '../displays/CommandSender';
 import { CanView } from '../displays/CanView';
 import { LogicView } from '../displays/LogicView';
+import { FrameDecoder } from '../displays/FrameDecoder';
 import { AxisSettings } from '../displays/AxisSettings';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
@@ -304,6 +305,17 @@ export function DataPanel() {
           </div>
         );
       }
+      case 'frame-decoder': {
+        const widget = widgets.find(
+          (w) => w.params.id === tab.widgetId && w.kind === 'FrameDecoder'
+        ) as Extract<WidgetConfig, { kind: 'FrameDecoder' }> | undefined;
+        if (!widget) return <div className="flex items-center justify-center h-full text-text-secondary text-sm">{t(lang, 'noWidgets')}</div>;
+        return (
+          <div className="flex h-full w-full">
+            <FrameDecoder widget={widget} onRemove={() => {}} />
+          </div>
+        );
+      }
       default:
         return null;
     }
@@ -330,6 +342,8 @@ export function DataPanel() {
         return <Cpu size={12} />;
       case 'logic':
         return <CircuitBoard size={12} />;
+      case 'frame-decoder':
+        return <ScanText size={12} />;
       default:
         return null;
     }

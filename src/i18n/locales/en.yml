@@ -685,6 +685,70 @@ noCandleDevices: No devices found
 slcanDesc: Communicate with CANable devices via slcan ASCII protocol (serial-to-CAN)
 candleLightDesc: Communicate with CANable devices via candleLight binary protocol (native USB)
 
+# CAN Load Analysis
+canLoadAnalysis: Load Analysis
+canLoadWindow: Time Window
+canLoadAutoBitrate: Auto Bitrate
+canLoadClear: Clear Stats
+canLoadBitrate: Bitrate
+canLoadTotalBits: Total Bits
+canLoadTotalBytes: Total Bytes
+canLoadFps: Frame Rate
+canLoadHistory: Load History
+canLoadPerId: Per-ID Load Distribution
+canLoadIdFilterHint: Click to toggle overlay on history chart
+canLoadThreshold: Threshold
+canLoadThresholdAlarm: Load Alarm
+canLoadExport: Export CSV
+canLoadExportFailed: Export failed
+canLoadExportSuccess: Exported
+
+# Frame Decoder
+frameDecoder: Frame Decoder
+fdModeLive: Live Mode
+fdModeManual: Manual Test
+fdSettings: Global Settings
+fdEnableValid: Output valid port
+fdEnableFrameCount: Output frame_count port
+fdEnableLastTimestamp: Output last_timestamp port
+fdEnableFps: Output fps port
+fdBlocksEmpty: No blocks yet, click below to add
+fdLiveOutputs: Live Outputs
+fdLiveHint: After connecting transport, parsed results appear in ports below
+fdNoPorts: No output ports
+fdManualInput: Manual Input
+fdFormat: Format
+fdAutoFormat: Auto
+fdParse: Parse
+fdClear: Clear
+fdHexPlaceholder: "HEX byte stream (e.g.: AA 01 02 BB or AA0102BB, supports 0x prefix and commas)"
+fdAsciiPlaceholder: "ASCII text (escapes supported: \\n \\r \\t \\xHH \\0 \\\\)"
+fdShortcutHint: Press Ctrl/Cmd + Enter to parse immediately
+fdExamples: Examples
+fdHistory: History
+fdClearHistory: Clear History
+fdHistoryEmpty: No history
+fdParseResult: Parse Result
+fdResultValid: Checksum valid
+fdConsumedBytes: Consumed bytes
+fdNoOutputs: No output fields
+fdLengthUnit: Length unit
+fdLengthUnitBytes: Bytes
+fdLengthUnitFields: Field count
+fdLengthRef: Variable length ref
+fdLengthRefPlaceholder: length block id (optional)
+fdByteOffset: Byte offset
+fdBitOffset: Bit offset
+fdBitLength: Bit length
+fdSigned: Signed
+fdSignedYes: Signed
+fdSignedNo: Unsigned
+fdChecksumCover: Checksum cover
+fdCoverStart: Cover start
+fdCoverEnd: Cover end
+fdMatchId: Match ID
+fdMatchIdPlaceholder: Only executes when id_value equals this (optional)
+
 # Logic Analyzer
 logicAnalyzer: Logic Analyzer
 timingDiagram: Timing Diagram

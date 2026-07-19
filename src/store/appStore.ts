@@ -676,7 +676,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         widget.kind === 'Image' ||
         widget.kind === 'Model3D' ||
         widget.kind === 'Spectrum' ||
-        widget.kind === 'Command'
+        widget.kind === 'Command' ||
+        widget.kind === 'FrameDecoder'
       ) {
         const tabType =
           widget.kind === 'Waveform'
@@ -689,7 +690,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
             ? 'model3d'
             : widget.kind === 'Spectrum'
             ? 'spectrum'
-            : 'command';
+            : widget.kind === 'Command'
+            ? 'command'
+            : 'frame-decoder';
         const tabName =
           widget.kind === 'Waveform'
             ? 'Waveform'
@@ -1238,6 +1241,25 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
             { id: 'b3', type: 'checksum', label: '校验', checksum: 'sum8' },
           ],
           appendNewline: false,
+        },
+      };
+    case 'FrameDecoder':
+      return {
+        kind: 'FrameDecoder',
+        params: {
+          id,
+          label: 'FrameDecoder',
+          blocks: [
+            { id: 'b1', type: 'header', label: '帧头', hex: 'AA' },
+            { id: 'b2', type: 'field', label: '字段1', fieldType: 'uint8', portName: 'field_1' },
+            { id: 'b3', type: 'field', label: '字段2', fieldType: 'uint8', portName: 'field_2' },
+            { id: 'b4', type: 'checksum', label: '校验', algorithm: 'sum8', cover: 'all_prior', position: 'append' },
+          ],
+          enableValid: true,
+          enableFrameCount: false,
+          enableLastTimestamp: false,
+          enableFps: false,
+          mode: 'live',
         },
       };
   }

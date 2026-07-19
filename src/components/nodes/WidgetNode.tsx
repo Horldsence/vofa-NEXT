@@ -95,6 +95,28 @@ function getWidgetPorts(widget: WidgetConfig): {
         .map((b) => ({ id: b.portName!, label: b.portName! }));
       return { inputs, outputs: [] };
     }
+    case 'FrameDecoder': {
+      // 帧解码器: SOURCE 节点 — 输出端口 = length/id/field/bitfield 块的 portName + 可选附加端口
+      // 无输入端口 (直接消费原始字节流, 由后端 data_loop 喂入)
+      const blocks = widget.params.blocks ?? [];
+      const outputs: { id: string; label: string }[] = [];
+      for (const b of blocks) {
+        if (b.type === 'length') {
+          const name = b.portName ?? 'length';
+          outputs.push({ id: name, label: name });
+        } else if (b.type === 'id') {
+          const name = b.portName ?? 'id_value';
+          outputs.push({ id: name, label: name });
+        } else if (b.type === 'field' || b.type === 'bitfield') {
+          outputs.push({ id: b.portName, label: b.portName });
+        }
+      }
+      if (widget.params.enableValid) outputs.push({ id: 'valid', label: 'valid' });
+      if (widget.params.enableFrameCount) outputs.push({ id: 'frame_count', label: 'frame_count' });
+      if (widget.params.enableLastTimestamp) outputs.push({ id: 'last_timestamp', label: 'last_timestamp' });
+      if (widget.params.enableFps) outputs.push({ id: 'fps', label: 'fps' });
+      return { inputs: [], outputs };
+    }
     case 'Custom': {
       // Custom: 从用户代码中解析端口定义
       const { def } = evalCustomWidgetDef(widget.params.code);
@@ -176,6 +198,7 @@ export function WidgetNode({ id, data }: NodeProps) {
     case 'Spectrum':
     case 'Waveform':
     case 'Command':
+    case 'FrameDecoder':
         // 这些控件在节点内仅显示占位, 实际渲染在 DataPanel
         return (
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">
@@ -228,10 +251,10 @@ export function WidgetNode({ id, data }: NodeProps) {
           </div>
         ))}
       </div>
-      {/* 输出端口 (右侧) */}
-      <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
+      {/* 输出端口 (右侧) — 标签在 Handle 左侧, 允许向左延伸适应过长端口名 */}
+      <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-end gap-0.5 py-1 z-10">
         {ports.outputs.map((port) => (
-          <div key={port.id} className="flex items-center gap-1 h-[14px] relative flex-row-reverse pr-0.5">
+          <div key={port.id} className="flex items-center gap-1 h-[14px] relative pr-0.5">
             <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
             <Handle
               type="source"
