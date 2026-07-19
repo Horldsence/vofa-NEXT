@@ -119,6 +119,14 @@ impl CanBuffer {
         self.frames.clear();
     }
 
+    /// 设置最大容量 (保留最近帧)
+    pub fn set_max_size(&mut self, max_size: usize) {
+        self.max_size = max_size.max(1);
+        while self.frames.len() > self.max_size {
+            self.frames.pop_front();
+        }
+    }
+
     /// 当前缓冲区中的帧数
     pub fn len(&self) -> usize {
         self.frames.len()

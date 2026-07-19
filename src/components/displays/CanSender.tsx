@@ -132,7 +132,7 @@ export function CanSender() {
 
         <button
           type="button"
-          className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm flex items-center justify-center gap-1.5 hover:bg-bg-button-hover transition-colors"
+          className="w-full px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm flex items-center justify-center gap-1.5 hover:bg-bg-button-hover transition-colors"
           onClick={handleSend}
         >
           <Send size={14} />

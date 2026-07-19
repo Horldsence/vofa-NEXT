@@ -56,6 +56,19 @@ class LogicSampleBuffer {
     return this._capacity;
   }
 
+  /// 设置容量并裁剪超额数据
+  setCapacity(capacity: number) {
+    this._capacity = Math.max(1, capacity);
+    if (this.samples.length > this._capacity) {
+      this.samples.splice(0, this.samples.length - this._capacity);
+      this._version++;
+      this.lastSnapshot = [];
+      this.lastSnapshotCount = -1;
+      this.scheduleNotify();
+    }
+    this.flushNotify();
+  }
+
   get version(): number {
     return this._version;
   }
@@ -143,6 +156,19 @@ class DecodedEventBuffer {
 
   get capacity(): number {
     return this._capacity;
+  }
+
+  /// 设置容量并裁剪超额数据
+  setCapacity(capacity: number) {
+    this._capacity = Math.max(1, capacity);
+    if (this.events.length > this._capacity) {
+      this.events.splice(0, this.events.length - this._capacity);
+      this._version++;
+      this.lastSnapshot = [];
+      this.lastSnapshotCount = -1;
+      this.scheduleNotify();
+    }
+    this.flushNotify();
   }
 
   get version(): number {

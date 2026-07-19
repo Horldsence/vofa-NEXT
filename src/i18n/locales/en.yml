@@ -140,6 +140,12 @@ channelVisible: Channel Visible
 noSignal: No Signal
 
 # Raw Data Extension
+rawBuffer: Raw
+copySelected: Copy Selected
+copySelection: Copy Selection
+exportSelection: Export Selection
+clearSelection: Clear Selection
+rawDataDropped: Some raw data was dropped
 showTimestamp: Timestamp
 showOffset: Offset
 appendNone: None
@@ -178,6 +184,20 @@ emptyWaveform: Waveform is empty. Connect an input channel.
 # Bottom Panel
 bottomPanel: Bottom Panel
 aiChat: AI Chat
+
+# Context Menu
+contextMenuCopy: Copy
+contextMenuPaste: Paste
+contextMenuSelectAll: Select All
+contextMenuDelete: Delete
+contextMenuRename: Rename
+contextMenuDuplicate: Duplicate
+contextMenuCloseTab: Close Tab
+contextMenuCloseOtherTabs: Close Other Tabs
+contextMenuHideSidebar: Hide Sidebar
+contextMenuShowSidebar: Show Sidebar
+fitView: Fit View
+resetZoom: Reset Zoom
 
 # Waveform Timeline
 timeWindow: Time Window
@@ -245,6 +265,7 @@ settingsClose: Close
 settingsGeneral: General
 settingsAppearance: Appearance
 settingsEditor: Editor
+settingsData: Data Cache
 settingsSerial: Serial Defaults
 settingsNotifications: Notifications
 settingsAbout: About
@@ -256,10 +277,32 @@ settingAutoConnectOnStart: Auto-connect on start
 settingAutoConnectOnStartDesc: Try connecting with the last transport config when the app starts
 settingConfirmBeforeQuit: Confirm before quit
 settingConfirmBeforeQuitDesc: Show a confirmation dialog when closing the window
+settingShowOnboarding: Show onboarding
+settingShowOnboardingDesc: Show the onboarding guide on first launch
+settingShowContextualTips: Show contextual tips
+settingShowContextualTipsDesc: Show operation tips in CAN / logic analyzer views
 
 # Setting items - Appearance
 settingTheme: Theme
-settingThemeDesc: Application color scheme (light theme not yet implemented)
+settingThemeDesc: Application color scheme
+settingThemeEdit: Edit Theme
+
+# Theme editor
+themeEditor: Theme Editor
+themeEditorClose: Close
+themeList: Themes
+themeAdd: New Theme
+themeRename: Rename
+themeDuplicate: Duplicate
+themeDelete: Delete
+themeImport: Import
+themeExport: Export
+themeReset: Reset to Default
+themeBuiltInReadOnly: Built-in themes are read-only. Click Duplicate to create a custom theme.
+themeActivePreview: This is the active theme. Edits preview live.
+themeClickToPreview: Click Activate below to preview this theme.
+themeActivate: Activate Theme
+themeEdit: Edit Theme
 settingUiFontFamily: UI Font Family
 settingUiFontFamilyDesc: Font family used for interface text
 settingUiFontSize: UI Font Size
@@ -274,16 +317,24 @@ settingActivityBarVisible: Show Activity Bar
 settingActivityBarVisibleDesc: Display the activity bar on the left of the window
 
 # Setting items - Editor
-settingWaveformMaxPoints: Waveform Max Points
-settingWaveformMaxPointsDesc: Maximum data points cached per channel
 settingWaveformFps: Waveform FPS
 settingWaveformFpsDesc: Waveform chart refresh rate (FPS)
 settingScopeDefaultTimeBase: Default Time Base
-settingScopeDefaultTimeBaseDesc: Default time base for new waveform charts (sec/div)
-settingScopeDefaultVPerDiv: Default V/div
+settingScopeDefaultTimeBaseDesc: Default horizontal time base for new waveform charts
+settingScopeDefaultVPerDiv: Default Vertical Scale
 settingScopeDefaultVPerDivDesc: Default vertical scale for new waveform charts
 settingGridVisible: Show Grid by Default
 settingGridVisibleDesc: Whether new waveform charts show grid by default
+
+# Setting items - Data Cache
+settingWaveformBufferPoints: Waveform Buffer Points
+settingWaveformBufferPointsDesc: Maximum waveform points retained per channel
+settingRawDataBufferBytes: Raw Data Buffer Bytes
+settingRawDataBufferBytesDesc: Maximum bytes retained by raw data view
+settingCanBufferFrames: CAN Buffer Frames
+settingCanBufferFramesDesc: Maximum frames retained by CAN view
+settingLogicBufferSamples: Logic Buffer Samples
+settingLogicBufferSamplesDesc: Maximum samples retained by logic analyzer
 
 # Setting items - Serial
 settingDefaultBaudRate: Default Baud Rate
@@ -516,6 +567,100 @@ helpSecuritySandbox: Sandbox isolation, cannot access parent window DOM or cooki
 helpSecurityNoDom: Cannot modify the parent app UI, only elements within ctx.el
 helpSecurityPostMessage: Communicates with parent via postMessage, only ctx APIs are available
 helpSecurityError: Code exceptions are caught and shown in the editor error area, won't crash the main app
+
+# Onboarding
+onboardingTitle: Welcome
+onboardingStep: Step
+onboardingNext: Next
+onboardingPrev: Previous
+onboardingSkip: Skip
+onboardingFinish: Finish
+helpCenterTitle: Help Center
+helpCenterOpen: Open Help Center
+dismissTip: Dismiss tip
+canHintTitle: CAN frame analysis requires a CAN protocol
+canHintMessage: The current protocol engine is not a CAN protocol. Please select Slcan or CandleLight in Protocol Engine and connect CAN-capable hardware.
+canHintAction: Open Protocol Engine
+logicHintTitle: Logic analyzer requires LogicDecode protocol
+logicHintMessage: The current protocol engine is not LogicDecode. Please switch to LogicDecode in Protocol Engine to capture and decode digital signals.
+logicHintAction: Open Protocol Engine
+
+# Tour
+tourStep: Step
+tourNext: Next
+tourPrev: Previous
+tourSkip: Skip
+tourFinish: Finish
+tourWelcomeTitle: Welcome to Vofa Next
+tourWelcomeContent: This tour will guide you through the core features. The highlighted area is what we're introducing. Click Next to continue, or Skip at any time.
+tourTransportTitle: Transport
+tourTransportContent: Choose Serial, CAN, UDP/TCP, or Test Data here, then configure port, baud rate, etc. Click Connect when ready.
+tourProtocolTitle: Protocol Engine
+tourProtocolContent: "Select the parser for your device: JustFloat / FireWater for general waveforms, Slcan / CandleLight for CAN bus, LogicDecode for logic analyzer, RawData to show raw bytes only."
+tourWidgetsTitle: Widget Palette
+tourWidgetsContent: Drag knobs, buttons, waveforms, gauges, and more onto the canvas to build your interactive interface. Widgets can be wired together to pass data.
+tourConnectTitle: Connect Device
+tourConnectContent: After configuring parameters, click Connect here to start receiving data. Connection status is shown in the bottom status bar.
+tourDataTitle: Data Display Area
+tourDataContent: The bottom area shows tabs for Waveform, Raw Data, CAN Frames, Logic Analyzer, etc. Click the CPU / circuit icons on the right to add CAN or Logic Analyzer tabs.
+tourHelpTitle: Help Center
+tourHelpContent: You can reopen the Help Center or this tour anytime by clicking the help icon at the bottom-left. You can also disable the tour in Settings.
+
+# Help Center sections
+helpCenterQuickStart: Quick Start
+helpCenterQuickStartDesc: From connecting to viewing data in a few steps.
+helpCenterQuickStartSteps: |-
+  In Transport on the left, choose Serial/CAN/UDP/TCP or Test Data, configure parameters, and click Connect
+  In Protocol Engine, select the matching protocol (e.g. JustFloat / FireWater / CAN / LogicDecode)
+  Drag widgets from the Widget Palette onto the canvas and connect them to channel sources or upstream widgets
+  The bottom Data area shows Waveform, Raw Data, CAN Frames, Logic Analyzer, etc.
+  Click the help icon at the bottom-left to reopen this Help Center
+helpTransport: Transport
+helpTransportDesc: Configure the physical connection between the device and the app.
+helpTransportSteps: |-
+  Serial: choose port, baud rate, data/parity/stop bits, then click Connect
+  CAN: choose Slcan (serial-to-CAN) or CandleLight (native USB) and set bitrate
+  Network: UDP or TCP client/server, fill local/remote address and port
+  Test Data: no hardware needed; use the built-in signal generator to verify waveforms and widgets
+helpProtocol: Protocol Engine
+helpProtocolDesc: Parse raw byte streams into channel data, CAN frames, or logic samples.
+helpProtocolSteps: |-
+  JustFloat / FireWater: generic float protocols; auto-detect or manually set channel count
+  RawData: no parsing, display raw bytes directly
+  Slcan / CandleLight: CAN protocols, parsed into CAN frames and shown in the CAN tab
+  LogicDecode: logic-analyzer protocol, captures digital channels and supports protocol decoding
+helpWidgets: Widgets & Node Editor
+helpWidgetsDesc: Build data flows by dragging and connecting nodes.
+helpWidgetsSteps: |-
+  Drag widgets (Knob, Button, Gauge, Waveform, etc.) from the Widget Palette onto the canvas
+  Each widget is a node; connect inputs/outputs to channel sources or other widgets
+  Double-click or right-click a widget to edit parameters, labels, and bindings
+  Input widgets like Knob/Slider/Button can send data to the device
+  Display widgets like Waveform/PieChart/Spectrum automatically create bottom data tabs
+helpCan: CAN Frame Analysis
+helpCanDesc: Receive, filter, send, and analyze CAN bus data.
+helpCanSteps: |-
+  Protocol Engine must be set to Slcan or CandleLight with hardware connected
+  Click the bottom "+" to add a CAN Frame tab, or open it from the menu
+  View real-time CAN frames in Frame List; filter by ID / direction, select, copy, export CSV
+  Use CAN Sender to construct and transmit frames manually
+  Use Bus Activity to see RX/TX statistics per ID
+helpLogic: Logic Analyzer
+helpLogicDesc: Capture multi-channel digital signals and view timing plus decoded events.
+helpLogicSteps: |-
+  Protocol Engine must be set to LogicDecode
+  Click the bottom "+" to add a Logic Analyzer tab
+  Timing Diagram shows digital waveforms per channel, with zoom and auto-scroll
+  Decoded Events lists protocol decode results and supports export
+  Sample rate and channel count are determined by the backend based on hardware config
+helpCustom: Custom Widgets
+helpCustomDesc: Create dedicated display or interaction widgets with JavaScript.
+helpCustomSteps: |-
+  Add a Custom widget from the palette and open the editor
+  Return an object containing name / inputs / outputs / settings / render
+  The render function reads ctx.inputs / ctx.settings and manipulates ctx.el
+  Use ctx.send to emit values to downstream output ports
+  Custom scripts run in an iframe sandbox with security restrictions; a performance warning is shown on first use
 
 # CAN
 canFrames: CAN Frames

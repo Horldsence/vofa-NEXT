@@ -138,6 +138,13 @@ impl DecodedBuffer {
         self.events.clear();
     }
 
+    pub fn set_max_size(&mut self, max_size: usize) {
+        self.max_size = max_size.max(1);
+        while self.events.len() > self.max_size {
+            self.events.pop_front();
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.events.len()
     }

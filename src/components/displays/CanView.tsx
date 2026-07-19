@@ -5,6 +5,7 @@ import { t } from '../../i18n';
 import { CanFrameList } from './CanFrameList';
 import { CanSender } from './CanSender';
 import { PanelTabs } from '../ui/PanelTabs';
+import { ContextualHint } from '../onboarding/ContextualHint';
 import { List, Send, BarChart3 } from 'lucide-react';
 import type { CanFrame } from '../../types';
 
@@ -13,6 +14,8 @@ type ViewMode = 'list' | 'send' | 'chart';
 /// CAN 综合视图 — 帧列表 / 发送器 / 总线活动 三种视图模式切换
 export function CanView() {
   const lang = useAppStore((s) => s.lang);
+  const protocolConfig = useAppStore((s) => s.protocolConfig);
+  const setSidebarView = useAppStore((s) => s.setSidebarView);
   const [mode, setMode] = useState<ViewMode>('list');
 
   const tabs = [
@@ -21,8 +24,20 @@ export function CanView() {
     { value: 'chart' as const, label: t(lang, 'busActivity'), icon: <BarChart3 /> },
   ];
 
+  const isCanProtocol = protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight';
+
   return (
     <div className="h-full w-full flex flex-col overflow-hidden bg-bg-editor">
+      {!isCanProtocol && (
+        <ContextualHint
+          id="can-protocol-mismatch"
+          message={t(lang, 'canHintMessage')}
+          action={{
+            label: t(lang, 'canHintAction'),
+            onClick: () => setSidebarView('protocol'),
+          }}
+        />
+      )}
       <PanelTabs tabs={tabs} active={mode} onChange={setMode} />
       <div className="flex-1 overflow-hidden min-h-0">
         {mode === 'list' && <CanFrameList />}
@@ -39,7 +54,7 @@ function CanBusChart() {
   const [frames, setFrames] = useState<CanFrame[]>([]);
 
   useEffect(() => {
-    const unsub = canFrameBuffer.subscribe((recent) => setFrames(recent));
+    const unsub = canFrameBuffer.subscribe(() => setFrames(canFrameBuffer.getRecent(500)));
     setFrames(canFrameBuffer.getRecent(500));
     return unsub;
   }, []);
@@ -69,7 +84,7 @@ function CanBusChart() {
     <div className="h-full overflow-y-auto p-4">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-text-primary">{t(lang, 'idDistribution')}</h3>
-        <span className="text-xs text-text-secondary font-mono">{frames.length} frames</span>
+        <span className="text-xs text-text-secondary font-mono">{canFrameBuffer.length} frames</span>
       </div>
       {idStats.length === 0 ? (
         <div className="flex items-center justify-center h-48 text-text-secondary text-xs rounded border border-dashed border-border bg-bg-panel-header/50">

@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { Plus, X } from 'lucide-react';
+import { useContextMenu, showContextMenu } from '../../lib/useContextMenu';
+import { Plus, X, Type, Trash2, Copy } from 'lucide-react';
 import { NodeEditor } from './NodeEditor';
 import { useState, useCallback } from 'react';
 
@@ -31,15 +32,71 @@ export function ControlPanel() {
     setEditName('');
   }, [editingTabId, editName, renameControlTab]);
 
+  const tabBarContextMenu = useContextMenu([
+    {
+      id: 'new-tab',
+      label: t(lang, 'newTab'),
+      icon: <Plus />,
+      onClick: () => addControlTab(),
+    },
+  ]);
+
+  const makeTabContextMenu = useCallback(
+    (tabId: string, currentName: string) => {
+      const canClose = controlTabs.length > 1;
+      const otherTabs = controlTabs.filter((t) => t.id !== tabId);
+      return [
+        {
+          id: 'rename',
+          label: t(lang, 'contextMenuRename'),
+          icon: <Type />,
+          onClick: () => handleStartRename(tabId, currentName),
+        },
+        {
+          id: 'duplicate',
+          label: t(lang, 'contextMenuDuplicate'),
+          icon: <Copy />,
+          onClick: () => addControlTab(currentName),
+        },
+        { kind: 'separator' as const },
+        {
+          id: 'close',
+          label: t(lang, 'contextMenuCloseTab'),
+          icon: <Trash2 />,
+          disabled: !canClose,
+          onClick: () => removeControlTab(tabId),
+        },
+        {
+          id: 'close-others',
+          label: t(lang, 'contextMenuCloseOtherTabs'),
+          icon: <X />,
+          disabled: otherTabs.length === 0,
+          onClick: () => {
+            otherTabs.forEach((t) => removeControlTab(t.id));
+          },
+        },
+      ];
+    },
+    [addControlTab, controlTabs, handleStartRename, lang, removeControlTab]
+  );
+
   return (
     <div className="flex flex-col bg-bg-editor overflow-hidden h-full w-full">
-      <div className="flex bg-bg-panel-header border-b border-border flex-shrink-0">
+      <div className="flex bg-bg-panel-header border-b border-border flex-shrink-0" onContextMenu={tabBarContextMenu}>
         {controlTabs.map((tab) => (
           <div
             key={tab.id}
             className={`px-3 h-7 text-xs cursor-pointer border-r border-border flex items-center gap-1 hover:bg-bg-hover transition-colors ${tab.id === activeControlTabId ? 'text-text-bright bg-bg-editor border-t-2 border-t-accent' : 'text-text-secondary'}`}
             onClick={() => setActiveControlTab(tab.id)}
             onDoubleClick={() => handleStartRename(tab.id, tab.name)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const items = makeTabContextMenu(tab.id, tab.name);
+              if (items.length > 0) {
+                showContextMenu(e.clientX, e.clientY, items);
+              }
+            }}
           >
             {editingTabId === tab.id ? (
               <input

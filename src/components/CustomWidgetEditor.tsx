@@ -364,7 +364,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
             {t(lang, 'customCancel')}
           </button>
           <button
-            className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-default"
+            className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center gap-1 disabled:opacity-50 disabled:cursor-default"
             onClick={handleSave}
             disabled={!validation.def}
           >

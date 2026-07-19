@@ -1919,6 +1919,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "libautomotive"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c09ef78e97a2913d8cb619aa0f4e732d7840ff353fe3ec2ed93d1729e03b829f"
+dependencies = [
+ "bitflags 2.13.1",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4396,10 +4405,28 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-store",
  "tokio",
+ "vofa-next-automotive",
  "vofa-next-buffer",
  "vofa-next-core",
  "vofa-next-dsp",
  "vofa-next-nodes",
+ "vofa-next-protocol",
+ "vofa-next-transport",
+]
+
+[[package]]
+name = "vofa-next-automotive"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "libautomotive",
+ "log",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "vofa-next-core",
  "vofa-next-protocol",
  "vofa-next-transport",
 ]

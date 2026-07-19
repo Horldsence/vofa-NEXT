@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X, Cpu, CircuitBoard } from 'lucide-react';
+import { useContextMenu, showContextMenu } from '../../lib/useContextMenu';
+import { LineChart, Activity, PieChart as PieIcon, Image as ImageIcon, Box, BarChart3, Send, X, Cpu, CircuitBoard, Trash2 } from 'lucide-react';
 import { WaveformChart } from '../displays/WaveformChart';
 import { RawDataView } from '../displays/RawDataView';
 import { PieChart } from '../displays/PieChart';
@@ -334,14 +335,69 @@ export function DataPanel() {
     }
   };
 
+  const hasCanTab = dataTabs.some((t) => t.type === 'can');
+  const hasLogicTab = dataTabs.some((t) => t.type === 'logic');
+
+  const tabBarContextMenu = useContextMenu([
+    {
+      id: 'add-can-tab',
+      label: t(lang, 'addCanTab'),
+      icon: <Cpu size={14} />,
+      disabled: hasCanTab,
+      onClick: () => useAppStore.getState().addCanTab(),
+    },
+    {
+      id: 'add-logic-tab',
+      label: t(lang, 'addLogicTab'),
+      icon: <CircuitBoard size={14} />,
+      disabled: hasLogicTab,
+      onClick: () => useAppStore.getState().addLogicTab(),
+    },
+  ]);
+
+  const makeTabContextMenu = useCallback(
+    (tabId: string) => {
+      const tab = dataTabs.find((t) => t.id === tabId);
+      if (!tab) return [];
+      const otherClosableTabs = dataTabs.filter((t) => t.id !== tabId && t.closable);
+      return [
+        {
+          id: 'close',
+          label: t(lang, 'contextMenuCloseTab'),
+          icon: <Trash2 size={14} />,
+          disabled: !tab.closable,
+          onClick: () => removeDataTab(tabId),
+        },
+        {
+          id: 'close-others',
+          label: t(lang, 'contextMenuCloseOtherTabs'),
+          icon: <X size={14} />,
+          disabled: otherClosableTabs.length === 0,
+          onClick: () => {
+            otherClosableTabs.forEach((t) => removeDataTab(t.id));
+          },
+        },
+      ];
+    },
+    [dataTabs, lang, removeDataTab]
+  );
+
   return (
     <div className="flex flex-col bg-bg-editor overflow-hidden h-full w-full">
-      <div className="flex bg-bg-panel-header border-b border-border flex-shrink-0">
+      <div className="flex bg-bg-panel-header border-b border-border flex-shrink-0" data-tour="data-tabs" onContextMenu={tabBarContextMenu}>
         {dataTabs.map((tab) => (
           <div
             key={tab.id}
             className={`px-3 h-7 text-xs cursor-pointer border-r border-border flex items-center gap-1 hover:bg-bg-hover transition-colors ${tab.id === activeDataTabId ? 'text-text-bright bg-bg-editor border-t-2 border-t-accent' : 'text-text-secondary'}`}
             onClick={() => setActiveDataTab(tab.id)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const items = makeTabContextMenu(tab.id);
+              if (items.length > 0) {
+                showContextMenu(e.clientX, e.clientY, items);
+              }
+            }}
           >
             {getTabIcon(tab.type)}
             <span>{tab.name}</span>

@@ -2,7 +2,9 @@ import { useRef, useEffect, useLayoutEffect, useCallback, useMemo, useState } fr
 import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useAppStore } from '../../store/appStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { waveformWindow } from '../../lib/dataBuffer';
+import { writeTextToClipboard } from '../../lib/clipboard';
 import { t } from '../../i18n';
 import type { WidgetConfig } from '../../types';
 import { TIME_BASES_SEC, V_PER_DIV, formatVPerDiv, getEffectiveChannel, type ScopeAxisConfig } from '../../types';
@@ -11,6 +13,13 @@ import {
   CHANNEL_COLORS, DERIVED_COLORS, TEXT_COLOR, GRID_COLOR, TICK_COLOR, CURSOR_COLOR, getContainerSize,
 } from './waveformConstants';
 import { WaveformTimeline } from './WaveformTimeline';
+import { Copy, Download, Check, X } from 'lucide-react';
+
+/// 读取当前主题波形图颜色 (回退到常量)
+function getThemeColor(name: string, fallback: string): string {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
 
 interface WaveformChartProps {
   widget: Extract<WidgetConfig, { kind: 'Waveform' }>;
@@ -48,6 +57,7 @@ interface SeriesSlot {
 export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
+  const themeId = useSettingsStore((s) => s.settings.appearance.theme);
   const axisConfigRef = useRef(axisConfig);
   const lastVersionRef = useRef(-1);
   const frozenDataRef = useRef<{
@@ -66,6 +76,10 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     yUnit: string;
     channels: { label: string; val: number; color: string; isDerived: boolean }[];
   } | null>(null);
+
+  // 框选导出/复制 — 用户 drag 选择的时间范围 (秒)
+  const [selectedRange, setSelectedRange] = useState<{ startSec: number; endSec: number } | null>(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
   // tooltip 实际渲染位置 (经边界检测后的像素坐标, 相对 waveform-container)
   // 默认放在十字线右下角, 超出容器边界时翻转到左侧/上方
@@ -378,8 +392,9 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       const cfg0 = axisConfigRef.current;
       const yUnit = cfg0.yUnit ?? '';
       const slots = seriesSlotsRef.current;
+      const textColor = getThemeColor('--color-waveform-text', TEXT_COLOR);
       const series: uPlot.Series[] = [{
-        label: 't', stroke: TEXT_COLOR,
+        label: 't', stroke: textColor,
         value: (_u, v) => (v == null ? '--' : formatTimeMs(v * 1000)),
       }];
       for (const slot of slots) {
@@ -410,13 +425,15 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
     const createOptions = (w: number, h: number): uPlot.Options => {
       const cfg = axisConfigRef.current;
-      const gridStroke = cfg.grid ? GRID_COLOR : 'transparent';
+      const gridStroke = cfg.grid ? getThemeColor('--color-waveform-grid', GRID_COLOR) : 'transparent';
+      const textColor = getThemeColor('--color-waveform-text', TEXT_COLOR);
+      const tickColor = getThemeColor('--color-waveform-tick', TICK_COLOR);
       return {
         width: w, height: h, series: createSeries(),
         axes: [
           {
-            stroke: TEXT_COLOR, grid: { stroke: gridStroke, width: 1 },
-            ticks: { stroke: TICK_COLOR }, size: 32, gap: 4,
+            stroke: textColor, grid: { stroke: gridStroke, width: 1 },
+            ticks: { stroke: tickColor }, size: 32, gap: 4,
             // label 留空: 单位由 values 函数动态附加到每个刻度 (因为 label 是静态字符串无法同步)
             label: '',
             labelSize: 20, labelFont: '11px sans-serif',
@@ -437,8 +454,8 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
             },
           },
           {
-            stroke: TEXT_COLOR, grid: { stroke: gridStroke, width: 1 },
-            ticks: { stroke: TICK_COLOR }, size: 50, gap: 4,
+            stroke: textColor, grid: { stroke: gridStroke, width: 1 },
+            ticks: { stroke: tickColor }, size: 50, gap: 4,
             // label 在 sharedY 切换时无法动态更新 (uPlot 限制), 用空字符串避免误导
             label: '',
             labelSize: 16, labelFont: '11px sans-serif',
@@ -541,6 +558,21 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
               });
             },
           ],
+          setSelect: [
+            (u: uPlot) => {
+              const { left, width, show } = u.select;
+              if (!show || width == null || width <= 0) {
+                setSelectedRange(null);
+                return;
+              }
+              const s1 = u.posToVal(left, 'x');
+              const s2 = u.posToVal(left + width, 'x');
+              setSelectedRange({
+                startSec: Math.min(s1, s2),
+                endSec: Math.max(s1, s2),
+              });
+            },
+          ],
         },
       };
     };
@@ -579,7 +611,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       plotRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seriesSignature]);
+  }, [seriesSignature, themeId]);
 
   // 数据更新 (运行模式) — 事件驱动 + rAF 节流
   // waveformWindow.subscribe 在数据到达时触发, 用 rAF 合并多次更新避免超过渲染帧率
@@ -735,6 +767,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   // 游标 SVG overlay
   const cursorOverlay = useMemo(() => {
     if (!axisConfig.cursors.enabled) return null;
+    const cursorColor = getThemeColor('--color-waveform-cursor', CURSOR_COLOR);
     const cfg = axisConfig.cursors;
     if (cfg.type === 'vertical') {
       const viewEnd = axisConfig.running ? 0 : -axisConfig.hPosition;
@@ -744,8 +777,8 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       const c2R = (cfg.c2 - viewStart) / range;
       return (
         <>
-          <line x1={`${c1R * 100}%`} y1="0" x2={`${c1R * 100}%`} y2="100%" stroke={CURSOR_COLOR} strokeWidth={1} strokeDasharray="4 2" />
-          <line x1={`${c2R * 100}%`} y1="0" x2={`${c2R * 100}%`} y2="100%" stroke={CURSOR_COLOR} strokeWidth={1} strokeDasharray="4 2" />
+          <line x1={`${c1R * 100}%`} y1="0" x2={`${c1R * 100}%`} y2="100%" stroke={cursorColor} strokeWidth={1} strokeDasharray="4 2" />
+          <line x1={`${c2R * 100}%`} y1="0" x2={`${c2R * 100}%`} y2="100%" stroke={cursorColor} strokeWidth={1} strokeDasharray="4 2" />
         </>
       );
     }
@@ -770,11 +803,132 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     }
     return (
       <>
-        <line x1="0" y1={`${c1R * 100}%`} x2="100%" y2={`${c1R * 100}%`} stroke={CURSOR_COLOR} strokeWidth={1} strokeDasharray="4 2" />
-        <line x1="0" y1={`${c2R * 100}%`} x2="100%" y2={`${c2R * 100}%`} stroke={CURSOR_COLOR} strokeWidth={1} strokeDasharray="4 2" />
+        <line x1="0" y1={`${c1R * 100}%`} x2="100%" y2={`${c1R * 100}%`} stroke={cursorColor} strokeWidth={1} strokeDasharray="4 2" />
+        <line x1="0" y1={`${c2R * 100}%`} x2="100%" y2={`${c2R * 100}%`} stroke={cursorColor} strokeWidth={1} strokeDasharray="4 2" />
       </>
     );
-  }, [axisConfig.cursors, axisConfig.channels, axisConfig.sharedY, axisConfig.running, axisConfig.hPosition, timeWindowSec, connectedChannels]);
+  }, [axisConfig.cursors, axisConfig.channels, axisConfig.sharedY, axisConfig.running, axisConfig.hPosition, timeWindowSec, connectedChannels, themeId]);
+
+  /// 获取当前可用于导出的原始数据 (真实值, 相对秒)
+  const getExportData = useCallback((): { tsSec: number[]; series: number[][]; labels: string[] } => {
+    const cfg = axisConfigRef.current;
+    const slots = seriesSlotsRef.current;
+    let timestamps: number[];
+    let channelArrays: number[][];
+    let derivedMap: Record<string, Record<string, number[]>> | undefined;
+    let baseTs: number;
+
+    if (cfg.running) {
+      const win = waveformWindow.get();
+      timestamps = win.timestamps.map((t) => t);
+      channelArrays = win.channels;
+      derivedMap = win.derived;
+      baseTs = 0;
+    } else {
+      const frozen = frozenDataRef.current;
+      if (!frozen || frozen.ts.length === 0) {
+        return { tsSec: [], series: [], labels: [] };
+      }
+      timestamps = frozen.ts.map((t) => t);
+      channelArrays = frozen.chs;
+      derivedMap = frozen.derived;
+      baseTs = frozen.ts[0];
+    }
+
+    const tsSec = timestamps.map((ms) => (ms - baseTs) / 1000);
+
+    const series: number[][] = [];
+    const labels: string[] = [];
+    for (const slot of slots) {
+      let arr: number[] | undefined;
+      if (slot.input.kind === 'channel') {
+        arr = channelArrays[slot.input.idx];
+      } else {
+        arr = derivedMap?.[widget.params.id]?.[slot.input.sourceId];
+      }
+      if (!arr) continue;
+      const realArr = arr.map((v) => {
+        if (isNaN(v)) return NaN;
+        if (cfg.sharedY) return v;
+        const eff = getEffectiveChannel(cfg, slot.cfgIdx);
+        return v * eff.vPerDiv + eff.position;
+      });
+      series.push(realArr);
+      labels.push(slot.label);
+    }
+
+    return { tsSec, series, labels };
+  }, [widget.params.id]);
+
+  /// 根据选择范围生成 CSV 文本
+  const buildCsvForRange = useCallback(
+    (range: { startSec: number; endSec: number }): string => {
+      const { tsSec, series, labels } = getExportData();
+      if (tsSec.length === 0 || series.length === 0) return '';
+      const start = Math.min(range.startSec, range.endSec);
+      const end = Math.max(range.startSec, range.endSec);
+
+      let startIdx = tsSec.length;
+      for (let i = 0; i < tsSec.length; i++) {
+        if (tsSec[i] >= start) {
+          startIdx = i;
+          break;
+        }
+      }
+      let endIdx = tsSec.length;
+      for (let i = startIdx; i < tsSec.length; i++) {
+        if (tsSec[i] > end) {
+          endIdx = i;
+          break;
+        }
+      }
+      if (startIdx >= endIdx) return '';
+
+      const rows: string[] = [];
+      rows.push(['Time(s)', ...labels].join(','));
+      for (let i = startIdx; i < endIdx; i++) {
+        const row = [
+          tsSec[i].toFixed(6),
+          ...series.map((s) => (isNaN(s[i]) ? '' : s[i].toExponential(6))),
+        ];
+        rows.push(row.join(','));
+      }
+      return rows.join('\n');
+    },
+    [getExportData]
+  );
+
+  /// 导出选中范围为 CSV 文件
+  const exportSelection = useCallback(() => {
+    if (!selectedRange) return;
+    const csv = buildCsvForRange(selectedRange);
+    if (!csv) return;
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `waveform-${selectedRange.startSec.toFixed(3)}-${selectedRange.endSec.toFixed(3)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [selectedRange, buildCsvForRange]);
+
+  /// 复制选中范围为 CSV 文本到剪贴板
+  const copySelection = useCallback(async () => {
+    if (!selectedRange) return;
+    const csv = buildCsvForRange(selectedRange);
+    if (!csv) return;
+    const ok = await writeTextToClipboard(csv);
+    if (ok) {
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 1200);
+    }
+  }, [selectedRange, buildCsvForRange]);
+
+  /// 清除框选
+  const clearSelection = useCallback(() => {
+    setSelectedRange(null);
+    plotRef.current?.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+  }, []);
 
   return (
     <div className="flex flex-col h-full w-full" style={{ flexDirection: 'column' }}>
@@ -790,16 +944,46 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         )}
 
         {/* 左上角提示: 按住 Ctrl/Cmd 隐藏光标 */}
-        <div className="absolute top-1.5 right-2 z-[100] px-2 py-0.5 text-[10px] text-white/95 bg-black/85 border border-white/15 rounded pointer-events-none select-none shadow whitespace-nowrap">
+        <div className="absolute top-1.5 right-2 z-[100] px-2 py-0.5 text-[10px] text-text-primary bg-bg-editor/95 border border-border/30 rounded pointer-events-none select-none shadow whitespace-nowrap">
           {cursorHidden
             ? t(lang, 'cursorHiddenHint')
             : (isMac ? '⌘ ' : 'Ctrl ') + t(lang, 'cursorHideHint')}
         </div>
 
+        {/* 框选导出/复制工具栏 */}
+        {selectedRange && (
+          <div className="absolute top-9 right-2 z-[100] flex items-center gap-1 px-1.5 py-1 bg-bg-editor/95 border border-border/30 rounded shadow-lg select-none">
+            <span className="text-[10px] text-text-secondary font-mono px-1">
+              {formatTimeMs(selectedRange.startSec * 1000)} - {formatTimeMs(selectedRange.endSec * 1000)}
+            </span>
+            <button
+              className="p-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+              title={t(lang, 'copySelection')}
+              onClick={copySelection}
+            >
+              {copyFeedback ? <Check size={12} className="text-green" /> : <Copy size={12} />}
+            </button>
+            <button
+              className="p-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+              title={t(lang, 'exportSelection')}
+              onClick={exportSelection}
+            >
+              <Download size={12} />
+            </button>
+            <button
+              className="p-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
+              title={t(lang, 'clearSelection')}
+              onClick={clearSelection}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
+
         {/* 右下角动态 series 开关 (仅用户创建的波形图, default-waveform 不显示) */}
         {widget.params.id !== 'default-waveform' && (
           <button
-            className={`absolute bottom-1.5 right-2 z-[100] px-2.5 py-0.5 text-[10px] text-white/85 bg-black/85 border border-white/15 rounded cursor-pointer select-none shadow whitespace-nowrap transition-all duration-150 hover:bg-[#282828]/95 hover:border-white/30 ${widget.params.dynamicSeries ? 'text-[#ff8c42] border-[#ff8c42]/50 bg-[#3c1e0a]/85' : ''}`}
+            className={`absolute bottom-1.5 right-2 z-[100] px-2.5 py-0.5 text-[10px] text-text-primary bg-bg-editor/95 border border-border/30 rounded cursor-pointer select-none shadow whitespace-nowrap transition-all duration-150 hover:bg-bg-hover hover:border-border/50 ${widget.params.dynamicSeries ? 'text-orange border-orange/50 bg-orange/10' : ''}`}
             onClick={() => {
               updateWidget(widget.params.id, {
                 ...widget,
@@ -821,7 +1005,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         {cursorReadout && !cursorHidden && (
           <div
             ref={tooltipRef}
-            className="flex flex-col gap-0.5 px-1.5 py-1 min-w-[80px] bg-[rgba(30,30,30,0.95)] text-[#e8e8e8] border border-[rgba(255,255,255,0.18)] rounded font-mono text-xs leading-tight shadow-lg select-none"
+            className="flex flex-col gap-0.5 px-1.5 py-1 min-w-[80px] bg-bg-editor/95 text-text-primary border border-border/30 rounded font-mono text-xs leading-tight shadow-lg select-none"
             style={{
               position: 'absolute',
               left: tooltipPos ? tooltipPos.left : cursorReadout.leftPx + 12,
@@ -843,7 +1027,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
               </span>
             </div>
             {cursorReadout.channels.length > 1 && (
-              <div className="h-px my-[3px] bg-white/15" />
+              <div className="h-px my-[3px] bg-border" />
             )}
             {cursorReadout.channels.map((ch, i) => (
               <div key={ch.label + i} className="flex items-center gap-1">

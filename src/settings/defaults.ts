@@ -4,6 +4,7 @@
 //! 通过 tauri-plugin-store 持久化到 app config dir 的 settings.json
 
 import type { Lang } from '../i18n';
+import type { ThemeDefinition } from './theme';
 
 /// 应用设置根 schema
 export interface AppSettings {
@@ -11,9 +12,12 @@ export interface AppSettings {
     language: Lang;
     autoConnectOnStart: boolean;
     confirmBeforeQuit: boolean;
+    showOnboarding: boolean;
+    showContextualTips: boolean;
   };
   appearance: {
-    theme: 'dark' | 'light';
+    theme: string;
+    customThemes: ThemeDefinition[];
     uiFontFamily: string;
     uiFontSize: number;
     monoFontFamily: string;
@@ -22,11 +26,16 @@ export interface AppSettings {
     activityBarVisible: boolean;
   };
   editor: {
-    waveformMaxPoints: number;
     waveformFps: number;
     scopeDefaultTimeBase: number;
     scopeDefaultVPerDiv: number;
     gridVisible: boolean;
+  };
+  data: {
+    waveformBufferPoints: number;
+    rawDataBufferBytes: number;
+    canBufferFrames: number;
+    logicBufferSamples: number;
   };
   serial: {
     defaultBaudRate: number;
@@ -50,9 +59,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     language: 'zh',
     autoConnectOnStart: false,
     confirmBeforeQuit: true,
+    showOnboarding: true,
+    showContextualTips: true,
   },
   appearance: {
     theme: 'dark',
+    customThemes: [],
     uiFontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     uiFontSize: 13,
     monoFontFamily: "'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, monospace",
@@ -61,11 +73,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
     activityBarVisible: true,
   },
   editor: {
-    waveformMaxPoints: 10000,
     waveformFps: 30,
     scopeDefaultTimeBase: 100e-3,
     scopeDefaultVPerDiv: 1,
     gridVisible: true,
+  },
+  data: {
+    waveformBufferPoints: 100_000,
+    rawDataBufferBytes: 1_048_576,
+    canBufferFrames: 100_000,
+    logicBufferSamples: 20_000,
   },
   serial: {
     defaultBaudRate: 115200,
@@ -93,6 +110,7 @@ export const SETTING_CATEGORIES: SettingCategoryMeta[] = [
   { key: 'general', icon: 'Settings' },
   { key: 'appearance', icon: 'Palette' },
   { key: 'editor', icon: 'Sliders' },
+  { key: 'data', icon: 'Database' },
   { key: 'serial', icon: 'Usb' },
   { key: 'notifications', icon: 'Bell' },
 ];

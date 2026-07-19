@@ -170,6 +170,11 @@ fn generate_bytes(
             }
             data
         }
+        ProtocolConfig::Diagnostic { .. } => {
+            // 诊断模式走独立的 DiagnosticEngine + BridgeCanBackend 管线,
+            // test_data 不适用,返回空字节(由上层判断是否发送)。
+            Vec::new()
+        }
     }
 }
 

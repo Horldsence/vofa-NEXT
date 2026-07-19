@@ -4,6 +4,11 @@ import { TIME_BASES_SEC, formatTimeBase, type ScopeAxisConfig } from '../../type
 import { timeBaseToWindowSec, HORIZONTAL_DIVS } from '../../lib/scopeUtils';
 import { CHANNEL_COLORS, TIMELINE_PAD } from './waveformConstants';
 
+/// 读取当前主题 CSS 变量
+function getThemeColor(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#000000';
+}
+
 /// 命中半径 (px) — 左右柄可点击区域
 const HANDLE_HIT_RADIUS = 12;
 /// 视觉手柄宽度 (px)
@@ -122,14 +127,19 @@ export function WaveformTimeline({
       const plotW = w - pad * 2;
       const plotH = h - pad * 2;
 
+      const bgColor = getThemeColor('--color-bg-editor');
+      const textSecondary = getThemeColor('--color-text-secondary');
+      const accent = getThemeColor('--color-accent');
+      const textInverse = getThemeColor('--color-text-inverse');
+
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#1e1e1e';
+      ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, w, h);
 
       const win = getActiveWindow();
       const totalPoints = win.timestamps.length;
       if (totalPoints < 2) {
-        ctx.fillStyle = '#858585';
+        ctx.fillStyle = textSecondary;
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('No data', w / 2, h / 2);
@@ -185,10 +195,12 @@ export function WaveformTimeline({
         plotW, pad, totalDurSec, viewEndSec, timeWindowSec
       );
 
-      // 窗口背景
-      ctx.fillStyle = 'rgba(117, 190, 255, 0.15)';
+      // 窗口背景 (使用强调色 + alpha)
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.15;
       ctx.fillRect(winX, pad, winW, plotH);
-      ctx.strokeStyle = '#75beff';
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = accent;
       ctx.lineWidth = 1;
       ctx.strokeRect(winX, pad, winW, plotH);
 
@@ -196,11 +208,13 @@ export function WaveformTimeline({
       const hoverType = hoverState.current.type;
       const drawHandle = (x: number, hovered: boolean) => {
         const half = HANDLE_VISUAL_WIDTH / 2;
-        ctx.fillStyle = hovered ? '#a8d4ff' : '#75beff';
+        ctx.fillStyle = accent;
+        ctx.globalAlpha = hovered ? 0.85 : 0.6;
         ctx.fillRect(x - half, pad, HANDLE_VISUAL_WIDTH, plotH);
+        ctx.globalAlpha = 1;
         // 悬停时加边框
         if (hovered) {
-          ctx.strokeStyle = '#ffffff';
+          ctx.strokeStyle = textInverse;
           ctx.lineWidth = 0.5;
           ctx.strokeRect(x - half, pad, HANDLE_VISUAL_WIDTH, plotH);
         }
@@ -211,7 +225,7 @@ export function WaveformTimeline({
       // 标签
       const winEndSec = viewEndSec;
       const winStartSec = winEndSec - timeWindowSec;
-      ctx.fillStyle = '#858585';
+      ctx.fillStyle = textSecondary;
       ctx.font = '9px sans-serif';
       ctx.textAlign = 'left';
       ctx.fillText(winStartSec.toFixed(2) + 's', pad, h - 2);

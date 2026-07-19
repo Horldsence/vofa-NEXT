@@ -5,10 +5,10 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tauri::ipc::Channel;
 use tokio::sync::{mpsc, oneshot};
-use vofa_next_buffer::DataBuffer;
+use vofa_next_buffer::{DataBuffer, RawDataCollector};
 use vofa_next_core::{
     CanBuffer, CanFrameBatch, ConnectionState, DataFrame, DecodedBuffer,
-    DecodedEventBatch, LogicBuffer, LogicSampleBatch, ProtocolConfig, RawData, TransportStats,
+    DecodedEventBatch, LogicBuffer, LogicSampleBatch, ProtocolConfig, TransportStats,
 };
 use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
 use vofa_next_nodes::CompiledGraph;
@@ -108,6 +108,10 @@ pub struct AppState {
     /// 前端调用 unsubscribe_waveform 时, 通过 channel_id 取出 sender 发送取消信号,
     /// 让 tokio::spawn 的 task 优雅退出, 避免向已关闭的 channel send 产生警告。
     pub waveform_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    /// 原始数据收集器
+    pub raw_data_collector: Arc<Mutex<RawDataCollector>>,
+    /// 原始数据订阅任务的取消句柄
+    pub raw_data_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// CAN 帧缓冲区
     pub can_buffer: Arc<Mutex<CanBuffer>>,
     /// CAN 订阅任务的取消句柄 — key: channel_id
@@ -128,7 +132,7 @@ impl AppState {
             transport: tokio::sync::Mutex::new(TransportManager::new()),
             protocol: Arc::new(Mutex::new(vofa_next_protocol::create_engine(&ProtocolConfig::default()))),
             protocol_config: Mutex::new(ProtocolConfig::default()),
-            buffer: Arc::new(Mutex::new(DataBuffer::new(10_000, 4))),
+            buffer: Arc::new(Mutex::new(DataBuffer::new(100_000, 4))),
             graphs: Arc::new(Mutex::new(HashMap::new())),
             input_values: Arc::new(Mutex::new(HashMap::new())),
             custom_outputs: Arc::new(Mutex::new(HashMap::new())),
@@ -143,7 +147,9 @@ impl AppState {
             spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
             spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
             waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
-            can_buffer: Arc::new(Mutex::new(CanBuffer::new(10_000))),
+            raw_data_collector: Arc::new(Mutex::new(RawDataCollector::new())),
+            raw_data_tasks: Arc::new(Mutex::new(HashMap::new())),
+            can_buffer: Arc::new(Mutex::new(CanBuffer::new(100_000))),
             can_tasks: Arc::new(Mutex::new(HashMap::new())),
             logic_buffer: Arc::new(Mutex::new(LogicBuffer::new(20_000))),
             decoded_buffer: Arc::new(Mutex::new(DecodedBuffer::new(10_000))),
@@ -258,6 +264,7 @@ pub async fn data_loop(
     protocol: Arc<Mutex<Box<dyn ProtocolEngine>>>,
     buffer: Arc<Mutex<DataBuffer>>,
     eval_state: GraphEvalState,
+    raw_data_collector: Arc<Mutex<RawDataCollector>>,
     can_buffer: Arc<Mutex<CanBuffer>>,
     logic_buffer: Arc<Mutex<LogicBuffer>>,
     decoded_buffer: Arc<Mutex<DecodedBuffer>>,
@@ -270,6 +277,7 @@ pub async fn data_loop(
     let proto2 = protocol.clone();
     let buf2 = buffer.clone();
     let eval2 = eval_state;
+    let raw_collector2 = raw_data_collector;
     let can_buffer2 = can_buffer;
     let logic_buffer2 = logic_buffer;
     let decoded_buffer2 = decoded_buffer;
@@ -282,14 +290,8 @@ pub async fn data_loop(
         let mut acc_frames: u64 = 0;
 
         while let Some(data) = parse_rx.recv().await {
-            // 1. emit 原始数据 (用于数据显示区)
-            let _ = app2.emit(
-                "transport:data",
-                &RawData {
-                    timestamp: now_us(),
-                    data: data.clone(),
-                },
-            );
+            // 1. 收集原始数据 (通过 Channel 周期性推送, 替代每包 emit)
+            raw_collector2.lock().push_chunk(now_us(), &data);
 
             // 2. 协议解析
             let frames = proto2.lock().feed(&data);
@@ -632,6 +634,38 @@ pub async fn can_frames_loop(
                     buf.get_recent(max_frames)
                 };
                 if on_event.send(CanFrameBatch { frames }).is_err() {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// 原始数据订阅推送循环 — 按 interval_ms 推送一批原始字节
+///
+/// 由 subscribe_rawdata 命令 spawn, 通过 oneshot 接收取消信号优雅退出。
+/// 从 RawDataCollector 中 drain 最多 max_bytes 的完整块, 通过 Channel 推送到前端。
+pub async fn rawdata_loop(
+    collector: Arc<Mutex<RawDataCollector>>,
+    on_event: Channel<vofa_next_buffer::RawDataBatch>,
+    interval: Duration,
+    max_bytes: usize,
+    cancel_rx: oneshot::Receiver<()>,
+) {
+    let mut ticker = tokio::time::interval(interval);
+    let mut cancel_rx = cancel_rx;
+    loop {
+        tokio::select! {
+            _ = &mut cancel_rx => break,
+            _ = ticker.tick() => {
+                let batch = {
+                    let mut col = collector.lock();
+                    col.drain_batch(max_bytes)
+                };
+                if batch.chunks.is_empty() {
+                    continue;
+                }
+                if on_event.send(batch).is_err() {
                     break;
                 }
             }

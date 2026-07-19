@@ -20,6 +20,7 @@
     "@codemirror/view": "^6.43.6",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "@tanstack/react-virtual": "^3.14.6",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-log": "~2.9.0",
     "@tauri-apps/plugin-notification": "~2.3.3",

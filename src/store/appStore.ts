@@ -23,6 +23,7 @@ import {
 } from '../lib/graphSubscription';
 import { canFrameBuffer } from '../lib/canBuffer';
 import { subscribeCanFrames } from '../lib/canSubscription';
+import { subscribeRawData } from '../lib/rawDataSubscription';
 import { logicSampleBuffer, decodedEventBuffer } from '../lib/logicBuffer';
 import { subscribeLogicSamples, subscribeDecodedEvents } from '../lib/logicSubscription';
 import { widgetToNodeKind, makeChannelSourceNodeDef, edgeToGraphEdge, type NodeDef } from '../lib/nodeDef';
@@ -34,7 +35,6 @@ import type {
   DataFrame,
   PortInfo,
   ProtocolConfig,
-  RawData,
   TransportConfig,
   TransportStats,
   WidgetConfig,
@@ -210,10 +210,10 @@ let graphOutputSub: { cancel: () => void } | null = null;
 let customInputSub: { cancel: () => void } | null = null;
 let spectrumSub: { cancel: () => void } | null = null;
 let canFramesSub: { cancel: () => void } | null = null;
+let rawDataSub: { cancel: () => void } | null = null;
 let logicSamplesSub: { cancel: () => void } | null = null;
 let decodedEventsSub: { cancel: () => void } | null = null;
 let detectedChannelsPoller: ReturnType<typeof setInterval> | null = null;
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
 /// 创建通道源节点 (每个 tab 一个)
 function createChannelSourceNode(tabId: string, channelCount: number): Node {
@@ -905,6 +905,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   clearData: async () => {
     try {
       await api.clearBuffer();
+      await api.clearRawDataBuffer();
     } catch (e) {
       const lang = get().lang;
       notify.error(
@@ -922,17 +923,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     // Clean up previous listeners
     unlistenFns.forEach((fn) => fn());
     unlistenFns = [];
-
-    const unlistenData = await listen<RawData>('transport:data', (event) => {
-      const { data } = event.payload;
-      rawDataBuffer.push(data);
-      // Throttle raw data display updates
-      if (flushTimer) return;
-      flushTimer = setTimeout(() => {
-        rawDataBuffer.notify();
-        flushTimer = null;
-      }, 50);
-    });
 
     // transport:frames 事件 (批量帧, 后端重构后一次 emit 多帧)
     const unlistenFrames = await listen<DataFrame[]>('transport:frames', () => {
@@ -972,7 +962,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       // no-op: buffer 已由 Channel 路径维护
     });
 
-    unlistenFns = [unlistenData, unlistenFrames, unlistenState, unlistenStats, unlistenCanFrames, unlistenLogic, unlistenDecoded];
+    unlistenFns = [unlistenFrames, unlistenState, unlistenStats, unlistenCanFrames, unlistenLogic, unlistenDecoded];
 
     // 启动后端图输出订阅 (60 FPS 推送)
     // 后端在每帧评估所有 tab 的图, 并将合并快照推送至此
@@ -1004,6 +994,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     canFramesSub = subscribeCanFrames((batch) => {
       canFrameBuffer.push(batch.frames);
     });
+
+    // 启动原始数据订阅 (后端周期性推送 raw_data_collector 中的最近分片)
+    if (rawDataSub) rawDataSub.cancel();
+    rawDataSub = subscribeRawData((batch) => {
+      rawDataBuffer.pushBatch(batch);
+    }, { intervalMs: 50, maxBytes: 65536 });
 
     // 启动逻辑采样订阅 (后端周期性推送 logic_buffer 中的最近采样)
     if (logicSamplesSub) logicSamplesSub.cancel();
@@ -1042,6 +1038,10 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (canFramesSub) {
         canFramesSub.cancel();
         canFramesSub = null;
+      }
+      if (rawDataSub) {
+        rawDataSub.cancel();
+        rawDataSub = null;
       }
       if (logicSamplesSub) {
         logicSamplesSub.cancel();

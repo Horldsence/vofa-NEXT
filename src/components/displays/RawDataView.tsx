@@ -1,14 +1,29 @@
-import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/appStore';
-import { rawDataBuffer, type RawDataSnapshot, type RawDataLine } from '../../lib/dataBuffer';
+import { rawDataBuffer, RAWDATA_BYTES_PER_ROW } from '../../lib/dataBuffer';
+import { useSelection } from '../../lib/useSelection';
+import { writeTextToClipboard } from '../../lib/clipboard';
 import { t } from '../../i18n';
-import { Trash2, ArrowDown, Clock, Settings2, AlignLeft, PanelRight, Palette } from 'lucide-react';
+import {
+  Trash2,
+  ArrowDown,
+  Clock,
+  Settings2,
+  AlignLeft,
+  PanelRight,
+  Palette,
+  Copy,
+  Check,
+  X,
+  FileWarning,
+} from 'lucide-react';
 
 type AppendMode = 'none' | 'nl' | 'tab' | 'nl_tab';
 type SendPanelMode = 'bottom' | 'separate';
 type HexColorMode = 'none' | 'printable' | 'range';
 
-const BYTES_PER_ROW = 16;
+const ROW_HEIGHT = 22;
 const GROUP_SIZE = 8;
 
 /// 格式化时间戳为 HH:MM:SS.mmm
@@ -52,160 +67,154 @@ function hexColorClass(b: number, mode: HexColorMode): string {
   return 'text-text-secondary';
 }
 
-/// 比较两个 Uint8Array 风格数组内容是否相同
-function bytesEqual(a: number[], b: number[]): boolean {
-  if (a === b) return true;
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
+/// 表头：00 01 02 ... 0F
+function HeaderBytes({ width }: { width: number }) {
+  return (
+    <>
+      {Array.from({ length: RAWDATA_BYTES_PER_ROW }, (_, i) => {
+        const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== RAWDATA_BYTES_PER_ROW - 1;
+        return (
+          <span
+            key={i}
+            className={`inline-flex items-center justify-center text-text-secondary text-xs font-mono ${isGroupEnd ? 'mr-2' : ''}`}
+            style={{ width }}
+          >
+            {byteToHex(i)}
+          </span>
+        );
+      })}
+    </>
+  );
 }
 
-interface HexRowProps {
-  line: RawDataLine;
+interface RowProps {
+  index: number;
+  view: 'hex' | 'ascii';
   showTimestamp: boolean;
   showOffset: boolean;
   hexColorMode: HexColorMode;
+  isSelected: boolean;
+  version: number;
+  onMouseDown: (e: React.MouseEvent, index: number) => void;
 }
 
-/// Hex 视图行 — memo 化, 仅在字节内容或显示选项变化时重渲染
-const HexRow = memo(function HexRow({ line, showTimestamp, showOffset, hexColorMode }: HexRowProps) {
+/// 原始数据行 — 从全局 buffer 按索引读取, memo 化避免无关重渲染
+/// version 用于在底层数据变化时强制刷新可见行
+const Row = memo(function Row({
+  index,
+  view,
+  showTimestamp,
+  showOffset,
+  hexColorMode,
+  isSelected,
+  onMouseDown,
+}: RowProps) {
+  const line = rawDataBuffer.getLine(index);
   const [hovered, setHovered] = useState<number | null>(null);
+
+  const hexWidth = 22;
+  const asciiWidth = view === 'hex' ? 18 : 18;
+
   return (
     <div
-      className="flex items-center gap-2 px-2 py-0.5 hover:bg-bg-hover transition-colors"
+      className={`flex items-center gap-2 px-2 select-none ${isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover'}`}
+      style={{ height: ROW_HEIGHT }}
+      onMouseDown={(e) => onMouseDown(e, index)}
       onMouseLeave={() => setHovered(null)}
     >
       {showTimestamp && (
-        <span className="text-accent text-xs font-mono min-w-[92px] text-right">{formatTime(line.timestamp)}</span>
+        <span className="text-accent text-xs font-mono min-w-[92px] text-right">
+          {formatTime(line.timestamp)}
+        </span>
       )}
       {showOffset && (
-        <span className="text-text-secondary text-xs font-mono min-w-[72px] text-right">
+        <span className="text-text-secondary text-xs font-mono min-w-[80px] text-right">
           {line.offset.toString(16).padStart(8, '0').toUpperCase()}
         </span>
       )}
-      <div className="flex-1 flex gap-0.5">
-        {line.bytes.map((b, i) => {
-          const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== BYTES_PER_ROW - 1;
-          return (
-            <span
-              key={i}
-              className={`
-                inline-flex items-center justify-center font-mono text-xs
-                w-[22px] h-[18px] rounded-sm cursor-default select-text
-                transition-colors
-                ${hexColorClass(b, hexColorMode)}
-                ${hovered === i ? 'bg-bg-active text-text-bright' : ''}
-                ${isGroupEnd ? 'mr-2' : ''}
-              `}
-              onMouseEnter={() => setHovered(i)}
-            >
-              {byteToHex(b)}
-            </span>
-          );
-        })}
-        {Array.from({ length: BYTES_PER_ROW - line.bytes.length }).map((_, i) => (
-          <span key={`pad-${i}`} className="inline-flex w-[22px] h-[18px]" />
-        ))}
-      </div>
-      <div className="flex gap-0.5">
-        {line.bytes.map((b, i) => {
-          const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== BYTES_PER_ROW - 1;
-          const printable = isPrintable(b);
-          return (
-            <span
-              key={i}
-              className={`
-                inline-flex items-center justify-center font-mono text-xs
-                w-[18px] h-[18px] rounded-sm cursor-default select-text
-                transition-colors
-                ${printable ? 'text-green' : 'text-text-disabled'}
-                ${hovered === i ? 'bg-bg-active text-text-bright' : ''}
-                ${isGroupEnd ? 'mr-2' : ''}
-              `}
-              onMouseEnter={() => setHovered(i)}
-            >
-              {byteToAscii(b)}
-            </span>
-          );
-        })}
-      </div>
+      {view === 'hex' ? (
+        <>
+          <div className="flex-1 flex gap-0.5">
+            {Array.from({ length: RAWDATA_BYTES_PER_ROW }, (_, i) => {
+              const b = line.bytes[i];
+              const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== RAWDATA_BYTES_PER_ROW - 1;
+              const present = i < line.bytes.length;
+              return (
+                <span
+                  key={i}
+                  className={`
+                    inline-flex items-center justify-center font-mono text-xs rounded-sm cursor-default
+                    transition-colors
+                    ${present ? hexColorClass(b, hexColorMode) : ''}
+                    ${present && hovered === i ? 'bg-bg-active text-text-bright' : ''}
+                    ${isGroupEnd ? 'mr-2' : ''}
+                  `}
+                  style={{ width: hexWidth, height: ROW_HEIGHT - 4 }}
+                  onMouseEnter={() => present && setHovered(i)}
+                >
+                  {present ? byteToHex(b) : ''}
+                </span>
+              );
+            })}
+          </div>
+          <div className="flex gap-0.5">
+            {Array.from({ length: RAWDATA_BYTES_PER_ROW }, (_, i) => {
+              const b = line.bytes[i];
+              const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== RAWDATA_BYTES_PER_ROW - 1;
+              const present = i < line.bytes.length;
+              return (
+                <span
+                  key={i}
+                  className={`
+                    inline-flex items-center justify-center font-mono text-xs rounded-sm cursor-default
+                    transition-colors
+                    ${present ? (isPrintable(b) ? 'text-green' : 'text-text-disabled') : ''}
+                    ${present && hovered === i ? 'bg-bg-active text-text-bright' : ''}
+                    ${isGroupEnd ? 'mr-2' : ''}
+                  `}
+                  style={{ width: asciiWidth, height: ROW_HEIGHT - 4 }}
+                  onMouseEnter={() => present && setHovered(i)}
+                >
+                  {present ? byteToAscii(b) : ''}
+                </span>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        <div className="flex gap-0.5">
+          {Array.from({ length: RAWDATA_BYTES_PER_ROW }, (_, i) => {
+            const b = line.bytes[i];
+            const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== RAWDATA_BYTES_PER_ROW - 1;
+            const present = i < line.bytes.length;
+            return (
+              <span
+                key={i}
+                className={`
+                  inline-flex items-center justify-center font-mono text-xs rounded-sm cursor-default
+                  transition-colors
+                  ${present ? (isPrintable(b) ? 'text-green' : 'text-text-disabled') : ''}
+                  ${present && hovered === i ? 'bg-bg-active text-text-bright' : ''}
+                  ${isGroupEnd ? 'mr-2' : ''}
+                `}
+                style={{ width: asciiWidth, height: ROW_HEIGHT - 4 }}
+                onMouseEnter={() => present && setHovered(i)}
+              >
+                {present ? byteToAscii(b) : ''}
+              </span>
+            );
+          })}
+        </div>
+      )}
     </div>
-  );
-}, (prev, next) => {
-  return (
-    prev.showTimestamp === next.showTimestamp &&
-    prev.showOffset === next.showOffset &&
-    prev.hexColorMode === next.hexColorMode &&
-    prev.line.offset === next.line.offset &&
-    prev.line.timestamp === next.line.timestamp &&
-    bytesEqual(prev.line.bytes, next.line.bytes)
   );
 });
 
-interface AsciiRowProps {
-  line: RawDataLine;
-  showTimestamp: boolean;
-  showOffset: boolean;
-}
-
-/// ASCII 视图行 — memo 化
-const AsciiRow = memo(function AsciiRow({ line, showTimestamp, showOffset }: AsciiRowProps) {
-  const [hovered, setHovered] = useState<number | null>(null);
-  return (
-    <div
-      className="flex items-center gap-2 px-2 py-0.5 hover:bg-bg-hover transition-colors"
-      onMouseLeave={() => setHovered(null)}
-    >
-      {showTimestamp && (
-        <span className="text-accent text-xs font-mono min-w-[92px] text-right">{formatTime(line.timestamp)}</span>
-      )}
-      {showOffset && (
-        <span className="text-text-secondary text-xs font-mono min-w-[72px] text-right">
-          {line.offset.toString(16).padStart(8, '0').toUpperCase()}
-        </span>
-      )}
-      <div className="flex gap-0.5">
-        {line.bytes.map((b, i) => {
-          const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== BYTES_PER_ROW - 1;
-          const printable = isPrintable(b);
-          return (
-            <span
-              key={i}
-              className={`
-                inline-flex items-center justify-center font-mono text-xs
-                w-[18px] h-[18px] rounded-sm cursor-default select-text
-                transition-colors
-                ${printable ? 'text-green' : 'text-text-disabled'}
-                ${hovered === i ? 'bg-bg-active text-text-bright' : ''}
-                ${isGroupEnd ? 'mr-2' : ''}
-              `}
-              onMouseEnter={() => setHovered(i)}
-            >
-              {byteToAscii(b)}
-            </span>
-          );
-        })}
-      </div>
-    </div>
-  );
-}, (prev, next) => {
-  return (
-    prev.showTimestamp === next.showTimestamp &&
-    prev.showOffset === next.showOffset &&
-    prev.line.offset === next.line.offset &&
-    prev.line.timestamp === next.line.timestamp &&
-    bytesEqual(prev.line.bytes, next.line.bytes)
-  );
-});
-
-/// 原始数据显示 — HEX + ASCII 双视图，支持时间戳、发送附加选项、可配置主题
+/// 原始数据显示 — HEX + ASCII 双视图，支持虚拟滚动、选中复制、时间戳、发送
 export function RawDataView() {
   const lang = useAppStore((s) => s.lang);
   const clearData = useAppStore((s) => s.clearData);
   const sendText = useAppStore((s) => s.sendText);
-  const rawDataVersion = useAppStore((s) => s.rawDataVersion);
 
   const [view, setView] = useState<'hex' | 'ascii'>('hex');
   const [autoScroll, setAutoScroll] = useState(true);
@@ -215,35 +224,55 @@ export function RawDataView() {
   const [sendPanelMode, setSendPanelMode] = useState<SendPanelMode>('bottom');
   const [hexColorMode, setHexColorMode] = useState<HexColorMode>('printable');
   const [showSettings, setShowSettings] = useState(false);
-  const [snapshot, setSnapshot] = useState<RawDataSnapshot>({ lines: [], totalBytes: 0 });
   const [sendContent, setSendContent] = useState('');
-  const contentRef = useRef<HTMLDivElement>(null);
-  const userScrolledRef = useRef(false);
+  const [copyFeedback, setCopyFeedback] = useState(false);
 
+  // 强制重新渲染的版本号 (RAF 节流后递增)
+  const [version, setVersion] = useState(0);
   useEffect(() => {
-    const unsub = rawDataBuffer.subscribe(setSnapshot);
-    setSnapshot(rawDataBuffer.getRecentLines());
-    return unsub;
+    return rawDataBuffer.subscribe(() => setVersion((v) => v + 1));
   }, []);
 
-  // 自动滚动：只在 autoScroll 且用户未手动滚动时执行
+  const lineCount = rawDataBuffer.lineCount;
+  const totalBytes = rawDataBuffer.totalBytes;
+  const droppedBytes = rawDataBuffer.droppedBytes;
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
+
+  const virtualizer = useVirtualizer({
+    count: lineCount,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  });
+
+  const selection = useSelection(lineCount);
+
+  // 自动滚动
   useEffect(() => {
-    if (autoScroll && !userScrolledRef.current && contentRef.current) {
-      contentRef.current.scrollTop = contentRef.current.scrollHeight;
-    }
-  }, [snapshot, autoScroll, rawDataVersion]);
+    if (!autoScroll || userScrolledRef.current || lineCount === 0) return;
+    isAutoScrollingRef.current = true;
+    virtualizer.scrollToIndex(lineCount - 1, { align: 'end' });
+    // 短暂忽略本次滚动事件, 避免误判为用户滚动
+    const t = setTimeout(() => {
+      isAutoScrollingRef.current = false;
+    }, 50);
+    return () => clearTimeout(t);
+  }, [lineCount, autoScroll, version, virtualizer]);
 
   // 检测用户手动滚动
   const handleScroll = useCallback(() => {
-    if (!contentRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = contentRef.current;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 30;
+    if (isAutoScrollingRef.current || !parentRef.current) return;
+    const el = parentRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
     userScrolledRef.current = !atBottom;
   }, []);
 
   const handleClear = () => {
     clearData();
-    setSnapshot({ lines: [], totalBytes: 0 });
+    selection.clear();
     userScrolledRef.current = false;
   };
 
@@ -259,6 +288,49 @@ export function RawDataView() {
     sendText(sendContent + suffix);
     setSendContent('');
   };
+
+  const copySelected = useCallback(async () => {
+    const indices = selection.selectedSorted;
+    if (indices.length === 0) return;
+    const lines = indices.map((i) => rawDataBuffer.getLine(i));
+    const text = lines
+      .map((line) => {
+        const hex = Array.from(line.bytes, (b) => byteToHex(b)).join(' ');
+        const ascii = Array.from(line.bytes, (b) => byteToAscii(b)).join('');
+        return `${formatTime(line.timestamp)} ${line.offset.toString(16).padStart(8, '0').toUpperCase()}  ${hex.padEnd(48, ' ')}  |${ascii}|`;
+      })
+      .join('\n');
+    const ok = await writeTextToClipboard(text);
+    if (ok) {
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 1200);
+    }
+  }, [selection.selectedSorted]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selection.selectAll();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        void copySelected();
+      }
+    },
+    [selection, copySelected]
+  );
+
+  const handleRowMouseDown = useCallback(
+    (e: React.MouseEvent, index: number) => {
+      // 仅左键参与选择; 中键/右键不拦截
+      if (e.button !== 0) return;
+      selection.handleClick(index, e);
+    },
+    [selection]
+  );
 
   const appendOptions: { mode: AppendMode; label: string }[] = [
     { mode: 'none', label: t(lang, 'appendNone') },
@@ -278,75 +350,67 @@ export function RawDataView() {
     { mode: 'separate', label: t(lang, 'sendPanelSeparate') },
   ];
 
-  /// 表头：00 01 02 ... 0F
-  const headerBytes = useMemo(() => Array.from({ length: BYTES_PER_ROW }, (_, i) => i), []);
+  const virtualItems = virtualizer.getVirtualItems();
 
   const renderHeader = () => (
-    <div className="flex items-center gap-2 px-2 py-1 border-b border-border bg-bg-panel-header sticky top-0 z-10 select-none">
-      {showTimestamp && <span className="text-text-secondary text-xs font-mono min-w-[92px] text-right">{t(lang, 'showTimestamp')}</span>}
-      {showOffset && <span className="text-text-secondary text-xs font-mono min-w-[72px] text-right">Offset</span>}
-      <div className="flex-1 flex gap-0.5">
-        {headerBytes.map((b, i) => {
-          const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== BYTES_PER_ROW - 1;
-          return (
-            <span
-              key={i}
-              className={`inline-flex items-center justify-center text-text-secondary text-xs font-mono w-[22px] h-[18px] ${isGroupEnd ? 'mr-2' : ''}`}
-            >
-              {byteToHex(b)}
-            </span>
-          );
-        })}
-      </div>
-      {view === 'hex' && (
+    <div className="flex items-center gap-2 px-2 py-1 border-b border-border bg-bg-panel-header select-none h-[24px] flex-shrink-0">
+      {showTimestamp && (
+        <span className="text-text-secondary text-xs font-mono min-w-[92px] text-right">
+          {t(lang, 'showTimestamp')}
+        </span>
+      )}
+      {showOffset && (
+        <span className="text-text-secondary text-xs font-mono min-w-[80px] text-right">Offset</span>
+      )}
+      {view === 'hex' ? (
+        <>
+          <div className="flex-1 flex gap-0.5">
+            <HeaderBytes width={22} />
+          </div>
+          <div className="flex gap-0.5">
+            <HeaderBytes width={18} />
+          </div>
+        </>
+      ) : (
         <div className="flex gap-0.5">
-          {headerBytes.map((b, i) => {
-            const isGroupEnd = (i + 1) % GROUP_SIZE === 0 && i !== BYTES_PER_ROW - 1;
-            return (
-              <span
-                key={i}
-                className={`inline-flex items-center justify-center text-text-secondary text-xs font-mono w-[18px] h-[18px] ${isGroupEnd ? 'mr-2' : ''}`}
-              >
-                {byteToAscii(b)}
-              </span>
-            );
-          })}
+          <HeaderBytes width={18} />
         </div>
       )}
     </div>
   );
 
   const renderContent = () => (
-    <div
-      className="flex-1 overflow-y-auto overflow-x-hidden font-mono min-h-0"
-      ref={contentRef}
-      onScroll={handleScroll}
-    >
+    <div className="flex-1 flex flex-col min-h-0 overflow-hidden font-mono">
       {renderHeader()}
-      <div className="py-1">
-        {snapshot.lines.length === 0 ? (
+      <div
+        className="flex-1 overflow-auto min-h-0 outline-none"
+        ref={parentRef}
+        onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
+      >
+        {lineCount === 0 ? (
           <div className="flex items-center justify-center h-32 text-text-secondary text-sm">
             {t(lang, 'rawDataEmpty')}
           </div>
         ) : (
-          snapshot.lines.map((line) =>
-            view === 'hex' ? (
-              <HexRow
-                key={line.offset}
-                line={line}
-                showTimestamp={showTimestamp}
-                showOffset={showOffset}
-                hexColorMode={hexColorMode}
-              />
-            ) : (
-              <AsciiRow
-                key={line.offset}
-                line={line}
-                showTimestamp={showTimestamp}
-                showOffset={showOffset}
-              />
-            )
-          )
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}>
+              {virtualItems.map((virtualRow) => (
+                <Row
+                  key={virtualRow.key}
+                  index={virtualRow.index}
+                  view={view}
+                  showTimestamp={showTimestamp}
+                  showOffset={showOffset}
+                  hexColorMode={hexColorMode}
+                  isSelected={selection.isSelected(virtualRow.index)}
+                  version={version}
+                  onMouseDown={handleRowMouseDown}
+                />
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -358,7 +422,7 @@ export function RawDataView() {
       {appendOptions.map((opt) => (
         <button
           key={opt.mode}
-          className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-xs font-mono cursor-pointer transition-all hover:border-accent hover:text-text-primary ${appendMode === opt.mode ? 'bg-accent border-accent text-text-bright' : ''}`}
+          className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-xs font-mono cursor-pointer transition-all hover:border-accent hover:text-text-primary ${appendMode === opt.mode ? 'bg-accent border-accent text-text-inverse' : ''}`}
           onClick={() => setAppendMode(opt.mode)}
         >
           {opt.label}
@@ -382,7 +446,7 @@ export function RawDataView() {
 
   const renderSendButton = () => (
     <button
-      className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover"
+      className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover"
       onClick={handleSend}
     >
       {t(lang, 'send')}
@@ -471,19 +535,51 @@ export function RawDataView() {
       <div className="flex gap-1 p-1.5 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
         <div className="flex items-center bg-bg-input rounded p-0.5">
           <button
-            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'hex' ? 'bg-bg-button text-text-bright' : 'text-text-secondary hover:text-text-primary'}`}
+            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'hex' ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
             onClick={() => setView('hex')}
           >
             {t(lang, 'hexView')}
           </button>
           <button
-            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'ascii' ? 'bg-bg-button text-text-bright' : 'text-text-secondary hover:text-text-primary'}`}
+            className={`px-2 py-0.5 rounded text-xs font-medium transition-colors cursor-pointer ${view === 'ascii' ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
             onClick={() => setView('ascii')}
           >
             {t(lang, 'asciiView')}
           </button>
         </div>
+
+        <div className="flex items-center gap-1 text-text-secondary text-xs font-mono">
+          <span>{totalBytes.toLocaleString()} B</span>
+          {droppedBytes > 0 && (
+            <span className="text-red flex items-center gap-0.5" title={t(lang, 'rawDataDropped')}>
+              <FileWarning size={12} />
+              +{droppedBytes.toLocaleString()}
+            </span>
+          )}
+        </div>
+
         <div className="flex-1" />
+
+        {selection.selected.size > 0 && (
+          <>
+            <span className="text-text-secondary text-xs">{selection.selected.size}</span>
+            <button
+              className={`w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${copyFeedback ? 'text-green' : ''}`}
+              title={t(lang, 'copySelected')}
+              onClick={() => void copySelected()}
+            >
+              {copyFeedback ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
+              title={t(lang, 'clearSelection')}
+              onClick={selection.clear}
+            >
+              <X size={14} />
+            </button>
+          </>
+        )}
+
         <button
           className={`w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${showTimestamp ? 'text-text-bright bg-bg-hover' : ''}`}
           title={t(lang, 'showTimestamp')}

@@ -16,15 +16,20 @@
   --color-bg-danger: #5a1d1d;
   --color-bg-danger-hover: #6b2424;
   --color-bg-tooltip: #252526;
+  --color-bg-scrollbar: #424242;
+  --color-bg-scrollbar-hover: #4f4f4f;
+  --color-bg-node-header: rgba(255, 255, 255, 0.06);
 
   /* ---------- 边框色 ---------- */
   --color-border: #3c3c3c;
+  --color-border-node-header: rgba(255, 255, 255, 0.1);
 
   /* ---------- 文字色 ---------- */
   --color-text-primary: #cccccc;
   --color-text-secondary: #858585;
   --color-text-bright: #ffffff;
   --color-text-disabled: #666666;
+  --color-text-inverse: #ffffff;
 
   /* ---------- 强调与语义色 ---------- */
   --color-accent: #007acc;
@@ -34,6 +39,10 @@
   --color-blue: #75beff;
   --color-purple: #c586c0;
   --color-orange: #ce9178;
+  --color-waveform-grid: #444444;
+  --color-waveform-text: #bbbbbb;
+  --color-waveform-tick: #555555;
+  --color-waveform-cursor: #ffd700;
 
   /* ---------- 字体族 ---------- */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -66,12 +75,13 @@
   /* ---------- z-index ---------- */
   --z-dropdown: 10;
   --z-tooltip: 50;
+  --z-context-menu: 60;
   --z-modal: 100;
   --z-toast: 200;
 }
 
-/* ============ Dark variant (基于 data-theme) ============ */
-/* 当前默认 dark，预留 light 主题接口 */
+/* ============ 主题变体 (data-theme 仅用于 CSS 选择器) ============ */
+/* 实际颜色由 JS 在 :root 上注入 CSS 变量 */
 @custom-variant dark (&:where([data-theme='dark'] *));
 
 /* ============ 全局基础样式 ============ */
@@ -111,14 +121,14 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #424242;
+  background: var(--color-bg-scrollbar);
   border-radius: 5px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4f4f4f;
+  background: var(--color-bg-scrollbar-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -237,6 +247,81 @@ body {
 
 .animate-led-pulse {
   animation: led-pulse 1.5s ease-in-out infinite;
+}
+
+/* ============ Context Menu 右键菜单 ============ */
+.context-menu {
+  background: var(--color-bg-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-default);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  padding: var(--spacing-1) 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-width: 320px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  user-select: none;
+  outline: none;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  margin: 0 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease;
+}
+
+.context-menu-item:hover:not(:disabled) {
+  background: var(--color-bg-active);
+  color: var(--color-text-bright);
+}
+
+.context-menu-item:disabled,
+.context-menu-item.disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.context-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.context-menu-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-menu-shortcut {
+  margin-left: 16px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  flex-shrink: 0;
+}
+
+.context-menu-item:hover:not(:disabled) .context-menu-shortcut {
+  color: var(--color-text-bright);
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: var(--color-border);
+  margin: 4px 8px;
 }
 
 /* ============ Form 通用样式 ============ */
@@ -442,6 +527,12 @@ body {
 
 .waveform-container .u-select {
   background: rgba(117, 190, 255, 0.15) !important;
+}
+
+/* 节点标题 */
+.node-header {
+  background: var(--color-bg-node-header);
+  border-color: var(--color-border-node-header);
 }
 
 .waveform-container.cursor-hidden .u-cursor-x,

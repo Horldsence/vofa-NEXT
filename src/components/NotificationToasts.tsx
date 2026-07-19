@@ -128,7 +128,7 @@ function ToastItem({ notif, lang, onDismiss }: ToastItemProps) {
             {notif.actions.map((a, i) => (
               <button
                 key={i}
-                className="bg-bg-button text-text-bright border-none rounded-sm px-2.5 py-0.5 text-xs cursor-pointer transition-colors hover:bg-bg-button-hover"
+                className="bg-bg-button text-text-inverse border-none rounded-sm px-2.5 py-0.5 text-xs cursor-pointer transition-colors hover:bg-bg-button-hover"
                 onClick={() => handleAction(a.run)}
               >
                 {a.label}

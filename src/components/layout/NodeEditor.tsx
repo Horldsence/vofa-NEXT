@@ -14,10 +14,12 @@ import {
 import '@xyflow/react/dist/style.css';
 import { useAppStore, createWidget } from '../../store/appStore';
 import { t } from '../../i18n';
+import { useContextMenu } from '../../lib/useContextMenu';
 import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
 import { WidgetNode } from '../nodes/WidgetNode';
+import { Maximize, LayoutGrid } from 'lucide-react';
 
 interface NodeEditorProps {
   tabId: string;
@@ -52,8 +54,31 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   const onEdgesChange = useAppStore((s) => s.onEdgesChange);
   const onConnect = useAppStore((s) => s.onConnect);
   const addWidget = useAppStore((s) => s.addWidget);
+  const setSidebarView = useAppStore((s) => s.setSidebarView);
   const reactFlow = useReactFlow();
   const [isDragOver, setIsDragOver] = useState(false);
+
+  const onCanvasContextMenu = useContextMenu([
+    {
+      id: 'fit-view',
+      label: t(lang, 'fitView'),
+      icon: <Maximize />,
+      onClick: () => reactFlow.fitView({ padding: 0.2 }),
+    },
+    {
+      id: 'reset-zoom',
+      label: t(lang, 'resetZoom'),
+      icon: <Maximize />,
+      onClick: () => reactFlow.zoomTo(1),
+    },
+    { kind: 'separator' },
+    {
+      id: 'open-widget-palette',
+      label: t(lang, 'widgetPalette'),
+      icon: <LayoutGrid />,
+      onClick: () => setSidebarView('widgets'),
+    },
+  ]);
 
   // React Flow 容器引用 — 仅用于视觉反馈 (drag-over 高亮)
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -134,6 +159,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     <div
       className={`absolute inset-0 bg-bg-editor overflow-hidden node-editor-rf${isDragOver ? ' drag-over' : ''}`}
       ref={wrapperRef}
+      onContextMenu={onCanvasContextMenu}
     >
       <ReactFlow
         nodes={tabNodes}

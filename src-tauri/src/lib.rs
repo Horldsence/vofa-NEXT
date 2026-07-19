@@ -77,6 +77,10 @@ pub fn run() {
             commands::clear_buffer,
             commands::set_buffer_channels,
             commands::get_buffer_info,
+            commands::set_waveform_buffer_capacity,
+            commands::set_rawdata_buffer_capacity,
+            commands::set_can_buffer_capacity,
+            commands::set_logic_buffer_capacity,
             // 节点图 (后端化重构)
             commands::update_tab_graph,
             commands::remove_tab_graph,
@@ -89,6 +93,10 @@ pub fn run() {
             commands::unsubscribe_custom_inputs,
             commands::unsubscribe_spectrum,
             commands::unsubscribe_waveform,
+            // 原始数据
+            commands::subscribe_rawdata,
+            commands::unsubscribe_rawdata,
+            commands::clear_raw_data_collector,
             // CAN 帧
             commands::send_can_frame,
             commands::subscribe_can_frames,

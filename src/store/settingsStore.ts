@@ -11,6 +11,10 @@ import {
   deepMergeSettings,
 } from '../settings/defaults';
 import { applyAppearance } from '../settings/applyTheme';
+import { api } from '../lib/tauri';
+import { rawDataBuffer } from '../lib/dataBuffer';
+import { canFrameBuffer } from '../lib/canBuffer';
+import { logicSampleBuffer } from '../lib/logicBuffer';
 
 const STORE_FILE = 'settings.json';
 const STORE_KEY = 'app';
@@ -50,6 +54,28 @@ interface SettingsStore {
   resetCategory: (category: keyof AppSettings) => void;
 }
 
+/// 将 data 分类的缓存容量设置同步到后端与前端 buffer 实例
+function applyDataCapacity(settings: AppSettings) {
+  const data = settings.data;
+  api.setWaveformBufferCapacity(data.waveformBufferPoints).catch((e: unknown) =>
+    console.warn('[settings] 设置波形缓冲区容量失败:', e)
+  );
+  api.setRawDataBufferCapacity(data.rawDataBufferBytes).catch((e: unknown) =>
+    console.warn('[settings] 设置原始数据缓冲区容量失败:', e)
+  );
+  api.setCanBufferCapacity(data.canBufferFrames).catch((e: unknown) =>
+    console.warn('[settings] 设置 CAN 缓冲区容量失败:', e)
+  );
+  api.setLogicBufferCapacity(data.logicBufferSamples).catch((e: unknown) =>
+    console.warn('[settings] 设置逻辑缓冲区容量失败:', e)
+  );
+
+  // 前端 buffer 实例同步容量 (后端容量调整不自动影响前端缓存)
+  rawDataBuffer.setCapacity(data.rawDataBufferBytes);
+  canFrameBuffer.setCapacity(data.canBufferFrames);
+  logicSampleBuffer.setCapacity(data.logicBufferSamples);
+}
+
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   isOpen: false,
@@ -78,14 +104,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         const merged = deepMergeSettings(DEFAULT_SETTINGS, raw);
         set({ settings: merged, loaded: true });
         applyAppearance(merged.appearance);
+        applyDataCapacity(merged);
       } else {
         set({ loaded: true });
         applyAppearance(DEFAULT_SETTINGS.appearance);
+        applyDataCapacity(DEFAULT_SETTINGS);
       }
     } catch (e) {
       console.warn('[settings] 加载失败, 使用默认值:', e);
       set({ loaded: true });
       applyAppearance(DEFAULT_SETTINGS.appearance);
+      applyDataCapacity(DEFAULT_SETTINGS);
     }
   },
 
@@ -109,6 +138,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       if (category === 'appearance') {
         applyAppearance(newSettings.appearance);
       }
+      // 立即应用 data 缓存容量变更
+      if (category === 'data') {
+        applyDataCapacity(newSettings);
+      }
       return { settings: newSettings };
     });
   },
@@ -116,6 +149,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   reset: () => {
     set({ settings: DEFAULT_SETTINGS });
     applyAppearance(DEFAULT_SETTINGS.appearance);
+    applyDataCapacity(DEFAULT_SETTINGS);
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       getStore()
@@ -133,6 +167,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }));
     const { settings } = get();
     if (category === 'appearance') applyAppearance(settings.appearance);
+    if (category === 'data') applyDataCapacity(settings);
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       getStore()

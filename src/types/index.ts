@@ -1,3 +1,5 @@
+import type { ReactElement } from 'react';
+
 // ============ 传输层类型 ============
 
 export type ConnectionState = 'Disconnected' | 'Connecting' | 'Connected' | 'Error';
@@ -81,6 +83,21 @@ export interface DataFrame {
 export interface RawData {
   timestamp: number;
   data: number[];
+}
+
+/// 原始数据分片 — 与 Rust RawDataChunk 对应
+export interface RawDataChunk {
+  /// 微秒时间戳
+  timestamp_us: number;
+  /// 数据字节
+  bytes: number[];
+}
+
+/// 原始数据批次 — 与 Rust RawDataBatch 对应
+export interface RawDataBatch {
+  chunks: RawDataChunk[];
+  total_bytes: number;
+  dropped_bytes: number;
 }
 
 // ============ 控件绑定 ============
@@ -695,6 +712,10 @@ export interface WaveformWindow {
   /// 派生通道数据 (Math/Filter 等节点的输出, 作为 Waveform sink 的输入)
   /// key1 = sink_widget_id, key2 = source_widget_id, value = 与 timestamps 对齐的数据
   derived?: Record<string, Record<string, number[]>>;
+  /// 后端波形缓冲区当前点数
+  buffer_points?: number;
+  /// 后端波形缓冲区最大容量 (点)
+  buffer_capacity?: number;
 }
 
 // ============ 示波器风格轴配置 ============
@@ -896,3 +917,20 @@ export interface DataTab {
   widgetId?: string;
   closable: boolean;
 }
+
+// ============ 右键菜单 ============
+
+export interface ContextMenuItem {
+  id: string;
+  label: string;
+  icon?: ReactElement<{ size?: number; className?: string }>;
+  disabled?: boolean;
+  shortcut?: string;
+  onClick: () => void;
+}
+
+export interface ContextMenuSeparator {
+  kind: 'separator';
+}
+
+export type ContextMenuEntry = ContextMenuItem | ContextMenuSeparator;

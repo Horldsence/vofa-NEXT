@@ -101,7 +101,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
 
         <div className="flex justify-center w-full">
           <button
-            className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover"
+            className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover"
             onClick={onClose}
           >
             {t(lang, 'aboutClose')}

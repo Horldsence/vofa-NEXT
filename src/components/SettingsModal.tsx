@@ -6,7 +6,7 @@
 //! - 底部 Reset / Done 按钮
 //! - ESC 关闭, 点击遮罩关闭
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   X,
   Search,
@@ -18,17 +18,22 @@ import {
   Usb,
   Bell,
   Type,
+  Database,
+  Pencil,
 } from 'lucide-react';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAppStore } from '../store/appStore';
 import { t } from '../i18n';
 import type { Lang } from '../i18n';
 import type { AppSettings } from '../settings/defaults';
+import { ThemeEditor } from './ThemeEditor';
+import { BUILT_IN_THEMES, type ThemeDefinition } from '../settings/theme';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   general: <SettingsIcon size={16} />,
   appearance: <Palette size={16} />,
   editor: <Sliders size={16} />,
+  data: <Database size={16} />,
   serial: <Usb size={16} />,
   notifications: <Bell size={16} />,
 };
@@ -37,6 +42,7 @@ const CATEGORY_LABEL_KEY: Record<keyof AppSettings, string> = {
   general: 'settingsGeneral',
   appearance: 'settingsAppearance',
   editor: 'settingsEditor',
+  data: 'settingsData',
   serial: 'settingsSerial',
   notifications: 'settingsNotifications',
 };
@@ -45,7 +51,8 @@ type ControlType =
   | { kind: 'select'; options: { value: string | number; label: string }[] }
   | { kind: 'toggle' }
   | { kind: 'number'; min?: number; max?: number; step?: number }
-  | { kind: 'text' };
+  | { kind: 'text' }
+  | { kind: 'theme' };
 
 interface SettingFieldDef {
   category: keyof AppSettings;
@@ -87,19 +94,27 @@ const SETTING_FIELDS: SettingFieldDef[] = [
     descKey: 'settingConfirmBeforeQuitDesc',
     control: { kind: 'toggle' },
   },
+  {
+    category: 'general',
+    field: 'showOnboarding',
+    labelKey: 'settingShowOnboarding',
+    descKey: 'settingShowOnboardingDesc',
+    control: { kind: 'toggle' },
+  },
+  {
+    category: 'general',
+    field: 'showContextualTips',
+    labelKey: 'settingShowContextualTips',
+    descKey: 'settingShowContextualTipsDesc',
+    control: { kind: 'toggle' },
+  },
   // Appearance
   {
     category: 'appearance',
     field: 'theme',
     labelKey: 'settingTheme',
     descKey: 'settingThemeDesc',
-    control: {
-      kind: 'select',
-      options: [
-        { value: 'dark', label: 'Dark' },
-        { value: 'light', label: 'Light (TODO)' },
-      ],
-    },
+    control: { kind: 'theme' },
   },
   {
     category: 'appearance',
@@ -146,13 +161,6 @@ const SETTING_FIELDS: SettingFieldDef[] = [
   // Editor
   {
     category: 'editor',
-    field: 'waveformMaxPoints',
-    labelKey: 'settingWaveformMaxPoints',
-    descKey: 'settingWaveformMaxPointsDesc',
-    control: { kind: 'number', min: 1000, max: 1000000, step: 1000 },
-  },
-  {
-    category: 'editor',
     field: 'waveformFps',
     labelKey: 'settingWaveformFps',
     descKey: 'settingWaveformFpsDesc',
@@ -178,6 +186,35 @@ const SETTING_FIELDS: SettingFieldDef[] = [
     labelKey: 'settingGridVisible',
     descKey: 'settingGridVisibleDesc',
     control: { kind: 'toggle' },
+  },
+  // Data
+  {
+    category: 'data',
+    field: 'waveformBufferPoints',
+    labelKey: 'settingWaveformBufferPoints',
+    descKey: 'settingWaveformBufferPointsDesc',
+    control: { kind: 'number', min: 1000, max: 1_000_000, step: 1000 },
+  },
+  {
+    category: 'data',
+    field: 'rawDataBufferBytes',
+    labelKey: 'settingRawDataBufferBytes',
+    descKey: 'settingRawDataBufferBytesDesc',
+    control: { kind: 'number', min: 65536, max: 16_777_216, step: 65536 },
+  },
+  {
+    category: 'data',
+    field: 'canBufferFrames',
+    labelKey: 'settingCanBufferFrames',
+    descKey: 'settingCanBufferFramesDesc',
+    control: { kind: 'number', min: 1000, max: 500_000, step: 1000 },
+  },
+  {
+    category: 'data',
+    field: 'logicBufferSamples',
+    labelKey: 'settingLogicBufferSamples',
+    descKey: 'settingLogicBufferSamplesDesc',
+    control: { kind: 'number', min: 1000, max: 500_000, step: 1000 },
   },
   // Serial
   {
@@ -304,6 +341,7 @@ export function SettingsModal() {
   const update = useSettingsStore((s) => s.update);
   const reset = useSettingsStore((s) => s.reset);
   const resetCategory = useSettingsStore((s) => s.resetCategory);
+  const [themeEditorOpen, setThemeEditorOpen] = useState(false);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -425,6 +463,41 @@ export function SettingsModal() {
             onChange={(e) => handleChange(e.target.value)}
           />
         );
+      case 'theme': {
+        const themeOptions = [
+          ...BUILT_IN_THEMES.map((t) => ({ value: t.id, label: t.name })),
+          ...settings.appearance.customThemes.map((t: ThemeDefinition) => ({
+            value: t.id,
+            label: t.name,
+          })),
+        ];
+        return (
+          <div className="flex items-center gap-2 min-w-[220px]">
+            <select
+              className="flex-1 px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors cursor-pointer"
+              value={String(value)}
+              onChange={(e) => {
+                const opt = themeOptions.find((o) => o.value === e.target.value);
+                if (opt) handleChange(opt.value);
+              }}
+            >
+              {themeOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <button
+              className="px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm hover:bg-bg-hover hover:text-text-bright transition-colors cursor-pointer inline-flex items-center gap-1"
+              onClick={() => setThemeEditorOpen(true)}
+              title={t(lang, 'themeEdit')}
+            >
+              <Pencil size={12} />
+              <span>{t(lang, 'themeEdit')}</span>
+            </button>
+          </div>
+        );
+      }
     }
   };
 
@@ -530,12 +603,32 @@ export function SettingsModal() {
         {/* 底部 — 完成按钮 */}
         <div className="flex items-center px-4 py-2.5 border-t border-border bg-bg-panel-header flex-shrink-0">
           <div className="flex-1" />
-          <button className="bg-bg-button text-text-bright border-none py-1.5 px-4 text-sm font-ui cursor-pointer rounded inline-flex items-center gap-1.5 transition-colors hover:bg-bg-button-hover" onClick={close}>
+          <button className="bg-bg-button text-text-inverse border-none py-1.5 px-4 text-sm font-ui cursor-pointer rounded inline-flex items-center gap-1.5 transition-colors hover:bg-bg-button-hover" onClick={close}>
             <Check size={14} />
             <span>{t(lang, 'settingsDone')}</span>
           </button>
         </div>
       </div>
+      <ThemeEditor
+        isOpen={themeEditorOpen}
+        onClose={() => setThemeEditorOpen(false)}
+        themes={settings.appearance.customThemes}
+        onThemesChange={(themes) =>
+          (update as (c: keyof AppSettings, f: string, v: unknown) => void)(
+            'appearance',
+            'customThemes',
+            themes
+          )
+        }
+        activeThemeId={String(settings.appearance.theme)}
+        onActiveThemeChange={(id) =>
+          (update as (c: keyof AppSettings, f: string, v: unknown) => void)(
+            'appearance',
+            'theme',
+            id
+          )
+        }
+      />
     </div>
   );
 }

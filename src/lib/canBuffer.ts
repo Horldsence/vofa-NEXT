@@ -16,7 +16,7 @@ class CanFrameBuffer {
   /// 状态栏订阅: 缓存使用量 (0-1) + 长度
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
 
-  constructor(capacity = 5000) {
+  constructor(capacity = 100_000) {
     this._capacity = capacity;
   }
 
@@ -30,6 +30,12 @@ class CanFrameBuffer {
     }
     this._version++;
     this.scheduleNotify();
+  }
+
+  /// 按索引获取一帧 (0 = 最旧, length-1 = 最新)
+  getFrame(index: number): CanFrame | undefined {
+    if (index < 0 || index >= this.frames.length) return undefined;
+    return this.frames[index];
   }
 
   /// 获取最近 N 帧 (返回顺序: 旧→新)
@@ -65,6 +71,20 @@ class CanFrameBuffer {
     return this._capacity;
   }
 
+  /// 设置容量并裁剪超额数据
+  setCapacity(capacity: number) {
+    this._capacity = Math.max(1, capacity);
+    if (this.frames.length > this._capacity) {
+      this.frames.splice(0, this.frames.length - this._capacity);
+      this._version++;
+      this.lastSnapshot = [];
+      this.lastSnapshotCount = -1;
+      this.scheduleNotify();
+    }
+    // 容量变化时立即刷新 stats
+    this.flushNotify();
+  }
+
   get version(): number {
     return this._version;
   }
@@ -96,10 +116,9 @@ class CanFrameBuffer {
 
   private flushNotify() {
     const count = this.frames.length;
-    // 引用稳定化: 如果长度未变 (例如 clear 后又 push 等量数据), 复用上一次快照
-    // 但 version 变化时仍需通知, 这里用长度作为快速判断
+    // 引用稳定化: 如果长度未变, 复用上一次快照, 避免 React 浅比较失效
     if (count !== this.lastSnapshotCount) {
-      this.lastSnapshot = this.getRecent(200);
+      this.lastSnapshot = this.frames.slice();
       this.lastSnapshotCount = count;
     }
     const snapshot = this.lastSnapshot;

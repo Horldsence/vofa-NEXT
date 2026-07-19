@@ -64,7 +64,7 @@ export function AxisSettings({
       {/* 左侧竖排通道 Tab */}
       <div className="flex-none w-14 flex flex-col gap-[1px] py-1 bg-bg-panel-header border-r border-border overflow-y-auto">
         <button
-          className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === 'all' ? 'bg-bg-active text-text-bright border-l-text-bright' : 'text-text-secondary'}`}
+          className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === 'all' ? 'bg-bg-active text-text-bright border-l-accent' : 'text-text-secondary'}`}
           onClick={() => setActiveTab('all')}
           title={t(lang, 'channels')}
         >
@@ -73,7 +73,7 @@ export function AxisSettings({
         {channels.map((ch, idx) => (
           <button
             key={idx}
-            className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === `ch${idx}` ? 'bg-bg-active text-text-bright border-l-text-bright' : 'text-text-secondary'} ${!ch.show ? 'opacity-50' : ''}`}
+            className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === `ch${idx}` ? 'bg-bg-active text-text-bright border-l-accent' : 'text-text-secondary'} ${!ch.show ? 'opacity-50' : ''}`}
             onClick={() => setActiveTab(`ch${idx}` as TabId)}
             title={`CH${idx}`}
           >

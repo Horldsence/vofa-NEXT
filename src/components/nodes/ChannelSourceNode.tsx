@@ -20,14 +20,14 @@ export function ChannelSourceNode({ data }: NodeProps) {
 
   return (
     <div className="bg-gradient-to-br from-[#1a3a5c] to-[#2a5a8c] border border-accent rounded-md min-w-[140px] p-0 shadow-[0_2px_8px_rgba(0,0,0,0.4)] text-[11px]">
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[rgba(255,255,255,0.06)] border-b border-[rgba(255,255,255,0.1)] rounded-t-md text-[10px] font-semibold text-text-bright uppercase tracking-[0.4px]">
+      <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-bg-node-header border-b border-border-node-header rounded-t-md text-[10px] font-semibold text-text-inverse uppercase tracking-[0.4px]">
         <RadioIcon size={12} />
         <span>{label}</span>
       </div>
       <div className="flex flex-col gap-1 px-2.5 py-1.5">
         {Array.from({ length: channelCount }, (_, i) => (
           <div key={i} className="flex items-center justify-between gap-2 relative">
-            <span className="font-mono text-[10px] text-text-bright">ch{i}</span>
+            <span className="font-mono text-[10px] text-text-inverse">ch{i}</span>
             <Handle
               type="source"
               position={Position.Right}

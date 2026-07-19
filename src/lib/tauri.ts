@@ -9,6 +9,7 @@ import type {
   WaveformWindow,
 } from '../types';
 import type { NodeDef, GraphEdge } from './nodeDef';
+import { clearRawDataBuffer } from './rawDataSubscription';
 
 /// 关闭 Tauri Channel 的完整流程:
 /// 1. 调用后端 unsubscribe 命令, 从订阅者列表移除 (停止 send)
@@ -113,6 +114,21 @@ export const api = {
     invoke<void>('set_buffer_channels', { count }),
 
   getBufferInfo: () => invoke<[number, number]>('get_buffer_info'),
+
+  setWaveformBufferCapacity: (maxPoints: number) =>
+    invoke<void>('set_waveform_buffer_capacity', { maxPoints }),
+
+  setRawDataBufferCapacity: (capacity: number) =>
+    invoke<void>('set_rawdata_buffer_capacity', { capacity }),
+
+  setCanBufferCapacity: (capacity: number) =>
+    invoke<void>('set_can_buffer_capacity', { capacity }),
+
+  setLogicBufferCapacity: (capacity: number) =>
+    invoke<void>('set_logic_buffer_capacity', { capacity }),
+
+  /// 清空后端原始数据收集器
+  clearRawDataBuffer: () => clearRawDataBuffer(),
 
   // ===== 节点图 (后端化重构) =====
   /// 更新指定 tab 的节点图 (整体替换 nodes + edges)

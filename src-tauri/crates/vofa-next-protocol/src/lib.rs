@@ -17,6 +17,10 @@ pub use slcan::SlcanEngine;
 use vofa_next_core::ProtocolConfig;
 
 /// 根据配置创建协议引擎
+///
+/// 注意:`Diagnostic` 变体返回 `RawDataEngine` 占位 — 诊断流程走独立的
+/// `DiagnosticEngine` + `BridgeCanBackend` 管线,不通过 `ProtocolEngine` 的
+/// feed/encode 通路。真正的诊断 dispatch 在 `state.rs` 中实现 (后续 Phase)。
 pub fn create_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
     match config {
         ProtocolConfig::JustFloat { channels } => Box::new(JustFloatEngine::new(*channels)),
@@ -27,5 +31,6 @@ pub fn create_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
         ProtocolConfig::LogicDecode { decoder } => {
             Box::new(LogicDecoderEngine::new(decoder.clone()))
         }
+        ProtocolConfig::Diagnostic { .. } => Box::new(RawDataEngine::new()),
     }
 }

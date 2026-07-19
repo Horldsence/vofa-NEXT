@@ -43,7 +43,7 @@ export function ButtonWidget({ widget, onRemove }: ButtonWidgetProps) {
       <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{label}</div>
       <button
         className={clsx(
-          "px-4 py-2 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors",
+          "px-4 py-2 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors",
           pressed && "bg-bg-button-hover"
         )}
         onPointerDown={handleDown}

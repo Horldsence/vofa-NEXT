@@ -140,6 +140,12 @@ channelVisible: 通道可见
 noSignal: 暂无信号
 
 # 原始数据扩展
+rawBuffer: Raw
+copySelected: 复制选中
+copySelection: 复制选中数据
+exportSelection: 导出选中数据
+clearSelection: 清除选择
+rawDataDropped: 部分原始数据已被丢弃
 showTimestamp: 时间戳
 showOffset: 地址偏移
 appendNone: 无
@@ -178,6 +184,20 @@ emptyWaveform: 波形图为空, 请连接输入通道
 # 底部面板
 bottomPanel: 底部面板
 aiChat: AI 对话
+
+# 右键菜单
+contextMenuCopy: 复制
+contextMenuPaste: 粘贴
+contextMenuSelectAll: 全选
+contextMenuDelete: 删除
+contextMenuRename: 重命名
+contextMenuDuplicate: 复制
+contextMenuCloseTab: 关闭标签页
+contextMenuCloseOtherTabs: 关闭其他标签页
+contextMenuHideSidebar: 隐藏侧边栏
+contextMenuShowSidebar: 显示侧边栏
+fitView: 适应视图
+resetZoom: 重置缩放
 
 # 波形时间轴
 timeWindow: 时间窗口
@@ -245,6 +265,7 @@ settingsClose: 关闭
 settingsGeneral: 通用
 settingsAppearance: 外观
 settingsEditor: 编辑器
+settingsData: 数据缓存
 settingsSerial: 串口默认值
 settingsNotifications: 通知
 settingsAbout: 关于
@@ -256,10 +277,32 @@ settingAutoConnectOnStart: 启动时自动连接
 settingAutoConnectOnStartDesc: 应用启动时自动尝试连接上次使用的传输配置
 settingConfirmBeforeQuit: 退出前确认
 settingConfirmBeforeQuitDesc: 关闭窗口时弹出确认对话框
+settingShowOnboarding: 显示使用引导
+settingShowOnboardingDesc: 应用首次启动时自动显示使用引导
+settingShowContextualTips: 显示内部提示
+settingShowContextualTipsDesc: 在 CAN / 逻辑分析仪等视图中显示操作提示
 
 # 设置项 - Appearance
 settingTheme: 主题
-settingThemeDesc: 应用配色方案 (浅色主题暂未实现)
+settingThemeDesc: 应用配色方案
+settingThemeEdit: 编辑主题
+
+# 主题编辑器
+themeEditor: 主题编辑器
+themeEditorClose: 关闭
+themeList: 主题列表
+themeAdd: 新建主题
+themeRename: 重命名
+themeDuplicate: 复制
+themeDelete: 删除
+themeImport: 导入
+themeExport: 导出
+themeReset: 重置为默认
+themeBuiltInReadOnly: 内置主题只读, 点击“复制”创建自定义主题。
+themeActivePreview: 当前为激活主题, 修改会实时预览。
+themeClickToPreview: 点击下方“激活”按钮预览此主题。
+themeActivate: 激活主题
+themeEdit: 编辑主题
 settingUiFontFamily: UI 字体
 settingUiFontFamilyDesc: 界面文字使用的字体族
 settingUiFontSize: UI 字号
@@ -274,16 +317,24 @@ settingActivityBarVisible: 显示活动栏
 settingActivityBarVisibleDesc: 在窗口左侧显示活动栏
 
 # 设置项 - Editor
-settingWaveformMaxPoints: 波形最大点数
-settingWaveformMaxPointsDesc: 单通道缓存的最大数据点数
 settingWaveformFps: 波形刷新率
 settingWaveformFpsDesc: 波形图刷新频率 (FPS)
 settingScopeDefaultTimeBase: 默认时基
-settingScopeDefaultTimeBaseDesc: 新建波形图的默认时基 (秒/格)
-settingScopeDefaultVPerDiv: 默认 V/格
+settingScopeDefaultTimeBaseDesc: 新建波形图的默认水平时基
+settingScopeDefaultVPerDiv: 默认垂直档位
 settingScopeDefaultVPerDivDesc: 新建波形图的默认垂直档位
 settingGridVisible: 默认显示网格
 settingGridVisibleDesc: 新建波形图是否默认显示网格
+
+# 设置项 - Data Cache
+settingWaveformBufferPoints: 波形缓存点数
+settingWaveformBufferPointsDesc: 每个通道可保留的最大波形点数
+settingRawDataBufferBytes: 原始数据缓存字节数
+settingRawDataBufferBytesDesc: 原始数据视图可保留的最大字节数
+settingCanBufferFrames: CAN 帧缓存帧数
+settingCanBufferFramesDesc: CAN 视图可保留的最大帧数
+settingLogicBufferSamples: 逻辑采样缓存采样数
+settingLogicBufferSamplesDesc: 逻辑分析仪可保留的最大采样数
 
 # 设置项 - Serial
 settingDefaultBaudRate: 默认波特率
@@ -516,6 +567,100 @@ helpSecuritySandbox: 沙箱隔离, 无法访问父窗口 DOM 与 cookie
 helpSecurityNoDom: 不能修改父应用界面, 只能操作 ctx.el 内的元素
 helpSecurityPostMessage: 与父应用通过 postMessage 通信, 仅支持 ctx 提供的 API
 helpSecurityError: 代码异常会被捕获并显示在编辑器错误区, 不会崩溃主应用
+
+# 使用引导
+onboardingTitle: 欢迎使用引导
+onboardingStep: 步骤
+onboardingNext: 下一步
+onboardingPrev: 上一步
+onboardingSkip: 跳过
+onboardingFinish: 完成
+helpCenterTitle: 帮助中心
+helpCenterOpen: 打开帮助中心
+dismissTip: 关闭提示
+canHintTitle: CAN 帧分析需要 CAN 协议
+canHintMessage: 当前协议引擎不是 CAN 协议。请先在“协议引擎”中选择 Slcan 或 CandleLight，并连接支持 CAN 的硬件。
+canHintAction: 打开协议引擎
+logicHintTitle: 逻辑分析仪需要 LogicDecode 协议
+logicHintMessage: 当前协议引擎不是 LogicDecode。请先在“协议引擎”中切换到 LogicDecode，以采集并解码数字信号。
+logicHintAction: 打开协议引擎
+
+# 高亮引导
+tourStep: 步骤
+tourNext: 下一步
+tourPrev: 上一步
+tourSkip: 跳过
+tourFinish: 完成
+tourWelcomeTitle: 欢迎使用 Vofa Next
+tourWelcomeContent: 本引导将带你快速熟悉核心操作。高亮区域是当前要介绍的功能，点击“下一步”继续；随时可点击右上角跳过。
+tourTransportTitle: 数据接口
+tourTransportContent: 从这里选择串口、CAN、UDP/TCP 或测试数据，并配置端口、波特率等参数。配置好后点击“连接”。
+tourProtocolTitle: 协议引擎
+tourProtocolContent: 根据设备选择解析协议：JustFloat / FireWater 用于通用波形，Slcan / CandleLight 用于 CAN 总线，LogicDecode 用于逻辑分析仪，RawData 仅显示原始字节。
+tourWidgetsTitle: 控件面板
+tourWidgetsContent: 拖拽旋钮、按钮、波形图、仪表盘等控件到上方画布，构建你的交互界面。控件之间可以连线传递数据。
+tourConnectTitle: 连接设备
+tourConnectContent: 参数配置完成后，点击这里的“连接”按钮开始接收数据。连接状态会在底部状态栏显示。
+tourDataTitle: 数据显示区
+tourDataContent: 底部会显示波形、原始数据、CAN 帧、逻辑分析仪等 Tab。点击右侧的 CPU / 电路板图标可新增 CAN 或逻辑分析仪页面。
+tourHelpTitle: 帮助中心
+tourHelpContent: 任何时候点击左下角的帮助图标，都可以重新打开帮助中心或本引导。你也能在设置中关闭使用引导。
+
+# 帮助中心章节
+helpCenterQuickStart: 快速入门
+helpCenterQuickStartDesc: 从连接到查看数据，只需几个步骤。
+helpCenterQuickStartSteps: |-
+  在左侧“数据接口”选择串口/CAN/UDP/TCP 或测试数据，配置参数后点击连接
+  在“协议引擎”选择与设备匹配的协议（如 JustFloat / FireWater / CAN / LogicDecode）
+  在“控件面板”拖拽控件到画布，自动从通道源或上游控件连线
+  底部“数据”区会显示波形、原始数据、CAN 帧、逻辑分析仪等 Tab
+  点击左下角帮助图标可随时查看本帮助中心
+helpTransport: 数据接口
+helpTransportDesc: 配置设备与上位机之间的物理连接。
+helpTransportSteps: |-
+  串口：选择端口、波特率、数据位/校验/停止位，点击“连接”
+  CAN：选择 Slcan（串口转 CAN）或 CandleLight（原生 USB），配置波特率
+  网络：UDP 或 TCP 客户端/服务端，填写本地/远端地址与端口
+  测试数据：不连接硬件，使用内置信号发生器验证波形与控件
+helpProtocol: 协议引擎
+helpProtocolDesc: 将原始字节流解析为通道数据、CAN 帧或逻辑采样。
+helpProtocolSteps: |-
+  JustFloat / FireWater：通用浮点协议，可自动检测或手动指定通道数
+  RawData：不做解析，直接显示原始字节流
+  Slcan / CandleLight：CAN 协议，解析为 CAN 帧并在 CAN Tab 显示
+  LogicDecode：逻辑分析仪协议，采集数字通道并支持协议解码
+helpWidgets: 控件与节点编辑器
+helpWidgetsDesc: 通过拖拽和连线构建数据流。
+helpWidgetsSteps: |-
+  从左侧“控件面板”拖拽控件（旋钮、按钮、仪表盘、波形图等）到上方画布
+  每个控件即一个节点，可连接“通道源”或其他控件的输入/输出
+  双击或右键控件可修改参数、标签、绑定关系
+  使用 Knob/Slider/Button 等输入控件可向设备发送数据
+  Waveform/PieChart/Spectrum 等显示控件会自动创建底部数据 Tab
+helpCan: CAN 帧分析
+helpCanDesc: 接收、过滤、发送和分析 CAN 总线数据。
+helpCanSteps: |-
+  协议引擎需设置为 Slcan 或 CandleLight 并连接硬件
+  点击底部“+”添加 CAN 帧 Tab，或在顶部菜单打开
+  在“帧列表”查看实时 CAN 帧，支持按 ID / 方向过滤、选中复制、导出 CSV
+  在“CAN 发送器”手动构造帧并发送
+  在“总线活动”查看各 ID 的收发统计
+helpLogic: 逻辑分析仪
+helpLogicDesc: 采集多路数字信号并查看时序与解码事件。
+helpLogicSteps: |-
+  协议引擎需设置为 LogicDecode
+  点击底部“+”添加逻辑分析仪 Tab
+  “时序图”显示各通道数字波形，可缩放与自动滚动
+  “解码事件”列出协议解码结果，支持导出
+  采样率与通道数由后端根据硬件配置决定
+helpCustom: 自定义控件
+helpCustomDesc: 使用 JavaScript 创建专属显示或交互控件。
+helpCustomSteps: |-
+  在控件面板添加 Custom 控件，打开编辑器
+  返回包含 name / inputs / outputs / settings / render 的对象
+  render 函数通过 ctx.inputs / ctx.settings 读取数据并操作 ctx.el
+  使用 ctx.send 向下游输出端口发送值
+  自定义脚本在 iframe 沙箱中运行，受安全限制，首次使用会显示性能警告
 
 # CAN
 canFrames: CAN 帧

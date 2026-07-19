@@ -552,7 +552,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
         {/* 发送 */}
         <button
-          className="justify-center px-4 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+          className="justify-center px-4 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
           onClick={handleSend}
           disabled={!computed.bytes || computed.bytes.length === 0 || !!computed.error}
         >
@@ -588,7 +588,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
           <div className="grid grid-cols-[80px_1fr] items-center gap-2">
             <label className="text-xs text-text-secondary">{t(lang, 'cmdAppendNewline')}</label>
             <button
-              className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${params.appendNewline ? 'bg-bg-button text-text-bright border-bg-button' : ''}`}
+              className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${params.appendNewline ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
               onClick={() => updateParams({ appendNewline: !params.appendNewline })}
             >
               {params.appendNewline ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}

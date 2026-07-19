@@ -11,7 +11,7 @@ pub mod graph;
 pub use graph::{Edge, NodeGraph, RoutedData};
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use vofa_next_core::DataFrame;
 
 /// 泛型环形缓冲区 — 固定容量, 覆盖最旧数据
@@ -122,14 +122,130 @@ pub struct WaveformWindow {
     /// key1 = sink_widget_id, key2 = source_widget_id, value = 与 timestamps 对齐的数据
     #[serde(default)]
     pub derived: HashMap<String, HashMap<String, Vec<f32>>>,
+    /// 后端波形缓冲区当前点数 (用于状态栏显示缓存使用率)
+    #[serde(default)]
+    pub buffer_points: usize,
+    /// 后端波形缓冲区最大容量 (点)
+    #[serde(default)]
+    pub buffer_capacity: usize,
+}
+
+/// 原始数据块
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RawDataChunk {
+    pub timestamp_us: u64,
+    pub bytes: Vec<u8>,
 }
 
 /// 原始数据批次
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawDataBatch {
-    pub timestamp: u64,
-    pub data: Vec<u8>,
+    pub chunks: Vec<RawDataChunk>,
     pub total_bytes: u64,
+    pub dropped_bytes: u64,
+}
+
+/// 原始数据收集器 — 固定容量, 超过时丢弃最旧块
+#[derive(Debug, Clone)]
+pub struct RawDataCollector {
+    chunks: VecDeque<RawDataChunk>,
+    capacity: usize,
+    total_bytes: u64,
+    dropped_bytes: u64,
+}
+
+impl RawDataCollector {
+    /// 默认容量: 1 MiB
+    pub const DEFAULT_CAPACITY: usize = 1_048_576;
+
+    /// 使用默认容量创建
+    pub fn new() -> Self {
+        Self::with_capacity(Self::DEFAULT_CAPACITY)
+    }
+
+    /// 使用指定容量创建
+    pub fn with_capacity(capacity: usize) -> Self {
+        let cap = capacity.max(1);
+        Self {
+            chunks: VecDeque::new(),
+            capacity: cap,
+            total_bytes: 0,
+            dropped_bytes: 0,
+        }
+    }
+
+    /// 推入一块原始数据; 若超出容量则丢弃最旧块
+    pub fn push_chunk(&mut self, timestamp_us: u64, bytes: &[u8]) {
+        self.total_bytes += bytes.len() as u64;
+        self.chunks.push_back(RawDataChunk {
+            timestamp_us,
+            bytes: bytes.to_vec(),
+        });
+
+        while self.stored_bytes() > self.capacity && !self.chunks.is_empty() {
+            if let Some(front) = self.chunks.pop_front() {
+                self.dropped_bytes += front.bytes.len() as u64;
+            }
+        }
+    }
+
+    /// 取出不超过 max_bytes 的若干完整块
+    pub fn drain_batch(&mut self, max_bytes: usize) -> RawDataBatch {
+        let mut drained = Vec::new();
+        let mut acc = 0usize;
+        while let Some(front) = self.chunks.front() {
+            let next = acc.saturating_add(front.bytes.len());
+            if next > max_bytes && !drained.is_empty() {
+                break;
+            }
+            if let Some(chunk) = self.chunks.pop_front() {
+                acc = acc.saturating_add(chunk.bytes.len());
+                drained.push(chunk);
+            }
+        }
+        RawDataBatch {
+            chunks: drained,
+            total_bytes: self.total_bytes,
+            dropped_bytes: self.dropped_bytes,
+        }
+    }
+
+    /// 清空所有块并重置计数器
+    pub fn clear(&mut self) {
+        self.chunks.clear();
+        self.total_bytes = 0;
+        self.dropped_bytes = 0;
+    }
+
+    /// 设置容量 (保留最近块)
+    pub fn set_capacity(&mut self, capacity: usize) {
+        self.capacity = capacity.max(1);
+        while self.stored_bytes() > self.capacity && !self.chunks.is_empty() {
+            if let Some(front) = self.chunks.pop_front() {
+                self.dropped_bytes += front.bytes.len() as u64;
+            }
+        }
+    }
+
+    /// 累计写入字节数 (含已丢弃)
+    pub fn total_bytes(&self) -> u64 {
+        self.total_bytes
+    }
+
+    /// 累计丢弃字节数
+    pub fn dropped_bytes(&self) -> u64 {
+        self.dropped_bytes
+    }
+
+    fn stored_bytes(&self) -> usize {
+        self.chunks.iter().map(|c| c.bytes.len()).sum()
+    }
+}
+
+impl Default for RawDataCollector {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// 多通道时间序列数据缓冲区
@@ -287,6 +403,8 @@ impl DataBuffer {
                 channels: vec![],
                 channel_count: self.num_channels,
                 derived: HashMap::new(),
+                buffer_points: 0,
+                buffer_capacity: self.max_points,
             };
         }
 
@@ -327,6 +445,8 @@ impl DataBuffer {
             channels: window_channels,
             channel_count: self.num_channels,
             derived,
+            buffer_points: self.timestamps.len(),
+            buffer_capacity: self.max_points,
         }
     }
 
@@ -351,6 +471,8 @@ impl DataBuffer {
             channels,
             channel_count: self.num_channels,
             derived,
+            buffer_points: self.timestamps.len(),
+            buffer_capacity: self.max_points,
         }
     }
 
@@ -370,6 +492,27 @@ impl DataBuffer {
     /// 当前点数
     pub fn point_count(&self) -> usize {
         self.timestamps.len()
+    }
+
+    /// 最大容量 (点)
+    pub fn max_points(&self) -> usize {
+        self.max_points
+    }
+
+    /// 设置最大容量 (保留最近数据)
+    pub fn set_max_points(&mut self, max_points: usize) {
+        let new_max = max_points.max(1);
+        if new_max == self.max_points {
+            return;
+        }
+        self.max_points = new_max;
+        self.timestamps.resize(new_max);
+        for ch in &mut self.channels {
+            ch.resize(new_max);
+        }
+        for buf in self.derived_buffers.values_mut() {
+            buf.resize(new_max);
+        }
     }
 
     /// 清空
@@ -677,5 +820,59 @@ mod tests {
         let buf = DataBuffer::new(100, 2);
         let w = buf.get_recent(10);
         assert!(w.derived.is_empty());
+    }
+
+    // ===== RawDataCollector tests =====
+
+    #[test]
+    fn test_raw_collector_push_and_drain() {
+        let mut col = RawDataCollector::with_capacity(1024);
+        col.push_chunk(100, b"hello");
+        col.push_chunk(200, b"world");
+        assert_eq!(col.total_bytes(), 10);
+
+        let batch = col.drain_batch(10);
+        assert_eq!(batch.chunks.len(), 2);
+        assert_eq!(batch.chunks[0].bytes, b"hello");
+        assert_eq!(batch.chunks[1].bytes, b"world");
+        assert_eq!(batch.total_bytes, 10);
+        assert!(col.drain_batch(1024).chunks.is_empty());
+    }
+
+    #[test]
+    fn test_raw_collector_drops_oldest() {
+        let mut col = RawDataCollector::with_capacity(10);
+        col.push_chunk(1, b"0123456789"); // 10 bytes, fits
+        assert_eq!(col.dropped_bytes(), 0);
+        col.push_chunk(2, b"xx"); // exceeds 10 bytes
+        assert_eq!(col.dropped_bytes(), 10);
+
+        let batch = col.drain_batch(1024);
+        assert_eq!(batch.chunks.len(), 1);
+        assert_eq!(batch.chunks[0].bytes, b"xx");
+        assert_eq!(batch.dropped_bytes, 10);
+    }
+
+    #[test]
+    fn test_raw_collector_drain_max_bytes() {
+        let mut col = RawDataCollector::with_capacity(1024);
+        col.push_chunk(1, b"12345");
+        col.push_chunk(2, b"67890");
+        col.push_chunk(3, b"abcde");
+
+        // 只能完整取前两块 (10 bytes), 第三块 5 bytes 会超过 12
+        let batch = col.drain_batch(12);
+        assert_eq!(batch.chunks.len(), 2);
+        assert_eq!(batch.total_bytes, 15);
+    }
+
+    #[test]
+    fn test_raw_collector_clear() {
+        let mut col = RawDataCollector::with_capacity(1024);
+        col.push_chunk(1, b"data");
+        col.clear();
+        assert_eq!(col.total_bytes(), 0);
+        assert_eq!(col.dropped_bytes(), 0);
+        assert!(col.drain_batch(1024).chunks.is_empty());
     }
 }

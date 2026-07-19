@@ -532,7 +532,7 @@ export function TransportConfigPanel() {
       )}
 
       {/* 连接控制 */}
-      <div className="mt-3 pt-2 border-t border-border">
+      <div className="mt-3 pt-2 border-t border-border" data-tour="connect">
         {isConnected ? (
           <button
             className="w-full px-3 py-1.5 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5"
@@ -543,7 +543,7 @@ export function TransportConfigPanel() {
           </button>
         ) : (
           <button
-            className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+            className="w-full px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             onClick={() => connect()}
             disabled={connectionState === 'Connecting'}
           >

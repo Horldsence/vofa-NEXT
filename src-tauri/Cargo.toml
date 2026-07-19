@@ -10,7 +10,7 @@ name = "vofa_next_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
-members = ["crates/vofa-next-core", "crates/vofa-next-transport", "crates/vofa-next-protocol", "crates/vofa-next-buffer", "crates/vofa-next-nodes", "crates/vofa-next-dsp"]
+members = ["crates/vofa-next-core", "crates/vofa-next-transport", "crates/vofa-next-protocol", "crates/vofa-next-buffer", "crates/vofa-next-nodes", "crates/vofa-next-dsp", "crates/vofa-next-automotive"]
 
 [workspace.package]
 edition = "2021"
@@ -81,6 +81,8 @@ vofa-next-protocol = { path = "crates/vofa-next-protocol" }
 vofa-next-buffer = { path = "crates/vofa-next-buffer" }
 vofa-next-nodes = { path = "crates/vofa-next-nodes" }
 vofa-next-dsp = { path = "crates/vofa-next-dsp" }
+vofa-next-automotive = { path = "crates/vofa-next-automotive" }
+libautomotive = "0.1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -92,6 +94,7 @@ vofa-next-protocol = { workspace = true }
 vofa-next-buffer = { workspace = true }
 vofa-next-nodes = { workspace = true }
 vofa-next-dsp = { workspace = true }
+vofa-next-automotive = { workspace = true }
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { workspace = true }

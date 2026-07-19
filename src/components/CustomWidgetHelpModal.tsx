@@ -267,7 +267,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
         </div>
 
         <div className="px-3 py-2 flex justify-end bg-bg-panel-header border-t border-border">
-          <button className="px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover" onClick={onClose}>
+          <button className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover" onClick={onClose}>
             {t(lang, 'helpClose')}
           </button>
         </div>

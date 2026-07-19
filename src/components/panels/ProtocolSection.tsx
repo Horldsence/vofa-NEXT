@@ -136,7 +136,7 @@ export function ProtocolSection() {
               type="button"
               onClick={() => startTestData()}
               disabled={!isConnected}
-              className="w-full px-3 py-1.5 bg-bg-button text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+              className="w-full px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             >
               <Play size={14} />
               {t(lang, 'startTestData')}

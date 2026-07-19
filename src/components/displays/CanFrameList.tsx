@@ -1,11 +1,16 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../store/appStore';
 import { canFrameBuffer } from '../../lib/canBuffer';
 import { clearCanBuffer } from '../../lib/canSubscription';
+import { useSelection } from '../../lib/useSelection';
+import { writeTextToClipboard } from '../../lib/clipboard';
 import { t } from '../../i18n';
 import { ToolbarIconButton } from '../ui/ToolbarIconButton';
-import { Trash2, ArrowDown, Filter, Download } from 'lucide-react';
+import { Trash2, ArrowDown, Filter, Download, Copy, Check, X } from 'lucide-react';
 import type { CanFrame } from '../../types';
+
+const ROW_HEIGHT = 24;
 
 /// 格式化微秒时间戳为 HH:MM:SS.mmmuuu
 function formatCanTime(us: number): string {
@@ -31,21 +36,28 @@ function formatDataHex(data: number[]): string {
   return data.map((b) => b.toString(16).toUpperCase().padStart(2, '0')).join(' ');
 }
 
-/// 将帧列表导出为 CSV
-function exportFramesToCsv(frames: CanFrame[]): void {
+/// 将帧列表转换为 CSV 文本
+function framesToCsv(frames: CanFrame[]): string {
   const rows = [
     ['Time', 'Dir', 'ID', 'Extended', 'RTR', 'DLC', 'Data'].join(','),
-    ...frames.map((f) => [
-      formatCanTime(f.timestamp),
-      f.direction,
-      formatCanId(f.id, f.extended),
-      f.extended ? 'X' : '',
-      f.rtr ? 'R' : '',
-      f.dlc,
-      f.rtr ? '' : formatDataHex(f.data),
-    ].join(',')),
+    ...frames.map((f) =>
+      [
+        formatCanTime(f.timestamp),
+        f.direction,
+        formatCanId(f.id, f.extended),
+        f.extended ? 'X' : '',
+        f.rtr ? 'R' : '',
+        f.dlc,
+        f.rtr ? '' : formatDataHex(f.data),
+      ].join(',')
+    ),
   ];
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+  return rows.join('\n');
+}
+
+/// 导出帧列表为 CSV 文件
+function exportFramesToCsv(frames: CanFrame[]): void {
+  const blob = new Blob([framesToCsv(frames)], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -54,48 +66,81 @@ function exportFramesToCsv(frames: CanFrame[]): void {
   URL.revokeObjectURL(url);
 }
 
-/// CAN 帧列表显示 — 表格视图, 支持按 ID/方向过滤, 自动滚动
+interface RowProps {
+  index: number;
+  frame: CanFrame;
+  isSelected: boolean;
+  onMouseDown: (e: React.MouseEvent, index: number) => void;
+}
+
+/// CAN 帧行 — memo 化避免无关重渲染
+const Row = memo(function Row({ index, frame, isSelected, onMouseDown }: RowProps) {
+  return (
+    <div
+      className={`flex items-center text-xs font-mono border-b border-border/30 select-none ${
+        isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover/60'
+      }`}
+      style={{ height: ROW_HEIGHT }}
+      onMouseDown={(e) => onMouseDown(e, index)}
+    >
+      <span className="px-3 py-1 text-accent whitespace-nowrap min-w-[132px]">
+        {formatCanTime(frame.timestamp)}
+      </span>
+      <span className="px-2 py-1 whitespace-nowrap min-w-[56px]">
+        <span
+          className={`inline-flex items-center gap-1 text-[10px] font-semibold ${
+            frame.direction === 'Tx' ? 'text-purple' : 'text-green'
+          }`}
+        >
+          {frame.direction === 'Tx' ? '→ Tx' : '← Rx'}
+        </span>
+      </span>
+      <span className="px-3 py-1 text-text-bright whitespace-nowrap min-w-[76px]">
+        0x{formatCanId(frame.id, frame.extended)}
+      </span>
+      <span className="px-2 py-1 text-center text-text-secondary min-w-[40px]">
+        {frame.extended ? 'X' : ''}
+      </span>
+      <span className="px-2 py-1 text-center text-text-secondary min-w-[40px]">
+        {frame.rtr ? 'R' : ''}
+      </span>
+      <span className="px-2 py-1 text-center text-text-secondary min-w-[40px]">
+        {frame.dlc}
+      </span>
+      <span className="px-3 py-1 text-text-primary flex-1 min-w-0 truncate">
+        {frame.rtr ? (
+          <span className="text-text-secondary italic">(remote)</span>
+        ) : (
+          formatDataHex(frame.data)
+        )}
+      </span>
+    </div>
+  );
+});
+
+/// CAN 帧列表显示 — 虚拟滚动 + 选中复制 + 过滤
 export function CanFrameList() {
   const lang = useAppStore((s) => s.lang);
 
-  const [frames, setFrames] = useState<CanFrame[]>([]);
+  const [version, setVersion] = useState(0);
   const [autoScroll, setAutoScroll] = useState(true);
   const [filterId, setFilterId] = useState('');
   const [filterDir, setFilterDir] = useState<'all' | 'Rx' | 'Tx'>('all');
-  const listRef = useRef<HTMLDivElement>(null);
+  const [copyFeedback, setCopyFeedback] = useState(false);
+  const parentRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
+  const isAutoScrollingRef = useRef(false);
 
-  // 订阅 canFrameBuffer (RAF 节流后触发, 单一数据源)
+  // 订阅 buffer 变化, 用 version 触发重渲染
   useEffect(() => {
-    const unsub = canFrameBuffer.subscribe((recent) => setFrames(recent));
-    setFrames(canFrameBuffer.getRecent(500));
+    const unsub = canFrameBuffer.subscribe(() => setVersion((v) => v + 1));
+    setVersion((v) => v + 1);
     return unsub;
   }, []);
 
-  // 自动滚动
-  useEffect(() => {
-    if (autoScroll && !userScrolledRef.current && listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [frames, autoScroll]);
-
-  const handleScroll = () => {
-    if (!listRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = listRef.current;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 30;
-    userScrolledRef.current = !atBottom;
-  };
-
-  const handleClear = () => {
-    void clearCanBuffer();
-    canFrameBuffer.clear();
-    setFrames([]);
-    userScrolledRef.current = false;
-  };
-
-  // 过滤
+  // 过滤 (在 version 变化时重新计算)
   const filtered = useMemo(() => {
-    let result = frames;
+    let result = canFrameBuffer.getAll();
     if (filterDir !== 'all') {
       result = result.filter((f) => f.direction === filterDir);
     }
@@ -107,10 +152,91 @@ export function CanFrameList() {
       }
     }
     return result;
-  }, [frames, filterId, filterDir]);
+  }, [filterDir, filterId, version]);
 
-  const rxCount = frames.filter((f) => f.direction === 'Rx').length;
-  const txCount = frames.filter((f) => f.direction === 'Tx').length;
+  const allFrames = useMemo(() => canFrameBuffer.getAll(), [version]);
+  const rxCount = useMemo(
+    () => allFrames.filter((f) => f.direction === 'Rx').length,
+    [allFrames]
+  );
+  const txCount = useMemo(
+    () => allFrames.filter((f) => f.direction === 'Tx').length,
+    [allFrames]
+  );
+
+  const virtualizer = useVirtualizer({
+    count: filtered.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => ROW_HEIGHT,
+    overscan: 10,
+  });
+
+  const selection = useSelection(filtered.length);
+
+  // 自动滚动到底部
+  useEffect(() => {
+    if (!autoScroll || userScrolledRef.current || filtered.length === 0) return;
+    isAutoScrollingRef.current = true;
+    virtualizer.scrollToIndex(filtered.length - 1, { align: 'end' });
+    const t = setTimeout(() => {
+      isAutoScrollingRef.current = false;
+    }, 50);
+    return () => clearTimeout(t);
+  }, [filtered.length, autoScroll, version, virtualizer]);
+
+  // 检测用户手动滚动
+  const handleScroll = useCallback(() => {
+    if (isAutoScrollingRef.current || !parentRef.current) return;
+    const el = parentRef.current;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
+    userScrolledRef.current = !atBottom;
+  }, []);
+
+  const handleClear = () => {
+    void clearCanBuffer();
+    canFrameBuffer.clear();
+    selection.clear();
+    userScrolledRef.current = false;
+    setVersion((v) => v + 1);
+  };
+
+  const copySelected = useCallback(async () => {
+    const indices = selection.selectedSorted;
+    if (indices.length === 0) return;
+    const frames = indices.map((i) => filtered[i]).filter(Boolean) as CanFrame[];
+    const text = framesToCsv(frames);
+    const ok = await writeTextToClipboard(text);
+    if (ok) {
+      setCopyFeedback(true);
+      setTimeout(() => setCopyFeedback(false), 1200);
+    }
+  }, [selection.selectedSorted, filtered]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        selection.selectAll();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        void copySelected();
+      }
+    },
+    [selection, copySelected]
+  );
+
+  const handleRowMouseDown = useCallback(
+    (e: React.MouseEvent, index: number) => {
+      if (e.button !== 0) return;
+      selection.handleClick(index, e);
+    },
+    [selection]
+  );
+
+  const virtualItems = virtualizer.getVirtualItems();
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
@@ -134,7 +260,7 @@ export function CanFrameList() {
               type="button"
               className={`px-2 py-0.5 text-[11px] border rounded cursor-pointer transition-all ${
                 filterDir === d
-                  ? 'bg-accent border-accent text-text-bright'
+                  ? 'bg-accent border-accent text-text-inverse'
                   : 'bg-bg-input text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary'
               }`}
               onClick={() => setFilterDir(d)}
@@ -147,10 +273,32 @@ export function CanFrameList() {
         <div className="flex-1 min-w-2" />
 
         <div className="flex items-center gap-1.5 text-xs text-text-secondary font-mono">
-          <span className="hidden sm:inline">{frames.length}</span>
+          <span className="hidden sm:inline">{allFrames.length}</span>
           <span className="px-1.5 py-0.5 rounded bg-green/10 text-green">Rx:{rxCount}</span>
           <span className="px-1.5 py-0.5 rounded bg-purple/10 text-purple">Tx:{txCount}</span>
         </div>
+
+        {selection.selected.size > 0 && (
+          <>
+            <span className="text-text-secondary text-xs">{selection.selected.size}</span>
+            <button
+              className={`w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ${
+                copyFeedback ? 'text-green' : ''
+              }`}
+              title={t(lang, 'copySelected')}
+              onClick={() => void copySelected()}
+            >
+              {copyFeedback ? <Check size={14} /> : <Copy size={14} />}
+            </button>
+            <button
+              className="w-7 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
+              title={t(lang, 'clearSelection')}
+              onClick={selection.clear}
+            >
+              <X size={14} />
+            </button>
+          </>
+        )}
 
         <ToolbarIconButton
           icon={<ArrowDown />}
@@ -174,50 +322,56 @@ export function CanFrameList() {
         />
       </div>
 
-      {/* 帧列表 */}
+      {/* 表头 */}
+      <div className="flex items-center text-[10px] uppercase text-text-secondary font-mono border-b border-border bg-bg-panel-header flex-shrink-0 select-none">
+        <span className="px-3 py-1.5 text-left font-medium whitespace-nowrap min-w-[132px]">
+          {t(lang, 'time')}
+        </span>
+        <span className="px-2 py-1.5 text-left font-medium whitespace-nowrap min-w-[56px]">Dir</span>
+        <span className="px-3 py-1.5 text-left font-medium whitespace-nowrap min-w-[76px]">ID</span>
+        <span className="px-2 py-1.5 text-center font-medium whitespace-nowrap min-w-[40px]">Ext</span>
+        <span className="px-2 py-1.5 text-center font-medium whitespace-nowrap min-w-[40px]">RTR</span>
+        <span className="px-2 py-1.5 text-center font-medium whitespace-nowrap min-w-[40px]">DLC</span>
+        <span className="px-3 py-1.5 text-left font-medium whitespace-nowrap flex-1">Data</span>
+      </div>
+
+      {/* 虚拟滚动列表 */}
       <div
-        className="flex-1 overflow-auto font-mono text-xs leading-relaxed min-h-0"
-        ref={listRef}
+        className="flex-1 overflow-auto font-mono text-xs leading-relaxed min-h-0 outline-none"
+        ref={parentRef}
         onScroll={handleScroll}
+        onKeyDown={handleKeyDown}
+        tabIndex={0}
       >
-        <table className="w-full min-w-[640px]">
-          <thead className="sticky top-0 bg-bg-panel-header border-b border-border z-10">
-            <tr className="text-text-secondary text-[10px] uppercase">
-              <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">{t(lang, 'time')}</th>
-              <th className="px-2 py-1.5 text-left font-medium whitespace-nowrap">Dir</th>
-              <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">ID</th>
-              <th className="px-2 py-1.5 text-center font-medium whitespace-nowrap">Ext</th>
-              <th className="px-2 py-1.5 text-center font-medium whitespace-nowrap">RTR</th>
-              <th className="px-2 py-1.5 text-center font-medium whitespace-nowrap">DLC</th>
-              <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Data</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((f, i) => (
-              <tr
-                key={i}
-                className={`border-b border-border/30 hover:bg-bg-hover/60 transition-colors ${f.direction === 'Tx' ? 'text-text-primary' : 'text-text-primary'}`}
-              >
-                <td className="px-3 py-1 text-accent whitespace-nowrap">{formatCanTime(f.timestamp)}</td>
-                <td className="px-2 py-1 whitespace-nowrap">
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-semibold ${f.direction === 'Tx' ? 'text-purple' : 'text-green'}`}>
-                    {f.direction === 'Tx' ? '→ Tx' : '← Rx'}
-                  </span>
-                </td>
-                <td className="px-3 py-1 text-text-bright whitespace-nowrap">0x{formatCanId(f.id, f.extended)}</td>
-                <td className="px-2 py-1 text-center text-text-secondary">{f.extended ? 'X' : ''}</td>
-                <td className="px-2 py-1 text-center text-text-secondary">{f.rtr ? 'R' : ''}</td>
-                <td className="px-2 py-1 text-center text-text-secondary">{f.dlc}</td>
-                <td className="px-3 py-1 text-text-primary">
-                  {f.rtr ? <span className="text-text-secondary italic">(remote)</span> : formatDataHex(f.data)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
+        {filtered.length === 0 ? (
           <div className="flex items-center justify-center h-48 text-text-secondary text-xs">
             {t(lang, 'noCanFrames')}
+          </div>
+        ) : (
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+              }}
+            >
+              {virtualItems.map((virtualRow) => {
+                const frame = filtered[virtualRow.index];
+                if (!frame) return null;
+                return (
+                  <Row
+                    key={virtualRow.key}
+                    index={virtualRow.index}
+                    frame={frame}
+                    isSelected={selection.isSelected(virtualRow.index)}
+                    onMouseDown={handleRowMouseDown}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

@@ -2,7 +2,7 @@ use crate::notify;
 use crate::state::{data_loop, AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch};
 use std::time::Duration;
 use tauri::{ipc::Channel, AppHandle, Emitter, State};
-use vofa_next_buffer::{graph::Edge, WaveformWindow};
+use vofa_next_buffer::{graph::Edge, RawDataBatch, WaveformWindow};
 use vofa_next_core::{
     CanFrame, CanFrameBatch, CandleDeviceInfo, ConnectionState, DecodedEventBatch,
     LogicSampleBatch, PortInfo, ProtocolConfig, Result, TransportConfig,
@@ -43,11 +43,12 @@ pub async fn open_transport(
         let protocol = state.protocol.clone();
         let buffer = state.buffer.clone();
         let eval_state = state.eval_state();
+        let raw_data_collector = state.raw_data_collector.clone();
         let can_buffer = state.can_buffer.clone();
         let logic_buffer = state.logic_buffer.clone();
         let decoded_buffer = state.decoded_buffer.clone();
         tokio::spawn(async move {
-            data_loop(app, rx, protocol, buffer, eval_state, can_buffer, logic_buffer, decoded_buffer).await;
+            data_loop(app, rx, protocol, buffer, eval_state, raw_data_collector, can_buffer, logic_buffer, decoded_buffer).await;
         });
     }
 
@@ -253,6 +254,46 @@ pub async fn get_buffer_info(state: State<'_, AppState>) -> Result<(usize, usize
     Ok((buf.channel_count(), buf.point_count()))
 }
 
+/// 设置波形缓冲区最大点数
+#[tauri::command]
+pub async fn set_waveform_buffer_capacity(
+    state: State<'_, AppState>,
+    max_points: usize,
+) -> Result<()> {
+    state.buffer.lock().set_max_points(max_points);
+    Ok(())
+}
+
+/// 设置原始数据收集器容量 (字节)
+#[tauri::command]
+pub async fn set_rawdata_buffer_capacity(
+    state: State<'_, AppState>,
+    capacity: usize,
+) -> Result<()> {
+    state.raw_data_collector.lock().set_capacity(capacity);
+    Ok(())
+}
+
+/// 设置 CAN 帧缓冲区最大帧数
+#[tauri::command]
+pub async fn set_can_buffer_capacity(
+    state: State<'_, AppState>,
+    capacity: usize,
+) -> Result<()> {
+    state.can_buffer.lock().set_max_size(capacity);
+    Ok(())
+}
+
+/// 设置逻辑采样缓冲区最大采样数
+#[tauri::command]
+pub async fn set_logic_buffer_capacity(
+    state: State<'_, AppState>,
+    capacity: usize,
+) -> Result<()> {
+    state.logic_buffer.lock().set_max_size(capacity);
+    Ok(())
+}
+
 // ============ 节点图 (后端化重构) ============
 
 /// 更新指定 tab 的节点图 (整体替换 nodes + edges)
@@ -389,6 +430,47 @@ pub async fn unsubscribe_waveform(
     if let Some(tx) = state.waveform_tasks.lock().remove(&channel_id) {
         let _ = tx.send(());
     }
+    Ok(())
+}
+
+/// 订阅原始数据 — 通过 Channel 周期性推送 RawDataBatch
+///
+/// interval_ms: 推送间隔 (毫秒), 默认 16ms (~60 FPS)
+/// max_bytes: 单次推送的最大字节数, 默认 65536
+#[tauri::command]
+pub async fn subscribe_rawdata(
+    state: State<'_, AppState>,
+    on_event: Channel<RawDataBatch>,
+    interval_ms: Option<u64>,
+    max_bytes: Option<usize>,
+) -> Result<()> {
+    let collector = state.raw_data_collector.clone();
+    let interval = Duration::from_millis(interval_ms.unwrap_or(16));
+    let max_n = max_bytes.unwrap_or(65536);
+    let channel_id = on_event.id();
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.raw_data_tasks.lock().insert(channel_id, cancel_tx);
+
+    tokio::spawn(async move {
+        crate::state::rawdata_loop(collector, on_event, interval, max_n, cancel_rx).await;
+    });
+    Ok(())
+}
+
+/// 取消订阅原始数据
+#[tauri::command]
+pub async fn unsubscribe_rawdata(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
+    if let Some(tx) = state.raw_data_tasks.lock().remove(&channel_id) {
+        let _ = tx.send(());
+    }
+    Ok(())
+}
+
+/// 清空原始数据收集器
+#[tauri::command]
+pub async fn clear_raw_data_collector(state: State<'_, AppState>) -> Result<()> {
+    state.raw_data_collector.lock().clear();
     Ok(())
 }
 
