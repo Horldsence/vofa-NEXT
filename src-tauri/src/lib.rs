@@ -1,7 +1,9 @@
 mod commands;
 mod menu;
 mod notify;
+mod pipeline;
 mod state;
+mod subscription;
 
 use state::AppState;
 use tauri::Manager;

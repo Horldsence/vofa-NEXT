@@ -748,6 +748,25 @@ fdCoverStart: Cover start
 fdCoverEnd: Cover end
 fdMatchId: Match ID
 fdMatchIdPlaceholder: Only executes when id_value equals this (optional)
+fdBlockHeader: Frame Header
+fdBlockLength: Length
+fdBlockId: ID
+fdBlockField: Field
+fdBlockBitfield: Bitfield
+fdBlockChecksum: Checksum
+fdBlockTail: Frame Tail
+fdAddBlockHeader: Add Header
+fdAddBlockLength: Add Length
+fdAddBlockId: Add ID
+fdAddBlockField: Add Field
+fdAddBlockBitfield: Add Bitfield
+fdAddBlockChecksum: Add Checksum
+fdAddBlockTail: Add Tail
+fdChecksumPosAppend: Append
+fdChecksumPosInline: Inline
+fdChecksumPosPrepend: Prepend
+fdChecksumCoverAllPrior: All prior blocks
+fdChecksumCoverRange: Custom range
 
 # Logic Analyzer
 logicAnalyzer: Logic Analyzer

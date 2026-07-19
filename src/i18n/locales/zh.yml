@@ -748,6 +748,25 @@ fdCoverStart: 起始字节
 fdCoverEnd: 结束字节
 fdMatchId: 匹配 ID
 fdMatchIdPlaceholder: 仅当 id_value 等于此值时执行 (可选)
+fdBlockHeader: 帧头
+fdBlockLength: 长度
+fdBlockId: ID
+fdBlockField: 字段
+fdBlockBitfield: 位域
+fdBlockChecksum: 校验
+fdBlockTail: 帧尾
+fdAddBlockHeader: 添加帧头
+fdAddBlockLength: 添加长度
+fdAddBlockId: 添加ID
+fdAddBlockField: 添加字段
+fdAddBlockBitfield: 添加位域
+fdAddBlockChecksum: 添加校验
+fdAddBlockTail: 添加帧尾
+fdChecksumPosAppend: 末尾
+fdChecksumPosInline: 行内
+fdChecksumPosPrepend: 开头
+fdChecksumCoverAllPrior: 所有前置块
+fdChecksumCoverRange: 指定范围
 
 # 逻辑分析仪
 logicAnalyzer: 逻辑分析仪
