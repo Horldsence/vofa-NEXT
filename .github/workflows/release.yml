@@ -49,10 +49,15 @@ jobs:
       - name: Update version
         shell: bash
         run: |
-          sed -i.bak 's/"version": "[^"]*"/"version": "${{ inputs.version }}"/' src-tauri/tauri.conf.json
-          sed -i.bak 's/^version = "[^"]*"/version = "${{ inputs.version }}"/' src-tauri/Cargo.toml
-          sed -i.bak 's/"version": "[^"]*"/"version": "${{ inputs.version }}"/' package.json
+          VERSION="${{ inputs.version }}"
+          # MSI 版本号不支持 pre-release 标识符，bundle 版本剥离 `-beta.x` 等后缀
+          BUNDLE_VERSION="${VERSION%%-*}"
+          sed -i.bak 's/"version": "[^"]*"/"version": "'"$BUNDLE_VERSION"'"/' src-tauri/tauri.conf.json
+          sed -i.bak 's/^version = "[^"]*"/version = "'"$BUNDLE_VERSION"'"/' src-tauri/Cargo.toml
+          sed -i.bak 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' package.json
           rm -f src-tauri/tauri.conf.json.bak src-tauri/Cargo.toml.bak package.json.bak
+          echo "bundle version: $BUNDLE_VERSION"
+          echo "npm version: $VERSION"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v3
