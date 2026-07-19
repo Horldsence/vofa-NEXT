@@ -212,5 +212,9 @@ export const api = {
       enableLastTimestamp,
       enableFps,
     }),
+
+  // ===== 调试 =====
+  /// 打开当前 Webview 的开发者工具（检查元素）
+  inspectElement: () => invoke<void>('inspect_element'),
 };
 

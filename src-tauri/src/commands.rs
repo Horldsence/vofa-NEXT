@@ -5,6 +5,7 @@
 mod buffer;
 mod can;
 mod can_load;
+mod debug;
 mod frame_decoder;
 mod graph;
 mod logic;
@@ -14,6 +15,7 @@ mod transport;
 pub use buffer::*;
 pub use can::*;
 pub use can_load::*;
+pub use debug::*;
 pub use frame_decoder::*;
 pub use graph::*;
 pub use logic::*;

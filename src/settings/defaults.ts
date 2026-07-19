@@ -14,6 +14,7 @@ export interface AppSettings {
     confirmBeforeQuit: boolean;
     showOnboarding: boolean;
     showContextualTips: boolean;
+    debug: boolean;
   };
   appearance: {
     theme: string;
@@ -61,6 +62,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     confirmBeforeQuit: true,
     showOnboarding: true,
     showContextualTips: true,
+    debug: false,
   },
   appearance: {
     theme: 'dark',

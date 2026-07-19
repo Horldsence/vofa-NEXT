@@ -196,6 +196,7 @@ contextMenuCloseTab: Close Tab
 contextMenuCloseOtherTabs: Close Other Tabs
 contextMenuHideSidebar: Hide Sidebar
 contextMenuShowSidebar: Show Sidebar
+contextMenuInspectElement: Inspect Element
 fitView: Fit View
 resetZoom: Reset Zoom
 
@@ -280,6 +281,8 @@ settingShowOnboarding: Show onboarding
 settingShowOnboardingDesc: Show the onboarding guide on first launch
 settingShowContextualTips: Show contextual tips
 settingShowContextualTipsDesc: Show operation tips in CAN / logic analyzer views
+settingDebug: Debug mode
+settingDebugDesc: Show debug features such as Inspect Element in context menus
 
 # Setting items - Appearance
 settingTheme: Theme

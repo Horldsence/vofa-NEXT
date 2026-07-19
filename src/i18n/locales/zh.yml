@@ -196,6 +196,7 @@ contextMenuCloseTab: 关闭标签页
 contextMenuCloseOtherTabs: 关闭其他标签页
 contextMenuHideSidebar: 隐藏侧边栏
 contextMenuShowSidebar: 显示侧边栏
+contextMenuInspectElement: 检查元素
 fitView: 适应视图
 resetZoom: 重置缩放
 
@@ -280,6 +281,8 @@ settingShowOnboarding: 显示使用引导
 settingShowOnboardingDesc: 应用首次启动时自动显示使用引导
 settingShowContextualTips: 显示内部提示
 settingShowContextualTipsDesc: 在 CAN / 逻辑分析仪等视图中显示操作提示
+settingDebug: 调试模式
+settingDebugDesc: 开启后在右键菜单中显示检查元素等调试功能
 
 # 设置项 - Appearance
 settingTheme: 主题

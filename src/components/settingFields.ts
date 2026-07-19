@@ -65,6 +65,13 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
     descKey: 'settingShowContextualTipsDesc',
     control: { kind: 'toggle' },
   },
+  {
+    category: 'general',
+    field: 'debug',
+    labelKey: 'settingDebug',
+    descKey: 'settingDebugDesc',
+    control: { kind: 'toggle' },
+  },
   // Appearance
   {
     category: 'appearance',

@@ -128,6 +128,8 @@ pub fn run() {
             commands::export_can_load_csv,
             // 帧解码器手动测试 (FrameDecoder 面板)
             commands::parse_frame_decoder_input,
+            // 调试
+            commands::inspect_element,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
