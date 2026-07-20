@@ -42,11 +42,7 @@ impl TransportManager {
     /// 打开连接
     ///
     /// `protocol` 仅被 TestData 用作生成数据的线缆格式参考, 其他传输类型忽略此参数
-    pub async fn open(
-        &mut self,
-        config: TransportConfig,
-        protocol: ProtocolConfig,
-    ) -> Result<()> {
+    pub async fn open(&mut self, config: TransportConfig, protocol: ProtocolConfig) -> Result<()> {
         self.close().await;
 
         self.set_state(ConnectionState::Connecting);

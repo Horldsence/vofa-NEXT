@@ -26,23 +26,21 @@ pub fn sidebar(
             ui.heading(panel.label());
             ui.separator();
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                match panel {
-                    ActivityItem::Transport => panels.transport.ui(ui, state, rt),
-                    ActivityItem::Protocol => panels.protocol.ui(ui, state, rt),
-                    ActivityItem::Widgets => panels.widget_palette.ui(ui),
-                    ActivityItem::Settings => panels.settings.ui(ui, state, rt),
-                    ActivityItem::About => {
-                        ui.label("VOFA-Next");
-                        ui.small("Cross-platform serial data debugging tool (egui edition).");
-                    }
-                    ActivityItem::Help => {
-                        ui.label("Shortcuts:");
-                        ui.monospace("Ctrl/Cmd+T  New tab");
-                        ui.monospace("Ctrl/Cmd+W  Close tab");
-                        ui.monospace("Ctrl/Cmd+B  Toggle sidebar");
-                        ui.monospace("Ctrl/Cmd+,  Settings");
-                    }
+            egui::ScrollArea::vertical().show(ui, |ui| match panel {
+                ActivityItem::Transport => panels.transport.ui(ui, state, rt),
+                ActivityItem::Protocol => panels.protocol.ui(ui, state, rt),
+                ActivityItem::Widgets => panels.widget_palette.ui(ui),
+                ActivityItem::Settings => panels.settings.ui(ui, state, rt),
+                ActivityItem::About => {
+                    ui.label("VOFA-Next");
+                    ui.small("Cross-platform serial data debugging tool (egui edition).");
+                }
+                ActivityItem::Help => {
+                    ui.label("Shortcuts:");
+                    ui.monospace("Ctrl/Cmd+T  New tab");
+                    ui.monospace("Ctrl/Cmd+W  Close tab");
+                    ui.monospace("Ctrl/Cmd+B  Toggle sidebar");
+                    ui.monospace("Ctrl/Cmd+,  Settings");
                 }
             });
         });

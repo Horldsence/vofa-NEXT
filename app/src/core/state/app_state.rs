@@ -93,7 +93,9 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             transport: tokio::sync::Mutex::new(TransportManager::new()),
-            protocol: Arc::new(Mutex::new(vofa_next_protocol::create_engine(&ProtocolConfig::default()))),
+            protocol: Arc::new(Mutex::new(vofa_next_protocol::create_engine(
+                &ProtocolConfig::default(),
+            ))),
             protocol_config: Mutex::new(ProtocolConfig::default()),
             connection_state: Arc::new(Mutex::new(ConnectionState::Disconnected)),
             stats: Arc::new(Mutex::new(TransportStats::default())),

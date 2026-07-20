@@ -170,7 +170,12 @@ mod tests {
     fn test_parse_extended_frame() {
         let mut engine = CandleEngine::new();
         let can_id_raw = 0x12345678 | CAND_ID_EFF;
-        let pkt = make_rx_frame(CAND_CMD_RX, can_id_raw, 8, &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        let pkt = make_rx_frame(
+            CAND_CMD_RX,
+            can_id_raw,
+            8,
+            &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
+        );
         let frames = engine.feed_can(&pkt);
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
@@ -327,7 +332,7 @@ mod tests {
         assert_eq!(can_id_raw, 0x123);
         assert_eq!(can_id_raw & CAND_ID_EFF, 0); // 标准帧
         assert_eq!(can_id_raw & CAND_ID_RTR, 0); // 数据帧
-        // 偏移 12: DLC = 4
+                                                 // 偏移 12: DLC = 4
         assert_eq!(encoded[12], 4);
         // 偏移 13-15: reserved = 0
         assert_eq!(encoded[13], 0);
@@ -358,7 +363,10 @@ mod tests {
         assert!(can_id_raw & CAND_ID_EFF != 0, "EFF 标志位应被设置");
         assert_eq!(can_id_raw & CAND_ID_RTR, 0); // 数据帧, RTR 不应设置
         assert_eq!(encoded[12], 8);
-        assert_eq!(&encoded[16..24], &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]);
+        assert_eq!(
+            &encoded[16..24],
+            &[0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88]
+        );
     }
 
     /// 编码远程帧: 验证 bit30 (RTR) 标志位设置
@@ -566,6 +574,9 @@ mod tests {
         assert_eq!(parsed[0].data, vec![0xAA, 0xBB]);
         assert_eq!(parsed[1].id, 0x12345678);
         assert!(parsed[1].extended);
-        assert_eq!(parsed[1].data, vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        assert_eq!(
+            parsed[1].data,
+            vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+        );
     }
 }

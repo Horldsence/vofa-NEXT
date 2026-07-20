@@ -139,7 +139,10 @@ pub fn show(
         .auto_shrink([false, false])
         .stick_to_bottom(view.follow_tail)
         .show(ui, |ui| {
-            ui.add(egui::Label::new(egui::RichText::new(text).monospace()).wrap_mode(egui::TextWrapMode::Extend));
+            ui.add(
+                egui::Label::new(egui::RichText::new(text).monospace())
+                    .wrap_mode(egui::TextWrapMode::Extend),
+            );
         });
 
     ui.ctx()

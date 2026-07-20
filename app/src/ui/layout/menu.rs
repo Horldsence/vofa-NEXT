@@ -66,7 +66,8 @@ pub fn menu_bar(ui: &mut egui::Ui) -> MenuActions {
 
         ui.menu_button("Help", |ui| {
             if ui.button("Documentation").clicked() {
-                ui.ctx().open_url(egui::OpenUrl::new_tab("https://vofa.plus"));
+                ui.ctx()
+                    .open_url(egui::OpenUrl::new_tab("https://vofa.plus"));
                 ui.close();
             }
             if ui.button("GitHub").clicked() {

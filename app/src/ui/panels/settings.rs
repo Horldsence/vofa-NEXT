@@ -63,7 +63,10 @@ impl SettingsPanel {
         // ---- 通用 ----
         ui.label("General");
         if ui
-            .checkbox(&mut self.settings.show_onboarding, "Show onboarding at startup")
+            .checkbox(
+                &mut self.settings.show_onboarding,
+                "Show onboarding at startup",
+            )
             .changed()
         {
             self.settings.save();
@@ -84,10 +87,22 @@ impl SettingsPanel {
 
         // ---- 数据容量 ----
         ui.label("Data Capacity");
-        capacity_row(ui, "Waveform points", &mut self.settings.waveform_buffer_capacity);
-        capacity_row(ui, "Raw data bytes", &mut self.settings.rawdata_buffer_capacity);
+        capacity_row(
+            ui,
+            "Waveform points",
+            &mut self.settings.waveform_buffer_capacity,
+        );
+        capacity_row(
+            ui,
+            "Raw data bytes",
+            &mut self.settings.rawdata_buffer_capacity,
+        );
         capacity_row(ui, "CAN frames", &mut self.settings.can_buffer_capacity);
-        capacity_row(ui, "Logic samples", &mut self.settings.logic_buffer_capacity);
+        capacity_row(
+            ui,
+            "Logic samples",
+            &mut self.settings.logic_buffer_capacity,
+        );
         ui.add_space(4.0);
 
         if ui.button("Apply").clicked() {

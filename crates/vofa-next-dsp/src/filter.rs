@@ -33,9 +33,17 @@ pub enum FilterPreset {
     /// 高通 — 截止频率以上的信号通过
     Highpass { cutoff: f32, sample_rate: f32 },
     /// 带通 — [low, high] 频率范围内的信号通过
-    Bandpass { low: f32, high: f32, sample_rate: f32 },
+    Bandpass {
+        low: f32,
+        high: f32,
+        sample_rate: f32,
+    },
     /// 带阻 (陷波) — [low, high] 频率范围内的信号衰减
-    Bandstop { low: f32, sample_rate: f32, high: f32 },
+    Bandstop {
+        low: f32,
+        sample_rate: f32,
+        high: f32,
+    },
 }
 
 /// 数字滤波器 — 维护内部状态, 逐点处理
@@ -64,18 +72,24 @@ impl DigitalFilter {
     /// 从预设创建 (biquad 实现)
     pub fn from_preset(preset: FilterPreset) -> Self {
         let (b, a) = match preset {
-            FilterPreset::Lowpass { cutoff, sample_rate } => {
-                lowpass_biquad(cutoff, sample_rate)
-            }
-            FilterPreset::Highpass { cutoff, sample_rate } => {
-                highpass_biquad(cutoff, sample_rate)
-            }
-            FilterPreset::Bandpass { low, high, sample_rate } => {
-                bandpass_biquad(low, high, sample_rate)
-            }
-            FilterPreset::Bandstop { low, high, sample_rate } => {
-                bandstop_biquad(low, high, sample_rate)
-            }
+            FilterPreset::Lowpass {
+                cutoff,
+                sample_rate,
+            } => lowpass_biquad(cutoff, sample_rate),
+            FilterPreset::Highpass {
+                cutoff,
+                sample_rate,
+            } => highpass_biquad(cutoff, sample_rate),
+            FilterPreset::Bandpass {
+                low,
+                high,
+                sample_rate,
+            } => bandpass_biquad(low, high, sample_rate),
+            FilterPreset::Bandstop {
+                low,
+                high,
+                sample_rate,
+            } => bandstop_biquad(low, high, sample_rate),
         };
         Self::new(FilterKind::IIR { b, a })
     }
@@ -259,7 +273,10 @@ mod tests {
     #[test]
     fn test_iir_passthrough() {
         // b = [1, 0, 0], a = [1, 0, 0] → y = x
-        let mut f = DigitalFilter::new(FilterKind::IIR { b: [1.0, 0.0, 0.0], a: [1.0, 0.0, 0.0] });
+        let mut f = DigitalFilter::new(FilterKind::IIR {
+            b: [1.0, 0.0, 0.0],
+            a: [1.0, 0.0, 0.0],
+        });
         assert!((f.process(0.5) - 0.5).abs() < 1e-6);
     }
 
@@ -268,8 +285,14 @@ mod tests {
         // 采样率 1000 Hz, 截止 100 Hz
         // 输入 50 Hz (低频) 应通过, 400 Hz (高频) 应衰减
         let fs = 1000.0;
-        let mut f_lp = DigitalFilter::from_preset(FilterPreset::Lowpass { cutoff: 100.0, sample_rate: fs });
-        let mut f_lp_high = DigitalFilter::from_preset(FilterPreset::Lowpass { cutoff: 100.0, sample_rate: fs });
+        let mut f_lp = DigitalFilter::from_preset(FilterPreset::Lowpass {
+            cutoff: 100.0,
+            sample_rate: fs,
+        });
+        let mut f_lp_high = DigitalFilter::from_preset(FilterPreset::Lowpass {
+            cutoff: 100.0,
+            sample_rate: fs,
+        });
 
         // 测试 50 Hz (低频)
         let n = 200;
@@ -307,8 +330,14 @@ mod tests {
     #[test]
     fn test_highpass_attenuates_low_freq() {
         let fs = 1000.0;
-        let mut f_hp = DigitalFilter::from_preset(FilterPreset::Highpass { cutoff: 200.0, sample_rate: fs });
-        let mut f_hp_high = DigitalFilter::from_preset(FilterPreset::Highpass { cutoff: 200.0, sample_rate: fs });
+        let mut f_hp = DigitalFilter::from_preset(FilterPreset::Highpass {
+            cutoff: 200.0,
+            sample_rate: fs,
+        });
+        let mut f_hp_high = DigitalFilter::from_preset(FilterPreset::Highpass {
+            cutoff: 200.0,
+            sample_rate: fs,
+        });
 
         // 低频 50 Hz (应衰减)
         let n = 200;
@@ -356,7 +385,11 @@ mod tests {
         f.reset();
         // 重置后输出应等同于首次处理
         let y = f.process(3.0);
-        assert!((y - 1.5).abs() < 1e-6, "重置后 y = (3+0)/2 = 1.5, 实际 {}", y);
+        assert!(
+            (y - 1.5).abs() < 1e-6,
+            "重置后 y = (3+0)/2 = 1.5, 实际 {}",
+            y
+        );
     }
 
     #[test]
@@ -377,7 +410,10 @@ mod tests {
 
     #[test]
     fn test_preset_to_filter() {
-        let f = DigitalFilter::from_preset(FilterPreset::Lowpass { cutoff: 100.0, sample_rate: 1000.0 });
+        let f = DigitalFilter::from_preset(FilterPreset::Lowpass {
+            cutoff: 100.0,
+            sample_rate: 1000.0,
+        });
         // 应为 IIR 类型
         assert!(matches!(f.kind(), FilterKind::IIR { .. }));
     }

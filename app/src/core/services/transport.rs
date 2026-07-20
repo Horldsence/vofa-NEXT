@@ -83,11 +83,7 @@ pub async fn send_string(state: &AppState, text: String) -> Result<()> {
 }
 
 /// 发送控件值 (根据绑定模式自动编码)
-pub async fn send_widget_value(
-    state: &AppState,
-    binding: WidgetBinding,
-    value: f32,
-) -> Result<()> {
+pub async fn send_widget_value(state: &AppState, binding: WidgetBinding, value: f32) -> Result<()> {
     let data = match binding {
         WidgetBinding::None => return Ok(()),
         WidgetBinding::Auto { channel } => state.protocol.lock().encode_channel(channel, value),
@@ -160,10 +156,17 @@ pub async fn send_and_capture(state: &AppState, data: Vec<u8>) -> Result<Loopbac
     let can_count = proto.feed_can(&data).len();
 
     Ok(LoopbackResult {
-        sent_hex: data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" "),
+        sent_hex: data
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" "),
         rx_bytes: data.clone(),
         frame_count: frames.len(),
-        channels: frames.first().map(|f| f.channels.clone()).unwrap_or_default(),
+        channels: frames
+            .first()
+            .map(|f| f.channels.clone())
+            .unwrap_or_default(),
         can_count,
     })
 }

@@ -5,8 +5,7 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 use vofa_next_buffer::{DataBuffer, RawDataCollector};
 use vofa_next_core::{
-    CanBuffer, CanLoadStats, ConnectionState, DataFrame, DecodedBuffer, LogicBuffer,
-    TransportStats,
+    CanBuffer, CanLoadStats, ConnectionState, DataFrame, DecodedBuffer, LogicBuffer, TransportStats,
 };
 use vofa_next_protocol::ProtocolEngine;
 

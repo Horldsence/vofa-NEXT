@@ -17,6 +17,7 @@ use vofa_next_nodes::{MathOp, NodeDef, NodeKind};
 
 use crate::core::services;
 use crate::core::AppState;
+use crate::theme;
 use crate::ui::controls;
 
 /// Control 页签的后端图 key 前缀
@@ -94,9 +95,7 @@ pub fn input_ports(kind: &NodeKind) -> Vec<String> {
     match kind {
         NodeKind::ChannelSource { .. } => vec![],
         NodeKind::Input => vec![],
-        NodeKind::Math { input_count, .. } => {
-            (0..*input_count).map(|i| format!("in{i}")).collect()
-        }
+        NodeKind::Math { input_count, .. } => (0..*input_count).map(|i| format!("in{i}")).collect(),
         NodeKind::Custom { inputs, .. } => inputs.clone(),
         NodeKind::Filter { .. } => vec!["in0".into()],
         NodeKind::SpectrumSink { .. } => vec!["in0".into()],
@@ -109,9 +108,7 @@ pub fn input_ports(kind: &NodeKind) -> Vec<String> {
 /// 计算某类节点的输出端口 id 列表 (与后端契约一致)
 pub fn output_ports(kind: &NodeKind) -> Vec<String> {
     match kind {
-        NodeKind::ChannelSource { channels } => {
-            (0..*channels).map(|i| format!("ch{i}")).collect()
-        }
+        NodeKind::ChannelSource { channels } => (0..*channels).map(|i| format!("ch{i}")).collect(),
         NodeKind::Input => vec!["value".into()],
         NodeKind::Math { .. } => vec!["result".into()],
         NodeKind::Custom { outputs, .. } => outputs.clone(),
@@ -147,6 +144,21 @@ pub fn output_ports(kind: &NodeKind) -> Vec<String> {
     }
 }
 
+/// 视图操作请求 - 由 minimap/缩放控件写入, 下一帧 current_transform 消费
+#[derive(Debug, Clone, Copy)]
+enum ViewAction {
+    /// 以画布中心为锚点放大一档
+    ZoomIn,
+    /// 以画布中心为锚点缩小一档
+    ZoomOut,
+    /// 恢复到 1:1 缩放
+    ResetZoom,
+    /// 适应所有节点 (fit to content)
+    FitToContent,
+    /// 将指定图空间坐标居中显示
+    CenterAt(egui::Pos2),
+}
+
 /// 某个 Control 页签的节点编辑器状态
 pub struct ControlTabState {
     /// egui-snarl 图
@@ -155,10 +167,18 @@ pub struct ControlTabState {
     pub next_auto_id: usize,
     /// 图自上次同步后有改动, 需要重新编译并提交后端
     pub dirty: bool,
+    /// 下一帧待执行的视图操作 (缩放/minimap 导航)
+    pending_view_action: Option<ViewAction>,
+    /// 是否显示页面缩略图 (minimap)
+    pub minimap_visible: bool,
+    /// 最近一帧 snarl 渲染时捕获的图->屏变换 (供 minimap/缩放控件读取)
+    captured_to_global: egui::emath::TSTransform,
+    /// 最近一帧 snarl 占用的屏幕矩形 (供 minimap/缩放控件定位 overlay)
+    captured_view_rect: egui::Rect,
 }
 
 impl ControlTabState {
-    /// 创建默认图 — 仅含一个 ChannelSource 节点 (每 tab 一个)
+    /// 创建默认图 - 仅含一个 ChannelSource 节点 (每 tab 一个)
     pub fn new(tab_id: u64) -> Self {
         let mut snarl = Snarl::new();
         snarl.insert_node(
@@ -174,6 +194,10 @@ impl ControlTabState {
             next_auto_id: 0,
             // 初始即 dirty, 首帧同步默认图到后端
             dirty: true,
+            pending_view_action: None,
+            minimap_visible: true,
+            captured_to_global: egui::emath::TSTransform::default(),
+            captured_view_rect: egui::Rect::NOTHING,
         }
     }
 }
@@ -191,9 +215,7 @@ fn default_node_kind(name: &str) -> Option<(NodeKind, &'static str)> {
         )),
         "Filter" => Some((
             NodeKind::Filter {
-                kind: vofa_next_nodes::FilterKind::FIR {
-                    b: vec![0.5, 0.5],
-                },
+                kind: vofa_next_nodes::FilterKind::FIR { b: vec![0.5, 0.5] },
             },
             "Filter",
         )),
@@ -252,7 +274,12 @@ const ADD_NODE_MENU: &[&str] = &[
 /// 未支持的条目 (Radio/Checkbox/Label/PieChart/TableView/Command) 返回 None。
 pub fn palette_node_defaults(
     palette_id: &str,
-) -> Option<(NodeKind, &'static str, Option<InputControl>, Option<SinkDisplayKind>)> {
+) -> Option<(
+    NodeKind,
+    &'static str,
+    Option<InputControl>,
+    Option<SinkDisplayKind>,
+)> {
     match palette_id {
         // 输入控件 → Input 节点
         "knob" | "button" | "slider" => {
@@ -359,8 +386,7 @@ pub fn compile_graph(snarl: &Snarl<GraphNode>, tab_id: &str) -> (Vec<NodeDef>, V
 
     let mut edges: Vec<Edge> = Vec::new();
     for (i, (out_pin, in_pin)) in snarl.wires().enumerate() {
-        let (Some(&source), Some(&target)) =
-            (id_map.get(&out_pin.node), id_map.get(&in_pin.node))
+        let (Some(&source), Some(&target)) = (id_map.get(&out_pin.node), id_map.get(&in_pin.node))
         else {
             continue;
         };
@@ -418,26 +444,191 @@ pub fn remove_backend_graph(state: &Arc<AppState>, rt: &tokio::runtime::Runtime,
     });
 }
 
+/// 节点类别强调色 - 用于节点 header 着色, 区分不同类型节点
+///
+/// 取色来自 [`crate::theme`] 的 Catppuccin 强调色, 与全应用配色一致。
+fn node_accent_color(kind: &NodeKind, dark: bool) -> egui::Color32 {
+    match kind {
+        // 数据源 - 绿色
+        NodeKind::ChannelSource { .. } => theme::accent_green(dark),
+        // 输入控件 - 蓝色
+        NodeKind::Input => theme::accent_blue(dark),
+        // 数学运算 - 黄色
+        NodeKind::Math { .. } => theme::accent_yellow(dark),
+        // 滤波 - 桃色
+        NodeKind::Filter { .. } => theme::accent_peach(dark),
+        // 频谱 Sink - 桃色 (信号处理族)
+        NodeKind::SpectrumSink { .. } => theme::accent_peach(dark),
+        // 帧解码 - 紫色
+        NodeKind::FrameDecoder { .. } => theme::accent_mauve(dark),
+        // 显示 Sink - 青色
+        NodeKind::Sink => theme::accent_teal(dark),
+        NodeKind::RawDataSink { .. } => theme::accent_teal(dark),
+        // 自定义 - 红色
+        NodeKind::Custom { .. } => theme::accent_red(dark),
+    }
+}
+
+/// 把强调色降为 header 背景填充 (与主题 surface 协调, 不刺眼)
+fn header_fill(accent: egui::Color32, dark: bool) -> egui::Color32 {
+    if dark {
+        accent.gamma_multiply(0.32)
+    } else {
+        accent.gamma_multiply(0.42)
+    }
+}
+
+/// 构建与全应用 UI 尺寸/字体一致的 SnarlStyle
+///
+/// - 节点 frame 使用主题 surface0 填充 + 标准圆角/边框, 与侧栏面板/窗口视觉一致
+/// - pin / wire 尺寸按 egui 标准 interact_size 推导, 与其它可交互控件高度对齐
+/// - 允许缩放范围 0.2x ~ 2.5x
+fn make_snarl_style(ui: &egui::Ui) -> SnarlStyle {
+    let style = ui.style();
+    let visuals = ui.visuals();
+    let interact_h = style.spacing.interact_size.y;
+
+    let mut snarl_style = SnarlStyle::default();
+
+    // 节点 frame: 与主题窗口/面板一致的圆角 + 边框
+    let node_frame = egui::Frame::group(style)
+        .fill(visuals.widgets.inactive.bg_fill)
+        .stroke(egui::Stroke::new(1.0, visuals.window_stroke.color))
+        .corner_radius(visuals.widgets.noninteractive.corner_radius)
+        .inner_margin(egui::Margin::same(6))
+        .outer_margin(egui::Margin::ZERO);
+    snarl_style.node_frame = Some(node_frame);
+
+    // 缩放范围
+    snarl_style.min_scale = Some(0.2);
+    snarl_style.max_scale = Some(2.5);
+
+    // pin 尺寸与可交互控件高度对齐 (默认 ~0.6 * interact_size)
+    snarl_style.pin_size = Some(interact_h * 0.55);
+    // 连线宽度随 pin 尺寸
+    snarl_style.wire_width = Some(interact_h * 0.06);
+
+    snarl_style
+}
+
+/// 围绕屏幕点 `anchor` 调整缩放, 保持 anchor 下的图空间点不动
+fn rescale_around(
+    t: &egui::emath::TSTransform,
+    new_scale: f32,
+    anchor: egui::Pos2,
+) -> egui::emath::TSTransform {
+    // 当前 anchor 处的图空间点
+    let from = (anchor.to_vec2() - t.translation) / t.scaling;
+    egui::emath::TSTransform {
+        scaling: new_scale,
+        translation: anchor.to_vec2() - from * new_scale,
+    }
+}
+
+/// 计算所有节点位置的包围盒 (图空间), 供 FitToContent / minimap 使用
+fn nodes_bounding_box(snarl: &Snarl<GraphNode>) -> egui::Rect {
+    let mut bb = egui::Rect::NOTHING;
+    for (pos, _node) in snarl.nodes_pos() {
+        bb.extend_with(pos);
+    }
+    bb
+}
+
 /// SnarlViewer 实现 — 渲染节点/端口/菜单, 并把改动标 dirty
 pub struct GraphViewer<'a> {
     state: &'a Arc<AppState>,
     rt: &'a tokio::runtime::Runtime,
     dirty: &'a mut bool,
     next_auto_id: &'a mut usize,
+    /// 下一帧待执行的视图操作 (由 minimap/缩放控件写入, current_transform 消费)
+    pending_view_action: &'a mut Option<ViewAction>,
+    /// 本帧从 snarl 捕获的图->屏变换 (current_transform 写入, overlay 读取)
+    captured_to_global: &'a mut egui::emath::TSTransform,
+    /// 本帧 snarl 占用的屏幕矩形 (overlay 定位用)
+    captured_view_rect: &'a mut egui::Rect,
+    /// 当前主题是否深色 (header 着色取色用)
+    dark: bool,
 }
 
 impl<'a> GraphViewer<'a> {
-    pub fn new(
+    #[allow(clippy::too_many_arguments)]
+    fn new(
         state: &'a Arc<AppState>,
         rt: &'a tokio::runtime::Runtime,
         dirty: &'a mut bool,
         next_auto_id: &'a mut usize,
+        pending_view_action: &'a mut Option<ViewAction>,
+        captured_to_global: &'a mut egui::emath::TSTransform,
+        captured_view_rect: &'a mut egui::Rect,
+        dark: bool,
     ) -> Self {
         Self {
             state,
             rt,
             dirty,
             next_auto_id,
+            pending_view_action,
+            captured_to_global,
+            captured_view_rect,
+            dark,
+        }
+    }
+
+    /// 缩放一档的比例
+    const ZOOM_STEP: f32 = 1.25;
+    /// 允许的缩放范围 (与 make_snarl_style 一致)
+    const MIN_SCALE: f32 = 0.2;
+    const MAX_SCALE: f32 = 2.5;
+
+    /// 在 current_transform 中消费 pending_view_action, 调整 to_global.
+    /// 以上一帧捕获的屏幕矩形 (captured_view_rect) 为参照.
+    fn apply_view_action(
+        &self,
+        action: ViewAction,
+        to_global: &mut egui::emath::TSTransform,
+        snarl: &Snarl<GraphNode>,
+    ) {
+        let view_rect = *self.captured_view_rect;
+        if !view_rect.is_finite() {
+            return;
+        }
+        let center = view_rect.center();
+        match action {
+            ViewAction::ZoomIn => {
+                let new_scale =
+                    (to_global.scaling * Self::ZOOM_STEP).clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+                *to_global = rescale_around(to_global, new_scale, center);
+            }
+            ViewAction::ZoomOut => {
+                let new_scale =
+                    (to_global.scaling / Self::ZOOM_STEP).clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+                *to_global = rescale_around(to_global, new_scale, center);
+            }
+            ViewAction::ResetZoom => {
+                *to_global = rescale_around(to_global, 1.0, center);
+            }
+            ViewAction::CenterAt(graph_pos) => {
+                // 保持当前缩放, 平移使 graph_pos 映射到屏幕中心
+                let s = to_global.scaling;
+                to_global.translation = center.to_vec2() - graph_pos.to_vec2() * s;
+            }
+            ViewAction::FitToContent => {
+                let bb = nodes_bounding_box(snarl);
+                if !bb.is_finite() {
+                    return;
+                }
+                let padded = bb.expand(80.0);
+                let size = padded.size();
+                if size.x <= 0.0 || size.y <= 0.0 {
+                    return;
+                }
+                let scale = (view_rect.size() / size)
+                    .min_elem()
+                    .clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+                let graph_center = padded.center();
+                to_global.scaling = scale;
+                to_global.translation = center.to_vec2() - graph_center.to_vec2() * scale;
+            }
         }
     }
 
@@ -461,7 +652,14 @@ impl<'a> GraphViewer<'a> {
             let slider = egui::Slider::new(&mut value, control.min..=control.max)
                 .step_by(f64::from(control.step.max(1e-6)))
                 .clamping(egui::SliderClamping::Always);
-            if ui.add_sized([110.0, ui.spacing().interact_size.y], slider).changed() {
+            // 滑块占据可用宽度, 与侧栏面板控件尺寸一致
+            if ui
+                .add_sized(
+                    [ui.available_width() - 64.0, ui.spacing().interact_size.y],
+                    slider,
+                )
+                .changed()
+            {
                 changed = true;
             }
             if ui
@@ -556,16 +754,20 @@ impl<'a> GraphViewer<'a> {
         match value {
             Some(v) => match display {
                 SinkDisplayKind::Number => controls::number_display(ui, v),
-                SinkDisplayKind::Gauge => controls::gauge(ui, v, sink_min, sink_max, 130.0),
+                // 表盘宽度跟随节点可用宽度
+                SinkDisplayKind::Gauge => {
+                    controls::gauge(ui, v, sink_min, sink_max, ui.available_width().max(120.0));
+                }
                 SinkDisplayKind::Led => {
                     ui.horizontal(|ui| {
                         controls::led(ui, v, 0.0, 10.0);
-                        ui.small(format!("{v:.2}"));
+                        // 与其它控件一致的 Body 字号
+                        ui.label(format!("{v:.2}"));
                     });
                 }
             },
             None => {
-                ui.small("value: —");
+                ui.label("value: —");
             }
         }
 
@@ -607,6 +809,50 @@ fn sink_input_value(
 impl SnarlViewer<GraphNode> for GraphViewer<'_> {
     fn title(&mut self, node: &GraphNode) -> String {
         node.label.clone()
+    }
+
+    /// 节点 frame: 保持默认 (由 SnarlStyle.node_frame 提供, 与全应用 UI 一致)
+    fn node_frame(
+        &mut self,
+        default: egui::Frame,
+        _node: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        _snarl: &Snarl<GraphNode>,
+    ) -> egui::Frame {
+        default
+    }
+
+    /// 节点 header frame: 按节点类型着色, 使不同类型节点视觉上易于区分
+    fn header_frame(
+        &mut self,
+        default: egui::Frame,
+        node: NodeId,
+        _inputs: &[InPin],
+        _outputs: &[OutPin],
+        snarl: &Snarl<GraphNode>,
+    ) -> egui::Frame {
+        let dark = self.dark;
+        let accent = snarl
+            .get_node(node)
+            .map(|n| node_accent_color(&n.kind, dark))
+            .unwrap_or(default.fill);
+        default.fill(header_fill(accent, dark))
+    }
+
+    /// 捕获 snarl 当前的图->屏变换, 供 minimap/缩放控件使用;
+    /// 同时消费 pending_view_action (缩放/定位).
+    fn current_transform(
+        &mut self,
+        to_global: &mut egui::emath::TSTransform,
+        snarl: &mut Snarl<GraphNode>,
+    ) {
+        // 1) 消费待执行的视图操作
+        if let Some(action) = self.pending_view_action.take() {
+            self.apply_view_action(action, to_global, snarl);
+        }
+        // 2) 捕获本帧最终变换, 供 overlay 读取
+        *self.captured_to_global = *to_global;
     }
 
     fn inputs(&mut self, node: &GraphNode) -> usize {
@@ -673,7 +919,8 @@ impl SnarlViewer<GraphNode> for GraphViewer<'_> {
                         Some(v) => format!("{port}: {v:.3}"),
                         None => format!("{port}: —"),
                     };
-                    ui.small(text);
+                    // 使用 Body 字号 (与其它面板控件一致), monospace 便于对齐数值
+                    ui.label(egui::RichText::new(text).monospace());
                 }
             }
         }
@@ -760,13 +1007,260 @@ pub fn show_node_editor(
     ui.ctx()
         .request_repaint_after(std::time::Duration::from_millis(100));
 
+    let dark = ui.visuals().dark_mode;
+    // 本帧 snarl 将占据的屏幕矩形 (供 overlay 定位)
+    let editor_rect = ui.max_rect();
+
     let ControlTabState {
         snarl,
         next_auto_id,
         dirty,
-    } = tab_state;
+        pending_view_action,
+        minimap_visible,
+        captured_to_global,
+        captured_view_rect,
+    } = &mut *tab_state;
 
-    let mut viewer = GraphViewer::new(state, rt, dirty, next_auto_id);
-    let style = SnarlStyle::default();
+    let mut viewer = GraphViewer::new(
+        state,
+        rt,
+        dirty,
+        next_auto_id,
+        pending_view_action,
+        captured_to_global,
+        captured_view_rect,
+        dark,
+    );
+    let style = make_snarl_style(ui);
     snarl.show(&mut viewer, &style, format!("node-editor-{tab_id}"), ui);
+
+    // 记录本帧 snarl 实际占据的屏幕矩形, 供下一帧 current_transform / overlay 使用
+    *captured_view_rect = editor_rect;
+
+    // ---------------- 页面缩略图 (minimap) + 缩放控制组合 overlay ----------------
+    if editor_rect.is_finite() {
+        draw_minimap_and_zoom(
+            ui,
+            editor_rect,
+            *captured_to_global,
+            snarl,
+            dark,
+            *minimap_visible,
+            pending_view_action,
+            minimap_visible,
+        );
+    }
+}
+// ===========================================================================
+// 页面缩略图 (minimap) + 缩放控制组合 overlay
+// ===========================================================================
+
+/// minimap 默认尺寸
+const MINIMAP_SIZE: egui::Vec2 = egui::vec2(168.0, 116.0);
+/// overlay 与编辑区边缘的留白
+const OVERLAY_MARGIN: f32 = 12.0;
+/// minimap 中节点矩形的名义尺寸 (图空间, 仅用于缩略绘制, 真实尺寸由 snarl 内部管理)
+const NODE_NOMINAL_SIZE: egui::Vec2 = egui::vec2(140.0, 64.0);
+
+/// 绘制页面缩略图 + 缩放控制组合 (浮动在节点编辑器右上角)
+///
+/// - `editor_rect`: 本帧 snarl 占据的屏幕矩形
+/// - `to_global`: 图->屏 变换 (本帧捕获)
+/// - `snarl`: 节点图 (只读, 取节点位置/类型)
+/// - `pending`: 写入待执行的视图操作 (缩放/定位)
+/// - `minimap_visible_flag`: minimap 显隐开关 (可由用户切换)
+#[allow(clippy::too_many_arguments)]
+fn draw_minimap_and_zoom(
+    ui: &mut egui::Ui,
+    editor_rect: egui::Rect,
+    to_global: egui::emath::TSTransform,
+    snarl: &Snarl<GraphNode>,
+    dark: bool,
+    minimap_visible: bool,
+    pending: &mut Option<ViewAction>,
+    minimap_visible_flag: &mut bool,
+) {
+    // 仅在编辑区有限时绘制 (避免首帧 / 隐藏页签异常)
+    if !editor_rect.is_finite() {
+        return;
+    }
+
+    let panel_w = MINIMAP_SIZE.x + 16.0; // 含 frame 内边距
+    let panel_pos = egui::pos2(
+        editor_rect.right() - panel_w - OVERLAY_MARGIN,
+        editor_rect.top() + OVERLAY_MARGIN,
+    );
+
+    let area_id = ui.id().with("node-editor-overlay");
+    let visuals = ui.visuals().clone();
+
+    egui::Area::new(area_id)
+        .order(egui::Order::Foreground)
+        .fixed_pos(panel_pos)
+        .interactable(true)
+        .show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style())
+                .inner_margin(egui::Margin::same(6))
+                .show(ui, |ui| {
+                    // 标题栏: 标题 + 折叠按钮
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("Overview")
+                                .small()
+                                .strong()
+                                .color(visuals.widgets.inactive.fg_stroke.color),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let (icon, new_vis) = if minimap_visible {
+                                ("▾", false)
+                            } else {
+                                ("▸", true)
+                            };
+                            if ui
+                                .add(
+                                    egui::Button::new(egui::RichText::new(icon).small())
+                                        .frame(false),
+                                )
+                                .clicked()
+                            {
+                                *minimap_visible_flag = new_vis;
+                            }
+                        });
+                    });
+
+                    if minimap_visible {
+                        ui.add_space(2.0);
+                        draw_minimap(ui, editor_rect, to_global, snarl, dark, pending, &visuals);
+                        ui.add_space(4.0);
+                    }
+                    draw_zoom_controls(ui, to_global, pending, &visuals);
+                });
+        });
+}
+
+/// 绘制 minimap 缩略图, 并处理点击/拖拽导航
+fn draw_minimap(
+    ui: &mut egui::Ui,
+    editor_rect: egui::Rect,
+    to_global: egui::emath::TSTransform,
+    snarl: &Snarl<GraphNode>,
+    dark: bool,
+    pending: &mut Option<ViewAction>,
+    visuals: &egui::Visuals,
+) {
+    let nav_resp = ui.allocate_response(MINIMAP_SIZE, egui::Sense::click_and_drag());
+    let minimap_rect = nav_resp.rect;
+
+    // 图空间: 当前视口 + 所有节点
+    let from_global = to_global.inverse();
+    let graph_viewport = from_global * editor_rect;
+    let content_bb = nodes_bounding_box(snarl);
+    let world = if content_bb.is_finite() {
+        content_bb.union(graph_viewport)
+    } else {
+        graph_viewport
+    }
+    .expand(60.0);
+
+    if !world.is_finite() || world.size().min_elem() <= 0.0 {
+        ui.painter()
+            .rect_filled(minimap_rect, 4.0, visuals.extreme_bg_color);
+        return;
+    }
+
+    // world -> minimap 等比映射 (居中)
+    let ms = minimap_rect.size();
+    let ws = world.size();
+    let scale = (ms.x / ws.x).min(ms.y / ws.y).max(1e-6);
+    let drawn_size = ws * scale;
+    let offset = minimap_rect.min + (ms - drawn_size) / 2.0;
+    let w2m = |gp: egui::Pos2| -> egui::Pos2 { offset + (gp - world.min) * scale };
+
+    let painter = ui.painter();
+
+    // 背景
+    painter.rect_filled(minimap_rect, 4.0, visuals.extreme_bg_color);
+
+    // 网格底纹 (淡淡的)
+    painter.rect_stroke(
+        minimap_rect,
+        4.0,
+        egui::Stroke::new(1.0, visuals.widgets.noninteractive.bg_stroke.color),
+        egui::StrokeKind::Inside,
+    );
+
+    // 节点缩略矩形
+    for (pos, node) in snarl.nodes_pos() {
+        let center = w2m(pos);
+        let node_size = (NODE_NOMINAL_SIZE * scale).max(egui::vec2(2.5, 2.5));
+        let accent = node_accent_color(&node.kind, dark);
+        let rect = egui::Rect::from_center_size(center, node_size);
+        painter.rect_filled(rect, 1.5, accent.gamma_multiply(0.85));
+    }
+
+    // 当前视口框
+    let vp_min = w2m(graph_viewport.min);
+    let vp_max = w2m(graph_viewport.max);
+    let vp_rect = egui::Rect::from_min_max(vp_min, vp_max);
+    if vp_rect.is_finite() {
+        painter.rect_filled(vp_rect, 2.0, visuals.selection.bg_fill.gamma_multiply(0.35));
+        painter.rect_stroke(
+            vp_rect,
+            2.0,
+            egui::Stroke::new(1.5, visuals.selection.stroke.color),
+            egui::StrokeKind::Inside,
+        );
+    }
+
+    // 点击/拖拽导航: 把 minimap 内指针位置映射回图空间, 居中视口
+    if let Some(pos) = nav_resp
+        .interact_pointer_pos()
+        .filter(|p| minimap_rect.contains(*p))
+    {
+        // minimap 点 -> 图空间点
+        let graph_point = world.min + (pos - offset) / scale;
+        if graph_point.is_finite() {
+            *pending = Some(ViewAction::CenterAt(graph_point));
+        }
+    }
+}
+
+/// 绘制缩放控制按钮组 (放大 / 缩小 / 重置 / 适应)
+fn draw_zoom_controls(
+    ui: &mut egui::Ui,
+    to_global: egui::emath::TSTransform,
+    pending: &mut Option<ViewAction>,
+    _visuals: &egui::Visuals,
+) {
+    ui.horizontal(|ui| {
+        let zoom_pct = (to_global.scaling * 100.0).round() as i32;
+        if ui
+            .add(egui::Button::new("−").min_size(egui::vec2(26.0, ui.spacing().interact_size.y)))
+            .clicked()
+        {
+            *pending = Some(ViewAction::ZoomOut);
+        }
+        if ui
+            .add(egui::Button::new("+").min_size(egui::vec2(26.0, ui.spacing().interact_size.y)))
+            .clicked()
+        {
+            *pending = Some(ViewAction::ZoomIn);
+        }
+        // 当前缩放比例显示 + 重置按钮
+        if ui
+            .add(
+                egui::Button::new(format!("{zoom_pct}%"))
+                    .min_size(egui::vec2(48.0, ui.spacing().interact_size.y)),
+            )
+            .clicked()
+        {
+            *pending = Some(ViewAction::ResetZoom);
+        }
+        if ui
+            .add(egui::Button::new("Fit").min_size(egui::vec2(40.0, ui.spacing().interact_size.y)))
+            .clicked()
+        {
+            *pending = Some(ViewAction::FitToContent);
+        }
+    });
 }

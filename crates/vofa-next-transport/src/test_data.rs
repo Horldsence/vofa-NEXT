@@ -155,7 +155,11 @@ fn generate_bytes(
             // 每字节 = 一个 8 通道数字采样 (bit i = 通道 i 电平)
             // 在通道 0 产生方波, 其余通道跟随 frame 值阈值化
             let mut data = Vec::with_capacity(channels.max(1));
-            let square_bit = if sample_idx.is_multiple_of(2) { 0x01 } else { 0x00 };
+            let square_bit = if sample_idx.is_multiple_of(2) {
+                0x01
+            } else {
+                0x00
+            };
             let mut bits: u8 = square_bit;
             for i in 1..8 {
                 let v = if i < frame.len() { frame[i] } else { 0.0 };

@@ -124,7 +124,8 @@ impl TransportPanel {
         let connected = matches!(conn, ConnectionState::Connected);
 
         // 连接状态由异步任务写入, 定时重绘以便及时反映
-        ui.ctx().request_repaint_after(std::time::Duration::from_millis(200));
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(200));
 
         // 类型选择
         let mut kind = TransportKind::of(&self.config);
@@ -156,7 +157,9 @@ impl TransportPanel {
         match &mut self.config {
             TransportConfig::Serial(cfg) => {
                 let (p, s) = (ports.clone(), status.clone());
-                port_row(ui, &ports, &mut cfg.port_name, || spawn_list_ports(p, s, rt));
+                port_row(ui, &ports, &mut cfg.port_name, || {
+                    spawn_list_ports(p, s, rt)
+                });
                 baud_combo(ui, &mut cfg.baud_rate);
                 egui::ComboBox::from_label("Data bits")
                     .selected_text(cfg.data_bits.to_string())
@@ -182,7 +185,11 @@ impl TransportPanel {
                 egui::ComboBox::from_label("Flow control")
                     .selected_text(format!("{:?}", cfg.flow_control))
                     .show_ui(ui, |ui| {
-                        for f in [FlowControl::None, FlowControl::Software, FlowControl::Hardware] {
+                        for f in [
+                            FlowControl::None,
+                            FlowControl::Software,
+                            FlowControl::Hardware,
+                        ] {
                             ui.selectable_value(&mut cfg.flow_control, f, format!("{f:?}"));
                         }
                     });
@@ -221,7 +228,9 @@ impl TransportPanel {
             }
             TransportConfig::Slcan(cfg) => {
                 let (p, s) = (ports.clone(), status.clone());
-                port_row(ui, &ports, &mut cfg.port_name, || spawn_list_ports(p, s, rt));
+                port_row(ui, &ports, &mut cfg.port_name, || {
+                    spawn_list_ports(p, s, rt)
+                });
                 baud_combo(ui, &mut cfg.baud_rate);
                 can_bitrate_combo(ui, &mut cfg.can_bitrate);
             }

@@ -99,7 +99,10 @@ impl ToastQueue {
                     for toast in &self.toasts {
                         egui::Frame::window(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.colored_label(toast.level.color(ui.visuals()), toast.level.icon());
+                                ui.colored_label(
+                                    toast.level.color(ui.visuals()),
+                                    toast.level.icon(),
+                                );
                                 ui.label(&toast.text);
                             });
                         });

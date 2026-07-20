@@ -83,7 +83,11 @@ impl<'de> serde::Deserialize<'de> for ThemeKind {
 // ---------------------------------------------------------------------------
 
 const fn rgb(hex: u32) -> Color32 {
-    Color32::from_rgb(((hex >> 16) & 0xff) as u8, ((hex >> 8) & 0xff) as u8, (hex & 0xff) as u8)
+    Color32::from_rgb(
+        ((hex >> 16) & 0xff) as u8,
+        ((hex >> 8) & 0xff) as u8,
+        (hex & 0xff) as u8,
+    )
 }
 
 /// 主题用到的 Catppuccin 颜色子集
@@ -299,5 +303,76 @@ pub fn apply(ctx: &egui::Context, kind: ThemeKind) {
 
 /// 成功色 (按深/浅色选择对应风味; 深色风味间 green 差异可忽略)
 pub fn success(dark: bool) -> Color32 {
-    if dark { MOCHA.green } else { LATTE.green }
+    if dark {
+        MOCHA.green
+    } else {
+        LATTE.green
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 节点编辑器强调色 (按节点类别取用)
+// ---------------------------------------------------------------------------
+
+/// 蓝色强调色 - 输入控件类节点
+pub fn accent_blue(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.blue
+    } else {
+        LATTE.blue
+    }
+}
+
+/// 绿色强调色 - 数据源类节点
+pub fn accent_green(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.green
+    } else {
+        LATTE.green
+    }
+}
+
+/// 红色强调色 - 错误/危险类节点
+pub fn accent_red(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.red
+    } else {
+        LATTE.red
+    }
+}
+
+/// 黄色强调色 - 数学运算类节点
+pub fn accent_yellow(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.yellow
+    } else {
+        LATTE.yellow
+    }
+}
+
+/// 桃色强调色 - 滤波/信号处理类节点
+pub fn accent_peach(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.peach
+    } else {
+        LATTE.peach
+    }
+}
+
+/// 紫色强调色 - 解码/自定义类节点
+pub fn accent_mauve(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.mauve
+    } else {
+        LATTE.mauve
+    }
+}
+
+/// 青色强调色 - Sink/显示类节点
+pub fn accent_teal(dark: bool) -> Color32 {
+    if dark {
+        MOCHA.teal
+    } else {
+        LATTE.teal
+    }
 }

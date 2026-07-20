@@ -84,8 +84,10 @@ impl VofaApp {
             let s = settings.clone();
             rt.spawn(async move {
                 use crate::core::services;
-                let _ = services::set_waveform_buffer_capacity(&state, s.waveform_buffer_capacity).await;
-                let _ = services::set_rawdata_buffer_capacity(&state, s.rawdata_buffer_capacity).await;
+                let _ = services::set_waveform_buffer_capacity(&state, s.waveform_buffer_capacity)
+                    .await;
+                let _ =
+                    services::set_rawdata_buffer_capacity(&state, s.rawdata_buffer_capacity).await;
                 let _ = services::set_can_buffer_capacity(&state, s.can_buffer_capacity).await;
                 let _ = services::set_logic_buffer_capacity(&state, s.logic_buffer_capacity).await;
             });
@@ -117,8 +119,7 @@ impl VofaApp {
     fn new_control_tab(&mut self) {
         let id = self.next_tab_id;
         self.next_tab_id += 1;
-        self.control_tabs
-            .insert(id, ControlTabState::new(id));
+        self.control_tabs.insert(id, ControlTabState::new(id));
         self.dock_state.push_to_focused_leaf(Tab::control(id));
     }
 
@@ -170,10 +171,13 @@ impl VofaApp {
         // 解析目标页签: 优先活动 Control 页签, 否则任一打开的 Control 页签
         let tab_id = match self.active_control_tab {
             Some(id) if self.control_tabs.contains_key(&id) => Some(id),
-            _ => self.dock_state.iter_all_tabs().find_map(|(_, tab)| match tab {
-                Tab::Control { id } => Some(*id),
-                _ => None,
-            }),
+            _ => self
+                .dock_state
+                .iter_all_tabs()
+                .find_map(|(_, tab)| match tab {
+                    Tab::Control { id } => Some(*id),
+                    _ => None,
+                }),
         };
         let Some(tab_id) = tab_id else {
             return;
@@ -196,14 +200,16 @@ impl VofaApp {
             return;
         }
         // 聚焦的不是 Control 页签: 校验当前记录, 失效则回退到任一打开的 Control 页签
-        let valid = matches!(self.active_control_tab, Some(id) if self.control_tabs.contains_key(&id));
+        let valid =
+            matches!(self.active_control_tab, Some(id) if self.control_tabs.contains_key(&id));
         if !valid {
-            self.active_control_tab = self.dock_state.iter_all_tabs().find_map(|(_, tab)| {
-                match tab {
-                    Tab::Control { id } => Some(*id),
-                    _ => None,
-                }
-            });
+            self.active_control_tab =
+                self.dock_state
+                    .iter_all_tabs()
+                    .find_map(|(_, tab)| match tab {
+                        Tab::Control { id } => Some(*id),
+                        _ => None,
+                    });
         }
     }
 

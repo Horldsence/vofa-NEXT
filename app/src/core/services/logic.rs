@@ -4,10 +4,7 @@ use vofa_next_core::{DecodedEventBatch, LogicSampleBatch, Result};
 // ============ 逻辑分析仪 ============
 
 /// 同步查询: 获取最近 N 个逻辑采样
-pub async fn get_recent_logic_samples(
-    state: &AppState,
-    count: usize,
-) -> Result<LogicSampleBatch> {
+pub async fn get_recent_logic_samples(state: &AppState, count: usize) -> Result<LogicSampleBatch> {
     let samples = state.logic_buffer.lock().get_recent(count);
     Ok(LogicSampleBatch { samples })
 }

@@ -333,11 +333,16 @@ impl FrameParser {
     /// 与 feed 不同, 此方法不依赖内部状态, 直接尝试从字节切片开头解析一帧。
     /// 如果字节切片以 header 开头则正常解析; 否则尝试在切片中查找 header。
     pub fn parse_once(&self, data: &[u8], timestamp_us: u64) -> Option<ParsedFrame> {
-        self.parse_once_with_consumed(data, timestamp_us).map(|(f, _)| f)
+        self.parse_once_with_consumed(data, timestamp_us)
+            .map(|(f, _)| f)
     }
 
     /// 一次性解析并返回 (ParsedFrame, consumed_bytes) — 供手动测试模式 UI 显示消耗字节数
-    pub fn parse_once_with_consumed(&self, data: &[u8], timestamp_us: u64) -> Option<(ParsedFrame, usize)> {
+    pub fn parse_once_with_consumed(
+        &self,
+        data: &[u8],
+        timestamp_us: u64,
+    ) -> Option<(ParsedFrame, usize)> {
         let header_bytes = self.collect_header_bytes();
         let start = if header_bytes.is_empty() {
             0
@@ -455,7 +460,11 @@ impl FrameParser {
                     let pname = port_name.clone().unwrap_or_else(|| "length".to_string());
                     outputs.insert(pname, val);
                 }
-                crate::DecoderBlockDef::Id { field_type, port_name, .. } => {
+                crate::DecoderBlockDef::Id {
+                    field_type,
+                    port_name,
+                    ..
+                } => {
                     let n = field_type.byte_len()?;
                     if cursor + n > data.len() {
                         return None;
@@ -657,7 +666,7 @@ impl FrameParser {
 /// 判断块是否应执行 (基于 match_id 与 id_value)
 fn block_should_execute(match_id: Option<i64>, id_value: Option<i64>) -> bool {
     match match_id {
-        None => true,            // 无 match_id → 始终执行
+        None => true,                   // 无 match_id → 始终执行
         Some(v) => id_value == Some(v), // 有 match_id → 仅当 id_value 匹配时执行
     }
 }
@@ -667,9 +676,7 @@ fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() {
         return Some(0);
     }
-    haystack
-        .windows(needle.len())
-        .position(|w| w == needle)
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 /// 读取位域值
@@ -785,7 +792,10 @@ impl FrameDecoderTestData {
     /// 对于 Length 块, 自动将值注册为 `length_values`, 供 Field(Bytes) 的 `length_ref` 引用。
     ///
     /// 返回编码后的完整帧字节序列。
-    pub fn encode_frame(blocks: &[DecoderBlockDef], field_values: &HashMap<String, f32>) -> Vec<u8> {
+    pub fn encode_frame(
+        blocks: &[DecoderBlockDef],
+        field_values: &HashMap<String, f32>,
+    ) -> Vec<u8> {
         Self::encode_frame_with_checksums(blocks, field_values).0
     }
 
@@ -803,14 +813,14 @@ impl FrameDecoderTestData {
         let mut length_values: HashMap<String, u64> = HashMap::new();
         // 记录 checksum 块的信息, 第二遍写入校验值
         struct CsRecord {
-            buf_pos: usize,            // 当前 buf 长度 (插入位置)
+            buf_pos: usize, // 当前 buf 长度 (插入位置)
             algorithm: ChecksumAlgorithm,
             custom_script: Option<String>,
-            cover_begin: usize,        // 校验覆盖起始 (在最终 buf 中的索引)
+            cover_begin: usize, // 校验覆盖起始 (在最终 buf 中的索引)
             #[allow(dead_code)]
-            cover_end: usize,          // 校验覆盖结束 (exclusive)
+            cover_end: usize, // 校验覆盖结束 (exclusive)
             position: crate::DecoderChecksumPosition,
-            cs_len: usize,             // 校验值字节长度
+            cs_len: usize, // 校验值字节长度
         }
         let mut checksums: Vec<CsRecord> = Vec::new();
         // 记录 frame_start = Header 末尾在 buf 中的位置
@@ -835,19 +845,17 @@ impl FrameDecoderTestData {
                     id,
                     ..
                 } => {
-                    let name = port_name
-                        .as_deref()
-                        .unwrap_or("length")
-                        .to_string();
+                    let name = port_name.as_deref().unwrap_or("length").to_string();
                     let val = field_values.get(&name).copied().unwrap_or(0.0) as u64;
                     length_values.insert(id.clone(), val);
                     encode_int(&mut buf, *field_type, val);
                 }
-                DecoderBlockDef::Id { field_type, port_name, .. } => {
-                    let name = port_name
-                        .as_deref()
-                        .unwrap_or("id_value")
-                        .to_string();
+                DecoderBlockDef::Id {
+                    field_type,
+                    port_name,
+                    ..
+                } => {
+                    let name = port_name.as_deref().unwrap_or("id_value").to_string();
                     let val = field_values.get(&name).copied().unwrap_or(0.0) as u64;
                     current_id_value = Some(val as i64);
                     encode_int(&mut buf, *field_type, val);
@@ -881,7 +889,8 @@ impl FrameDecoderTestData {
                 } => {
                     let val = field_values.get(port_name).copied().unwrap_or(0.0) as u32;
                     let abs_byte_offset = frame_start + *byte_offset as usize;
-                    let needed = abs_byte_offset + (*bit_offset as usize + *bit_length as usize).div_ceil(8);
+                    let needed =
+                        abs_byte_offset + (*bit_offset as usize + *bit_length as usize).div_ceil(8);
                     while buf.len() < needed {
                         buf.push(0);
                     }
@@ -930,7 +939,7 @@ impl FrameDecoderTestData {
                                 algorithm: *algorithm,
                                 custom_script: custom_script.clone(),
                                 cover_begin: frame_start + cs_len, // 覆盖从占位之后开始
-                                cover_end: 0, // 在第二遍确定
+                                cover_end: 0,                      // 在第二遍确定
                                 position: *position,
                                 cs_len,
                             }
@@ -972,7 +981,9 @@ impl FrameDecoderTestData {
                 _ => cs.cover_end,
             };
             let cover_bytes = &buf[cs.cover_begin..actual_cover_end];
-            let computed = cs.algorithm.compute(cover_bytes, cs.custom_script.as_deref());
+            let computed = cs
+                .algorithm
+                .compute(cover_bytes, cs.custom_script.as_deref());
             // 将 computed 写入 buf[cs.buf_pos..buf_pos+cs_len]
             let write_len = computed.len().min(cs.cs_len);
             for j in 0..write_len {
@@ -980,10 +991,7 @@ impl FrameDecoderTestData {
             }
         }
 
-        let positions = checksums
-            .iter()
-            .map(|cs| (cs.buf_pos, cs.cs_len))
-            .collect();
+        let positions = checksums.iter().map(|cs| (cs.buf_pos, cs.cs_len)).collect();
         (buf, positions)
     }
 
@@ -994,10 +1002,7 @@ impl FrameDecoderTestData {
     ///
     /// 每帧的时间戳依次递增 1000 微秒。
     /// 返回连续拼接的完整字节流, 可直接喂入 [`FrameParser::feed`]。
-    pub fn encode_frames(
-        blocks: &[DecoderBlockDef],
-        frames: &[HashMap<String, f32>],
-    ) -> Vec<u8> {
+    pub fn encode_frames(blocks: &[DecoderBlockDef], frames: &[HashMap<String, f32>]) -> Vec<u8> {
         let mut all_bytes = Vec::new();
         for field_values in frames {
             let data = Self::encode_frame(blocks, field_values);
@@ -1026,7 +1031,8 @@ impl FrameDecoderTestData {
         blocks: &[DecoderBlockDef],
         field_values: &HashMap<String, f32>,
     ) -> Vec<u8> {
-        let (mut data, checksum_positions) = Self::encode_frame_with_checksums(blocks, field_values);
+        let (mut data, checksum_positions) =
+            Self::encode_frame_with_checksums(blocks, field_values);
         // 精确翻转最后一个 Checksum 块的校验字节 (保留 Tail 不变, 保证帧结构仍可解析,
         // 仅校验失败)
         if let Some(&(pos, len)) = checksum_positions.last() {
@@ -1502,10 +1508,7 @@ mod tests {
     #[test]
     fn test_parse_no_header() {
         // 无 Header 块 — 直接从开头解析
-        let blocks = vec![
-            field("f1", FieldType::UInt8, "v"),
-            tail("t1", "BB"),
-        ];
+        let blocks = vec![field("f1", FieldType::UInt8, "v"), tail("t1", "BB")];
         let parser = FrameParser::new(blocks, false, false, false, false);
 
         let data = [0x42, 0xBB];
@@ -1737,7 +1740,10 @@ mod tests {
         f3.insert("v".to_string(), 3.0);
 
         let all_bytes = FrameDecoderTestData::encode_frames(&blocks, &[f1, f2, f3]);
-        assert_eq!(all_bytes, vec![0xAA, 0x01, 0xBB, 0xAA, 0x02, 0xBB, 0xAA, 0x03, 0xBB]);
+        assert_eq!(
+            all_bytes,
+            vec![0xAA, 0x01, 0xBB, 0xAA, 0x02, 0xBB, 0xAA, 0x03, 0xBB]
+        );
 
         let mut parser = FrameParser::new(blocks, false, false, false, false);
         let frames = parser.feed(&all_bytes, 1000);

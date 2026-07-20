@@ -8,9 +8,9 @@
 //! - PSD: 功率谱密度 |X(k)|^2 / (N * fs * cg^2), cg=窗相干增益
 //! - Decibel: 10 * log10(Power + eps)
 
-use serde::{Deserialize, Serialize};
 use realfft::{RealFftPlanner, RealToComplex};
 use rustfft::num_complex::Complex32;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 pub use crate::window::WindowType;
@@ -163,7 +163,11 @@ impl SpectrumAnalyzer {
         crate::window::apply_window(&self.window_type, &mut self.fft_input);
 
         // FFT — process 会读取 fft_input, 写入 fft_output
-        if self.r2c.process(&mut self.fft_input, &mut self.fft_output).is_err() {
+        if self
+            .r2c
+            .process(&mut self.fft_input, &mut self.fft_output)
+            .is_err()
+        {
             return None;
         }
 
@@ -175,19 +179,24 @@ impl SpectrumAnalyzer {
         let fs = self.sample_rate;
         let eps: f32 = 1e-12;
 
-        let values: Vec<f32> = self.fft_output.iter().take(half_n).map(|c| {
-            let mag = c.norm(); // |X(k)|
-            let power = mag * mag;
-            match self.output {
-                SpectrumOutput::Magnitude => mag / n,
-                SpectrumOutput::Power => power / (n * n),
-                SpectrumOutput::PSD => power / (n * fs * cg_sq + eps),
-                SpectrumOutput::Decibel => {
-                    let p = power / (n * n);
-                    10.0 * (p + eps).log10()
+        let values: Vec<f32> = self
+            .fft_output
+            .iter()
+            .take(half_n)
+            .map(|c| {
+                let mag = c.norm(); // |X(k)|
+                let power = mag * mag;
+                match self.output {
+                    SpectrumOutput::Magnitude => mag / n,
+                    SpectrumOutput::Power => power / (n * n),
+                    SpectrumOutput::PSD => power / (n * fs * cg_sq + eps),
+                    SpectrumOutput::Decibel => {
+                        let p = power / (n * n);
+                        10.0 * (p + eps).log10()
+                    }
                 }
-            }
-        }).collect();
+            })
+            .collect();
 
         Some(SpectrumResult {
             frequencies: self.frequencies.clone(),
@@ -220,7 +229,8 @@ mod tests {
 
     #[test]
     fn test_push_and_ready() {
-        let mut analyzer = SpectrumAnalyzer::new(8, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
+        let mut analyzer =
+            SpectrumAnalyzer::new(8, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
         assert!(!analyzer.is_ready());
         for i in 0..8 {
             analyzer.push(i as f32);
@@ -230,7 +240,8 @@ mod tests {
 
     #[test]
     fn test_compute_not_ready() {
-        let mut analyzer = SpectrumAnalyzer::new(8, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
+        let mut analyzer =
+            SpectrumAnalyzer::new(8, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
         analyzer.push(1.0);
         assert!(analyzer.compute().is_none());
     }
@@ -242,7 +253,8 @@ mod tests {
         let n = 256;
         let fs = 1000.0;
         let freq = 50.0;
-        let mut analyzer = SpectrumAnalyzer::new(n, WindowType::Rect, SpectrumOutput::Magnitude, fs);
+        let mut analyzer =
+            SpectrumAnalyzer::new(n, WindowType::Rect, SpectrumOutput::Magnitude, fs);
         for i in 0..n {
             let t = i as f32 / fs;
             analyzer.push((2.0 * PI * freq * t).sin());
@@ -273,7 +285,8 @@ mod tests {
     fn test_fft_dc_signal() {
         // 直流信号 (常数) → bin 0 应为最大
         let n = 64;
-        let mut analyzer = SpectrumAnalyzer::new(n, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
+        let mut analyzer =
+            SpectrumAnalyzer::new(n, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
         for _ in 0..n {
             analyzer.push(1.0);
         }
@@ -358,7 +371,8 @@ mod tests {
     #[test]
     fn test_decibel_output() {
         let n = 128;
-        let mut analyzer = SpectrumAnalyzer::new(n, WindowType::Hann, SpectrumOutput::Decibel, 1000.0);
+        let mut analyzer =
+            SpectrumAnalyzer::new(n, WindowType::Hann, SpectrumOutput::Decibel, 1000.0);
         for i in 0..n {
             analyzer.push((i as f32 * 0.1).sin());
         }
@@ -383,7 +397,8 @@ mod tests {
 
     #[test]
     fn test_reset() {
-        let mut analyzer = SpectrumAnalyzer::new(8, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
+        let mut analyzer =
+            SpectrumAnalyzer::new(8, WindowType::Rect, SpectrumOutput::Magnitude, 1000.0);
         for i in 0..8 {
             analyzer.push(i as f32);
         }

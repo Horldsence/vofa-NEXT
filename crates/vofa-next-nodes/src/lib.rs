@@ -29,9 +29,7 @@ pub mod math_op;
 
 pub use frame_decoder::{ChecksumAlgorithm, FrameParser, ParsedFrame};
 pub use math_op::MathOp;
-pub use vofa_next_dsp::{
-    DigitalFilter, FilterKind, FilterPreset, SpectrumOutput, WindowType,
-};
+pub use vofa_next_dsp::{DigitalFilter, FilterKind, FilterPreset, SpectrumOutput, WindowType};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -169,11 +167,15 @@ impl FieldType {
     pub fn byte_len(self) -> Option<usize> {
         match self {
             FieldType::UInt8 | FieldType::Int8 => Some(1),
-            FieldType::UInt16LE | FieldType::UInt16BE
-            | FieldType::Int16LE | FieldType::Int16BE => Some(2),
-            FieldType::UInt32LE | FieldType::UInt32BE
-            | FieldType::Int32LE | FieldType::Int32BE
-            | FieldType::Float32LE | FieldType::Float32BE => Some(4),
+            FieldType::UInt16LE | FieldType::UInt16BE | FieldType::Int16LE | FieldType::Int16BE => {
+                Some(2)
+            }
+            FieldType::UInt32LE
+            | FieldType::UInt32BE
+            | FieldType::Int32LE
+            | FieldType::Int32BE
+            | FieldType::Float32LE
+            | FieldType::Float32BE => Some(4),
             FieldType::Bytes => None,
         }
     }
@@ -185,43 +187,63 @@ impl FieldType {
             FieldType::UInt8 => bytes.first().copied().map(|b| b as f32),
             FieldType::Int8 => bytes.first().copied().map(|b| (b as i8) as f32),
             FieldType::UInt16LE => {
-                if bytes.len() < 2 { return None; }
+                if bytes.len() < 2 {
+                    return None;
+                }
                 Some(u16::from_le_bytes([bytes[0], bytes[1]]) as f32)
             }
             FieldType::UInt16BE => {
-                if bytes.len() < 2 { return None; }
+                if bytes.len() < 2 {
+                    return None;
+                }
                 Some(u16::from_be_bytes([bytes[0], bytes[1]]) as f32)
             }
             FieldType::Int16LE => {
-                if bytes.len() < 2 { return None; }
+                if bytes.len() < 2 {
+                    return None;
+                }
                 Some((i16::from_le_bytes([bytes[0], bytes[1]])) as f32)
             }
             FieldType::Int16BE => {
-                if bytes.len() < 2 { return None; }
+                if bytes.len() < 2 {
+                    return None;
+                }
                 Some((i16::from_be_bytes([bytes[0], bytes[1]])) as f32)
             }
             FieldType::UInt32LE => {
-                if bytes.len() < 4 { return None; }
+                if bytes.len() < 4 {
+                    return None;
+                }
                 Some(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f32)
             }
             FieldType::UInt32BE => {
-                if bytes.len() < 4 { return None; }
+                if bytes.len() < 4 {
+                    return None;
+                }
                 Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as f32)
             }
             FieldType::Int32LE => {
-                if bytes.len() < 4 { return None; }
+                if bytes.len() < 4 {
+                    return None;
+                }
                 Some((i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])) as f32)
             }
             FieldType::Int32BE => {
-                if bytes.len() < 4 { return None; }
+                if bytes.len() < 4 {
+                    return None;
+                }
                 Some((i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])) as f32)
             }
             FieldType::Float32LE => {
-                if bytes.len() < 4 { return None; }
+                if bytes.len() < 4 {
+                    return None;
+                }
                 Some(f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
             }
             FieldType::Float32BE => {
-                if bytes.len() < 4 { return None; }
+                if bytes.len() < 4 {
+                    return None;
+                }
                 Some(f32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
             }
             FieldType::Bytes => {
@@ -273,7 +295,11 @@ pub enum LengthUnit {
 /// 每个块可选 `match_id` 字段 (Id 块除外) — 仅当当前帧的 id_value 等于 match_id 时该块执行。
 /// 未设置 match_id 的块始终执行 (用于多帧类型分派)。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum DecoderBlockDef {
     /// 帧头: 匹配固定字节序列 (帧起始标志)
     Header {
@@ -452,7 +478,11 @@ pub enum CompileError {
 
 impl CompiledGraph {
     /// 编译图 — 构建拓扑序 + 索引, 检测循环
-    pub fn compile(tab_id: String, nodes: Vec<NodeDef>, edges: Vec<Edge>) -> Result<Self, CompileError> {
+    pub fn compile(
+        tab_id: String,
+        nodes: Vec<NodeDef>,
+        edges: Vec<Edge>,
+    ) -> Result<Self, CompileError> {
         let mut node_map: HashMap<String, NodeDef> = HashMap::new();
         let mut channel_source_id: Option<String> = None;
 
@@ -493,10 +523,9 @@ impl CompiledGraph {
 
             // 访问上游 (有 edge 指向本节点的源节点)
             for e in edges {
-                if e.target == id
-                    && nodes.contains_key(&e.source) {
-                        dfs(&e.source, nodes, edges, visited, order)?;
-                    }
+                if e.target == id && nodes.contains_key(&e.source) {
+                    dfs(&e.source, nodes, edges, visited, order)?;
+                }
             }
 
             visited.insert(id.to_string(), 2);
@@ -510,7 +539,12 @@ impl CompiledGraph {
         // - RawDataSink: 纯展示, 无输出端口, 前端通过 edges 自行查值
         let output_node_ids: Vec<String> = node_map
             .iter()
-            .filter(|(_, n)| !matches!(n.kind, NodeKind::Sink | NodeKind::SpectrumSink { .. } | NodeKind::RawDataSink { .. }))
+            .filter(|(_, n)| {
+                !matches!(
+                    n.kind,
+                    NodeKind::Sink | NodeKind::SpectrumSink { .. } | NodeKind::RawDataSink { .. }
+                )
+            })
             .map(|(id, _)| id.clone())
             .collect();
 
@@ -629,13 +663,19 @@ impl CompiledGraph {
                         }
                         // 附加输出端口
                         if *enable_valid {
-                            m.insert("valid".to_string(), if parser.last_frame.valid { 1.0 } else { 0.0 });
+                            m.insert(
+                                "valid".to_string(),
+                                if parser.last_frame.valid { 1.0 } else { 0.0 },
+                            );
                         }
                         if *enable_frame_count {
                             m.insert("frame_count".to_string(), parser.frame_count as f32);
                         }
                         if *enable_last_timestamp {
-                            m.insert("last_timestamp".to_string(), parser.last_frame.timestamp_us as f32);
+                            m.insert(
+                                "last_timestamp".to_string(),
+                                parser.last_frame.timestamp_us as f32,
+                            );
                         }
                         if *enable_fps {
                             m.insert("fps".to_string(), parser.fps());
@@ -647,10 +687,18 @@ impl CompiledGraph {
                                 m.insert(port.to_string(), 0.0);
                             }
                         }
-                        if *enable_valid { m.insert("valid".to_string(), 0.0); }
-                        if *enable_frame_count { m.insert("frame_count".to_string(), 0.0); }
-                        if *enable_last_timestamp { m.insert("last_timestamp".to_string(), 0.0); }
-                        if *enable_fps { m.insert("fps".to_string(), 0.0); }
+                        if *enable_valid {
+                            m.insert("valid".to_string(), 0.0);
+                        }
+                        if *enable_frame_count {
+                            m.insert("frame_count".to_string(), 0.0);
+                        }
+                        if *enable_last_timestamp {
+                            m.insert("last_timestamp".to_string(), 0.0);
+                        }
+                        if *enable_fps {
+                            m.insert("fps".to_string(), 0.0);
+                        }
                     }
                     // 触发 unused_variable 警告的 blocks 在 else 分支已使用
                     let _ = blocks;
@@ -680,7 +728,10 @@ impl CompiledGraph {
         port_id: &str,
         computed: &HashMap<String, HashMap<String, f32>>,
     ) -> f32 {
-        if let Some((src_node, src_port)) = self.input_index.get(&(node_id.to_string(), port_id.to_string())) {
+        if let Some((src_node, src_port)) = self
+            .input_index
+            .get(&(node_id.to_string(), port_id.to_string()))
+        {
             computed
                 .get(src_node)
                 .and_then(|m| m.get(src_port))
@@ -942,7 +993,13 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         let cs_id = "__channel_source__-t1";
         assert_eq!(out.get(cs_id).and_then(|m| m.get("ch0")), Some(&10.0));
         assert_eq!(out.get(cs_id).and_then(|m| m.get("ch1")), Some(&20.0));
@@ -957,7 +1014,13 @@ mod tests {
         input_values.insert("knob1".to_string(), 42.0_f32);
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         assert_eq!(out.get("knob1").and_then(|m| m.get("value")), Some(&42.0));
     }
 
@@ -976,7 +1039,13 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         // m1.result = 10 + 20 = 30
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&30.0));
     }
@@ -993,14 +1062,20 @@ mod tests {
             edge("e1", "__channel_source__-t1", "ch0", "m1", "in0"),
             edge("e2", "__channel_source__-t1", "ch1", "m1", "in1"),
             edge("e3", "m1", "result", "m2", "in0"),
-            edge("e4", "m1", "result", "m2", "in1"),  // m2 = m1 * m1
+            edge("e4", "m1", "result", "m2", "in1"), // m2 = m1 * m1
         ];
         let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
         let frame = DataFrame::new(vec![3.0, 4.0]);
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         // m1 = 3 + 4 = 7, m2 = 7 * 7 = 49
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&7.0));
         assert_eq!(out.get("m2").and_then(|m| m.get("result")), Some(&49.0));
@@ -1022,7 +1097,13 @@ mod tests {
         custom_outputs.insert("c1".to_string(), m);
 
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         assert_eq!(out.get("c1").and_then(|m| m.get("out")), Some(&99.0));
 
         // collect_custom_inputs 应返回 c1.value = 5.0
@@ -1035,11 +1116,14 @@ mod tests {
 
     #[test]
     fn test_sink_not_in_eval_order() {
-        let nodes = vec![
-            make_channel_source("t1", 1),
-            make_sink("gauge1", "t1"),
-        ];
-        let edges = vec![edge("e1", "__channel_source__-t1", "ch0", "gauge1", "value")];
+        let nodes = vec![make_channel_source("t1", 1), make_sink("gauge1", "t1")];
+        let edges = vec![edge(
+            "e1",
+            "__channel_source__-t1",
+            "ch0",
+            "gauge1",
+            "value",
+        )];
         let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
         // Sink 不应在 eval_order 中
         assert!(!g.eval_order.contains(&"gauge1".to_string()));
@@ -1059,7 +1143,13 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&5.0));
     }
 
@@ -1078,7 +1168,13 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         assert_eq!(out.get("f1").and_then(|m| m.get("result")), Some(&7.5));
         // filter_states 应包含 f1
         assert!(filter_states.contains_key("f1"));
@@ -1201,7 +1297,11 @@ mod tests {
                 &mut filter_states,
                 &HashMap::new(),
             );
-            last_y = out.get("f1").and_then(|m| m.get("result")).copied().unwrap_or(0.0);
+            last_y = out
+                .get("f1")
+                .and_then(|m| m.get("result"))
+                .copied()
+                .unwrap_or(0.0);
         }
         assert!(
             (last_y - 1.0).abs() < 0.01,
@@ -1266,7 +1366,13 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
 
         // collect_spectrum_inputs 应返回 s1 → 42.0
         let spectrum_inputs = g.collect_spectrum_inputs(&out);
@@ -1317,7 +1423,13 @@ mod tests {
         let input_values = HashMap::new();
         let custom_outputs = HashMap::new();
         let mut filter_states = HashMap::new();
-        let out = g.evaluate(&frame, &input_values, &custom_outputs, &mut filter_states, &HashMap::new());
+        let out = g.evaluate(
+            &frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &HashMap::new(),
+        );
         // s1 不应在 evaluate 输出中
         assert!(!out.contains_key("s1"));
         // 但 ChannelSource 应在

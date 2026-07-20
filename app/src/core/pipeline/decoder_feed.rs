@@ -20,14 +20,20 @@ pub fn feed_frame_decoders(eval_state: &GraphEvalState, data: &[u8], ts_us: u64)
     let mut decoder_states = eval_state.decoder_states.lock();
 
     // 收集所有 graph 中当前的 FrameDecoder id → config
-    let mut current_configs: HashMap<String, (Vec<vofa_next_nodes::DecoderBlockDef>, bool, bool, bool, bool)> = HashMap::new();
+    let mut current_configs: HashMap<
+        String,
+        (
+            Vec<vofa_next_nodes::DecoderBlockDef>,
+            bool,
+            bool,
+            bool,
+            bool,
+        ),
+    > = HashMap::new();
     for (_, graph) in graphs.iter() {
         for dec_id in graph.decoder_node_ids() {
             if let Some(cfg) = graph.decoder_config(&dec_id) {
-                current_configs.insert(dec_id, (
-                    cfg.0.to_vec(),
-                    cfg.1, cfg.2, cfg.3, cfg.4,
-                ));
+                current_configs.insert(dec_id, (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4));
             }
         }
     }
@@ -42,14 +48,16 @@ pub fn feed_frame_decoders(eval_state: &GraphEvalState, data: &[u8], ts_us: u64)
             Some(p) => !p.matches_config(blocks, *ev, *efc, *elt, *efps),
         };
         if need_rebuild {
-            let parser = FrameParser::new(
-                blocks.clone(),
-                *ev, *efc, *elt, *efps,
-            );
+            let parser = FrameParser::new(blocks.clone(), *ev, *efc, *elt, *efps);
             decoder_states.insert(dec_id.clone(), parser);
             tracing::info!(
                 "帧解码器已 (重新)创建: decoder={} blocks={} valid={} count={} ts={} fps={}",
-                dec_id, blocks.len(), ev, efc, elt, efps
+                dec_id,
+                blocks.len(),
+                ev,
+                efc,
+                elt,
+                efps
             );
         }
         // 喂入字节 (无论是否重建, 都要喂 — 重建后 buf 为空, 直接从新数据开始解析)

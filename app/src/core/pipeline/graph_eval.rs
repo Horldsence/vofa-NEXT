@@ -18,7 +18,13 @@ pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) 
 
     let mut combined: HashMap<String, HashMap<String, f32>> = HashMap::new();
     for (_, graph) in graphs.iter() {
-        let out = graph.evaluate(frame, &input_values, &custom_outputs, &mut filter_states, &decoder_states);
+        let out = graph.evaluate(
+            frame,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &decoder_states,
+        );
         for (k, v) in out {
             combined.insert(k, v);
         }

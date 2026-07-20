@@ -123,25 +123,21 @@ impl CanLoadStats {
         // 先剔除过期样本 (以当前帧时间为基准)
         self.evict_expired(frame.timestamp);
         // 推入新样本
-        self.samples.push_back((
-            frame.timestamp,
-            bits,
-            frame.id,
-            frame.extended,
-            frame.dlc,
-        ));
+        self.samples
+            .push_back((frame.timestamp, bits, frame.id, frame.extended, frame.dlc));
         self.total_bits += u64::from(bits);
         self.total_bytes += u64::from(frame.dlc);
         // 更新 per_id
-        let entry = self.per_id.entry((frame.id, frame.extended)).or_insert_with(
-            || CanIdLoadStats {
+        let entry = self
+            .per_id
+            .entry((frame.id, frame.extended))
+            .or_insert_with(|| CanIdLoadStats {
                 id: frame.id,
                 extended: frame.extended,
                 frame_count: 0,
                 total_bits: 0,
                 total_bytes: 0,
-            },
-        );
+            });
         entry.frame_count += 1;
         entry.total_bits += u64::from(bits);
         entry.total_bytes += u64::from(frame.dlc);
@@ -825,7 +821,7 @@ mod tests {
     #[test]
     fn test_load_stats_window_eviction() {
         let mut stats = CanLoadStats::new(100_000, 60); // 100ms 窗口
-        // 推入 3 帧: t=100ms / t=200ms / t=300ms
+                                                        // 推入 3 帧: t=100ms / t=200ms / t=300ms
         stats.push(&make_load_frame(0x100, 4, 100_000));
         stats.push(&make_load_frame(0x100, 4, 200_000));
         stats.push(&make_load_frame(0x100, 4, 300_000));

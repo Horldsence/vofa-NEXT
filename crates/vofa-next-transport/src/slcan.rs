@@ -16,9 +16,7 @@ type SpawnResult = (
 ///
 /// 内部用 serialport 打开串口, 启动时发送 slcan 初始化命令。
 /// 读线程广播原始字节 (包含 slcan ASCII 命令), 由 SlcanEngine 解析。
-pub fn spawn(
-    config: SlcanConfig,
-) -> Result<SpawnResult> {
+pub fn spawn(config: SlcanConfig) -> Result<SpawnResult> {
     let mut port = serialport::new(&config.port_name, config.baud_rate)
         .data_bits(DataBits::Eight)
         .parity(Parity::None)

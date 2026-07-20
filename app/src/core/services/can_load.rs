@@ -85,10 +85,7 @@ pub async fn get_current_can_bitrate(state: &AppState) -> Result<(u32, String)> 
 /// - Section: Per-ID History — ID, 扩展帧, 时间戳, 负载率
 ///
 /// 返回完整文件路径
-pub async fn export_can_load_csv(
-    state: &AppState,
-    bitrate_bps: Option<u32>,
-) -> Result<String> {
+pub async fn export_can_load_csv(state: &AppState, bitrate_bps: Option<u32>) -> Result<String> {
     use std::io::Write;
 
     let bitrate = resolve_can_bitrate(state, bitrate_bps).await;
@@ -100,8 +97,10 @@ pub async fn export_can_load_csv(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let (yyyy, mm, dd, hh, min, ss) = secs_to_local_components(now);
-    let timestamp_str =
-        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", yyyy, mm, dd, hh, min, ss);
+    let timestamp_str = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        yyyy, mm, dd, hh, min, ss
+    );
     let filename = format!(
         "vofa-can-load-{:04}{:02}{:02}-{:02}{:02}{:02}.csv",
         yyyy, mm, dd, hh, min, ss
@@ -110,13 +109,13 @@ pub async fn export_can_load_csv(
     let csv = format_can_load_csv(&snap, bitrate, &timestamp_str);
 
     // 选择保存路径: 优先 Downloads, 失败则用当前目录
-    let path = match directories::UserDirs::new().and_then(|u| u.download_dir().map(|d| d.to_path_buf())) {
+    let path = match directories::UserDirs::new()
+        .and_then(|u| u.download_dir().map(|d| d.to_path_buf()))
+    {
         Some(d) => d.join(&filename),
         None => std::env::current_dir()
             .map(|d| d.join(&filename))
-            .map_err(|e| {
-                vofa_next_core::Error::Config(format!("无法确定下载目录: {}", e))
-            })?,
+            .map_err(|e| vofa_next_core::Error::Config(format!("无法确定下载目录: {}", e)))?,
     };
 
     let mut file = std::fs::File::create(&path)?;

@@ -92,8 +92,7 @@ pub fn show(ui: &mut egui::Ui, state: &Arc<AppState>) {
                     ui.monospace(frame.dlc.to_string());
                 });
                 row.col(|ui| {
-                    let data: Vec<String> =
-                        frame.data.iter().map(|b| format!("{b:02X}")).collect();
+                    let data: Vec<String> = frame.data.iter().map(|b| format!("{b:02X}")).collect();
                     ui.monospace(data.join(" "));
                 });
             });

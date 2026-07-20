@@ -195,18 +195,26 @@ pub enum TestSignal {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind")]
 pub enum ProtocolConfig {
-    JustFloat { channels: Option<usize> },
-    FireWater { channels: Option<usize> },
+    JustFloat {
+        channels: Option<usize>,
+    },
+    FireWater {
+        channels: Option<usize>,
+    },
     RawData,
     Slcan,
     CandleLight,
-    LogicDecode { decoder: crate::logic::LogicDecoderConfig },
+    LogicDecode {
+        decoder: crate::logic::LogicDecoderConfig,
+    },
     /// 诊断协议层 (ISO-TP / UDS / OBD-II / J1939)
     ///
     /// 注意:诊断流程走独立的 `DiagnosticEngine` + `BridgeCanBackend` 管线,
     /// 不通过 `ProtocolEngine` 的 feed/encode 通路。`create_engine` 对此变体
     /// 返回 `RawDataEngine` 占位,真正的诊断 dispatch 在 `state.rs` 中实现。
-    Diagnostic { config: crate::diagnostic::DiagnosticConfig },
+    Diagnostic {
+        config: crate::diagnostic::DiagnosticConfig,
+    },
 }
 
 impl Default for ProtocolConfig {

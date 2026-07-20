@@ -49,9 +49,7 @@ type SpawnResult = (
 /// 启动串口传输
 ///
 /// 返回 (写入端, 数据广播端, 取消标志)
-pub fn spawn(
-    config: SerialConfig,
-) -> Result<SpawnResult> {
+pub fn spawn(config: SerialConfig) -> Result<SpawnResult> {
     let mut port = serialport::new(&config.port_name, config.baud_rate)
         .data_bits(match config.data_bits {
             5 => DataBits::Five,

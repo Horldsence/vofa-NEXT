@@ -31,10 +31,8 @@ pub fn gauge(ui: &mut egui::Ui, value: f32, min: f32, max: f32, width: f32) {
 /// LED 指示灯 — value > threshold 点亮
 pub fn led(ui: &mut egui::Ui, value: f32, threshold: f32, radius: f32) {
     let on = value > threshold;
-    let (rect, _resp) = ui.allocate_exact_size(
-        egui::vec2(radius * 2.0, radius * 2.0),
-        egui::Sense::hover(),
-    );
+    let (rect, _resp) =
+        ui.allocate_exact_size(egui::vec2(radius * 2.0, radius * 2.0), egui::Sense::hover());
     let fill = if on {
         egui::Color32::from_rgb(0x4c, 0xc2, 0x61)
     } else {

@@ -38,11 +38,12 @@ impl MathOp {
             MathOp::Add => vals.iter().sum(),
             MathOp::Sub => vals.iter().copied().reduce(|a, b| a - b).unwrap_or(0.0),
             MathOp::Mul => vals.iter().copied().reduce(|a, b| a * b).unwrap_or(1.0),
-            MathOp::Div => vals
-                .iter()
-                .copied()
-                .skip(1)
-                .fold(vals[0], |a, b| if b == 0.0 { 0.0 } else { a / b }),
+            MathOp::Div => {
+                vals.iter()
+                    .copied()
+                    .skip(1)
+                    .fold(vals[0], |a, b| if b == 0.0 { 0.0 } else { a / b })
+            }
             MathOp::Avg => vals.iter().sum::<f32>() / vals.len() as f32,
             MathOp::Min => vals.iter().copied().fold(f32::INFINITY, f32::min),
             MathOp::Max => vals.iter().copied().fold(f32::NEG_INFINITY, f32::max),

@@ -40,7 +40,9 @@ impl WindowType {
             WindowType::Rect => 1.0,
             WindowType::Hann => 0.5 * (1.0 - (two_pi * t).cos()),
             WindowType::Hamming => 0.54 - 0.46 * (two_pi * t).cos(),
-            WindowType::Blackman => 0.42 - 0.5 * (two_pi * t).cos() + 0.08 * (4.0 * std::f32::consts::PI * t).cos(),
+            WindowType::Blackman => {
+                0.42 - 0.5 * (two_pi * t).cos() + 0.08 * (4.0 * std::f32::consts::PI * t).cos()
+            }
         }
     }
 
