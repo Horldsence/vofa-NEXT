@@ -44,8 +44,8 @@ export function DecodedEventList() {
 
   // 订阅 decodedEventBuffer
   useEffect(() => {
-    const unsub = decodedEventBuffer.subscribe((recent) => {
-      setEvents(recent);
+    const unsub = decodedEventBuffer.subscribe(() => {
+      setEvents(decodedEventBuffer.getRecent(500));
     });
     setEvents(decodedEventBuffer.getRecent(500));
     return unsub;

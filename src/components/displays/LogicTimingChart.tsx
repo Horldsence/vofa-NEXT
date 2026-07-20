@@ -18,7 +18,7 @@ export function LogicTimingChart() {
 
   // 订阅 logicSampleBuffer (RAF 节流后触发, 单一数据源)
   useEffect(() => {
-    const unsub = logicSampleBuffer.subscribe((recent) => setSamples(recent));
+    const unsub = logicSampleBuffer.subscribe(() => setSamples(logicSampleBuffer.getRecent(1000)));
     setSamples(logicSampleBuffer.getRecent(1000));
     return unsub;
   }, []);

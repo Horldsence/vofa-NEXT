@@ -33,6 +33,6 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   ...createGraphSlice(set, get),
   ...createDataTabSlice(set, get),
   ...createDataSlice(set, get),
-  ...createGraphStateSlice(),
+  ...createGraphStateSlice(set, get),
   ...createEventSlice(set, get),
 }));

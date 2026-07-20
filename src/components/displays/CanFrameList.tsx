@@ -138,31 +138,35 @@ export function CanFrameList() {
     return unsub;
   }, []);
 
-  // 过滤 (在 version 变化时重新计算)
+  // 过滤 (在 version 变化时重新计算, 用 getUnsafeRef 避免中间拷贝)
   const filtered = useMemo(() => {
-    let result = canFrameBuffer.getAll();
-    if (filterDir !== 'all') {
-      result = result.filter((f) => f.direction === filterDir);
+    const all = canFrameBuffer.getUnsafeRef();
+    if (filterDir !== 'all' || filterId.trim()) {
+      return all.filter((f) => {
+        if (filterDir !== 'all' && f.direction !== filterDir) return false;
+        if (filterId.trim()) {
+          const idLower = filterId.trim().toLowerCase().replace(/^0x/, '');
+          const idNum = parseInt(idLower, 16);
+          if (!isNaN(idNum) && f.id !== idNum) return false;
+        }
+        return true;
+      });
     }
-    if (filterId.trim()) {
-      const idLower = filterId.trim().toLowerCase().replace(/^0x/, '');
-      const idNum = parseInt(idLower, 16);
-      if (!isNaN(idNum)) {
-        result = result.filter((f) => f.id === idNum);
-      }
-    }
-    return result;
+    // 无过滤条件: 复用内部引用 (filtered 作为虚拟滚动数据源)
+    return all;
   }, [filterDir, filterId, version]);
 
-  const allFrames = useMemo(() => canFrameBuffer.getAll(), [version]);
-  const rxCount = useMemo(
-    () => allFrames.filter((f) => f.direction === 'Rx').length,
-    [allFrames]
-  );
-  const txCount = useMemo(
-    () => allFrames.filter((f) => f.direction === 'Tx').length,
-    [allFrames]
-  );
+  // Rx/Tx 计数: 从内部引用遍历, 避免两次 getAll 拷贝
+  const rxTxCounts = useMemo(() => {
+    const all = canFrameBuffer.getUnsafeRef();
+    let rx = 0, tx = 0;
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].direction === 'Rx') rx++;
+      else tx++;
+    }
+    return { rxCount: rx, txCount: tx, total: all.length };
+  }, [version]);
+  const { rxCount, txCount } = rxTxCounts;
 
   const virtualizer = useVirtualizer({
     count: filtered.length,
@@ -273,7 +277,7 @@ export function CanFrameList() {
         <div className="flex-1 min-w-2" />
 
         <div className="flex items-center gap-1.5 text-xs text-text-secondary font-mono">
-          <span className="hidden sm:inline">{allFrames.length}</span>
+          <span className="hidden sm:inline">{rxTxCounts.total}</span>
           <span className="px-1.5 py-0.5 rounded bg-green/10 text-green">Rx:{rxCount}</span>
           <span className="px-1.5 py-0.5 rounded bg-purple/10 text-purple">Tx:{txCount}</span>
         </div>

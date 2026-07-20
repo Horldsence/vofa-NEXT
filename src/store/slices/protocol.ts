@@ -50,6 +50,7 @@ export function createProtocolSlice(set: any, get: any): ProtocolSlice {
           if (detected !== prev) {
             set({ detectedChannels: detected });
             const effective = getEffectiveChannels(protocolConfig, detected);
+            await api.setBufferChannels(effective);
             set((s: any) => ({
               rfNodes: s.rfNodes.map((n: any) =>
                 n.type === 'channelSource' && n.data.tabId

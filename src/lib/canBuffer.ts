@@ -6,17 +6,14 @@ import type { CanFrame } from '../types';
 class CanFrameBuffer {
   private frames: CanFrame[] = [];
   private _capacity: number;
-  private listeners = new Set<(frames: CanFrame[]) => void>();
+  private listeners = new Set<() => void>();
   private _version = 0;
-  /// 最近一次 notify 发出的引用 (用于引用稳定化)
-  private lastSnapshot: CanFrame[] = [];
-  private lastSnapshotCount = -1;
   /// RAF 节流标志
   private rafScheduled = false;
   /// 状态栏订阅: 缓存使用量 (0-1) + 长度
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
 
-  constructor(capacity = 100_000) {
+  constructor(capacity = 50_000) {
     this._capacity = capacity;
   }
 
@@ -50,7 +47,12 @@ class CanFrameBuffer {
     return this.frames.slice();
   }
 
-  /// 按 ID 过滤
+  /// 获取内部数组引用 (不拷贝) — 用于 filter/map 等只读遍历,
+  /// 调用方必须在同一微任务内完成操作, 不持有引用跨 tick
+  getUnsafeRef(): CanFrame[] {
+    return this.frames;
+  }
+
   getById(id: number, extended: boolean): CanFrame[] {
     return this.frames.filter((f) => f.id === id && f.extended === extended);
   }
@@ -58,8 +60,6 @@ class CanFrameBuffer {
   clear() {
     this.frames = [];
     this._version++;
-    this.lastSnapshot = [];
-    this.lastSnapshotCount = -1;
     this.scheduleNotify();
   }
 
@@ -77,8 +77,6 @@ class CanFrameBuffer {
     if (this.frames.length > this._capacity) {
       this.frames.splice(0, this.frames.length - this._capacity);
       this._version++;
-      this.lastSnapshot = [];
-      this.lastSnapshotCount = -1;
       this.scheduleNotify();
     }
     // 容量变化时立即刷新 stats
@@ -89,8 +87,8 @@ class CanFrameBuffer {
     return this._version;
   }
 
-  /// 订阅帧数据更新 (RAF 节流后触发)
-  subscribe(fn: (frames: CanFrame[]) => void): () => void {
+  /// 订阅帧数据更新 (RAF 节流后触发, 不传数据 — 订阅者自行从 buffer 读取)
+  subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
@@ -116,13 +114,8 @@ class CanFrameBuffer {
 
   private flushNotify() {
     const count = this.frames.length;
-    // 引用稳定化: 如果长度未变, 复用上一次快照, 避免 React 浅比较失效
-    if (count !== this.lastSnapshotCount) {
-      this.lastSnapshot = this.frames.slice();
-      this.lastSnapshotCount = count;
-    }
-    const snapshot = this.lastSnapshot;
-    this.listeners.forEach((fn) => fn(snapshot));
+    // 不拷贝数组, 订阅者自行从 buffer 按需读取
+    this.listeners.forEach((fn) => fn());
 
     // 通知统计订阅者
     const usage = count / this._capacity;

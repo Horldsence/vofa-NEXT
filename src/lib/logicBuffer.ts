@@ -6,10 +6,8 @@ import type { LogicSample, DecodedEvent } from '../types';
 class LogicSampleBuffer {
   private samples: LogicSample[] = [];
   private _capacity: number;
-  private listeners = new Set<(samples: LogicSample[]) => void>();
+  private listeners = new Set<() => void>();
   private _version = 0;
-  private lastSnapshot: LogicSample[] = [];
-  private lastSnapshotCount = -1;
   private rafScheduled = false;
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
 
@@ -43,8 +41,6 @@ class LogicSampleBuffer {
   clear() {
     this.samples = [];
     this._version++;
-    this.lastSnapshot = [];
-    this.lastSnapshotCount = -1;
     this.scheduleNotify();
   }
 
@@ -62,8 +58,6 @@ class LogicSampleBuffer {
     if (this.samples.length > this._capacity) {
       this.samples.splice(0, this.samples.length - this._capacity);
       this._version++;
-      this.lastSnapshot = [];
-      this.lastSnapshotCount = -1;
       this.scheduleNotify();
     }
     this.flushNotify();
@@ -73,8 +67,8 @@ class LogicSampleBuffer {
     return this._version;
   }
 
-  /// 订阅采样更新 (RAF 节流后触发)
-  subscribe(fn: (samples: LogicSample[]) => void): () => void {
+  /// 订阅采样更新 (RAF 节流后触发, 不传数据 — 订阅者自行从 buffer 读取)
+  subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
@@ -97,12 +91,8 @@ class LogicSampleBuffer {
 
   private flushNotify() {
     const count = this.samples.length;
-    if (count !== this.lastSnapshotCount) {
-      this.lastSnapshot = this.getRecent(1000);
-      this.lastSnapshotCount = count;
-    }
-    const snapshot = this.lastSnapshot;
-    this.listeners.forEach((fn) => fn(snapshot));
+    // 不拷贝数组, 订阅者自行从 buffer 按需读取
+    this.listeners.forEach((fn) => fn());
 
     const usage = count / this._capacity;
     this.statsListeners.forEach((fn) => fn(usage, count, this._capacity));
@@ -113,10 +103,8 @@ class LogicSampleBuffer {
 class DecodedEventBuffer {
   private events: DecodedEvent[] = [];
   private _capacity: number;
-  private listeners = new Set<(events: DecodedEvent[]) => void>();
+  private listeners = new Set<() => void>();
   private _version = 0;
-  private lastSnapshot: DecodedEvent[] = [];
-  private lastSnapshotCount = -1;
   private rafScheduled = false;
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
 
@@ -145,8 +133,6 @@ class DecodedEventBuffer {
   clear() {
     this.events = [];
     this._version++;
-    this.lastSnapshot = [];
-    this.lastSnapshotCount = -1;
     this.scheduleNotify();
   }
 
@@ -164,8 +150,6 @@ class DecodedEventBuffer {
     if (this.events.length > this._capacity) {
       this.events.splice(0, this.events.length - this._capacity);
       this._version++;
-      this.lastSnapshot = [];
-      this.lastSnapshotCount = -1;
       this.scheduleNotify();
     }
     this.flushNotify();
@@ -175,8 +159,8 @@ class DecodedEventBuffer {
     return this._version;
   }
 
-  /// 订阅事件更新 (RAF 节流后触发)
-  subscribe(fn: (events: DecodedEvent[]) => void): () => void {
+  /// 订阅事件更新 (RAF 节流后触发, 不传数据 — 订阅者自行从 buffer 读取)
+  subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
   }
@@ -199,12 +183,7 @@ class DecodedEventBuffer {
 
   private flushNotify() {
     const count = this.events.length;
-    if (count !== this.lastSnapshotCount) {
-      this.lastSnapshot = this.getRecent(500);
-      this.lastSnapshotCount = count;
-    }
-    const snapshot = this.lastSnapshot;
-    this.listeners.forEach((fn) => fn(snapshot));
+    this.listeners.forEach((fn) => fn());
 
     const usage = count / this._capacity;
     this.statsListeners.forEach((fn) => fn(usage, count, this._capacity));

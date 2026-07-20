@@ -157,7 +157,7 @@ impl AppState {
             waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
             raw_data_collector: Arc::new(Mutex::new(RawDataCollector::new())),
             raw_data_tasks: Arc::new(Mutex::new(HashMap::new())),
-            can_buffer: Arc::new(Mutex::new(CanBuffer::new(100_000))),
+            can_buffer: Arc::new(Mutex::new(CanBuffer::new(50_000))),
             can_load_stats: Arc::new(Mutex::new(CanLoadStats::new(1_000_000, 120))),
             can_load_tasks: Arc::new(Mutex::new(HashMap::new())),
             can_tasks: Arc::new(Mutex::new(HashMap::new())),

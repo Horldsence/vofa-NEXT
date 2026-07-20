@@ -133,7 +133,7 @@ export class RawDataBuffer {
 
   /// 清理已被完全覆盖的分片元数据
   private trimChunks() {
-    if (this.chunks.length <= 10000) return;
+    if (this.chunks.length <= 2000) return;
     const threshold = Math.max(0, this.totalWritten - this.capacity);
     let i = 0;
     while (i < this.chunks.length && this.chunks[i].offset + this.chunks[i].length <= threshold) {

@@ -90,9 +90,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
   const connectedInputs = useMemo<ConnectedInput[]>(() => {
     if (widget.params.id === 'default-waveform') {
-      const win = waveformWindow.get();
-      const count = win.channel_count || widget.params.channels;
-      return Array.from({ length: count }, (_, i) => ({ kind: 'channel' as const, idx: i }));
+      return Array.from({ length: widget.params.channels }, (_, i) => ({ kind: 'channel' as const, idx: i }));
     }
     const channels: ConnectedInput[] = [];
     const derived: ConnectedInput[] = [];
@@ -149,36 +147,24 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         });
       }
     } else {
-      // 固定: widget.params.channels 通道槽 + 派生槽
-      for (let i = 0; i < widget.params.channels; i++) {
-        const input = channelInputs.find((x) => x.idx === i);
-        if (input) {
-          slots.push({
-            input,
-            colorIdx: i,
-            isDerived: false,
-            label: `CH${i}`,
-            cfgIdx: i,
-          });
-        } else {
-          // 未连接的占位槽 (data 将填 NaN)
-          slots.push({
-            input: { kind: 'channel', idx: i },
-            colorIdx: i,
-            isDerived: false,
-            label: `CH${i}`,
-            cfgIdx: i,
-          });
-        }
+      // 固定: 仅创建已连接通道的系列 (与缩略图一致, 不创建未连接的占位槽)
+      for (const input of channelInputs) {
+        slots.push({
+          input,
+          colorIdx: input.idx,
+          isDerived: false,
+          label: `CH${input.idx}`,
+          cfgIdx: input.idx,
+        });
       }
       for (let i = 0; i < derivedInputs.length; i++) {
         const input = derivedInputs[i];
         slots.push({
           input,
-          colorIdx: i,
+          colorIdx: channelInputs.length + i,
           isDerived: true,
           label: `MATH:${input.sourceId}`,
-          cfgIdx: widget.params.channels + i,
+          cfgIdx: channelInputs.length + i,
         });
       }
     }
@@ -193,7 +179,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   );
 
   const seriesSlotsRef = useRef(seriesSlots);
-  useEffect(() => { seriesSlotsRef.current = seriesSlots; }, [seriesSlots]);
+  seriesSlotsRef.current = seriesSlots;
 
   const { cursorHidden, isMac } = useCursorHide();
 
@@ -279,19 +265,12 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     if (!axisConfig.running) {
       const win = waveformWindow.get();
       if (win.timestamps.length > 0 && !frozenDataRef.current) {
+        // 停止时保持引用而非深拷贝: waveformWindow.clear() 创建新空窗口,
+        // 不会 mutate 此引用, 因此引用安全
         frozenDataRef.current = {
-          ts: [...win.timestamps],
-          chs: win.channels.map((ch) => [...ch]),
-          derived: win.derived
-            ? Object.fromEntries(
-                Object.entries(win.derived).map(([k1, v1]) => [
-                  k1,
-                  Object.fromEntries(
-                    Object.entries(v1).map(([k2, v2]) => [k2, [...v2]])
-                  ),
-                ])
-              )
-            : undefined,
+          ts: win.timestamps,
+          chs: win.channels,
+          derived: win.derived,
         };
         // 拍快照后立即用冻结数据重绘
         const plot = plotRef.current;

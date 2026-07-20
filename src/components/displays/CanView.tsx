@@ -1,6 +1,6 @@
 import { useAppStore } from '../../store/appStore';
 import { canFrameBuffer } from '../../lib/canBuffer';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { t } from '../../i18n';
 import { CanFrameList } from './CanFrameList';
 import { CanSender } from './CanSender';
@@ -52,18 +52,24 @@ export function CanView() {
 }
 
 /// CAN 总线活动图 — ID 分布统计 (横向条形图, 取出现次数 Top 20)
+/// 使用 ref 而非 state 避免每帧更新触发 React re-render + 全量拷贝
 function CanBusChart() {
   const lang = useAppStore((s) => s.lang);
-  const [frames, setFrames] = useState<CanFrame[]>([]);
+  const framesRef = useRef<CanFrame[]>([]);
+  const [chartVersion, setChartVersion] = useState(0);
 
   useEffect(() => {
-    const unsub = canFrameBuffer.subscribe(() => setFrames(canFrameBuffer.getRecent(500)));
-    setFrames(canFrameBuffer.getRecent(500));
+    const unsub = canFrameBuffer.subscribe(() => {
+      // 用 ref 存储, 仅拷贝 500 帧 (而非全量 100K)
+      framesRef.current = canFrameBuffer.getRecent(500);
+      setChartVersion((v) => v + 1);
+    });
+    framesRef.current = canFrameBuffer.getRecent(500);
     return unsub;
   }, []);
 
-  // 统计 ID 分布
   const idStats = useMemo(() => {
+    const frames = framesRef.current;
     const map = new Map<string, { count: number; rx: number; tx: number; extended: boolean }>();
     for (const f of frames) {
       const key = f.extended
@@ -79,7 +85,7 @@ function CanBusChart() {
       .map(([id, stats]) => ({ id, ...stats }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
-  }, [frames]);
+    }, [chartVersion]);
 
   const maxCount = Math.max(...idStats.map((s) => s.count), 1);
 
