@@ -1,0 +1,40 @@
+[package]
+name = "vofa-next-app"
+version.workspace = true
+edition.workspace = true
+authors = ["peng"]
+description = "Native egui desktop app for VOFA-NEXT"
+
+[lints.clippy]
+# egui immediate-mode UI code is intentionally pragmatic; keep core crates strict,
+# allow the noisier lint groups in the app crate.
+all = { level = "deny", priority = -1 }
+pedantic = "allow"
+nursery = "allow"
+cargo = "allow"
+
+[dependencies]
+eframe = { version = "0.34", default-features = false, features = ["glow", "default_fonts"] }
+egui = "0.34"
+egui_dock = "0.19"
+egui-snarl = "0.10"
+egui_plot = "0.35"
+egui_extras = "0.34"
+tokio = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+directories = "5"
+open = "5"
+notify-rust = "4"
+rfd = "0.15"
+rust-i18n = "2"
+
+vofa-next-core = { workspace = true }
+vofa-next-transport = { workspace = true }
+vofa-next-protocol = { workspace = true }
+vofa-next-buffer = { workspace = true }
+vofa-next-nodes = { workspace = true }
+vofa-next-dsp = { workspace = true }

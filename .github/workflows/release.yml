@@ -19,7 +19,6 @@ on:
         default: false
 
 env:
-  NODE_VERSION: 22
   RUST_TOOLCHAIN: stable
 
 jobs:
@@ -32,14 +31,14 @@ jobs:
       matrix:
         include:
           - platform: macos-latest
-            target: universal-apple-darwin
-            args: '--target universal-apple-darwin'
+            target: aarch64-apple-darwin
+            bin_name: vofa-next-app
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
-            args: ''
+            bin_name: vofa-next-app
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            args: ''
+            bin_name: vofa-next-app.exe
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -50,63 +49,75 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ inputs.version }}"
-          # MSI 版本号不支持 pre-release 标识符，bundle 版本剥离 `-beta.x` 等后缀
-          BUNDLE_VERSION="${VERSION%%-*}"
-          sed -i.bak 's/"version": "[^"]*"/"version": "'"$BUNDLE_VERSION"'"/' src-tauri/tauri.conf.json
-          sed -i.bak 's/^version = "[^"]*"/version = "'"$BUNDLE_VERSION"'"/' src-tauri/Cargo.toml
-          sed -i.bak 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' package.json
-          rm -f src-tauri/tauri.conf.json.bak src-tauri/Cargo.toml.bak package.json.bak
-          echo "bundle version: $BUNDLE_VERSION"
-          echo "npm version: $VERSION"
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
+          # Cargo 包版本不支持 pre-release 标识符，剥离 `-beta.x` 等后缀
+          PACKAGE_VERSION="${VERSION%%-*}"
+          sed -i.bak 's/^version = "[^"]*"/version = "'"$PACKAGE_VERSION"'"/' Cargo.toml
+          sed -i.bak 's/^version = "[^"]*"/version = "'"$PACKAGE_VERSION"'"/' app/Cargo.toml
+          rm -f Cargo.toml.bak app/Cargo.toml.bak
+          echo "package version: $PACKAGE_VERSION"
+          echo "release tag: v$VERSION"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libudev-dev pkg-config
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libudev-dev pkg-config
 
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: cargo build --release -p vofa-next-app --target ${{ matrix.target }}
 
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist/vofa-next-${{ inputs.version }}-${{ matrix.target }}${{ matrix.platform == 'windows-latest' && '.exe' || '' }}"
+          if [ "${{ matrix.platform }}" = "windows-latest" ]; then
+            7z a "dist/vofa-next-${{ inputs.version }}-${{ matrix.target }}.zip" "dist/vofa-next-${{ inputs.version }}-${{ matrix.target }}.exe"
+          else
+            tar -czf "dist/vofa-next-${{ inputs.version }}-${{ matrix.target }}.tar.gz" -C dist "vofa-next-${{ inputs.version }}-${{ matrix.target }}"
+          fi
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: v${{ inputs.version }}
-          releaseName: v${{ inputs.version }}
-          releaseBody: |
+          name: vofa-next-${{ matrix.target }}
+          path: dist/*
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          body: |
             ## v${{ inputs.version }}
 
             本次为 ${{ inputs.prerelease && 'pre-release' || '正式 release' }}。
 
-            ### 安装包
-            - macOS: `.dmg` (universal)
-            - Linux: `.deb`/`.AppImage`
-            - Windows: `.msi`/`.nsis`
-          releaseDraft: ${{ inputs.draft }}
-          prerelease: ${{ inputs.prerelease }}
-          args: ${{ matrix.args }}
+            ### 平台
+            - macOS (Apple Silicon): `.tar.gz`
+            - Linux (x86_64): `.tar.gz`
+            - Windows (x86_64): `.zip`
+          files: dist/*

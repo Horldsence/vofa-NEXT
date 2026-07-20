@@ -1,0 +1,58 @@
+[workspace]
+members = ["app", "crates/*"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "deny"
+nursery = "deny"
+cargo = "deny"
+
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"
+multiple_crate_versions = "allow"
+cargo_common_metadata = "allow"
+too_many_arguments = "allow"
+enum_glob_use = "allow"
+print_stdout = "allow"
+print_stderr = "allow"
+unreadable_literal = "allow"
+single_match_else = "allow"
+match_same_arms = "allow"
+manual_clamp = "allow"
+struct_field_names = "allow"
+doc_link_code = "allow"
+ptr_arg = "allow"
+needless_pass_by_value = "allow"
+useless_format = "allow"
+new_without_default = "allow"
+too_many_lines = "allow"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
+log = "0.4"
+thiserror = "1"
+anyhow = "1"
+vofa-next-core = { path = "crates/vofa-next-core" }
+vofa-next-transport = { path = "crates/vofa-next-transport" }
+vofa-next-protocol = { path = "crates/vofa-next-protocol" }
+vofa-next-buffer = { path = "crates/vofa-next-buffer" }
+vofa-next-nodes = { path = "crates/vofa-next-nodes" }
+vofa-next-dsp = { path = "crates/vofa-next-dsp" }
+vofa-next-automotive = { path = "crates/vofa-next-automotive" }
+libautomotive = "0.1"
+rustfft = "6"
+realfft = "3"
+serialport = "4"
+nusb = "0.2"
+async-trait = "0.1"
+parking_lot = "0.12"
