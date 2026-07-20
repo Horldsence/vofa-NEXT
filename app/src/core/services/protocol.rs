@@ -12,7 +12,7 @@ pub async fn set_protocol(state: &AppState, config: ProtocolConfig) -> Result<()
         let mut manager = state.transport.lock().await;
         let is_test_data = manager
             .config()
-            .map_or(false, |c| matches!(c, TransportConfig::TestData(_)));
+            .is_some_and(|c| matches!(c, TransportConfig::TestData(_)));
         let is_connected = manager.state() == ConnectionState::Connected;
         if is_test_data && is_connected {
             manager.close().await;

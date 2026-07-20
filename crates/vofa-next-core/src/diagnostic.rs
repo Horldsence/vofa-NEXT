@@ -8,18 +8,13 @@ use serde::{Deserialize, Serialize};
 // ============ 通用辅助类型 ============
 
 /// ISO-TP 地址模式 (Normal / Extended / Mixed)
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum IsoTpAddressMode {
+    #[default]
     Normal,
     Extended,
     Mixed,
-}
-
-impl Default for IsoTpAddressMode {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 // ============ UDS 类型 ============
@@ -62,7 +57,7 @@ pub enum UdsService {
 
 impl UdsService {
     /// 从 SID 字节构造
-    pub fn from_byte(sid: u8) -> Self {
+    pub const fn from_byte(sid: u8) -> Self {
         match sid {
             0x10 => Self::DiagnosticSessionControl,
             0x11 => Self::EcuReset,
@@ -83,7 +78,7 @@ impl UdsService {
     }
 
     /// 转回 SID 字节
-    pub fn to_byte(self) -> u8 {
+    pub const fn to_byte(self) -> u8 {
         match self {
             Self::DiagnosticSessionControl => 0x10,
             Self::EcuReset => 0x11,
@@ -141,7 +136,7 @@ pub enum UdsNrc {
 }
 
 impl UdsNrc {
-    pub fn from_byte(b: u8) -> Self {
+    pub const fn from_byte(b: u8) -> Self {
         match b {
             0x10 => Self::GeneralReject,
             0x11 => Self::ServiceNotSupported,
@@ -193,7 +188,7 @@ pub enum ObdMode {
 }
 
 impl ObdMode {
-    pub fn from_byte(b: u8) -> Self {
+    pub const fn from_byte(b: u8) -> Self {
         match b {
             0x01 => Self::CurrentData,
             0x02 => Self::FreezeFrame,
@@ -209,7 +204,7 @@ impl ObdMode {
         }
     }
 
-    pub fn to_byte(self) -> u8 {
+    pub const fn to_byte(self) -> u8 {
         match self {
             Self::CurrentData => 0x01,
             Self::FreezeFrame => 0x02,
@@ -231,16 +226,16 @@ impl ObdMode {
 pub struct DtcStatus(pub u8);
 
 impl DtcStatus {
-    pub fn is_active(self) -> bool {
+    pub const fn is_active(self) -> bool {
         self.0 & 0x01 != 0
     }
-    pub fn is_pending(self) -> bool {
+    pub const fn is_pending(self) -> bool {
         self.0 & 0x04 != 0
     }
-    pub fn is_permanent(self) -> bool {
+    pub const fn is_permanent(self) -> bool {
         self.0 & 0x08 != 0
     }
-    pub fn is_confirmed(self) -> bool {
+    pub const fn is_confirmed(self) -> bool {
         self.0 & 0x08 != 0
     }
 }

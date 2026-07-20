@@ -76,7 +76,7 @@ impl BridgeCanBackend {
                 )
                 .await
                 {
-                    Err(_) => continue, // timeout,继续循环检查 cancel
+                    Err(_) => { /* timeout,继续循环检查 cancel */ }
                     Ok(Err(_)) => break, // channel 关闭
                     Ok(Ok(bytes)) => {
                         if bytes.is_empty() {
@@ -93,7 +93,7 @@ impl BridgeCanBackend {
                     }
                 }
             }
-            log::info!("BridgeCanBackend 解码任务退出 (kind={:?})", kind);
+            log::info!("BridgeCanBackend 解码任务退出 (kind={kind:?})");
         });
 
         Self {
@@ -111,7 +111,7 @@ impl BridgeCanBackend {
     }
 
     /// 引擎种类
-    pub fn kind(&self) -> BackendKind {
+    pub const fn kind(&self) -> BackendKind {
         self.kind
     }
 }
@@ -165,7 +165,7 @@ mod tests {
     use tokio::sync::broadcast;
 
     /// 构造一个测试用 byte 广播通道并 spawn Slcan 桥接
-    async fn spawn_slcan_bridge() -> (
+    fn spawn_slcan_bridge() -> (
         BridgeCanBackend,
         broadcast::Sender<Vec<u8>>,
         mpsc::Receiver<Vec<u8>>,
@@ -179,7 +179,7 @@ mod tests {
 
     #[tokio::test]
     async fn slcan_bridge_decodes_received_bytes() {
-        let (backend, byte_tx, _write_rx) = spawn_slcan_bridge().await;
+        let (backend, byte_tx, _write_rx) = spawn_slcan_bridge();
         let mut frame_rx = backend.subscribe_frames();
 
         // 喂入 slcan 数据帧: t123401020304\r
@@ -204,7 +204,7 @@ mod tests {
 
     #[tokio::test]
     async fn slcan_bridge_encodes_outgoing_frames() {
-        let (backend, _byte_tx, mut write_rx) = spawn_slcan_bridge().await;
+        let (backend, _byte_tx, mut write_rx) = spawn_slcan_bridge();
 
         let frame = CanFrame {
             timestamp: 0,
@@ -301,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn backend_name_reflects_kind() {
-        let (backend, _byte_tx, _write_rx) = spawn_slcan_bridge().await;
+        let (backend, _byte_tx, _write_rx) = spawn_slcan_bridge();
         assert_eq!(backend.name(), "SlcanBridge");
         assert_eq!(backend.kind(), BackendKind::Slcan);
         backend.shutdown();
@@ -309,7 +309,7 @@ mod tests {
 
     #[tokio::test]
     async fn multiple_subscribers_each_get_frames() {
-        let (backend, byte_tx, _write_rx) = spawn_slcan_bridge().await;
+        let (backend, byte_tx, _write_rx) = spawn_slcan_bridge();
         let mut rx1 = backend.subscribe_frames();
         let mut rx2 = backend.subscribe_frames();
 

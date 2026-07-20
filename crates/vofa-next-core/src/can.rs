@@ -113,7 +113,7 @@ impl CanLoadStats {
     }
 
     /// 当前窗口大小 (微秒)
-    pub fn window_us(&self) -> u64 {
+    pub const fn window_us(&self) -> u64 {
         self.window_us
     }
 
@@ -130,8 +130,8 @@ impl CanLoadStats {
             frame.extended,
             frame.dlc,
         ));
-        self.total_bits += bits as u64;
-        self.total_bytes += frame.dlc as u64;
+        self.total_bits += u64::from(bits);
+        self.total_bytes += u64::from(frame.dlc);
         // 更新 per_id
         let entry = self.per_id.entry((frame.id, frame.extended)).or_insert_with(
             || CanIdLoadStats {
@@ -143,12 +143,13 @@ impl CanLoadStats {
             },
         );
         entry.frame_count += 1;
-        entry.total_bits += bits as u64;
-        entry.total_bytes += frame.dlc as u64;
+        entry.total_bits += u64::from(bits);
+        entry.total_bytes += u64::from(frame.dlc);
     }
 
     /// 采样当前负载率, 推入历史 (前端按固定间隔调用)
     /// 同时为每个当前窗口内的 ID 采样其独立负载率
+    #[allow(clippy::cast_precision_loss)]
     pub fn sample_history(&mut self, bitrate: u32, now_us: u64) {
         // 先剔除过期样本
         self.evict_expired(now_us);
@@ -172,11 +173,11 @@ impl CanLoadStats {
         // 为每个当前在窗口内的 ID 采样其独立负载率
         // per_id_load = entry.total_bits / window_bits
         let window_bits = if self.window_us > 0 && bitrate > 0 {
-            (self.window_us as f64 / 1_000_000.0) * bitrate as f64
+            (self.window_us as f64 / 1_000_000.0) * f64::from(bitrate)
         } else {
             0.0
         };
-        for ((id, ext), entry) in self.per_id.iter() {
+        for ((id, ext), entry) in &self.per_id {
             let id_load = if window_bits > 0.0 {
                 entry.total_bits as f64 / window_bits
             } else {
@@ -199,11 +200,12 @@ impl CanLoadStats {
     }
 
     /// 当前负载率 (0.0 - 1.0+, 可超过 1.0 表示过载)
+    #[allow(clippy::cast_precision_loss)]
     pub fn load_ratio(&self, bitrate: u32) -> f64 {
         if self.window_us == 0 || bitrate == 0 {
             return 0.0;
         }
-        let window_bits = (self.window_us as f64 / 1_000_000.0) * bitrate as f64;
+        let window_bits = (self.window_us as f64 / 1_000_000.0) * f64::from(bitrate);
         if window_bits <= 0.0 {
             return 0.0;
         }
@@ -211,6 +213,7 @@ impl CanLoadStats {
     }
 
     /// 当前帧率 (帧/秒)
+    #[allow(clippy::cast_precision_loss)]
     pub fn fps(&self) -> f64 {
         if self.window_us == 0 {
             return 0.0;
@@ -221,7 +224,7 @@ impl CanLoadStats {
     /// 生成当前快照 (含历史采样 + per_id 排序 + per_id_history)
     pub fn snapshot(&self, bitrate: u32) -> CanLoadSnapshot {
         let mut per_id: Vec<CanIdLoadStats> = self.per_id.values().cloned().collect();
-        per_id.sort_by(|a, b| b.total_bits.cmp(&a.total_bits));
+        per_id.sort_by_key(|b| std::cmp::Reverse(b.total_bits));
         // per_id_history 按 per_id 的 total_bits 降序输出 (与 per_id 一致)
         let mut per_id_history: Vec<CanIdLoadHistory> = self
             .per_id_history
@@ -237,13 +240,11 @@ impl CanLoadStats {
             let a_bits = self
                 .per_id
                 .get(&(a.id, a.extended))
-                .map(|s| s.total_bits)
-                .unwrap_or(0);
+                .map_or(0, |s| s.total_bits);
             let b_bits = self
                 .per_id
                 .get(&(b.id, b.extended))
-                .map(|s| s.total_bits)
-                .unwrap_or(0);
+                .map_or(0, |s| s.total_bits);
             b_bits.cmp(&a_bits)
         });
         CanLoadSnapshot {
@@ -274,13 +275,13 @@ impl CanLoadStats {
         while let Some(&(ts, bits, id, ext, dlc)) = self.samples.front() {
             if ts < cutoff {
                 self.samples.pop_front();
-                self.total_bits = self.total_bits.saturating_sub(bits as u64);
-                self.total_bytes = self.total_bytes.saturating_sub(dlc as u64);
+                self.total_bits = self.total_bits.saturating_sub(u64::from(bits));
+                self.total_bytes = self.total_bytes.saturating_sub(u64::from(dlc));
                 // 同步更新 per_id (若窗口内该 ID 已无样本, 则移除)
                 if let Some(entry) = self.per_id.get_mut(&(id, ext)) {
                     entry.frame_count = entry.frame_count.saturating_sub(1);
-                    entry.total_bits = entry.total_bits.saturating_sub(bits as u64);
-                    entry.total_bytes = entry.total_bytes.saturating_sub(dlc as u64);
+                    entry.total_bits = entry.total_bits.saturating_sub(u64::from(bits));
+                    entry.total_bytes = entry.total_bytes.saturating_sub(u64::from(dlc));
                     if entry.frame_count == 0 {
                         self.per_id.remove(&(id, ext));
                         // 同步移除该 ID 的历史采样 (避免遗留无用数据)
@@ -299,8 +300,11 @@ impl CanLoadStats {
     /// 扩展帧: SOF(1) + ID-A(11) + SRR(1) + IDE(1) + ID-B(18) + RTR(1) + r1(1) + r0(1) + DLC(4) + Data(8×DLC) + CRC(15) + CRCdel(1) + ACK(1) + ACKdel(1) + EOF(7) + IFS(3) = 67 + 8×DLC
     pub fn frame_bits(frame: &CanFrame) -> u32 {
         let base = if frame.extended { 67 } else { 47 };
-        let raw = base + 8 * frame.dlc as u32;
-        ((raw as f64) * 1.2) as u32
+        let raw = base + 8 * u32::from(frame.dlc);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        {
+            (f64::from(raw) * 1.2) as u32
+        }
     }
 }
 
@@ -338,24 +342,24 @@ pub enum CanBitrate {
 
 impl CanBitrate {
     /// 返回波特率数值 (bps)
-    pub fn bps(&self) -> u32 {
+    pub const fn bps(&self) -> u32 {
         match self {
-            CanBitrate::Bps100k => 100_000,
-            CanBitrate::Bps125k => 125_000,
-            CanBitrate::Bps250k => 250_000,
-            CanBitrate::Bps500k => 500_000,
-            CanBitrate::Bps1m => 1_000_000,
+            Self::Bps100k => 100_000,
+            Self::Bps125k => 125_000,
+            Self::Bps250k => 250_000,
+            Self::Bps500k => 500_000,
+            Self::Bps1m => 1_000_000,
         }
     }
 
     /// slcan 波特率命令字符 (Lawicel 协议)
-    pub fn slcan_cmd(&self) -> &'static str {
+    pub const fn slcan_cmd(&self) -> &'static str {
         match self {
-            CanBitrate::Bps100k => "S3",
-            CanBitrate::Bps125k => "S4",
-            CanBitrate::Bps250k => "S5",
-            CanBitrate::Bps500k => "S6",
-            CanBitrate::Bps1m => "S8",
+            Self::Bps100k => "S3",
+            Self::Bps125k => "S4",
+            Self::Bps250k => "S5",
+            Self::Bps500k => "S6",
+            Self::Bps1m => "S8",
         }
     }
 }
@@ -462,6 +466,7 @@ impl CanFrameTestData {
     ///
     /// 每帧携带 8 字节数据, 第一个字节等于帧序号 (0..count), 其余为 0。
     /// 时间戳从 0 开始, 每帧间隔 1000 微秒。
+    #[allow(clippy::cast_possible_truncation)]
     pub fn standard_frames(base_id: u32, count: usize) -> Vec<CanFrame> {
         (0..count)
             .map(|i| {
@@ -481,6 +486,7 @@ impl CanFrameTestData {
     }
 
     /// 生成指定数量的扩展帧, ID 从 `base_id` 开始递增
+    #[allow(clippy::cast_possible_truncation)]
     pub fn extended_frames(base_id: u32, count: usize) -> Vec<CanFrame> {
         (0..count)
             .map(|i| {
@@ -503,6 +509,7 @@ impl CanFrameTestData {
     ///
     /// 所有帧共享相同的 `id`、`data` 和 `extended` 标志,
     /// 时间戳从 0 开始每帧间隔 1000 微秒。
+    #[allow(clippy::cast_possible_truncation)]
     pub fn repeating(id: u32, data: Vec<u8>, extended: bool, count: usize) -> Vec<CanFrame> {
         let dlc = data.len().min(8) as u8;
         (0..count)
@@ -522,6 +529,7 @@ impl CanFrameTestData {
     ///
     /// 反复遍历 `ids` 列表生成帧, 每帧携带 `data_len` 字节数据。
     /// 时间戳从 0 开始每帧间隔 1000 微秒。
+    #[allow(clippy::cast_possible_truncation)]
     pub fn cycling(ids: &[u32], data_len: u8, count: usize) -> Vec<CanFrame> {
         let dlc = data_len.min(8);
         (0..count)
@@ -560,6 +568,7 @@ impl CanFrameTestData {
     /// 生成带指定数据模式的帧
     ///
     /// `data` 长度超过 8 时自动截断。
+    #[allow(clippy::cast_possible_truncation)]
     pub fn with_data(id: u32, data: Vec<u8>, extended: bool) -> CanFrame {
         let dlc = data.len().min(8) as u8;
         CanFrame {
@@ -578,6 +587,7 @@ impl CanFrameTestData {
 mod tests {
     use super::*;
 
+    #[allow(clippy::cast_possible_truncation)]
     fn make_frame(id: u32, data: Vec<u8>) -> CanFrame {
         CanFrame {
             timestamp: 0,
@@ -621,6 +631,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_can_buffer_get_recent_returns_in_time_order() {
         let mut buf = CanBuffer::new(10);
         for i in 0..5u32 {
@@ -695,6 +706,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_can_buffer_overflow_preserves_recent() {
         // 大量推入后, get_recent 应只返回最近 N 帧
         let mut buf = CanBuffer::new(5);
@@ -763,6 +775,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::float_cmp)]
     fn test_load_stats_empty() {
         let stats = CanLoadStats::new(1_000_000, 60);
         let snap = stats.snapshot(500_000);
@@ -806,7 +819,7 @@ mod tests {
         stats.push(&frame);
         let snap = stats.snapshot(500_000);
         assert_eq!(snap.total_bits, 157);
-        assert_eq!(snap.per_id[0].extended, true);
+        assert!(snap.per_id[0].extended);
     }
 
     #[test]

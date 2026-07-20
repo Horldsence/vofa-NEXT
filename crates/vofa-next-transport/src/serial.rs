@@ -39,16 +39,19 @@ pub fn list_ports() -> Result<Vec<PortInfo>> {
         .collect())
 }
 
+/// 串口传输返回值
+type SpawnResult = (
+    mpsc::Sender<Vec<u8>>,
+    broadcast::Sender<Vec<u8>>,
+    Arc<AtomicBool>,
+);
+
 /// 启动串口传输
 ///
 /// 返回 (写入端, 数据广播端, 取消标志)
 pub fn spawn(
     config: SerialConfig,
-) -> Result<(
-    mpsc::Sender<Vec<u8>>,
-    broadcast::Sender<Vec<u8>>,
-    Arc<AtomicBool>,
-)> {
+) -> Result<SpawnResult> {
     let mut port = serialport::new(&config.port_name, config.baud_rate)
         .data_bits(match config.data_bits {
             5 => DataBits::Five,

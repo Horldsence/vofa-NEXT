@@ -3,8 +3,8 @@
 //! 节点图 DAG 引擎 — 后端计算所有节点的输出值。
 //!
 //! 核心类型:
-//! - [`NodeKind`]: 节点种类 (ChannelSource/Input/Math/Custom/Filter/SpectrumSink/FrameDecoder/Sink)
-//! - [`NodeDef`]: 节点定义 (含 id/tab_id/kind/params)
+//! - [`NodeKind`][]: 节点种类 (ChannelSource/Input/Math/Custom/Filter/SpectrumSink/FrameDecoder/Sink)
+//! - [`NodeDef`][]: 节点定义 (含 id/tab_id/kind/params)
 //! - [`CompiledGraph`]: 编译后的 DAG, 含拓扑序, 提供 evaluate 方法
 //!
 //! 数据流:
@@ -182,8 +182,8 @@ impl FieldType {
     /// 长度不足时返回 None
     pub fn decode(self, bytes: &[u8]) -> Option<f32> {
         match self {
-            FieldType::UInt8 => bytes.get(0).map(|&b| b as f32),
-            FieldType::Int8 => bytes.get(0).map(|&b| (b as i8) as f32),
+            FieldType::UInt8 => bytes.first().copied().map(|b| b as f32),
+            FieldType::Int8 => bytes.first().copied().map(|b| (b as i8) as f32),
             FieldType::UInt16LE => {
                 if bytes.len() < 2 { return None; }
                 Some(u16::from_le_bytes([bytes[0], bytes[1]]) as f32)
@@ -226,7 +226,7 @@ impl FieldType {
             }
             FieldType::Bytes => {
                 // Bytes 类型输出第一字节 (作为数值预览), 长度由 length_ref 决定
-                bytes.get(0).map(|&b| b as f32)
+                bytes.first().copied().map(|b| b as f32)
             }
         }
     }

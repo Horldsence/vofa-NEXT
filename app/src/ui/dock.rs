@@ -95,10 +95,7 @@ impl TabViewer for DockViewer<'_> {
                 node_editor::show_node_editor(ui, tab_state, self.state, self.rt, *id);
             }
             Tab::Data { kind, id } => {
-                let tab_state = self
-                    .data_tabs
-                    .entry(*id)
-                    .or_insert_with(DataTabState::new);
+                let tab_state = self.data_tabs.entry(*id).or_default();
                 match kind {
                     DataKind::Waveform => {
                         displays::waveform::show(ui, self.state, &mut tab_state.waveform)

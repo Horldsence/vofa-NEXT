@@ -2,8 +2,8 @@
 //!
 //! 数据缓冲区与节点图路由。
 //!
-//! - [`RingBuffer`]: 泛型环形缓冲区
-//! - [`DataBuffer`]: 多通道时间序列缓冲区
+//! - [`RingBuffer`][]: 泛型环形缓冲区
+//! - [`DataBuffer`][]: 多通道时间序列缓冲区
 //! - [`NodeGraph`]: 节点连接关系管理 + 数据路由
 
 pub mod graph;
@@ -779,8 +779,8 @@ mod tests {
 
         buf.remove_derived_sink("wave1");
         let w = buf.get_recent(1);
-        assert!(w.derived.get("wave1").is_none());
-        assert!(w.derived.get("wave2").is_some());
+        assert!(!w.derived.contains_key("wave1"));
+        assert!(w.derived.contains_key("wave2"));
     }
 
     #[test]

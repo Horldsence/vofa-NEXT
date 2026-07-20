@@ -218,6 +218,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_logic_buffer_get_recent_returns_in_time_order() {
         let mut buf = LogicBuffer::new(10);
         for i in 0..5u64 {
@@ -281,6 +282,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_logic_buffer_overflow_preserves_recent() {
         let mut buf = LogicBuffer::new(5);
         for i in 0..10u64 {
@@ -296,6 +298,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_logic_buffer_set_max_size_trims() {
         let mut buf = LogicBuffer::new(10);
         for i in 0..8u64 {
@@ -312,6 +315,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::cast_possible_truncation)]
     fn test_logic_buffer_set_max_size_grows() {
         let mut buf = LogicBuffer::new(3);
         for i in 0..3u64 {
