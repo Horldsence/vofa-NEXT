@@ -222,9 +222,9 @@ export function SettingsModal() {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-[9000] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]" onClick={close}>
+    <div className="fixed inset-0 bg-bg-overlay z-[9000] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]" onClick={close}>
       <div
-        className="w-[820px] max-w-[92vw] h-[600px] max-h-[88vh] bg-bg-sidebar border border-border rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
+        className="w-[820px] max-w-[92vw] h-[600px] max-h-[88vh] bg-bg-sidebar border border-border rounded-lg shadow-modal flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -295,7 +295,7 @@ export function SettingsModal() {
                     </div>
                   )}
                   {fields.map((def) => (
-                    <div key={`${def.category}-${def.field}`} className="flex items-start justify-between gap-6 py-2.5 border-b border-white/[0.04] last:border-b-0">
+                    <div key={`${def.category}-${def.field}`} className="flex items-start justify-between gap-6 py-2.5 border-b border-border last:border-b-0">
                       <div className="flex-1 min-w-0">
                         <div className="text-sm text-text-primary mb-0.5">{t(lang, def.labelKey)}</div>
                         <div className="text-xs text-text-secondary leading-relaxed">{t(lang, def.descKey)}</div>

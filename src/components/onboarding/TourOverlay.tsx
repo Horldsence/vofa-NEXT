@@ -178,7 +178,7 @@ export function TourOverlay({ steps, isOpen, onComplete, onSkip }: TourOverlayPr
 
       {/* 提示框 */}
       <div
-        className="fixed bg-bg-sidebar border border-border rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] p-4 flex flex-col gap-3 animate-[settings-slide-in_0.2s_ease-out]"
+        className="fixed bg-bg-sidebar border border-border rounded-lg shadow-modal p-4 flex flex-col gap-3 animate-[settings-slide-in_0.2s_ease-out]"
         style={{
           ...tooltipStyle,
           pointerEvents: 'auto',

@@ -237,7 +237,7 @@ export function WidgetPalette() {
             {filterItems.map((item) => (
               <div
                 key={item.preset}
-                className="bg-bg-input border border-[rgba(255,140,66,0.3)] rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:text-orange active:cursor-grabbing"
+                className="bg-bg-input border border-orange/30 rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:text-orange active:cursor-grabbing"
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Filter', undefined, item.preset)}
                 onClick={() => handleClickAdd('Filter', undefined, undefined, item.preset)}

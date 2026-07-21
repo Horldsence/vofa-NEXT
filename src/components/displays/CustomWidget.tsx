@@ -324,7 +324,7 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
         </div>
       )}
       {logs.length > 0 && (
-        <div className="mt-1 px-1.5 py-1 bg-black/30 rounded-sm max-h-[60px] overflow-y-auto">
+        <div className="mt-1 px-1.5 py-1 bg-bg-scrim rounded-sm max-h-[60px] overflow-y-auto">
           {logs.slice(-3).map((l, i) => (
             <div key={i} className="font-mono text-[10px] text-text-secondary whitespace-pre-wrap break-all">{l}</div>
           ))}

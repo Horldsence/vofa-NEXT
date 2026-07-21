@@ -19,6 +19,9 @@
   --color-bg-scrollbar: #424242;
   --color-bg-scrollbar-hover: #4f4f4f;
   --color-bg-node-header: rgba(255, 255, 255, 0.06);
+  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg-subtle: rgba(128, 128, 128, 0.08);
+  --color-bg-scrim: rgba(0, 0, 0, 0.25);
 
   /* ---------- 边框色 ---------- */
   --color-border: #3c3c3c;
@@ -78,6 +81,9 @@
   --z-context-menu: 60;
   --z-modal: 100;
   --z-toast: 200;
+
+  /* ---------- 阴影 ---------- */
+  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 
 /* ============ 主题变体 (data-theme 仅用于 CSS 选择器) ============ */

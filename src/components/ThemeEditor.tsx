@@ -275,11 +275,11 @@ export function ThemeEditor({
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 z-[9100] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]"
+      className="fixed inset-0 bg-bg-overlay z-[9100] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]"
       onClick={onClose}
     >
       <div
-        className="w-[880px] max-w-[94vw] h-[640px] max-h-[90vh] bg-bg-sidebar border border-border rounded-lg shadow-[0_20px_60px_rgba(0,0,0,0.6)] flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
+        className="w-[880px] max-w-[94vw] h-[640px] max-h-[90vh] bg-bg-sidebar border border-border rounded-lg shadow-modal flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

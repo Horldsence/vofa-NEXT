@@ -219,7 +219,7 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
         </div>
         {onEdit && (
           <button
-            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-black/40"
+            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-bg-scrim"
             onClick={onEdit}
             title={t(lang, 'settings')}
           >
@@ -230,7 +230,7 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
       {/* 侧栏: 设置面板 (固定宽, 纵向滚动, 直接展开) */}
       <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-2.5">
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1">{t(lang, 'spectrumSettings')}</div>
-        <div className="flex flex-col gap-1.5 p-1.5 bg-black/20 rounded-sm border border-border">
+        <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim rounded-sm border border-border">
             <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
               <label className="text-text-secondary">{t(lang, 'spectrumWindowSize')}</label>
               <div className="flex flex-wrap gap-0.5 col-span-2">

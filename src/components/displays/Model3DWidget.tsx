@@ -210,7 +210,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
         </div>
         {onEdit && (
           <button
-            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-black/40"
+            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-bg-scrim"
             onClick={onEdit}
             title={t(lang, 'settings')}
           >
@@ -230,7 +230,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
           ))}
         </div>
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1 pt-1">{t(lang, 'model3dSettings')}</div>
-        <div className="flex flex-col gap-1.5 p-1.5 bg-black/20 border border-border rounded-sm">
+        <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim border border-border rounded-sm">
           <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
             <label className="text-[10px] text-text-secondary">{t(lang, 'model3dMode')}</label>
             <div className="flex gap-0.5">

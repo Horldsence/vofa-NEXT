@@ -317,6 +317,8 @@ settingStatusBarVisible: 显示状态栏
 settingStatusBarVisibleDesc: 在窗口底部显示状态栏
 settingActivityBarVisible: 显示活动栏
 settingActivityBarVisibleDesc: 在窗口左侧显示活动栏
+settingAcrylicBackground: 亚克力背景
+settingAcrylicBackgroundDesc: 使用系统毛玻璃效果作为窗口背景，面板将变为半透明
 
 # 设置项 - Editor
 settingWaveformFps: 波形刷新率

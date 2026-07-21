@@ -69,12 +69,12 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
             {result.toFixed(precision)}
           </span>
         </div>
-        <div className="flex justify-between items-center text-xs px-1 py-0.5 bg-white/[0.03] rounded-sm">
+        <div className="flex justify-between items-center text-xs px-1 py-0.5 bg-bg-subtle rounded-sm">
           <span className="text-text-secondary">in</span>
           <span className="text-text-primary font-mono">{inputValue.toFixed(precision)}</span>
         </div>
         <button
-          className="flex items-center justify-center gap-1 bg-transparent border border-border text-text-secondary px-1.5 py-0.5 rounded-sm text-[10px] cursor-pointer mt-0.5 hover:bg-white/[0.05] hover:text-text-primary transition-colors"
+          className="flex items-center justify-center gap-1 bg-transparent border border-border text-text-secondary px-1.5 py-0.5 rounded-sm text-[10px] cursor-pointer mt-0.5 hover:bg-bg-hover hover:text-text-primary transition-colors"
           onClick={() => setShowSettings((v) => !v)}
           title={t(lang, 'settings')}
         >
@@ -82,7 +82,7 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
           <span>{t(lang, 'filterSettings')}</span>
         </button>
         {showSettings && (
-          <div className="flex flex-col gap-1.5 p-1.5 bg-black/20 rounded-sm border border-border">
+          <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim rounded-sm border border-border">
             <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
               <label className="text-text-secondary">{t(lang, 'filterPreset')}</label>
               <div className="grid grid-cols-2 gap-0.5 col-span-2">

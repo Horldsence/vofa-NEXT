@@ -25,6 +25,7 @@ export interface AppSettings {
     monoFontSize: number;
     statusBarVisible: boolean;
     activityBarVisible: boolean;
+    acrylicBackground: boolean;
   };
   editor: {
     waveformFps: number;
@@ -73,6 +74,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     monoFontSize: 12,
     statusBarVisible: true,
     activityBarVisible: true,
+    acrylicBackground: false,
   },
   editor: {
     waveformFps: 30,

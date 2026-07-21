@@ -82,6 +82,13 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
   },
   {
     category: 'appearance',
+    field: 'acrylicBackground',
+    labelKey: 'settingAcrylicBackground',
+    descKey: 'settingAcrylicBackgroundDesc',
+    control: { kind: 'toggle' },
+  },
+  {
+    category: 'appearance',
     field: 'uiFontFamily',
     labelKey: 'settingUiFontFamily',
     descKey: 'settingUiFontFamilyDesc',

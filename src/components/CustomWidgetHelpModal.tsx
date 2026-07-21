@@ -13,9 +13,9 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]" onClick={onClose}>
+    <div className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]" onClick={onClose}>
       <div
-        className="flex flex-col bg-bg-sidebar border border-border rounded-lg overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.6)] animate-[settings-slide-in_0.2s_ease-out]"
+        className="flex flex-col bg-bg-sidebar border border-border rounded-lg overflow-hidden shadow-modal animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         style={{ width: '80vw', height: '85vh', maxWidth: 1000, maxHeight: 800 }}
       >

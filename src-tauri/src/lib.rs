@@ -130,6 +130,8 @@ pub fn run() {
             commands::parse_frame_decoder_input,
             // 调试
             commands::inspect_element,
+            // 窗口
+            commands::set_window_acrylic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

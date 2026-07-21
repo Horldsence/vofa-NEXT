@@ -11,6 +11,7 @@ mod graph;
 mod logic;
 mod protocol;
 mod transport;
+mod window;
 
 pub use buffer::*;
 pub use can::*;
@@ -21,3 +22,4 @@ pub use graph::*;
 pub use logic::*;
 pub use protocol::*;
 pub use transport::*;
+pub use window::*;
