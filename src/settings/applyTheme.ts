@@ -8,7 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import type { AppSettings } from '../settings/defaults';
 import { applyTheme, getCssVariableName, resolveActiveTheme, type ThemeToken } from './theme';
 
-/// 亚克力模式下各背景 token 的透明度 (未列出的 token 保持不透明)
+/// 亚克力模式下各背景 token 的基准透明度 (未列出的 token 保持不透明)
+/// 基准对应 acrylicOpacity = 0.6, 实际透明度 = 基准值 / 0.6 * acrylicOpacity
 const ACRYLIC_TOKEN_ALPHA: Partial<Record<ThemeToken, number>> = {
   bgActivity: 0.6,
   bgSidebar: 0.65,
@@ -17,6 +18,9 @@ const ACRYLIC_TOKEN_ALPHA: Partial<Record<ThemeToken, number>> = {
   bgInput: 0.6,
   bgHover: 0.6,
 };
+
+/// 基准透明度对应的 acrylicOpacity 设置值
+const ACRYLIC_BASE_OPACITY = 0.6;
 
 /// 将 #rgb / #rrggbb 颜色转为带透明度的 rgba; 非 hex 输入原样返回
 function withAlpha(color: string, alpha: number): string {
@@ -47,15 +51,19 @@ export function applyAppearance(appearance: AppSettings['appearance']): void {
   const acrylic = appearance.acrylicBackground === true;
   if (acrylic) {
     root.dataset.acrylic = 'true';
-    for (const [token, alpha] of Object.entries(ACRYLIC_TOKEN_ALPHA) as [ThemeToken, number][]) {
+    const opacity = Math.min(1, Math.max(0.1, appearance.acrylicOpacity ?? ACRYLIC_BASE_OPACITY));
+    for (const [token, baseAlpha] of Object.entries(ACRYLIC_TOKEN_ALPHA) as [ThemeToken, number][]) {
       const varName = getCssVariableName(token);
       const value = root.style.getPropertyValue(varName);
+      const alpha = Math.min(1, (baseAlpha / ACRYLIC_BASE_OPACITY) * opacity);
       root.style.setProperty(varName, withAlpha(value, alpha));
     }
   } else {
     delete root.dataset.acrylic;
   }
   // 纯浏览器 dev 环境无 Tauri 后端, 调用失败时静默忽略
-  invoke('set_window_acrylic', { enabled: acrylic }).catch(() => {});
+  // blurRadius 仅 macOS 生效, 0 表示系统默认
+  const blurRadius = appearance.acrylicBlurRadius ?? 0;
+  invoke('set_window_acrylic', { enabled: acrylic, blurRadius }).catch(() => {});
   // 控件栏/状态栏可见性由 App.tsx 读取 settings 控制, 这里不直接操作
 }

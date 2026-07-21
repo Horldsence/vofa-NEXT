@@ -180,3 +180,11 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
       return 'input';
   }
 }
+
+/// 各类别主题色 — WidgetPalette 分组着色与节点卡片着色共用
+export const WIDGET_CATEGORY_COLORS: Record<WidgetCategory, string> = {
+  input: '#4fc3f7',
+  display: '#81c784',
+  math: '#ffb74d',
+  custom: '#ba68c8',
+};

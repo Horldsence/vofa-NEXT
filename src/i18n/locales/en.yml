@@ -319,6 +319,10 @@ settingActivityBarVisible: Show Activity Bar
 settingActivityBarVisibleDesc: Display the activity bar on the left of the window
 settingAcrylicBackground: Acrylic Background
 settingAcrylicBackgroundDesc: Use the system frosted-glass effect as the window background; panels become translucent
+settingAcrylicOpacity: Acrylic Opacity
+settingAcrylicOpacityDesc: Adjust panel translucency over the acrylic background; 0.6 is the default look, lower means more transparent
+settingAcrylicBlurRadius: Acrylic Blur Radius
+settingAcrylicBlurRadiusDesc: Adjust the blur radius of the system frosted-glass effect; 0 uses the system default (macOS only)
 
 # Setting items - Editor
 settingWaveformFps: Waveform FPS

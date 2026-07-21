@@ -1,8 +1,9 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
-import { X } from 'lucide-react';
+import { X, Settings2 } from 'lucide-react';
+import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
-import { UNARY_MATH_OPS } from '../../types';
+import { UNARY_MATH_OPS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
 import { Radio } from '../controls/Radio';
@@ -135,6 +136,7 @@ export function WidgetNode({ id, data }: NodeProps) {
   const widget = data.widget as WidgetConfig | undefined;
   const removeWidget = useAppStore((s) => s.removeWidget);
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
+  const rfEdges = useAppStore((s) => s.rfEdges);
 
   if (!widget) {
     return <div className="p-2 text-red text-xs">Missing widget</div>;
@@ -142,6 +144,16 @@ export function WidgetNode({ id, data }: NodeProps) {
 
   const onRemove = () => removeWidget(id);
   const ports = getWidgetPorts(widget);
+  // 按控件类别着色 (与 WidgetPalette 分组颜色一致)
+  const categoryColor = WIDGET_CATEGORY_COLORS[getWidgetCategory(widget.kind)];
+  // 支持代码编辑的控件 — 节点头部显示编辑入口 (替代内嵌卡片的悬浮 ⚙)
+  const editable = ['Gauge', 'LED', 'NumberDisplay', 'Custom', 'Math', 'Filter'].includes(widget.kind);
+  // 已连接的端口集合 — 用于 Handle 实色填充
+  const connectedHandles = new Set<string>();
+  for (const e of rfEdges) {
+    if (e.source === id && e.sourceHandle) connectedHandles.add(e.sourceHandle);
+    if (e.target === id && e.targetHandle) connectedHandles.add(e.targetHandle);
+  }
 
   const handleEditCustom = () => openCustomEditor(id);
 
@@ -220,11 +232,29 @@ export function WidgetNode({ id, data }: NodeProps) {
       : widget.kind;
 
   return (
-    <div className="bg-bg-sidebar border border-border rounded-md min-w-[160px] max-w-[240px] shadow-[0_2px_8px_rgba(0,0,0,0.4)] text-[11px] relative [&.selected]:border-accent [&.selected]:shadow-[0_0_0_1px_var(--accent),0_2px_12px_rgba(0,0,0,0.5)]">
-      <div className="flex items-center justify-between px-1.5 py-1 bg-bg-panel-header border-b border-border rounded-t-md text-[10px] font-semibold uppercase tracking-[0.4px] text-text-secondary">
+    <div
+      className="border border-border rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
+      style={{ backgroundColor: `color-mix(in srgb, ${categoryColor} 25%, var(--color-bg-sidebar))` }}
+    >
+      <div
+        className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px]"
+        style={{ color: categoryColor }}
+      >
         <span className="flex-1 truncate" title={widget.kind}>
           {widgetLabel || widget.kind}
         </span>
+        {editable && (
+          <button
+            className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded hover:bg-bg-hover transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEditCustom();
+            }}
+            title="Edit"
+          >
+            <Settings2 size={10} />
+          </button>
+        )}
         <button
           className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"
           onClick={(e) => {
@@ -235,7 +265,11 @@ export function WidgetNode({ id, data }: NodeProps) {
           <X size={10} />
         </button>
       </div>
-      <div className="p-2 flex flex-col gap-1.5">{renderContent()}</div>
+      <div className="p-2 flex flex-col gap-1.5">
+        <WidgetEmbeddedContext.Provider value={true}>
+          {renderContent()}
+        </WidgetEmbeddedContext.Provider>
+      </div>
       {/* 输入端口 (左侧) — Handle 覆盖 position:relative 让多端口纵向分布 */}
       <div className="absolute top-1/2 left-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
         {ports.inputs.map((port) => (
@@ -245,7 +279,7 @@ export function WidgetNode({ id, data }: NodeProps) {
               position={Position.Left}
               id={port.id}
               style={{ position: 'relative', left: 'auto', top: 'auto', transform: 'none' }}
-              className="w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green"
+              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
             />
             <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
           </div>
@@ -261,7 +295,7 @@ export function WidgetNode({ id, data }: NodeProps) {
               position={Position.Right}
               id={port.id}
               style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none' }}
-              className="w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green"
+              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
             />
           </div>
         ))}

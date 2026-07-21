@@ -1,7 +1,8 @@
-import { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useState, useCallback, useMemo, useContext } from 'react';
 import { Settings2, AlertCircle } from 'lucide-react';
 import type { WidgetConfig } from '../../types';
 import { useAppStore } from '../../store/appStore';
+import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 
 /// 自定义 JS 控件渲染器
 ///
@@ -190,6 +191,8 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const readyRef = useRef(false);
+  // 节点内嵌模式: 外框/标题/编辑按钮由节点卡片统一提供
+  const embedded = useContext(WidgetEmbeddedContext);
 
   // 解析 def (用于 schema 展示)
   const { def, error: defError } = useMemo(() => evalCustomWidgetDef(widget.params.code), [widget.params.code]);
@@ -264,8 +267,10 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
   // 渲染错误 (代码语法错误)
   if (defError) {
     return (
-      <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative min-h-[80px]">
-        {onEdit && (
+      <div className={embedded
+        ? 'flex flex-col gap-1.5'
+        : 'group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative min-h-[80px]'}>
+        {onEdit && !embedded && (
           <button
             className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
             onClick={onEdit}
@@ -273,7 +278,9 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
             <Settings2 size={11} />
           </button>
         )}
-        <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{widget.params.label || 'Custom'}</div>
+        {!embedded && (
+          <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">{widget.params.label || 'Custom'}</div>
+        )}
         <div className="flex gap-1.5 items-start text-red text-xs p-1.5 bg-red/[0.08] border border-red/30 rounded-sm">
           <AlertCircle size={14} className="flex-shrink-0 mt-px" />
           <pre className="m-0 whitespace-pre-wrap text-[10px] flex-1">{defError}</pre>
@@ -291,8 +298,10 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
   }
 
   return (
-    <div className="group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative">
-      {onEdit && (
+    <div className={embedded
+      ? 'flex flex-col gap-1.5'
+      : 'group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative'}>
+      {onEdit && !embedded && (
         <button
           className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
           onClick={onEdit}
@@ -300,9 +309,11 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
           <Settings2 size={11} />
         </button>
       )}
-      <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">
-        {def?.name || widget.params.label || 'Custom'}
-      </div>
+      {!embedded && (
+        <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">
+          {def?.name || widget.params.label || 'Custom'}
+        </div>
+      )}
       <iframe
         ref={iframeRef}
         srcDoc={srcDoc}

@@ -77,7 +77,6 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
       const newEdge: Edge = {
         ...connection,
         id: nanoid(8),
-        animated: true,
         markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
       };
       let tabId: string | undefined;

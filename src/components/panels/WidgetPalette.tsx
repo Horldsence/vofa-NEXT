@@ -32,7 +32,7 @@ import {
   ScanText,
 } from 'lucide-react';
 import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind } from '../../types';
-import { UNARY_MATH_OPS } from '../../types';
+import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../types';
 
 /// 控件面板 — 按 tab 分组分类, 不同类别颜色不同
 ///
@@ -125,10 +125,10 @@ export function WidgetPalette() {
     label: string;
     color: string;
   }[] = [
-    { id: 'input', label: t(lang, 'catInput'), color: '#4fc3f7' },
-    { id: 'display', label: t(lang, 'catDisplay'), color: '#81c784' },
-    { id: 'math', label: t(lang, 'catMath'), color: '#ffb74d' },
-    { id: 'custom', label: t(lang, 'catCustom'), color: '#ba68c8' },
+    { id: 'input', label: t(lang, 'catInput'), color: WIDGET_CATEGORY_COLORS.input },
+    { id: 'display', label: t(lang, 'catDisplay'), color: WIDGET_CATEGORY_COLORS.display },
+    { id: 'math', label: t(lang, 'catMath'), color: WIDGET_CATEGORY_COLORS.math },
+    { id: 'custom', label: t(lang, 'catCustom'), color: WIDGET_CATEGORY_COLORS.custom },
   ];
 
   const handleDragStart = (
@@ -213,8 +213,8 @@ export function WidgetPalette() {
         ))}
       </div>
 
-      {/* 控件网格 */}
-      <div className="grid grid-cols-2 gap-1.5 flex-1 overflow-y-auto p-2">
+      {/* 控件网格 — auto-rows-min + content-start 防止项被剩余空间纵向拉伸 */}
+      <div className="grid grid-cols-2 gap-1.5 flex-1 overflow-y-auto p-2 auto-rows-min content-start">
         {activeCategory === 'math' ? (
           <>
             {/* 算术控件: 每个 op 一个项 */}

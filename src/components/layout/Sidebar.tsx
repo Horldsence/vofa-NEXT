@@ -42,7 +42,7 @@ export function Sidebar({ view }: SidebarProps) {
   };
 
   return (
-    <div className="bg-bg-sidebar flex flex-col min-w-[200px] overflow-hidden" onContextMenu={onContextMenu}>
+    <div className="bg-bg-sidebar flex flex-col h-full w-full min-w-[200px] overflow-hidden" onContextMenu={onContextMenu}>
       <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0">
         <span>{t(lang, titleMap[view])}</span>
       </div>

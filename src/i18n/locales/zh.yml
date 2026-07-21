@@ -319,6 +319,10 @@ settingActivityBarVisible: 显示活动栏
 settingActivityBarVisibleDesc: 在窗口左侧显示活动栏
 settingAcrylicBackground: 亚克力背景
 settingAcrylicBackgroundDesc: 使用系统毛玻璃效果作为窗口背景，面板将变为半透明
+settingAcrylicOpacity: 毛玻璃透明度
+settingAcrylicOpacityDesc: 调整亚克力背景下面板的透明度，0.6 为默认观感，越小越透明
+settingAcrylicBlurRadius: 毛玻璃模糊半径
+settingAcrylicBlurRadiusDesc: 调整系统毛玻璃的模糊半径，0 表示系统默认（仅 macOS 生效）
 
 # 设置项 - Editor
 settingWaveformFps: 波形刷新率

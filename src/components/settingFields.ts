@@ -89,6 +89,20 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
   },
   {
     category: 'appearance',
+    field: 'acrylicOpacity',
+    labelKey: 'settingAcrylicOpacity',
+    descKey: 'settingAcrylicOpacityDesc',
+    control: { kind: 'number', min: 0.1, max: 1, step: 0.05 },
+  },
+  {
+    category: 'appearance',
+    field: 'acrylicBlurRadius',
+    labelKey: 'settingAcrylicBlurRadius',
+    descKey: 'settingAcrylicBlurRadiusDesc',
+    control: { kind: 'number', min: 0, max: 100, step: 1 },
+  },
+  {
+    category: 'appearance',
     field: 'uiFontFamily',
     labelKey: 'settingUiFontFamily',
     descKey: 'settingUiFontFamilyDesc',

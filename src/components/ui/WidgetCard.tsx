@@ -1,6 +1,10 @@
-import { type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import { X, Settings2 } from 'lucide-react';
 import clsx from 'clsx';
+
+/// 节点内嵌模式 — WidgetNode 渲染控件时置 true,
+/// WidgetCard 不再绘制自身外框/标题/悬浮按钮, 避免与节点卡片形成双重边框
+export const WidgetEmbeddedContext = createContext(false);
 
 export interface WidgetCardProps {
   children: ReactNode;
@@ -49,6 +53,28 @@ export function WidgetCard({
   noMinWidth = false,
   className,
 }: WidgetCardProps) {
+  const embedded = useContext(WidgetEmbeddedContext);
+
+  // 节点内嵌模式: 仅保留徽标与内容, 外框/标题/按钮由节点卡片统一提供
+  // (忽略 className — 外框相关的定制类在节点内不适用)
+  if (embedded) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        {badge && (
+          <span
+            className={clsx(
+              'px-1.5 py-0.5 rounded-sm text-[10px] font-semibold w-fit border',
+              BADGE_CLASSES[badgeColor] ?? BADGE_CLASSES.accent,
+            )}
+          >
+            {badge}
+          </span>
+        )}
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div
       className={clsx(
