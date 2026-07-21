@@ -7,7 +7,6 @@ import {
   type NodeChange,
   type EdgeChange,
   type Connection,
-  MarkerType,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
 import { api } from '../../lib/tauri';
@@ -77,7 +76,6 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
       const newEdge: Edge = {
         ...connection,
         id: nanoid(8),
-        markerEnd: { type: MarkerType.ArrowClosed, width: 12, height: 12 },
       };
       let tabId: string | undefined;
       const sourceNode = get().rfNodes.find((n: Node) => n.id === connection.source);

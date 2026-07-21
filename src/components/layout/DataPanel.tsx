@@ -19,6 +19,7 @@ import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements, ProtocolConfig }
 import { createDefaultScopeConfig } from '../../types';
 import { waveformWindow } from '../../lib/dataBuffer';
 import { computeMeasurements, computeAutoSetConfig } from '../../lib/scopeUtils';
+import { computeConnectedInputs, type ConnectedInput } from '../displays/waveformSeries';
 /// 每个 waveform widget 拥有独立的 axisConfig + measurements
 /// 通过 widgetId 索引, 切换 Tab 时使用对应配置, 互不干扰
 interface PerWidgetState {
@@ -47,6 +48,7 @@ export function DataPanel() {
   const setActiveDataTab = useAppStore((s) => s.setActiveDataTab);
   const removeDataTab = useAppStore((s) => s.removeDataTab);
   const widgets = useAppStore((s) => s.widgets);
+  const rfEdges = useAppStore((s) => s.rfEdges);
   const protocolConfig = useAppStore((s) => s.protocolConfig);
   const detectedChannels = useAppStore((s) => s.detectedChannels);
   // 不订阅 rawDataVersion: DataPanel 本身不需要 raw data 刷新, channel_count 仅在协议/检测变化时改变
@@ -220,10 +222,13 @@ export function DataPanel() {
                 measurements={st.measurements}
                 onAutoSet={() => {
                   const win = waveformWindow.get();
+                  // 与主图/缩略图共用 computeConnectedInputs, 避免 "空则全通道" 回退分叉
                   const connected =
                     wid === 'default-waveform'
                       ? Array.from({ length: win.channel_count || waveWidget.params.channels }, (_, i) => i)
-                      : [];
+                      : computeConnectedInputs(wid, waveWidget.params.channels, rfEdges)
+                          .filter((i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel')
+                          .map((i) => i.idx);
                   const autoNext = computeAutoSetConfig(win, st.config, connected);
                   setPerWidgetStates((prev) => {
                     const cur = prev[wid] ?? createPerWidgetState(waveWidget.params.channels);

@@ -7,7 +7,7 @@ import {
 } from './waveformConstants';
 import { getThemeColor, formatTimeMs, formatYValue } from './wavechartFormatters';
 import type { ScopeAxisConfig } from '../../types';
-import type { SeriesSlot } from './WaveformChart';
+import type { SeriesSlot } from './waveformSeries';
 
 // ---- uPlot 初始化 ----
 

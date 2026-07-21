@@ -25,14 +25,12 @@ function buildInspectItem(lang: Lang): ContextMenuItem {
   };
 }
 
-/// 在 debug 模式下向菜单列表追加检查元素项
-function appendInspectElementIfDebug(items: ContextMenuEntry[], lang: Lang): void {
+/// 在 debug 模式下向菜单列表追加检查元素项（返回新数组，不变异传入数组）
+function withInspectElementIfDebug(items: ContextMenuEntry[], lang: Lang): ContextMenuEntry[] {
   const debug = useSettingsStore.getState().settings.general.debug;
-  if (!debug) return;
-  if (items.length > 0) {
-    items.push({ kind: 'separator' });
-  }
-  items.push(buildInspectItem(lang));
+  if (!debug) return items;
+  const inspect = buildInspectItem(lang);
+  return items.length > 0 ? [...items, { kind: 'separator' }, inspect] : [inspect];
 }
 
 export function useContextMenu(items: ContextMenuEntry[] | (() => ContextMenuEntry[])) {
@@ -69,11 +67,11 @@ export function useContextMenu(items: ContextMenuEntry[] | (() => ContextMenuEnt
         });
       }
 
-      appendInspectElementIfDebug(resolved, lang);
+      const finalItems = withInspectElementIfDebug(resolved, lang);
 
-      if (resolved.length === 0) return;
+      if (finalItems.length === 0) return;
 
-      open(e.clientX, e.clientY, resolved);
+      open(e.clientX, e.clientY, finalItems);
     },
     [items, open, debug, lang]
   );
@@ -86,6 +84,5 @@ export function showContextMenu(
   items: ContextMenuEntry[]
 ) {
   const lang = useAppStore.getState().lang;
-  appendInspectElementIfDebug(items, lang);
-  useContextMenuStore.getState().open(x, y, items);
+  useContextMenuStore.getState().open(x, y, withInspectElementIfDebug(items, lang));
 }

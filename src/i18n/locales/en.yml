@@ -30,6 +30,7 @@ parity: Parity
 stopBits: Stop Bits
 flowControl: Flow Control
 refresh: Refresh
+refreshPorts: Refresh Ports
 driverInfo: Driver Info
 
 # Protocol

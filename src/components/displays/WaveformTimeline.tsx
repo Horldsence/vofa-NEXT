@@ -1,8 +1,11 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { waveformWindow } from '../../lib/dataBuffer';
-import { TIME_BASES_SEC, formatTimeBase, type ScopeAxisConfig } from '../../types';
-import { timeBaseToWindowSec, HORIZONTAL_DIVS } from '../../lib/scopeUtils';
-import { CHANNEL_COLORS, TIMELINE_PAD } from './waveformConstants';
+import { TIME_BASES_SEC, formatTimeBase, getEffectiveChannel, type ScopeAxisConfig } from '../../types';
+import { timeBaseToWindowSec, HORIZONTAL_DIVS, VERTICAL_DIVS } from '../../lib/scopeUtils';
+import { TIMELINE_PAD } from './waveformConstants';
+import {
+  resolveInputArray, type FrozenWaveformData, type TimelineSeriesSpec,
+} from './waveformSeries';
 
 /// 读取当前主题 CSS 变量
 function getThemeColor(name: string): string {
@@ -34,10 +37,13 @@ interface WaveformTimelineProps {
   axisConfig: ScopeAxisConfig;
   viewEndSec: number;
   timeWindowSec: number;
-  connectedChannels: number[];
+  /// 当前应显示的 series — 由主图按 slots + show 过滤后传入 (单一数据源, 与主图一致)
+  series: TimelineSeriesSpec[];
+  /// 波形图 widgetId — 用于解析派生 series 数据 (win.derived[widgetId][sourceId])
+  widgetId: string;
   /// Stop 模式下的冻结数据快照 — running=false 时使用它绘制缩略图 (而非实时 waveformWindow)
   /// 这样示波器暂停时缩略图也同步冻结, 不会继续显示新到达的数据
-  frozenData: { ts: number[]; chs: number[][] } | null;
+  frozenData: FrozenWaveformData | null;
   onConfigChange?: (next: ScopeAxisConfig) => void;
 }
 
@@ -77,7 +83,8 @@ export function WaveformTimeline({
   axisConfig,
   viewEndSec,
   timeWindowSec,
-  connectedChannels,
+  series,
+  widgetId,
   frozenData,
   onConfigChange,
 }: WaveformTimelineProps) {
@@ -94,17 +101,18 @@ export function WaveformTimeline({
   const frozenDataRef = useRef(frozenData);
   useEffect(() => { frozenDataRef.current = frozenData; }, [frozenData]);
 
+  // series 用 ref, draw 在 rAF 循环中读取最新值
+  const seriesRef = useRef(series);
+  useEffect(() => { seriesRef.current = series; }, [series]);
+
   /// 获取当前应使用的数据源 — Stop 时用冻结快照, Run 时用实时 waveformWindow
   const getActiveWindow = useCallback(() => {
     const fd = frozenDataRef.current;
     if (fd && fd.ts.length > 0) {
-      return {
-        timestamps: fd.ts,
-        channels: fd.chs,
-        channel_count: fd.chs.length,
-      };
+      return { timestamps: fd.ts, channelArrays: fd.chs, derivedMap: fd.derived };
     }
-    return waveformWindow.get();
+    const win = waveformWindow.get();
+    return { timestamps: win.timestamps, channelArrays: win.channels, derivedMap: win.derived };
   }, []);
 
   // ====== 绘制 ======
@@ -152,38 +160,29 @@ export function WaveformTimeline({
       if (totalDurMs <= 0) return;
       const totalDurSec = totalDurMs / 1000;
 
-      // 缩略波形
-      const chsToDraw = connectedChannels.length > 0
-        ? connectedChannels
-        : Array.from({ length: win.channel_count }, (_, i) => i);
-      let dMin = Infinity, dMax = -Infinity;
-      for (const ci of chsToDraw) {
-        const ch = win.channels[ci];
-        if (!ch) continue;
-        for (let i = 0; i < ch.length; i++) {
-          const v = ch[i];
-          if (isNaN(v)) continue;
-          if (v < dMin) dMin = v;
-          if (v > dMax) dMax = v;
-        }
-      }
-      if (dMin === Infinity) dMin = -1;
-      if (dMax === -Infinity) dMax = 1;
-      const dRange = dMax - dMin || 1;
-
+      // 缩略波形 — 逐 series 绘制, 与主图完全一致:
+      // 取数共用 resolveInputArray (原始通道 + 派生 series),
+      // Y 映射用 getEffectiveChannel 逐通道归一化 (vPerDiv/position/sharedY 与主图相同)
+      const cfg = axisConfigRef.current;
       const step = Math.max(1, Math.floor(totalPoints / plotW));
-      for (const ci of chsToDraw) {
-        const ch = win.channels[ci];
-        if (!ch || ch.length === 0) continue;
-        ctx.strokeStyle = CHANNEL_COLORS[ci % CHANNEL_COLORS.length];
+      for (const spec of seriesRef.current) {
+        const arr = resolveInputArray(spec.input, widgetId, totalPoints, win.channelArrays, win.derivedMap);
+        const eff = getEffectiveChannel(cfg, spec.cfgIdx);
+        if (eff.vPerDiv <= 0) continue;
+        // 与主图 Y 轴 range 一致: position ± vPerDiv × 4 格 (sharedY 时 eff 已取共享配置)
+        const yMin = eff.position - (eff.vPerDiv * VERTICAL_DIVS) / 2;
+        const yRange = eff.vPerDiv * VERTICAL_DIVS;
+        ctx.strokeStyle = spec.color;
         ctx.lineWidth = 0.5;
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
+        let started = false;
         for (let i = 0; i < totalPoints; i += step) {
           const x = pad + (i / (totalPoints - 1)) * plotW;
-          const v = ch[i];
-          const y = pad + plotH - ((v - dMin) / dRange) * plotH;
-          if (i === 0) ctx.moveTo(x, y);
+          const v = arr[i];
+          if (isNaN(v)) { started = false; continue; }
+          const y = pad + plotH - ((v - yMin) / yRange) * plotH;
+          if (!started) { ctx.moveTo(x, y); started = true; }
           else ctx.lineTo(x, y);
         }
         ctx.stroke();
@@ -237,7 +236,7 @@ export function WaveformTimeline({
     const tick = () => { draw(); rafId = requestAnimationFrame(tick); };
     rafId = requestAnimationFrame(tick);
     return () => { if (rafId !== null) cancelAnimationFrame(rafId); };
-  }, [viewEndSec, timeWindowSec, connectedChannels]);
+  }, [viewEndSec, timeWindowSec, widgetId, getActiveWindow]);
 
   // ====== 命中检测: 判定鼠标位置对应的拖动类型 ======
   const hitTest = useCallback((clientX: number): 'left' | 'right' | 'window' | null => {

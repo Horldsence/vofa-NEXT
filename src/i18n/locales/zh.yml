@@ -30,6 +30,7 @@ parity: 校验
 stopBits: 停止位
 flowControl: 流控
 refresh: 刷新
+refreshPorts: 刷新端口
 driverInfo: 驱动信息
 
 # 协议

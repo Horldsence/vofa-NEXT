@@ -10,6 +10,10 @@ import type { WidgetConfig } from '../../types';
 import { getEffectiveChannel, type ScopeAxisConfig } from '../../types';
 import { timeBaseToWindowSec } from '../../lib/scopeUtils';
 import { WaveformTimeline } from './WaveformTimeline';
+import {
+  computeConnectedInputs, buildSeriesSlots, slotColor, resolveInputArray,
+  type ConnectedInput, type SeriesSlot, type FrozenWaveformData, type TimelineSeriesSpec,
+} from './waveformSeries';
 import { CursorOverlay } from './WaveformChartCursorOverlay';
 import { WaveformCursorReadout } from './WaveformCursorReadout';
 import { getExportData, buildCsvForRange } from './waveformChartExport';
@@ -25,27 +29,6 @@ interface WaveformChartProps {
   onConfigChange?: (next: ScopeAxisConfig) => void;
 }
 
-/// 波形图连接的输入 — 可以是原始通道或派生节点 (Math/Filter 等)
-export type ConnectedInput =
-  | { kind: 'channel'; idx: number }
-  | { kind: 'derived'; sourceId: string; sourceHandle: string };
-
-/// 系列 slot — 用于 series 创建/数据获取/游标读数
-/// channelIdx: 通道索引 (用于颜色和 effective channel 配置)
-/// derivedIdx: 派生 series 索引 (用于颜色, -1 表示非派生)
-export interface SeriesSlot {
-  input: ConnectedInput;
-  /// 通道颜色索引 (channel 用 idx, derived 用 derivedIdx)
-  colorIdx: number;
-  /// 是否为派生 series
-  isDerived: boolean;
-  /// 显示标签 (CH0 / MATH:widgetId)
-  label: string;
-  /// 用于 effective channel 配置查询的索引
-  /// channel: 用 idx; derived: 用 widget.params.channels + derivedIdx
-  cfgIdx: number;
-}
-
 /// 示波器风格波形图 — 每通道独立 V/div 与 position
 /// - 水平: 时基 (sec/div) × 10 格 = 总显示时长
 /// - 垂直: V/div × 8 格 (上下各 4 格), 数据归一化到 div
@@ -58,11 +41,10 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   const themeId = useSettingsStore((s) => s.settings.appearance.theme);
   const axisConfigRef = useRef(axisConfig);
   const lastVersionRef = useRef(-1);
-  const frozenDataRef = useRef<{
-    ts: number[];
-    chs: number[][];
-    derived?: Record<string, Record<string, number[]>>;
-  } | null>(null);
+  const frozenDataRef = useRef<FrozenWaveformData | null>(null);
+  /// 冻结快照 state — 与 frozenDataRef 同步更新, 供渲染期 (缩略图 prop) 使用
+  /// 避免渲染期读 ref 时 Stop 后第一帧尚未赋值的问题
+  const [frozenData, setFrozenData] = useState<FrozenWaveformData | null>(null);
 
   const [cursorReadout, setCursorReadout] = useState<{
     leftPx: number;
@@ -88,25 +70,10 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
   axisConfigRef.current = axisConfig;
 
-  const connectedInputs = useMemo<ConnectedInput[]>(() => {
-    if (widget.params.id === 'default-waveform') {
-      return Array.from({ length: widget.params.channels }, (_, i) => ({ kind: 'channel' as const, idx: i }));
-    }
-    const channels: ConnectedInput[] = [];
-    const derived: ConnectedInput[] = [];
-    for (const e of rfEdges) {
-      if (e.target !== widget.params.id) continue;
-      const handle = e.sourceHandle ?? '';
-      const m = /^ch(\d+)$/.exec(handle);
-      if (m) {
-        channels.push({ kind: 'channel', idx: parseInt(m[1], 10) });
-      } else {
-        derived.push({ kind: 'derived', sourceId: e.source, sourceHandle: handle });
-      }
-    }
-    // 通道在前, 派生在后
-    return [...channels, ...derived];
-  }, [rfEdges, widget.params.id, widget.params.channels]);
+  const connectedInputs = useMemo<ConnectedInput[]>(
+    () => computeConnectedInputs(widget.params.id, widget.params.channels, rfEdges),
+    [rfEdges, widget.params.id, widget.params.channels]
+  );
 
   const connectedChannels = useMemo(
     () => connectedInputs
@@ -115,61 +82,14 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     [connectedInputs]
   );
 
-  const seriesSlots = useMemo<SeriesSlot[]>(() => {
-    const isDynamic = widget.params.dynamicSeries ?? false;
-    const channelInputs = connectedInputs.filter(
-      (i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel'
-    );
-    const derivedInputs = connectedInputs.filter(
-      (i): i is Extract<ConnectedInput, { kind: 'derived' }> => i.kind === 'derived'
-    );
-    const slots: SeriesSlot[] = [];
-
-    if (isDynamic) {
-      // 动态: 仅连接的通道 + 派生
-      for (const input of channelInputs) {
-        slots.push({
-          input,
-          colorIdx: input.idx,
-          isDerived: false,
-          label: `CH${input.idx}`,
-          cfgIdx: input.idx,
-        });
-      }
-      for (let i = 0; i < derivedInputs.length; i++) {
-        const input = derivedInputs[i];
-        slots.push({
-          input,
-          colorIdx: i,
-          isDerived: true,
-          label: `MATH:${input.sourceId}`,
-          cfgIdx: widget.params.channels + i,
-        });
-      }
-    } else {
-      // 固定: 仅创建已连接通道的系列 (与缩略图一致, 不创建未连接的占位槽)
-      for (const input of channelInputs) {
-        slots.push({
-          input,
-          colorIdx: input.idx,
-          isDerived: false,
-          label: `CH${input.idx}`,
-          cfgIdx: input.idx,
-        });
-      }
-      for (let i = 0; i < derivedInputs.length; i++) {
-        const input = derivedInputs[i];
-        slots.push({
-          input,
-          colorIdx: channelInputs.length + i,
-          isDerived: true,
-          label: `MATH:${input.sourceId}`,
-          cfgIdx: channelInputs.length + i,
-        });
-      }
-    }
-    return slots;
-  }, [connectedInputs, widget.params.channels, widget.params.dynamicSeries]);
+  const seriesSlots = useMemo<SeriesSlot[]>(
+    () => buildSeriesSlots(
+      connectedInputs,
+      widget.params.channels,
+      widget.params.dynamicSeries ?? false
+    ),
+    [connectedInputs, widget.params.channels, widget.params.dynamicSeries]
+  );
 
   const isConnected = widget.params.id === 'default-waveform' || connectedInputs.length > 0;
 
@@ -180,6 +100,15 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
   const seriesSlotsRef = useRef(seriesSlots);
   seriesSlotsRef.current = seriesSlots;
+
+  /// 缩略图 series — 与主图完全一致的单一数据源:
+  /// 相同 slots + axisConfig.channels[].show 可见性过滤 + 相同颜色
+  const timelineSeries = useMemo<TimelineSeriesSpec[]>(
+    () => seriesSlots
+      .filter((s) => axisConfig.channels[s.cfgIdx]?.show ?? true)
+      .map((s) => ({ input: s.input, cfgIdx: s.cfgIdx, color: slotColor(s) })),
+    [seriesSlots, axisConfig.channels]
+  );
 
   const { cursorHidden, isMac } = useCursorHide();
 
@@ -215,21 +144,10 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     }
 
     const tsLen = timestamps.length;
-    // 为每个 slot 构建 data array
-    const seriesArrays = slots.map((slot) => {
-      let arr: number[] | undefined;
-      if (slot.input.kind === 'channel') {
-        arr = channelArrays[slot.input.idx];
-      } else {
-        arr = derivedMap?.[widget.params.id]?.[slot.input.sourceId];
-      }
-      if (!arr) return Array(tsLen).fill(NaN);
-      if (arr.length === tsLen) return arr;
-      // 对齐: 截断或补 NaN
-      const padded = arr.slice(0, tsLen);
-      while (padded.length < tsLen) padded.push(NaN);
-      return padded;
-    });
+    // 为每个 slot 构建 data array (与缩略图共用 resolveInputArray, 取数逻辑一致)
+    const seriesArrays = slots.map((slot) =>
+      resolveInputArray(slot.input, widget.params.id, tsLen, channelArrays, derivedMap)
+    );
 
     const tsSec = timestamps.map((ms) => ms / 1000);
     const seriesDivs = seriesArrays.map((arr, i) => {
@@ -267,11 +185,14 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       if (win.timestamps.length > 0 && !frozenDataRef.current) {
         // 停止时保持引用而非深拷贝: waveformWindow.clear() 创建新空窗口,
         // 不会 mutate 此引用, 因此引用安全
-        frozenDataRef.current = {
+        const snapshot: FrozenWaveformData = {
           ts: win.timestamps,
           chs: win.channels,
           derived: win.derived,
         };
+        frozenDataRef.current = snapshot;
+        // 同步 setState, 保证缩略图在 Stop 的同一帧拿到冻结快照
+        setFrozenData(snapshot);
         // 拍快照后立即用冻结数据重绘
         const plot = plotRef.current;
         if (plot) {
@@ -281,6 +202,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       }
     } else {
       frozenDataRef.current = null;
+      setFrozenData(null);
     }
   }, [axisConfig.running, getDisplayData]);
 
@@ -466,8 +388,9 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         axisConfig={axisConfig}
         viewEndSec={viewEndSec}
         timeWindowSec={timeWindowSec}
-        connectedChannels={connectedChannels}
-        frozenData={!axisConfig.running ? frozenDataRef.current : null}
+        series={timelineSeries}
+        widgetId={widget.params.id}
+        frozenData={!axisConfig.running ? frozenData : null}
         onConfigChange={onConfigChange}
       />
     </div>
