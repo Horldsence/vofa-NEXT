@@ -62,8 +62,6 @@ export function applyAppearance(appearance: AppSettings['appearance']): void {
     delete root.dataset.acrylic;
   }
   // 纯浏览器 dev 环境无 Tauri 后端, 调用失败时静默忽略
-  // blurRadius 仅 macOS 生效, 0 表示系统默认
-  const blurRadius = appearance.acrylicBlurRadius ?? 0;
-  invoke('set_window_acrylic', { enabled: acrylic, blurRadius }).catch(() => {});
+  invoke('set_window_acrylic', { enabled: acrylic }).catch(() => {});
   // 控件栏/状态栏可见性由 App.tsx 读取 settings 控制, 这里不直接操作
 }

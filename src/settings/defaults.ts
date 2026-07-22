@@ -28,8 +28,6 @@ export interface AppSettings {
     acrylicBackground: boolean;
     /// 毛玻璃面板透明度 0.1-1.0, 0.6 为基准观感
     acrylicOpacity: number;
-    /// 毛玻璃模糊半径 (仅 macOS 生效, 0 表示系统默认)
-    acrylicBlurRadius: number;
   };
   editor: {
     waveformFps: number;
@@ -88,7 +86,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     activityBarVisible: true,
     acrylicBackground: false,
     acrylicOpacity: 0.6,
-    acrylicBlurRadius: 0,
   },
   editor: {
     waveformFps: 30,

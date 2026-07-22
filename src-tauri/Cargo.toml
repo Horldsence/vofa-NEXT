@@ -95,7 +95,7 @@ vofa-next-buffer = { workspace = true }
 vofa-next-nodes = { workspace = true }
 vofa-next-dsp = { workspace = true }
 vofa-next-automotive = { workspace = true }
-tauri = { version = "2", features = ["devtools"] }
+tauri = { version = "2", features = ["devtools", "macos-private-api"] }
 tauri-plugin-opener = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
