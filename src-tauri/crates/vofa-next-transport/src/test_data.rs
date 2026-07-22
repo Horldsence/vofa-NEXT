@@ -51,8 +51,12 @@ pub async fn spawn(
                 tokio::select! {
                     _ = tick.tick() => {
                         let t = start.elapsed().as_secs_f32();
-                        let phase = sample_idx as f32 / sample_rate;
-                        let data = generate_bytes(channels, signal, t, phase, &protocol, sample_idx);
+                        // 相位必须取真实流逝时间, 不能用 sample_idx / sample_rate 推算:
+                        // 帧时间戳在解析侧按到达时间打 (DataFrame::new → now_us),
+                        // 一旦定时器抖动或 tick 被跳过 (MissedTickBehavior::Skip),
+                        // 按序号推算的相位就会滞后于时间戳, 且误差永久累积,
+                        // 导致示波器上的采样点偏离理想波形位置
+                        let data = generate_bytes(channels, signal, t, &protocol, sample_idx);
 
                         let _ = data_tx_gen.send(data);
                         sample_idx += 1;
@@ -89,11 +93,10 @@ fn generate_bytes(
     channels: usize,
     signal: TestSignal,
     t: f32,
-    phase: f32,
     protocol: &ProtocolConfig,
     sample_idx: u64,
 ) -> Vec<u8> {
-    let frame = generate_frame(channels, signal, t, phase);
+    let frame = generate_frame(channels, signal, t);
     match protocol {
         ProtocolConfig::JustFloat { .. } => {
             // 4 字节 LE float + 帧尾
@@ -179,11 +182,12 @@ fn generate_bytes(
 }
 
 /// 生成一帧通道浮点值 (与原实现保持一致)
-fn generate_frame(channels: usize, signal: TestSignal, t: f32, phase: f32) -> Vec<f32> {
+/// t 为生成器启动以来的真实流逝时间 (秒), 作为所有信号的时间基准
+fn generate_frame(channels: usize, signal: TestSignal, t: f32) -> Vec<f32> {
     (0..channels)
         .map(|i| {
             let freq = 1.0 + i as f32;
-            let p = phase * freq * 2.0 * std::f32::consts::PI;
+            let p = t * freq * 2.0 * std::f32::consts::PI;
             match signal {
                 TestSignal::Sine => p.sin() * (1.0 + i as f32 * 0.5) * 50.0 + 128.0,
                 TestSignal::Square => {
@@ -203,7 +207,7 @@ fn generate_frame(channels: usize, signal: TestSignal, t: f32, phase: f32) -> Ve
                     tri * 100.0 + i as f32 * 20.0
                 }
                 TestSignal::Sawtooth => {
-                    let normalized = phase * freq % 1.0;
+                    let normalized = t * freq % 1.0;
                     normalized * 200.0 + i as f32 * 10.0
                 }
                 TestSignal::Random => {
@@ -219,13 +223,13 @@ fn generate_frame(channels: usize, signal: TestSignal, t: f32, phase: f32) -> Ve
                 TestSignal::Chirp => {
                     // 扫频: 频率随时间线性增加
                     let f = 0.5 + t * 2.0;
-                    (phase * f * freq * 2.0 * std::f32::consts::PI).sin() * 80.0
+                    (t * f * freq * 2.0 * std::f32::consts::PI).sin() * 80.0
                         + 128.0
                         + i as f32 * 10.0
                 }
                 TestSignal::Steps => {
                     // 阶梯: 每 10 个采样点上升一级
-                    let step = ((phase * freq * 5.0) as i32) as f32;
+                    let step = ((t * freq * 5.0) as i32) as f32;
                     (step.rem_euclid(8.0) * 30.0) + 20.0 + i as f32 * 10.0
                 }
                 TestSignal::Noise => {
@@ -257,7 +261,7 @@ mod tests {
     #[test]
     fn test_justfloat_format() {
         let protocol = ProtocolConfig::JustFloat { channels: Some(2) };
-        let data = generate_bytes(2, TestSignal::Sine, 0.0, 0.0, &protocol, 0);
+        let data = generate_bytes(2, TestSignal::Sine, 0.0, &protocol, 0);
         // 2 channels * 4 bytes + 4 byte tail
         assert_eq!(data.len(), 12);
         // 帧尾
@@ -267,7 +271,7 @@ mod tests {
     #[test]
     fn test_firewater_format() {
         let protocol = ProtocolConfig::FireWater { channels: Some(2) };
-        let data = generate_bytes(2, TestSignal::Sine, 0.0, 0.0, &protocol, 0);
+        let data = generate_bytes(2, TestSignal::Sine, 0.0, &protocol, 0);
         let s = String::from_utf8(data.clone()).unwrap();
         assert!(s.ends_with('\n'));
         assert_eq!(s.matches(',').count(), 1);
@@ -276,7 +280,7 @@ mod tests {
     #[test]
     fn test_slcan_format() {
         let protocol = ProtocolConfig::Slcan;
-        let data = generate_bytes(8, TestSignal::Square, 0.0, 0.0, &protocol, 0);
+        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
         let s = String::from_utf8(data).unwrap();
         assert!(s.starts_with('t'));
         assert!(s.ends_with('\r'));
@@ -287,7 +291,7 @@ mod tests {
     #[test]
     fn test_candle_format() {
         let protocol = ProtocolConfig::CandleLight;
-        let data = generate_bytes(8, TestSignal::Square, 0.0, 0.0, &protocol, 0);
+        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
         assert_eq!(data.len(), 24);
         assert_eq!(data[0], 0x11); // RX cmd
         assert_eq!(data[12], 8); // dlc
@@ -296,7 +300,7 @@ mod tests {
     #[test]
     fn test_rawdata_format() {
         let protocol = ProtocolConfig::RawData;
-        let data = generate_bytes(4, TestSignal::Dc, 0.0, 0.0, &protocol, 42);
+        let data = generate_bytes(4, TestSignal::Dc, 0.0, &protocol, 42);
         // 4 channel bytes + 4 byte counter
         assert_eq!(data.len(), 8);
         assert_eq!(&data[4..8], &42u32.to_le_bytes());
@@ -313,7 +317,7 @@ mod tests {
                 channel: 0,
             },
         };
-        let data = generate_bytes(8, TestSignal::Square, 0.0, 0.0, &protocol, 0);
+        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
         // 8 samples per tick
         assert_eq!(data.len(), 8);
         // 通道 0 应有方波翻转
