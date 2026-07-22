@@ -1,7 +1,7 @@
 //! # state — 应用全局状态与后台循环
 //!
-//! - [`app_state`]: 类型定义：AppState、GraphEvalState、快照结构
-//! - [`tickers`]: 后台推送循环：图输出/Custom输入/频谱/CAN帧/原始数据
+//! - [`app_state`][]: 类型定义：AppState、GraphEvalState、快照结构
+//! - [`tickers`][]: 后台推送循环：图输出/Custom输入/频谱/CAN帧/原始数据
 
 mod app_state;
 mod tickers;
@@ -29,6 +29,7 @@ use vofa_next_protocol::ProtocolEngine;
 ///   - 统计节流: STATS_THROTTLE_MS 内累积, 一次性 emit
 ///   - 图评估: 调用 evaluate_all_graphs_with 实时计算所有节点输出
 ///     结果存入 output_snapshot, 由独立的 60 FPS ticker task 推送到前端
+#[allow(clippy::too_many_arguments)]
 pub async fn data_loop(
     app: AppHandle,
     rx: tokio::sync::broadcast::Receiver<Vec<u8>>,

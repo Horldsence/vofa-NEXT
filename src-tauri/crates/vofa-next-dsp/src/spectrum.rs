@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub use crate::window::WindowType;
 
 /// 频谱输出模式
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum SpectrumOutput {
     /// 振幅谱 |X(k)| / N
     #[default]
@@ -73,6 +73,7 @@ impl SpectrumAnalyzer {
     ///
     /// - window_size: FFT 窗口大小 (建议 2 的幂, 如 256/512/1024/2048)
     /// - sample_rate: 采样率 (Hz), 用于计算频率轴
+    #[allow(clippy::cast_precision_loss)]
     pub fn new(
         window_size: usize,
         window_type: WindowType,
@@ -119,27 +120,27 @@ impl SpectrumAnalyzer {
     }
 
     /// 是否积累了足够样本 (>= window_size)
-    pub fn is_ready(&self) -> bool {
+    pub const fn is_ready(&self) -> bool {
         self.samples_count >= self.window_size
     }
 
     /// 当前窗口大小
-    pub fn window_size(&self) -> usize {
+    pub const fn window_size(&self) -> usize {
         self.window_size
     }
 
     /// 采样率
-    pub fn sample_rate(&self) -> f32 {
+    pub const fn sample_rate(&self) -> f32 {
         self.sample_rate
     }
 
     /// 当前窗类型
-    pub fn window_type(&self) -> WindowType {
+    pub const fn window_type(&self) -> WindowType {
         self.window_type
     }
 
     /// 当前输出模式
-    pub fn output(&self) -> SpectrumOutput {
+    pub const fn output(&self) -> SpectrumOutput {
         self.output
     }
 
@@ -147,6 +148,7 @@ impl SpectrumAnalyzer {
     ///
     /// 若样本不足 (未填满窗口), 返回 None。
     /// 否则取出窗口数据 (按时间顺序), 加窗, FFT, 转换为输出模式。
+    #[allow(clippy::cast_precision_loss, clippy::suboptimal_flops)]
     pub fn compute(&mut self) -> Option<SpectrumResult> {
         if !self.is_ready() {
             return None;
@@ -196,12 +198,12 @@ impl SpectrumAnalyzer {
     }
 
     /// 修改输出模式 (无需重建 FFT planner)
-    pub fn set_output(&mut self, output: SpectrumOutput) {
+    pub const fn set_output(&mut self, output: SpectrumOutput) {
         self.output = output;
     }
 
     /// 修改窗类型 (无需重建 FFT planner)
-    pub fn set_window_type(&mut self, window_type: WindowType) {
+    pub const fn set_window_type(&mut self, window_type: WindowType) {
         self.window_type = window_type;
     }
 
@@ -214,6 +216,7 @@ impl SpectrumAnalyzer {
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
 mod tests {
     use super::*;
     use std::f32::consts::PI;
@@ -263,9 +266,7 @@ mod tests {
         let peak_freq = result.frequencies[max_idx];
         assert!(
             (peak_freq - freq).abs() < fs / n as f32 * 2.0,
-            "峰值频率 {} 应接近 {}",
-            peak_freq,
-            freq
+            "峰值频率 {peak_freq} 应接近 {freq}"
         );
     }
 
@@ -284,7 +285,7 @@ mod tests {
             assert!(dc > *v, "DC 分量应大于其他 bin");
         }
         // DC 分量 ≈ 1.0 (Rect 窗, 振幅 = |sum| / N = N/N = 1)
-        assert!((dc - 1.0).abs() < 0.01, "DC 分量应接近 1.0, 实际 {}", dc);
+        assert!((dc - 1.0).abs() < 0.01, "DC 分量应接近 1.0, 实际 {dc}");
     }
 
     #[test]

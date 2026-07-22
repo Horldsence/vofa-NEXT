@@ -306,7 +306,7 @@ fn secs_to_local_components(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
 fn format_can_load_csv(snap: &CanLoadSnapshot, bitrate: u32, export_time: &str) -> String {
     let mut s = String::with_capacity(8192);
     // 元信息头
-    s.push_str(&format!("# VOFA-Next CAN Load Stats Export\n"));
+    s.push_str("# VOFA-Next CAN Load Stats Export\n");
     s.push_str(&format!("# Export Time: {}\n", export_time));
     s.push_str(&format!("# Bitrate: {} bps\n", bitrate));
     s.push_str(&format!(

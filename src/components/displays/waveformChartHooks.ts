@@ -1,13 +1,49 @@
 import { useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import uPlot from 'uplot';
 import { timeBaseToWindowSec, VERTICAL_DIVS } from '../../lib/scopeUtils';
-import { getEffectiveChannel, TIME_BASES_SEC, V_PER_DIV, formatVPerDiv } from '../../types';
+import { getEffectiveChannel, getEffectiveRender, TIME_BASES_SEC, V_PER_DIV, formatVPerDiv } from '../../types';
 import {
   CHANNEL_COLORS, DERIVED_COLORS, TEXT_COLOR, GRID_COLOR, TICK_COLOR, getContainerSize,
 } from './waveformConstants';
 import { getThemeColor, formatTimeMs, formatYValue } from './wavechartFormatters';
+import { buildLinePath, buildSeriesPoints } from './waveformRender';
 import type { ScopeAxisConfig } from '../../types';
 import type { SeriesSlot } from './waveformSeries';
+
+/// 光标显示行为运行时配置 (由全局设置 + Ctrl 隐藏状态合成, 通过 ref 实时读取)
+export interface CursorDisplayOpts {
+  /// 光标吸附到曲线 (cursorSnap 设置): X 跟随鼠标, Y 吸附到曲线在鼠标 X 处的插值
+  snap: boolean;
+  /// Ctrl/Cmd 隐藏模式: 关闭吸附, 隐藏悬停点与读数, 但保留十字线
+  hidden: boolean;
+}
+
+/// 在已排序的 dataX 上对 dataY 做线性插值, 返回 xVal 处的 Y (吸附到"线"而非采样点)
+/// 边界外夹逼到端点; 任一端点为 NaN 返回 NaN; 用于光标 Y 吸附与读数取值
+export function interpYAtX(
+  dataX: ArrayLike<number | null | undefined> | undefined,
+  dataY: ArrayLike<number | null | undefined> | undefined,
+  xVal: number
+): number {
+  if (!dataX || !dataY || dataX.length === 0) return NaN;
+  const n = dataX.length;
+  // null/undefined 视为 NaN (uPlot data 可能含空值)
+  const num = (v: number | null | undefined): number => (v == null ? NaN : v);
+  if (n === 1) return num(dataY[0]);
+  if (xVal <= num(dataX[0])) return num(dataY[0]);
+  if (xVal >= num(dataX[n - 1])) return num(dataY[n - 1]);
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (num(dataX[mid]) <= xVal) lo = mid; else hi = mid;
+  }
+  const x0 = num(dataX[lo]), x1 = num(dataX[hi]);
+  const y0 = num(dataY[lo]), y1 = num(dataY[hi]);
+  if (isNaN(y0) || isNaN(y1)) return NaN;
+  if (x1 === x0) return y0;
+  const t = (xVal - x0) / (x1 - x0);
+  return y0 + (y1 - y0) * t;
+}
 
 // ---- uPlot 初始化 ----
 
@@ -25,6 +61,8 @@ export function useUplotInit(
   setSelectedRange: React.Dispatch<React.SetStateAction<{ startSec: number; endSec: number } | null>>,
   seriesSignature: string,
   themeId: string,
+  cursorOptsRef: React.MutableRefObject<CursorDisplayOpts>,
+  renderSignature: string,
 ) {
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -50,10 +88,13 @@ export function useUplotInit(
         const color = slot.isDerived
           ? DERIVED_COLORS[slot.colorIdx % DERIVED_COLORS.length]
           : CHANNEL_COLORS[slot.colorIdx % CHANNEL_COLORS.length];
+        const render = getEffectiveRender(cfg0, slot.cfgIdx);
         series.push({
           label: `${slot.label} ${formatVPerDiv(vPerDiv, yUnit)}`,
           stroke: color,
           width: 1.5,
+          paths: buildLinePath(render),
+          points: buildSeriesPoints(render, color),
           value: (_u, v) => {
             if (v == null) return '--';
             const c = axisConfigRef.current;
@@ -103,7 +144,27 @@ export function useUplotInit(
           },
         ],
         legend: { show: false },
-        cursor: { points: { size: 4 }, drag: { x: true, y: false } },
+        cursor: {
+          points: { size: 4 },
+          drag: { x: true, y: false },
+          // 光标吸附到"线": X 始终跟随鼠标 (不吸附), Y 吸附到首条可见曲线在鼠标 X 处的插值
+          // snap 关闭或 Ctrl 隐藏时: X/Y 均自由跟随鼠标 (仍显示十字线)
+          move: (u: uPlot, mouseLeft: number, mouseTop: number): [number, number] => {
+            const o = cursorOptsRef.current;
+            if (!o.snap || o.hidden || mouseLeft < 0) return [mouseLeft, mouseTop];
+            const cfg = axisConfigRef.current;
+            const slots = seriesSlotsRef.current;
+            let visSlot = -1;
+            for (let i = 0; i < slots.length; i++) {
+              if (cfg.channels[slots[i].cfgIdx]?.show ?? true) { visSlot = i; break; }
+            }
+            if (visSlot < 0) return [mouseLeft, mouseTop];
+            const xVal = u.posToVal(mouseLeft, 'x');
+            const interpY = interpYAtX(u.data[0], u.data[visSlot + 1], xVal);
+            if (isNaN(interpY)) return [mouseLeft, mouseTop];
+            return [mouseLeft, u.valToPos(interpY, 'y')];
+          },
+        },
         scales: {
           x: {
             time: false,
@@ -139,6 +200,8 @@ export function useUplotInit(
                 return;
               }
               const c = axisConfigRef.current;
+              // 吸附模式下读数取曲线插值; 非吸附取最近采样点
+              const snapping = cursorOptsRef.current.snap && !cursorOptsRef.current.hidden;
               const xSec = u.posToVal(left, 'x');
               const yPixelVal = u.posToVal(top, 'y');
               const bbox = (u as unknown as { bbox?: { left: number; top: number } }).bbox;
@@ -159,7 +222,9 @@ export function useUplotInit(
                 const slot = slots[i];
                 const ownCh = c.channels[slot.cfgIdx];
                 if (ownCh && !ownCh.show) continue;
-                const divVal = u.data[i + 1]?.[idx];
+                const divVal = snapping
+                  ? interpYAtX(u.data[0], u.data[i + 1], xSec)
+                  : u.data[i + 1]?.[idx];
                 if (divVal == null || isNaN(divVal)) continue;
                 const eff = getEffectiveChannel(c, slot.cfgIdx);
                 const realVal = c.sharedY ? divVal : divVal * eff.vPerDiv + eff.position;
@@ -236,7 +301,7 @@ export function useUplotInit(
       plotRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seriesSignature, themeId]);
+  }, [seriesSignature, themeId, renderSignature]);
 }
 
 // ---- 滚轮缩放 ----

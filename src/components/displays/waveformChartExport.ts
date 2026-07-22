@@ -1,6 +1,7 @@
 import { waveformWindow } from '../../lib/dataBuffer';
 import { getEffectiveChannel } from '../../types';
 import type { ScopeAxisConfig } from '../../types';
+import { applyCoupling } from '../../lib/scopeUtils';
 
 /** 最小 slot 接口 — 兼容 SeriesSlot 结构 */
 interface ExportSlot {
@@ -49,10 +50,12 @@ export function getExportData(
       arr = derivedMap?.[widgetId]?.[slot.input.sourceId ?? ''];
     }
     if (!arr) continue;
-    const realArr = arr.map((v) => {
+    const eff = getEffectiveChannel(cfg, slot.cfgIdx);
+    // 耦合方式 (DC/AC/GND) 先作用于原始数据, 与主图/缩略图一致
+    const coupled = applyCoupling(arr, eff.coupling);
+    const realArr = coupled.map((v) => {
       if (isNaN(v)) return NaN;
       if (cfg.sharedY) return v;
-      const eff = getEffectiveChannel(cfg, slot.cfgIdx);
       return v * eff.vPerDiv + eff.position;
     });
     series.push(realArr);

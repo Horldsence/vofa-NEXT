@@ -8,7 +8,7 @@ import { writeTextToClipboard } from '../../lib/clipboard';
 import { t } from '../../i18n';
 import type { WidgetConfig } from '../../types';
 import { getEffectiveChannel, type ScopeAxisConfig } from '../../types';
-import { timeBaseToWindowSec } from '../../lib/scopeUtils';
+import { timeBaseToWindowSec, applyCoupling } from '../../lib/scopeUtils';
 import { WaveformTimeline } from './WaveformTimeline';
 import {
   computeConnectedInputs, buildSeriesSlots, slotColor, resolveInputArray,
@@ -20,6 +20,7 @@ import { getExportData, buildCsvForRange } from './waveformChartExport';
 import { formatTimeMs } from './wavechartFormatters';
 import {
   useUplotInit, useWheelZoom, usePanDrag, useCursorHide, useTooltipPos,
+  type CursorDisplayOpts,
 } from './waveformChartHooks';
 import { Copy, Download, Check, X } from 'lucide-react';
 
@@ -39,6 +40,11 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   const themeId = useSettingsStore((s) => s.settings.appearance.theme);
+  // 光标/十字线/采样点显示行为 (全局设置, editor 分类)
+  const cursorSnap = useSettingsStore((s) => s.settings.editor.cursorSnap);
+  const crosshairVisible = useSettingsStore((s) => s.settings.editor.crosshairVisible);
+  const hoverPointsVisible = useSettingsStore((s) => s.settings.editor.hoverPointsVisible);
+  const cursorReadoutVisible = useSettingsStore((s) => s.settings.editor.cursorReadoutVisible);
   const axisConfigRef = useRef(axisConfig);
   const lastVersionRef = useRef(-1);
   const frozenDataRef = useRef<FrozenWaveformData | null>(null);
@@ -112,6 +118,18 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
   const { cursorHidden, isMac } = useCursorHide();
 
+  // 光标吸附运行时配置: snap 来自设置, hidden 来自 Ctrl/Cmd 隐藏 (隐藏时不吸附但保留十字线)
+  const cursorOptsRef = useRef<CursorDisplayOpts>({ snap: cursorSnap, hidden: false });
+  cursorOptsRef.current = { snap: cursorSnap, hidden: cursorHidden };
+
+  // 渲染签名: lineMode/pointMode 变化时重建 uPlot series (paths/points), 其它配置变化不重建
+  const renderSignature = useMemo(
+    () => axisConfig.channels
+      .map((c) => `${c.render?.lineMode ?? 'linear'}/${c.render?.pointMode ?? 'none'}`)
+      .join(','),
+    [axisConfig.channels]
+  );
+
   const tooltipPos = useTooltipPos(cursorReadout, containerRef, tooltipRef);
 
   /// 取数据 — 返回 [timestamps, ...seriesSlots.length 个等长数组]
@@ -153,12 +171,14 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     const seriesDivs = seriesArrays.map((arr, i) => {
       const slot = slots[i];
       const chCfg = getEffectiveChannel(cfg, slot.cfgIdx);
+      // 耦合方式 (DC/AC/GND) 先作用于原始数据, 再归一化
+      const coupled = applyCoupling(arr, chCfg.coupling);
       const vPerDiv = chCfg.vPerDiv;
       const pos = chCfg.position;
       // sharedY=true: 不归一化, 直接画真实值 (Y 轴 range 用真实值)
       // sharedY=false: 归一化到 div (Y 轴 range 用 [-4, 4] div)
-      if (cfg.sharedY) return arr;
-      return arr.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
+      if (cfg.sharedY) return coupled;
+      return coupled.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
     });
     return [tsSec, ...seriesDivs];
   }, [widget.params.channels, widget.params.id]);
@@ -209,7 +229,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   useUplotInit(
     containerRef, plotRef, axisConfigRef, seriesSlotsRef,
     getDisplayData, setCursorReadout, setSelectedRange,
-    seriesSignature, themeId,
+    seriesSignature, themeId, cursorOptsRef, renderSignature,
   );
 
   // 数据更新 (运行模式) — 事件驱动 + rAF 节流
@@ -296,7 +316,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   return (
     <div className="flex flex-col h-full w-full" style={{ flexDirection: 'column' }}>
       <div
-        className={`waveform-container ${cursorHidden ? 'cursor-hidden' : ''} flex-1 min-h-0 relative`}
+        className={`waveform-container ${cursorHidden ? 'cursor-hidden' : ''} ${crosshairVisible ? '' : 'crosshair-hidden'} ${hoverPointsVisible ? '' : 'hoverpoint-hidden'} ${cursorSnap && !cursorHidden ? 'snap-on' : ''} flex-1 min-h-0 relative`}
         ref={containerRef}
         onMouseLeave={() => setCursorReadout(null)}
       >
@@ -374,7 +394,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
         <WaveformCursorReadout
           readout={cursorReadout}
-          hidden={cursorHidden}
+          hidden={!cursorReadoutVisible || cursorHidden}
           tooltipPos={tooltipPos}
           tooltipRef={tooltipRef}
         />

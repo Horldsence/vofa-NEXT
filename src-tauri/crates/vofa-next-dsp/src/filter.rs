@@ -81,6 +81,7 @@ impl DigitalFilter {
     }
 
     /// 逐点处理
+    #[allow(clippy::suboptimal_flops)]
     pub fn process(&mut self, input: f32) -> f32 {
         match &self.kind {
             FilterKind::FIR { b } => {
@@ -124,7 +125,7 @@ impl DigitalFilter {
     }
 
     /// 获取滤波器类型
-    pub fn kind(&self) -> &FilterKind {
+    pub const fn kind(&self) -> &FilterKind {
         &self.kind
     }
 }
@@ -179,9 +180,9 @@ pub fn highpass_biquad(cutoff: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
     let w = w0(cutoff, sample_rate);
     let a = alpha(w, DEFAULT_Q);
     let cos_w = w.cos();
-    let b0 = (1.0 + cos_w) / 2.0;
+    let b0 = f32::midpoint(1.0, cos_w);
     let b1 = -(1.0 + cos_w);
-    let b2 = (1.0 + cos_w) / 2.0;
+    let b2 = f32::midpoint(1.0, cos_w);
     let a0 = 1.0 + a;
     let a1 = -2.0 * cos_w;
     let a2 = 1.0 - a;
@@ -226,6 +227,7 @@ pub fn bandstop_biquad(low: f32, high: f32, sample_rate: f32) -> ([f32; 3], [f32
 }
 
 #[cfg(test)]
+#[allow(clippy::cast_precision_loss)]
 mod tests {
     use super::*;
     use std::f32::consts::PI;
@@ -298,9 +300,7 @@ mod tests {
         // 低频幅值应显著大于高频幅值 (衰减 > 50%)
         assert!(
             max_lo > max_hi * 2.0,
-            "低频 {} 应明显大于高频 {} 的 2 倍",
-            max_lo,
-            max_hi
+            "低频 {max_lo} 应明显大于高频 {max_hi} 的 2 倍"
         );
     }
 
@@ -333,9 +333,7 @@ mod tests {
 
         assert!(
             max_hi > max_lo * 2.0,
-            "高频 {} 应明显大于低频 {} 的 2 倍",
-            max_hi,
-            max_lo
+            "高频 {max_hi} 应明显大于低频 {max_lo} 的 2 倍"
         );
     }
 
@@ -356,7 +354,7 @@ mod tests {
         f.reset();
         // 重置后输出应等同于首次处理
         let y = f.process(3.0);
-        assert!((y - 1.5).abs() < 1e-6, "重置后 y = (3+0)/2 = 1.5, 实际 {}", y);
+        assert!((y - 1.5).abs() < 1e-6, "重置后 y = (3+0)/2 = 1.5, 实际 {y}");
     }
 
     #[test]

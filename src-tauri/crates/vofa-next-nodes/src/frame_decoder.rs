@@ -527,7 +527,7 @@ impl FrameParser {
 
                     let abs_byte_offset = frame_start + *byte_offset as usize;
                     let total_bits = *bit_length as usize;
-                    let needed_bytes = (total_bits + *bit_offset as usize + 7) / 8;
+                    let needed_bytes = (total_bits + *bit_offset as usize).div_ceil(8);
                     if abs_byte_offset + needed_bytes > data.len() {
                         return None;
                     }
@@ -807,8 +807,6 @@ impl FrameDecoderTestData {
         let mut checksums: Vec<CsRecord> = Vec::new();
         // 记录 frame_start = Header 末尾在 buf 中的位置
         let mut frame_start: usize = 0;
-        // 跟踪 Id 块设置的 id_value, 用于 match_id 过滤
-        let mut current_id_value: Option<i64> = None;
 
         for block in blocks {
             match block {
@@ -867,7 +865,7 @@ impl FrameDecoderTestData {
                 } => {
                     let val = field_values.get(port_name).copied().unwrap_or(0.0) as u32;
                     let abs_byte_offset = frame_start + *byte_offset as usize;
-                    let needed = abs_byte_offset + ((*bit_offset as usize + *bit_length as usize + 7) / 8);
+                    let needed = abs_byte_offset + (*bit_offset as usize + *bit_length as usize).div_ceil(8);
                     while buf.len() < needed {
                         buf.push(0);
                     }
@@ -1089,7 +1087,7 @@ pub fn parse_hex(hex: &str) -> Vec<u8> {
         .filter(|c| !c.is_whitespace() && *c != ',')
         .collect();
     let cleaned = cleaned.replace("0x", "");
-    if cleaned.len() % 2 != 0 {
+    if !cleaned.len().is_multiple_of(2) {
         return Vec::new();
     }
     (0..cleaned.len())

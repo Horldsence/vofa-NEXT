@@ -30,23 +30,25 @@ impl WindowType {
     /// 使用 periodic 形式 (t = n/N) 而非 symmetric (t = n/(N-1)),
     /// 因为 FFT 假设信号是周期性的, 且 periodic 形式的相干增益为精确值
     /// (Hann=0.5, Hamming=0.54, Blackman=0.42)。
-    fn coeff(&self, n: usize, n_total: usize) -> f32 {
+    #[allow(clippy::cast_precision_loss, clippy::suboptimal_flops)]
+    fn coeff(self, n: usize, n_total: usize) -> f32 {
         if n_total <= 1 {
             return 1.0;
         }
         let t = n as f32 / n_total as f32; // 0..1 (periodic: 不含 1.0)
         let two_pi = 2.0 * std::f32::consts::PI;
         match self {
-            WindowType::Rect => 1.0,
-            WindowType::Hann => 0.5 * (1.0 - (two_pi * t).cos()),
-            WindowType::Hamming => 0.54 - 0.46 * (two_pi * t).cos(),
-            WindowType::Blackman => 0.42 - 0.5 * (two_pi * t).cos() + 0.08 * (4.0 * std::f32::consts::PI * t).cos(),
+            Self::Rect => 1.0,
+            Self::Hann => 0.5 * (1.0 - (two_pi * t).cos()),
+            Self::Hamming => 0.54 - 0.46 * (two_pi * t).cos(),
+            Self::Blackman => 0.42 - 0.5 * (two_pi * t).cos() + 0.08 * (4.0 * std::f32::consts::PI * t).cos(),
         }
     }
 
     /// 窗的相干增益 (rect=1, Hann=0.5, Hamming=0.54, Blackman=0.42)
     /// 用于 PSD 计算时的归一化
-    pub fn coherent_gain(&self, n_total: usize) -> f32 {
+    #[allow(clippy::cast_precision_loss)]
+    pub fn coherent_gain(self, n_total: usize) -> f32 {
         if n_total == 0 {
             return 1.0;
         }
@@ -131,7 +133,7 @@ mod tests {
     fn test_window_length_one() {
         let mut data = vec![5.0];
         apply_window(&WindowType::Hann, &mut data);
-        assert_eq!(data[0], 5.0); // 长度 1 时返回 1.0 系数
+        assert!((data[0] - 5.0).abs() < 1e-6); // 长度 1 时返回 1.0 系数
     }
 
     #[test]

@@ -65,14 +65,37 @@ export function formatVPerDiv(v: number, unit = 'V'): string {
 }
 
 /// 耦合方式
+/// DC = 直通 (显示原始信号)
+/// AC = 交流耦合 (减去窗口直流分量, 便于观察叠加在直流上的交流分量)
+/// GND = 接地 (显示 0V 基准线)
 export type Coupling = 'DC' | 'AC' | 'GND';
+
+/// 曲线生成方式 (line mode) - 决定采样点之间如何连线
+export type LineMode = 'linear' | 'spline' | 'steppedBefore' | 'steppedAfter';
+
+/// 采样点渲染方式 (point mode) - 决定数据点标记的绘制样式
+/// none = 不绘制点标记; dot = 实心圆点; ring = 空心圆环; square = 实心方块
+export type PointMode = 'none' | 'dot' | 'ring' | 'square';
+
+/// 单条曲线的渲染配置 (每通道独立, 不受 sharedY 影响)
+export interface SeriesRender {
+  lineMode: LineMode;
+  pointMode: PointMode;
+}
+
+/// 默认渲染配置: 直线连接 + 不绘制点标记
+export const DEFAULT_RENDER: SeriesRender = {
+  lineMode: 'linear',
+  pointMode: 'none',
+};
 
 /// 每通道独立配置
 export interface ChannelAxisConfig {
   vPerDiv: number;        // V/格 (取自 V_PER_DIV)
   position: number;       // 垂直偏移 (伏, 屏幕中心 = 0)
   show: boolean;          // 通道可见性
-  coupling: Coupling;     // 耦合方式
+  coupling: Coupling;     // 耦合方式 (DC/AC/GND)
+  render?: SeriesRender;  // 曲线渲染方式 (省略时使用 DEFAULT_RENDER)
 }
 
 /// 游标测量配置
@@ -116,6 +139,7 @@ export function createDefaultScopeConfig(channelCount = 4): ScopeAxisConfig {
       position: 0,
       show: true,
       coupling: 'DC' as Coupling,
+      render: { ...DEFAULT_RENDER },
     })),
     grid: true,
     running: true,
@@ -142,6 +166,7 @@ export function getEffectiveChannel(
     position: 0,
     show: true,
     coupling: 'DC' as Coupling,
+    render: { ...DEFAULT_RENDER },
   };
   const own = cfg.channels[idx] ?? fallback;
   if (cfg.sharedY) {
@@ -151,9 +176,16 @@ export function getEffectiveChannel(
       position: shared.position,
       show: own.show,
       coupling: own.coupling,
+      render: own.render ?? fallback.render,
     };
   }
   return own;
+}
+
+/// 获取某通道的有效渲染配置 - 总是返回完整 SeriesRender (省略时回退 DEFAULT_RENDER)
+/// render 始终 per-channel 独立, 不受 sharedY 影响 (与 show/coupling 一致)
+export function getEffectiveRender(cfg: ScopeAxisConfig, idx: number): SeriesRender {
+  return getEffectiveChannel(cfg, idx).render ?? DEFAULT_RENDER;
 }
 
 /// 计算波形图显示总时长 = 时基 × 10 格

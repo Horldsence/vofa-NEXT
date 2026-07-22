@@ -9,9 +9,11 @@ import {
   type ScopeMeasurements,
   type ChannelAxisConfig,
   type Coupling,
+  type SeriesRender,
 } from '../../types';
 import { StepKnob } from './StepKnob';
 import { CompactChannelRow } from './CompactChannelRow';
+import { CurveRenderControls } from './CurveRenderControls';
 import { MeasureItem, formatFreq } from './MeasureItem';
 import { CHANNEL_TAB_COLORS, type RenderStepSelect } from './scopeShared';
 
@@ -118,6 +120,7 @@ export function AllTabContent({
               yUnit={config.yUnit}
               onPatchChannel={patchChannel}
               renderStepSelect={renderStepSelect}
+              lang={lang}
             />
           ))
         )}
@@ -209,13 +212,14 @@ function SharedYControls({
         />
         <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
       </div>
-      {/* 每通道 show + 耦合 (per-channel, 不共用) */}
+      {/* 每通道 show + 耦合 + 渲染 (per-channel, 不共用) */}
       {channels.map((ch, idx) => (
         <ChannelVisibilityRow
           key={idx}
           idx={idx}
           ch={ch}
           onPatchChannel={onPatchChannel}
+          lang={lang}
         />
       ))}
     </>
@@ -227,10 +231,12 @@ function ChannelVisibilityRow({
   idx,
   ch,
   onPatchChannel,
+  lang,
 }: {
   idx: number;
   ch: ChannelAxisConfig;
   onPatchChannel: (idx: number, p: Partial<ChannelAxisConfig>) => void;
+  lang: Lang;
 }) {
   return (
     <div className="flex items-center gap-1.5 py-0.5">
@@ -249,13 +255,19 @@ function ChannelVisibilityRow({
           onPatchChannel(idx, { coupling: e.target.value as Coupling })
         }
       >
-        <option value="DC">DC</option>
-        <option value="AC">AC</option>
-        <option value="GND">GND</option>
+        <option value="DC">{t(lang, 'couplingDC')}</option>
+        <option value="AC">{t(lang, 'couplingAC')}</option>
+        <option value="GND">{t(lang, 'couplingGND')}</option>
       </select>
       <span
         className="w-2 h-2 rounded-full flex-shrink-0"
         style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
+      />
+      <CurveRenderControls
+        render={ch.render}
+        onChange={(next: SeriesRender) => onPatchChannel(idx, { render: next })}
+        lang={lang}
+        compact
       />
     </div>
   );

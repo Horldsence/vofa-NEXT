@@ -4,8 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '版本号 (例如 0.1.0-beta.1)'
+        description: '版本号 (例如 0.1.2-beta.1)，需与构建时填写的版本一致'
         required: true
+        type: string
+      build_run_id:
+        description: 'Build workflow run ID (留空则自动使用最近一次成功的构建)'
+        required: false
         type: string
       prerelease:
         description: '标记为 pre-release'
@@ -18,95 +22,106 @@ on:
         type: boolean
         default: false
 
-env:
-  NODE_VERSION: 22
-  RUST_TOOLCHAIN: stable
-
 jobs:
-  build:
-    name: Build ${{ matrix.platform }}
+  release:
+    name: Create Release
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            target: universal-apple-darwin
-            args: '--target universal-apple-darwin'
-          - platform: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            args: ''
-          - platform: windows-latest
-            target: x86_64-pc-windows-msvc
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
+      actions: read
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Update version
+      - name: Resolve build run ID
+        id: resolve-run
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.build_run_id }}" ]; then
+            RUN_ID="${{ inputs.build_run_id }}"
+            echo "使用手动指定的 Build run ID: $RUN_ID"
+          else
+            echo "未指定 build_run_id，查找最近一次成功的构建..."
+            RUN_ID=$(gh run list \
+              --workflow=build.yml \
+              --status=success \
+              --limit=1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            if [ -z "$RUN_ID" ]; then
+              echo "::error::未找到成功的 Build workflow run。请先手动触发 Build 工作流，或手动指定 build_run_id。"
+              exit 1
+            fi
+            echo "自动找到 Build run ID: $RUN_ID"
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          run-id: ${{ steps.resolve-run.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: artifacts
+          merge-multiple: true
+
+      - name: List downloaded artifacts
         shell: bash
         run: |
-          VERSION="${{ inputs.version }}"
-          # MSI 版本号不支持 pre-release 标识符，bundle 版本剥离 `-beta.x` 等后缀
-          BUNDLE_VERSION="${VERSION%%-*}"
-          sed -i.bak 's/"version": "[^"]*"/"version": "'"$BUNDLE_VERSION"'"/' src-tauri/tauri.conf.json
-          sed -i.bak 's/^version = "[^"]*"/version = "'"$BUNDLE_VERSION"'"/' src-tauri/Cargo.toml
-          sed -i.bak 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' package.json
-          rm -f src-tauri/tauri.conf.json.bak src-tauri/Cargo.toml.bak package.json.bak
-          echo "bundle version: $BUNDLE_VERSION"
-          echo "npm version: $VERSION"
+          echo "=== 下载的构件 ==="
+          find artifacts -type f | sort
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 10
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: pnpm
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+      - name: Collect release assets
+        id: assets
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libudev-dev pkg-config
+          mapfile -t FILES < <(find artifacts -type f \( \
+            -name "*.dmg" -o \
+            -name "*.deb" -o \
+            -name "*.AppImage" -o \
+            -name "*.msi" -o \
+            -name "*.exe" -o \
+            -name "*.sig" \
+          \) | sort)
+          if [ ${#FILES[@]} -eq 0 ]; then
+            echo "::error::未在构件中找到任何安装包文件"
+            exit 1
+          fi
+          echo "找到 ${#FILES[@]} 个发布文件："
+          printf '  %s\n' "${FILES[@]}"
+          printf '%s\n' "${FILES[@]}" > /tmp/release-assets.txt
+          echo "count=${#FILES[@]}" >> "$GITHUB_OUTPUT"
 
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build and release
-        uses: tauri-apps/tauri-action@v0
+      - name: Create GitHub Release
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: v${{ inputs.version }}
-          releaseName: v${{ inputs.version }}
-          releaseBody: |
-            ## v${{ inputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ inputs.version }}"
 
-            本次为 ${{ inputs.prerelease && 'pre-release' || '正式 release' }}。
+          PRERELEASE_LABEL="${{ inputs.prerelease == true && 'pre-release' || '正式 release' }}"
+          cat > /tmp/release-notes.md <<NOTES
+          ## v${{ inputs.version }}
 
-            ### 安装包
-            - macOS: `.dmg` (universal)
-            - Linux: `.deb`/`.AppImage`
-            - Windows: `.msi`/`.nsis`
-          releaseDraft: ${{ inputs.draft }}
-          prerelease: ${{ inputs.prerelease }}
-          args: ${{ matrix.args }}
+          本次为 ${PRERELEASE_LABEL}。
+
+          ### 安装包
+          - macOS: \`.dmg\` (universal)
+          - Linux: \`.deb\` / \`.AppImage\`
+          - Windows: \`.msi\` / \`.exe\` (NSIS)
+
+          > 共包含 ${{ steps.assets.outputs.count }} 个文件，来自 Build #${{ steps.resolve-run.outputs.run_id }}
+          NOTES
+
+          ARGS=(--title "$TAG" --notes-file /tmp/release-notes.md --target main)
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          if [ "${{ inputs.draft }}" = "true" ]; then
+            ARGS+=(--draft)
+          fi
+
+          mapfile -t FILES < /tmp/release-assets.txt
+          gh release create "$TAG" "${FILES[@]}" "${ARGS[@]}"
+          echo "✅ Release $TAG 创建成功"

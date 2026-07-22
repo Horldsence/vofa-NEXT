@@ -38,25 +38,25 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
 
     ctx.clearRect(0, 0, w, h);
 
-    // 半圆范围: 180° (左) ~ 0° (右)
-    const startAngle = Math.PI;          // 180°
-    const endAngle = 0;                 // 0°
-    const totalAngle = startAngle - endAngle;
+    // 半圆范围: 180° (左) ~ 360° (右), 经过顶部 (canvas Y 轴向下, 顶部对应 270°)
+    const startAngle = Math.PI;          // 180° - 左侧 (min)
+    const endAngle = Math.PI * 2;        // 360° - 右侧 (max)
+    const totalAngle = endAngle - startAngle;
 
     // 背景弧 (灰色)
     ctx.strokeStyle = cssVar('--color-border') || '#3c3c3c';
     ctx.lineWidth = 8;
     ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, endAngle, startAngle);
+    ctx.arc(cx, cy, radius, startAngle, endAngle);
     ctx.stroke();
 
     // 进度弧 (蓝色)
     const ratio = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
-    const valueAngle = startAngle - ratio * totalAngle;
+    const valueAngle = startAngle + ratio * totalAngle;
     ctx.strokeStyle = cssVar('--color-blue') || '#75beff';
     ctx.beginPath();
-    ctx.arc(cx, cy, radius, valueAngle, startAngle);
+    ctx.arc(cx, cy, radius, startAngle, valueAngle);
     ctx.stroke();
 
     // 刻度 (5 段)
@@ -67,7 +67,7 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
     ctx.textAlign = 'center';
     for (let i = 0; i <= 4; i++) {
       const r = i / 4;
-      const a = startAngle - r * totalAngle;
+      const a = startAngle + r * totalAngle;
       const x1 = cx + Math.cos(a) * (radius - 12);
       const y1 = cy + Math.sin(a) * (radius - 12);
       const x2 = cx + Math.cos(a) * (radius - 4);

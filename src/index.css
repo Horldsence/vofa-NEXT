@@ -538,9 +538,21 @@ body {
   border-color: var(--color-border-node-header);
 }
 
-.waveform-container.cursor-hidden .u-cursor-x,
-.waveform-container.cursor-hidden .u-cursor-y,
+/* Ctrl/Cmd 隐藏模式: 保留十字线 (仍可自由定位), 仅隐藏悬停点; 吸附由 JS (cursor.move) 关闭 */
 .waveform-container.cursor-hidden .u-cursor-pt {
+  display: none !important;
+}
+/* 全局设置 - 隐藏十字线 (横竖辅助线) */
+.waveform-container.crosshair-hidden .u-cursor-x,
+.waveform-container.crosshair-hidden .u-cursor-y {
+  display: none !important;
+}
+/* 全局设置 - 隐藏鼠标悬停采样点标记 (.u-cursor-pt) */
+.waveform-container.hoverpoint-hidden .u-cursor-pt {
+  display: none !important;
+}
+/* 光标吸附开启时隐藏采样点悬停标记 (十字线交点已在曲线上, 采样点标记会错位) */
+.waveform-container.snap-on .u-cursor-pt {
   display: none !important;
 }
 

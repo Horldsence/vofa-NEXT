@@ -163,6 +163,7 @@ pub struct LoopbackResult {
 }
 
 #[tauri::command]
+#[allow(dead_code)]
 pub async fn send_and_capture(
     state: State<'_, AppState>,
     data: Vec<u8>,

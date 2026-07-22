@@ -172,6 +172,38 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
     descKey: 'settingGridVisibleDesc',
     control: { kind: 'toggle' },
   },
+  {
+    category: 'editor',
+    field: 'cursorReadoutVisible',
+    labelKey: 'settingCursorReadoutVisible',
+    descKey: 'settingCursorReadoutVisibleDesc',
+    control: { kind: 'toggle' },
+    keywords: ['cursor', 'readout', '光标', '读数'],
+  },
+  {
+    category: 'editor',
+    field: 'cursorSnap',
+    labelKey: 'settingCursorSnap',
+    descKey: 'settingCursorSnapDesc',
+    control: { kind: 'toggle' },
+    keywords: ['snap', 'cursor', '吸附', '光标'],
+  },
+  {
+    category: 'editor',
+    field: 'crosshairVisible',
+    labelKey: 'settingCrosshairVisible',
+    descKey: 'settingCrosshairVisibleDesc',
+    control: { kind: 'toggle' },
+    keywords: ['crosshair', '十字线'],
+  },
+  {
+    category: 'editor',
+    field: 'hoverPointsVisible',
+    labelKey: 'settingHoverPointsVisible',
+    descKey: 'settingHoverPointsVisibleDesc',
+    control: { kind: 'toggle' },
+    keywords: ['hover', 'points', '采样点', 'uplot'],
+  },
   // Data
   {
     category: 'data',

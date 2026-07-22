@@ -4392,7 +4392,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vofa-next"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "log",
  "parking_lot",
@@ -4417,7 +4417,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-automotive"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "libautomotive",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-buffer"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4443,7 +4443,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4452,7 +4452,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-dsp"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "log",
  "realfft",
@@ -4462,7 +4462,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-nodes"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "log",
  "serde",
@@ -4475,7 +4475,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-protocol"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "vofa-next-transport"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "async-trait",

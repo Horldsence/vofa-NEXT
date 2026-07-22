@@ -1,6 +1,7 @@
 import {
   TIME_BASES_SEC,
   V_PER_DIV,
+  type Coupling,
   type ScopeAxisConfig,
   type ScopeMeasurements,
   type WaveformWindow,
@@ -8,6 +9,25 @@ import {
 
 const H_DIVS = 10;
 const V_DIVS = 8;
+
+/// 耦合方式数据变换 - 对原始通道数据应用 DC/AC/GND 耦合
+/// DC: 直通; AC: 减去窗口内非 NaN 均值 (去除直流分量); GND: 全部置 0 (显示 0V 基准)
+/// 注意: AC 耦合以整个传入数组为窗口估算直流分量 (非真正高通滤波器),
+/// 适用于观察叠加在缓变直流上的交流分量; 若信号含大幅瞬态, 均值会被拉偏。
+export function applyCoupling(values: number[], coupling: Coupling): number[] {
+  if (coupling === 'DC') return values;
+  if (coupling === 'GND') return values.map((v) => (isNaN(v) ? NaN : 0));
+  // AC: 减去非 NaN 均值
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (!isNaN(v)) { sum += v; n++; }
+  }
+  if (n === 0) return values;
+  const mean = sum / n;
+  return values.map((v) => (isNaN(v) ? NaN : v - mean));
+}
 
 /// 计算单通道测量值 (Vpp/Vmin/Vmax/Vavg/Vrms/Freq)
 export function computeMeasurements(

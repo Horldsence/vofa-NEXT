@@ -1,11 +1,13 @@
 import { Eye, EyeOff } from 'lucide-react';
 import { StepKnob } from './StepKnob';
+import { CurveRenderControls } from './CurveRenderControls';
 import { t, type Lang } from '../../i18n';
 import {
   V_PER_DIV,
   formatVPerDiv,
   type ChannelAxisConfig,
   type Coupling,
+  type SeriesRender,
 } from '../../types';
 import { CHANNEL_TAB_COLORS, type RenderStepSelect } from './scopeShared';
 
@@ -59,9 +61,9 @@ export function ChannelTabContent({
             onPatchChannel(idx, { coupling: e.target.value as Coupling })
           }
         >
-          <option value="DC">DC</option>
-          <option value="AC">AC</option>
-          <option value="GND">GND</option>
+          <option value="DC">{t(lang, 'couplingDC')}</option>
+          <option value="AC">{t(lang, 'couplingAC')}</option>
+          <option value="GND">{t(lang, 'couplingGND')}</option>
         </select>
       </div>
 
@@ -115,6 +117,18 @@ export function ChannelTabContent({
           </div>
         </>
       )}
+
+      {/* 曲线渲染方式 (per-channel, 不受 sharedY 影响) */}
+      <div className="flex flex-col gap-1 py-1.5 border-b border-border last:border-b-0">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'curveRender')}</div>
+        <div className="mt-0.5">
+          <CurveRenderControls
+            render={ch.render}
+            onChange={(next: SeriesRender) => onPatchChannel(idx, { render: next })}
+            lang={lang}
+          />
+        </div>
+      </div>
     </div>
   );
 }

@@ -14,11 +14,11 @@ pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) 
     let custom_outputs = eval_state.custom_outputs.lock().clone();
     let graphs = eval_state.graphs.lock();
     let mut filter_states = eval_state.filter_states.lock();
-    let mut decoder_states = eval_state.decoder_states.lock();
+    let decoder_states = eval_state.decoder_states.lock();
 
     let mut combined: HashMap<String, HashMap<String, f32>> = HashMap::new();
     for (_, graph) in graphs.iter() {
-        let out = graph.evaluate(frame, &input_values, &custom_outputs, &mut filter_states, &mut decoder_states);
+        let out = graph.evaluate(frame, &input_values, &custom_outputs, &mut filter_states, &decoder_states);
         for (k, v) in out {
             combined.insert(k, v);
         }

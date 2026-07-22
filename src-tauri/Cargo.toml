@@ -1,6 +1,6 @@
 [package]
 name = "vofa-next"
-version = "0.1.0"
+version = "0.1.2"
 description = "Modern serial port assistant with VOFA protocol support"
 authors = ["peng"]
 edition = "2021"
@@ -14,14 +14,14 @@ members = ["crates/vofa-next-core", "crates/vofa-next-transport", "crates/vofa-n
 
 [workspace.package]
 edition = "2021"
-version = "0.1.0"
+version = "0.1.2"
 
 [workspace.lints.clippy]
 # 最严格 clippy 配置 — 所有规则组 deny
-all = "deny"
-pedantic = "deny"
-nursery = "deny"
-cargo = "deny"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
 
 # 合理放宽的规则 (风格偏好或无法控制的外部因素)
 # 允许模块名与类型名重复 (如 config::Config, transport::Transport)

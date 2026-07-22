@@ -29,7 +29,7 @@ pub fn detect_format(input: &str) -> InputFormat {
     if clean.is_empty() {
         return InputFormat::Ascii;
     }
-    if clean.len() % 2 != 0 {
+    if !clean.len().is_multiple_of(2) {
         return InputFormat::Ascii;
     }
     if clean.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -164,7 +164,7 @@ pub fn parse_hex(input: &str) -> Result<Vec<u8>, String> {
     if clean.is_empty() {
         return Ok(Vec::new());
     }
-    if clean.len() % 2 != 0 {
+    if !clean.len().is_multiple_of(2) {
         return Err(format!(
             "HEX 长度必须为偶数 (每字节 2 个十六进制字符), 当前长度 {}",
             clean.len()

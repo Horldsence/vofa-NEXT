@@ -10,6 +10,7 @@ use vofa_next_protocol::ProtocolEngine;
 
 const STATS_THROTTLE_MS: u128 = 100;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     app: AppHandle,
     mut rx: tokio::sync::broadcast::Receiver<Vec<u8>>,

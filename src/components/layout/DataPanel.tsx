@@ -16,9 +16,9 @@ import { TableView } from '../displays/TableView';
 import { AxisSettings } from '../displays/AxisSettings';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import type { WidgetConfig, ScopeAxisConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
-import { createDefaultScopeConfig } from '../../types';
+import { createDefaultScopeConfig, getEffectiveChannel } from '../../types';
 import { waveformWindow } from '../../lib/dataBuffer';
-import { computeMeasurements, computeAutoSetConfig } from '../../lib/scopeUtils';
+import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/scopeUtils';
 import { computeConnectedInputs, type ConnectedInput } from '../displays/waveformSeries';
 /// 每个 waveform widget 拥有独立的 axisConfig + measurements
 /// 通过 widgetId 索引, 切换 Tab 时使用对应配置, 互不干扰
@@ -160,7 +160,10 @@ export function DataPanel() {
           const targetIdx = chIdx >= 0 ? chIdx : 0;
           const ch = win.channels[targetIdx];
           if (ch && ch.length > 0) {
-            m = computeMeasurements(ch, win.timestamps);
+            // 测量值基于耦合后的数据 (与主图显示一致)
+            const eff = getEffectiveChannel(cur.config, targetIdx);
+            const coupled = applyCoupling(ch, eff.coupling);
+            m = computeMeasurements(coupled, win.timestamps);
           }
         }
         setPerWidgetStates((prev) => ({

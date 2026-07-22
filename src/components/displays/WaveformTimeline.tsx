@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
 import { waveformWindow } from '../../lib/dataBuffer';
 import { TIME_BASES_SEC, formatTimeBase, getEffectiveChannel, type ScopeAxisConfig } from '../../types';
-import { timeBaseToWindowSec, HORIZONTAL_DIVS, VERTICAL_DIVS } from '../../lib/scopeUtils';
+import { timeBaseToWindowSec, HORIZONTAL_DIVS, VERTICAL_DIVS, applyCoupling } from '../../lib/scopeUtils';
 import { TIMELINE_PAD } from './waveformConstants';
 import {
   resolveInputArray, type FrozenWaveformData, type TimelineSeriesSpec,
@@ -169,6 +169,8 @@ export function WaveformTimeline({
         const arr = resolveInputArray(spec.input, widgetId, totalPoints, win.channelArrays, win.derivedMap);
         const eff = getEffectiveChannel(cfg, spec.cfgIdx);
         if (eff.vPerDiv <= 0) continue;
+        // 耦合方式 (DC/AC/GND) 与主图一致
+        const coupled = applyCoupling(arr, eff.coupling);
         // 与主图 Y 轴 range 一致: position ± vPerDiv × 4 格 (sharedY 时 eff 已取共享配置)
         const yMin = eff.position - (eff.vPerDiv * VERTICAL_DIVS) / 2;
         const yRange = eff.vPerDiv * VERTICAL_DIVS;
@@ -179,7 +181,7 @@ export function WaveformTimeline({
         let started = false;
         for (let i = 0; i < totalPoints; i += step) {
           const x = pad + (i / (totalPoints - 1)) * plotW;
-          const v = arr[i];
+          const v = coupled[i];
           if (isNaN(v)) { started = false; continue; }
           const y = pad + plotH - ((v - yMin) / yRange) * plotH;
           if (!started) { ctx.moveTo(x, y); started = true; }

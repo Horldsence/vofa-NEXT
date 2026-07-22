@@ -42,6 +42,7 @@ pub fn list_ports() -> Result<Vec<PortInfo>> {
 /// 启动串口传输
 ///
 /// 返回 (写入端, 数据广播端, 取消标志)
+#[allow(clippy::type_complexity)]
 pub fn spawn(
     config: SerialConfig,
 ) -> Result<(

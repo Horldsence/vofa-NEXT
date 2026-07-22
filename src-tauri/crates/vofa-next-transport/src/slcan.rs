@@ -10,6 +10,7 @@ use vofa_next_core::{Error, Result, SlcanConfig};
 ///
 /// 内部用 serialport 打开串口, 启动时发送 slcan 初始化命令。
 /// 读线程广播原始字节 (包含 slcan ASCII 命令), 由 SlcanEngine 解析。
+#[allow(clippy::type_complexity)]
 pub fn spawn(
     config: SlcanConfig,
 ) -> Result<(

@@ -223,6 +223,9 @@ cursors: Cursors
 measure: Measure
 oscilloscopeSettings: Oscilloscope Settings
 coupling: Coupling
+couplingDC: DC (Direct)
+couplingAC: AC (Alternating)
+couplingGND: GND (Ground)
 position: Position
 yUnit: Y-Axis Unit
 sharedY: Shared Y
@@ -234,6 +237,18 @@ cursorHiddenHint: Cursor hidden (release key to restore)
 dynamicSeriesToggle: Toggle dynamic series mode (fixed channel slots ↔ dynamic by connections)
 dynamicSeriesOff: FIXED
 dynamicSeriesOn: DYNAMIC
+curve: Curve
+curveRender: Curve Render
+lineMode: Line Mode
+pointMode: Points
+lineMode_linear: Linear
+lineMode_spline: Spline
+lineMode_steppedBefore: Step (Before)
+lineMode_steppedAfter: Step (After)
+pointMode_none: None
+pointMode_dot: Dot
+pointMode_ring: Ring
+pointMode_square: Square
 
 # Notifications
 notifError: Error
@@ -334,6 +349,14 @@ settingScopeDefaultVPerDiv: Default Vertical Scale
 settingScopeDefaultVPerDivDesc: Default vertical scale for new waveform charts
 settingGridVisible: Show Grid by Default
 settingGridVisibleDesc: Whether new waveform charts show grid by default
+settingCursorReadoutVisible: Show Cursor Readout
+settingCursorReadoutVisibleDesc: Show the value readout tooltip that follows the mouse on waveform charts
+settingCursorSnap: Cursor Snap
+settingCursorSnapDesc: Snap Y to the curve value interpolated at the mouse X (X still follows the mouse, not to the sample point); hold Ctrl/Cmd to temporarily disable
+settingCrosshairVisible: Show Crosshair
+settingCrosshairVisibleDesc: Show the horizontal/vertical crosshair lines that follow the mouse
+settingHoverPointsVisible: Show Hover Points
+settingHoverPointsVisibleDesc: Show the nearest-sample markers on the curve on hover (auto-hidden when cursor snap is on)
 
 # Setting items - Data Cache
 settingWaveformBufferPoints: Waveform Buffer Points

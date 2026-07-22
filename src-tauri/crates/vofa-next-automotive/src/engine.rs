@@ -15,17 +15,17 @@ impl DiagnosticEngine {
     /// 创建新的诊断引擎实例
     ///
     /// Phase 1 占位:Phase 2 将接受 CanBackend 参数
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { _priv: () }
     }
 
     /// Phase 1 自检:返回引擎是否就绪
-    pub fn is_ready(&self) -> bool {
+    pub const fn is_ready(&self) -> bool {
         false
     }
 
     /// 占位:返回 libautomotive 版本字符串
-    pub fn libautomotive_version() -> &'static str {
+    pub const fn libautomotive_version() -> &'static str {
         libautomotive::VERSION
     }
 }

@@ -223,6 +223,9 @@ cursors: 游标
 measure: 测量
 oscilloscopeSettings: 示波器设置
 coupling: 耦合
+couplingDC: DC 直流
+couplingAC: AC 交流
+couplingGND: GND 接地
 position: 位置
 yUnit: Y 轴单位
 sharedY: 共用 Y
@@ -234,6 +237,18 @@ cursorHiddenHint: 光标已隐藏 (松开按键恢复)
 dynamicSeriesToggle: 切换动态 series 模式 (固定通道槽 ↔ 按连接数动态显示)
 dynamicSeriesOff: 固定
 dynamicSeriesOn: 动态
+curve: 曲线
+curveRender: 曲线渲染
+lineMode: 连线方式
+pointMode: 采样点
+lineMode_linear: 直线
+lineMode_spline: 平滑曲线
+lineMode_steppedBefore: 阶梯 (前)
+lineMode_steppedAfter: 阶梯 (后)
+pointMode_none: 无
+pointMode_dot: 实心点
+pointMode_ring: 空心环
+pointMode_square: 方块
 
 # 通知
 notifError: 错误
@@ -334,6 +349,14 @@ settingScopeDefaultVPerDiv: 默认垂直档位
 settingScopeDefaultVPerDivDesc: 新建波形图的默认垂直档位
 settingGridVisible: 默认显示网格
 settingGridVisibleDesc: 新建波形图是否默认显示网格
+settingCursorReadoutVisible: 显示光标读数
+settingCursorReadoutVisibleDesc: 波形图鼠标跟随时是否显示数值读数悬浮框
+settingCursorSnap: 光标吸附
+settingCursorSnapDesc: Y 轴吸附到曲线在鼠标 X 处的插值 (X 轴仍跟随鼠标, 非吸附到采样点); 按住 Ctrl/Cmd 临时关闭吸附
+settingCrosshairVisible: 显示十字线
+settingCrosshairVisibleDesc: 显示鼠标跟随的横竖十字辅助线
+settingHoverPointsVisible: 显示悬停采样点
+settingHoverPointsVisibleDesc: 显示鼠标悬停时曲线上最近采样点的标记 (光标吸附开启时自动隐藏)
 
 # 设置项 - Data Cache
 settingWaveformBufferPoints: 波形缓存点数

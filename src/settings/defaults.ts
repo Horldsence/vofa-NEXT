@@ -36,6 +36,14 @@ export interface AppSettings {
     scopeDefaultTimeBase: number;
     scopeDefaultVPerDiv: number;
     gridVisible: boolean;
+    /// 光标读数悬浮框是否显示 (波形图鼠标跟随数值提示)
+    cursorReadoutVisible: boolean;
+    /// 光标吸附: Y 轴吸附到曲线在鼠标 X 处的插值 (X 轴仍跟随鼠标)
+    cursorSnap: boolean;
+    /// 十字线可见性 (鼠标跟随的横竖辅助线)
+    crosshairVisible: boolean;
+    /// 鼠标悬停采样点标记可见性 (曲线上跟随鼠标的数据点圆点)
+    hoverPointsVisible: boolean;
   };
   data: {
     waveformBufferPoints: number;
@@ -87,6 +95,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     scopeDefaultTimeBase: 100e-3,
     scopeDefaultVPerDiv: 1,
     gridVisible: true,
+    cursorReadoutVisible: true,
+    cursorSnap: true,
+    crosshairVisible: true,
+    hoverPointsVisible: true,
   },
   data: {
     waveformBufferPoints: 100_000,

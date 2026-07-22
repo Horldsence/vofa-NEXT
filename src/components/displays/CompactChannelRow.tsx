@@ -1,12 +1,15 @@
 import { Eye, EyeOff } from 'lucide-react';
 import { StepKnob } from './StepKnob';
+import { CurveRenderControls } from './CurveRenderControls';
 import {
   V_PER_DIV,
   formatVPerDiv,
   type ChannelAxisConfig,
   type Coupling,
+  type SeriesRender,
 } from '../../types';
 import type { RenderStepSelect } from './scopeShared';
+import { t, type Lang } from '../../i18n';
 
 /// "全部" Tab 中的紧凑通道行 — 每通道一行: show/耦合/Vdiv旋钮+下拉/Position
 export function CompactChannelRow({
@@ -15,12 +18,14 @@ export function CompactChannelRow({
   yUnit,
   onPatchChannel,
   renderStepSelect,
+  lang,
 }: {
   idx: number;
   ch: ChannelAxisConfig;
   yUnit: string;
   onPatchChannel: (idx: number, p: Partial<ChannelAxisConfig>) => void;
   renderStepSelect: RenderStepSelect;
+  lang: Lang;
 }) {
   const unit = yUnit ?? 'V';
   return (
@@ -41,9 +46,9 @@ export function CompactChannelRow({
             onPatchChannel(idx, { coupling: e.target.value as Coupling })
           }
         >
-          <option value="DC">DC</option>
-          <option value="AC">AC</option>
-          <option value="GND">GND</option>
+          <option value="DC">{t(lang, 'couplingDC')}</option>
+          <option value="AC">{t(lang, 'couplingAC')}</option>
+          <option value="GND">{t(lang, 'couplingGND')}</option>
         </select>
       </div>
       <div className="flex items-center gap-1.5 mt-0.5">
@@ -75,6 +80,14 @@ export function CompactChannelRow({
           }
         />
         <span className="text-[10px] text-text-secondary min-w-[12px]">{unit}</span>
+      </div>
+      <div className="mt-0.5">
+        <CurveRenderControls
+          render={ch.render}
+          onChange={(next: SeriesRender) => onPatchChannel(idx, { render: next })}
+          lang={lang}
+          compact
+        />
       </div>
     </div>
   );
