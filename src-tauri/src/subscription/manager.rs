@@ -3,9 +3,9 @@
 //! 集中管理所有按 channel_id 取消的订阅任务，消除 6 个重复的
 //! `Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>` 字段。
 
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
-use parking_lot::Mutex;
 use tokio::sync::oneshot;
 
 /// 统一订阅取消管理器

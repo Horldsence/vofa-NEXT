@@ -1,6 +1,4 @@
-use vofa_next_core::{
-    DecodedEvent, DataFrame, I2cEvent, LogicDecoderConfig, LogicSample,
-};
+use vofa_next_core::{DataFrame, DecodedEvent, I2cEvent, LogicDecoderConfig, LogicSample};
 
 use crate::engine::ProtocolEngine;
 
@@ -123,7 +121,11 @@ impl LogicDecoderEngine {
 
     /// I2C 解码: 监测 SDA/SCL 通道, 检测 START/STOP/ACK/数据位
     fn decode_i2c(&mut self, samples: &[LogicSample]) -> Vec<DecodedEvent> {
-        let LogicDecoderConfig::I2c { sda_channel, scl_channel } = &self.config else {
+        let LogicDecoderConfig::I2c {
+            sda_channel,
+            scl_channel,
+        } = &self.config
+        else {
             return Vec::new();
         };
         let sda_ch = *sda_channel;
@@ -142,7 +144,10 @@ impl LogicDecoderEngine {
                 state.is_address_phase = true;
                 state.bit_count = 0;
                 state.shift = 0;
-                events.push(DecodedEvent::I2c { timestamp: ts, event: I2cEvent::Start });
+                events.push(DecodedEvent::I2c {
+                    timestamp: ts,
+                    event: I2cEvent::Start,
+                });
                 state.sda_prev = sda;
                 state.scl_prev = scl;
                 continue;
@@ -152,7 +157,10 @@ impl LogicDecoderEngine {
                 state.in_transaction = false;
                 state.is_address_phase = false;
                 state.bit_count = 0;
-                events.push(DecodedEvent::I2c { timestamp: ts, event: I2cEvent::Stop });
+                events.push(DecodedEvent::I2c {
+                    timestamp: ts,
+                    event: I2cEvent::Stop,
+                });
                 state.sda_prev = sda;
                 state.scl_prev = scl;
                 continue;
@@ -183,7 +191,10 @@ impl LogicDecoderEngine {
                         // 数据字节
                         events.push(DecodedEvent::I2c {
                             timestamp: ts,
-                            event: I2cEvent::Data { byte: state.shift, ack },
+                            event: I2cEvent::Data {
+                                byte: state.shift,
+                                ack,
+                            },
                         });
                     }
                     state.bit_count = 0;
@@ -199,7 +210,14 @@ impl LogicDecoderEngine {
 
     /// SPI 解码: 监测 SCLK/MOSI/MISO/CS, 在 SCK 边沿采样数据
     fn decode_spi(&mut self, samples: &[LogicSample]) -> Vec<DecodedEvent> {
-        let LogicDecoderConfig::Spi { sclk_channel, mosi_channel, miso_channel, cs_channel, mode } = &self.config else {
+        let LogicDecoderConfig::Spi {
+            sclk_channel,
+            mosi_channel,
+            miso_channel,
+            cs_channel,
+            mode,
+        } = &self.config
+        else {
             return Vec::new();
         };
         let sclk_ch = *sclk_channel;
@@ -251,9 +269,13 @@ impl LogicDecoderEngine {
             if sample_edge {
                 // 采样 MOSI 和 MISO (MSB first)
                 state.mosi_shift <<= 1;
-                if mosi { state.mosi_shift |= 1; }
+                if mosi {
+                    state.mosi_shift |= 1;
+                }
                 state.miso_shift <<= 1;
-                if miso { state.miso_shift |= 1; }
+                if miso {
+                    state.miso_shift |= 1;
+                }
                 state.bit_count += 1;
 
                 if state.bit_count == 8 {
@@ -306,11 +328,15 @@ impl ProtocolEngine for LogicDecoderEngine {
     fn feed_decoded(&mut self, data: &[u8]) -> Vec<DecodedEvent> {
         // 先把字节转为采样 (与 feed_logic 一致), 然后按配置解码
         let now = Self::now_us();
-        let new_samples: Vec<LogicSample> = data.iter().enumerate().map(|(i, &b)| LogicSample {
-            timestamp: now.saturating_add(i as u64),
-            channels: b as u32,
-            channel_count: 8,
-        }).collect();
+        let new_samples: Vec<LogicSample> = data
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| LogicSample {
+                timestamp: now.saturating_add(i as u64),
+                channels: b as u32,
+                channel_count: 8,
+            })
+            .collect();
 
         match &self.config {
             LogicDecoderConfig::Uart { .. } => self.decode_uart(data),
@@ -319,9 +345,15 @@ impl ProtocolEngine for LogicDecoderEngine {
         }
     }
 
-    fn encode_channel(&mut self, _channel: usize, _value: f32) -> Vec<u8> { Vec::new() }
-    fn encode_channels(&mut self, _values: &[f32]) -> Vec<u8> { Vec::new() }
-    fn name(&self) -> &str { "LogicDecoder" }
+    fn encode_channel(&mut self, _channel: usize, _value: f32) -> Vec<u8> {
+        Vec::new()
+    }
+    fn encode_channels(&mut self, _values: &[f32]) -> Vec<u8> {
+        Vec::new()
+    }
+    fn name(&self) -> &str {
+        "LogicDecoder"
+    }
 }
 
 #[cfg(test)]
@@ -379,15 +411,31 @@ mod tests {
         // START: SDA=0, SCL=1
         // STOP: SDA=1, SCL=1
         let data = [0b11, 0b10, 0b11]; // 空闲 -> START -> STOP
-        let samples: Vec<LogicSample> = data.iter().enumerate().map(|(i, &b)| LogicSample {
-            timestamp: i as u64,
-            channels: b as u32,
-            channel_count: 8,
-        }).collect();
+        let samples: Vec<LogicSample> = data
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| LogicSample {
+                timestamp: i as u64,
+                channels: b as u32,
+                channel_count: 8,
+            })
+            .collect();
         let events = engine.decode_i2c(&samples);
         // 应该检测到 START 和 STOP
-        assert!(events.iter().any(|e| matches!(e, DecodedEvent::I2c { event: I2cEvent::Start, .. })));
-        assert!(events.iter().any(|e| matches!(e, DecodedEvent::I2c { event: I2cEvent::Stop, .. })));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DecodedEvent::I2c {
+                event: I2cEvent::Start,
+                ..
+            }
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DecodedEvent::I2c {
+                event: I2cEvent::Stop,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -403,11 +451,15 @@ mod tests {
         let mut engine = LogicDecoderEngine::new(config);
         // CS 高 (空闲), 然后 CS 下降 (开始), 然后 CS 上升 (结束)
         let data = [0b1000, 0b0000, 0b1000]; // CS=1 -> CS=0 -> CS=1
-        let samples: Vec<LogicSample> = data.iter().enumerate().map(|(i, &b)| LogicSample {
-            timestamp: i as u64,
-            channels: b as u32,
-            channel_count: 8,
-        }).collect();
+        let samples: Vec<LogicSample> = data
+            .iter()
+            .enumerate()
+            .map(|(i, &b)| LogicSample {
+                timestamp: i as u64,
+                channels: b as u32,
+                channel_count: 8,
+            })
+            .collect();
         let events = engine.decode_spi(&samples);
         // 没有完整 8 位传输, 不应有 Spi 事件
         assert!(events.is_empty());
@@ -550,7 +602,7 @@ mod tests {
         let mut data = Vec::new();
         data.push(i2c_bit(true, true)); // 空闲
         data.push(i2c_bit(false, true)); // START
-        // 地址 0xA1 = 0x50 << 1 | 1 (R=1), 从机 ACK
+                                         // 地址 0xA1 = 0x50 << 1 | 1 (R=1), 从机 ACK
         data.extend(i2c_byte_samples(0xA1, true));
         // 数据 0x42, 从机 ACK
         data.extend(i2c_byte_samples(0x42, true));
@@ -646,7 +698,7 @@ mod tests {
         let mut data = Vec::new();
         data.push(i2c_bit(true, true)); // 空闲
         data.push(i2c_bit(false, true)); // START
-        // 地址 0xA0, 从机 NACK (ack=false → SDA 高)
+                                         // 地址 0xA0, 从机 NACK (ack=false → SDA 高)
         data.extend(i2c_byte_samples(0xA0, false));
         // NACK 后 SDA 已为高, 需先拉低 SDA 才能产生 STOP 上升沿
         // (STOP 条件 = SDA 从低到高 + SCL 高)

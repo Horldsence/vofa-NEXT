@@ -100,10 +100,7 @@ pub async fn subscribe_spectrum(
 /// 前端在取消订阅时应先调用此命令移除后端引用, 再注销 JS 端回调,
 /// 避免后端向已关闭的 channel 发送数据时产生 "Couldn't find callback id" 警告。
 #[tauri::command]
-pub async fn unsubscribe_graph_outputs(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_graph_outputs(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     let mut subs = state.output_subscribers.lock();
     subs.retain(|ch| ch.id() != channel_id);
     Ok(())
@@ -111,10 +108,7 @@ pub async fn unsubscribe_graph_outputs(
 
 /// 取消订阅 Custom 输入 — 从订阅者列表中移除指定 channel
 #[tauri::command]
-pub async fn unsubscribe_custom_inputs(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_custom_inputs(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     let mut subs = state.custom_input_subscribers.lock();
     subs.retain(|ch| ch.id() != channel_id);
     Ok(())
@@ -122,10 +116,7 @@ pub async fn unsubscribe_custom_inputs(
 
 /// 取消订阅频谱 — 从订阅者列表中移除指定 channel
 #[tauri::command]
-pub async fn unsubscribe_spectrum(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_spectrum(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     let mut subs = state.spectrum_subscribers.lock();
     subs.retain(|ch| ch.id() != channel_id);
     Ok(())

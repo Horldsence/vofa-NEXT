@@ -144,10 +144,9 @@ impl NodeGraph {
             }
             visited.insert(node.to_string(), 1);
             for edge in edges {
-                if edge.source == node
-                    && dfs(&edge.target, edges, visited) {
-                        return true;
-                    }
+                if edge.source == node && dfs(&edge.target, edges, visited) {
+                    return true;
+                }
             }
             visited.insert(node.to_string(), 2);
             false

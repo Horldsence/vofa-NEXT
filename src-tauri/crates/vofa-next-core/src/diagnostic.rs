@@ -330,10 +330,7 @@ pub enum DiagnosticMessage {
     },
 
     /// OBD-II DTC 列表 (Mode 03/07/0A 响应)
-    ObdDtcList {
-        timestamp: u64,
-        dtcs: Vec<Dtc>,
-    },
+    ObdDtcList { timestamp: u64, dtcs: Vec<Dtc> },
 
     /// J1939 PGN 完整报文
     J1939Pgn {
@@ -547,8 +544,14 @@ mod tests {
         let json = serde_json::to_string(&batch).unwrap();
         let back: DiagnosticMessageBatch = serde_json::from_str(&json).unwrap();
         assert_eq!(back.messages.len(), 2);
-        assert!(matches!(back.messages[0], DiagnosticMessage::ObdPidValue { .. }));
-        assert!(matches!(back.messages[1], DiagnosticMessage::ObdDtcList { .. }));
+        assert!(matches!(
+            back.messages[0],
+            DiagnosticMessage::ObdPidValue { .. }
+        ));
+        assert!(matches!(
+            back.messages[1],
+            DiagnosticMessage::ObdDtcList { .. }
+        ));
     }
 
     #[test]

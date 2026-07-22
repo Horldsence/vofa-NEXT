@@ -1,11 +1,14 @@
 use crate::state::GraphEvalState;
+use parking_lot::Mutex;
+use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
-use parking_lot::Mutex;
-use std::sync::Arc;
 use vofa_next_buffer::{DataBuffer, RawDataCollector};
-use vofa_next_core::{CanBuffer, CanLoadStats, CanFrameBatch, ConnectionState, DataFrame, DecodedBuffer, DecodedEventBatch, LogicBuffer, LogicSampleBatch, TransportStats};
+use vofa_next_core::{
+    CanBuffer, CanFrameBatch, CanLoadStats, ConnectionState, DataFrame, DecodedBuffer,
+    DecodedEventBatch, LogicBuffer, LogicSampleBatch, TransportStats,
+};
 use vofa_next_protocol::ProtocolEngine;
 
 const STATS_THROTTLE_MS: u128 = 100;
@@ -75,7 +78,9 @@ pub async fn run(
                 // emit 批次事件 (实时推送到前端, 供监听 transport:can-frames 的组件使用)
                 let _ = app2.emit(
                     "transport:can-frames",
-                    &CanFrameBatch { frames: can_frames.clone() },
+                    &CanFrameBatch {
+                        frames: can_frames.clone(),
+                    },
                 );
             }
 
@@ -90,7 +95,9 @@ pub async fn run(
                 }
                 let _ = app2.emit(
                     "transport:logic-samples",
-                    &LogicSampleBatch { samples: logic_samples },
+                    &LogicSampleBatch {
+                        samples: logic_samples,
+                    },
                 );
             }
             let decoded_events = proto2.lock().feed_decoded(&data);
@@ -103,7 +110,9 @@ pub async fn run(
                 }
                 let _ = app2.emit(
                     "transport:decoded-events",
-                    &DecodedEventBatch { events: decoded_events },
+                    &DecodedEventBatch {
+                        events: decoded_events,
+                    },
                 );
             }
 

@@ -752,8 +752,14 @@ mod tests {
         buf.push_derived("wave2", "math2", 20.0);
 
         let w = buf.get_recent(1);
-        assert_eq!(w.derived.get("wave1").unwrap().get("math1").unwrap(), &vec![10.0]);
-        assert_eq!(w.derived.get("wave2").unwrap().get("math2").unwrap(), &vec![20.0]);
+        assert_eq!(
+            w.derived.get("wave1").unwrap().get("math1").unwrap(),
+            &vec![10.0]
+        );
+        assert_eq!(
+            w.derived.get("wave2").unwrap().get("math2").unwrap(),
+            &vec![20.0]
+        );
     }
 
     #[test]

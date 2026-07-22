@@ -119,10 +119,7 @@ impl ProtocolEngine for SlcanEngine {
         let mut frames = Vec::new();
         loop {
             // 找到行结束符 (\r 或 \n)
-            let pos = self
-                .line_buf
-                .iter()
-                .position(|&b| b == b'\r' || b == b'\n');
+            let pos = self.line_buf.iter().position(|&b| b == b'\r' || b == b'\n');
             if pos.is_none() {
                 break;
             }
@@ -225,10 +222,7 @@ mod tests {
         assert!(f.extended);
         assert!(!f.rtr);
         assert_eq!(f.dlc, 8);
-        assert_eq!(
-            f.data,
-            vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
-        );
+        assert_eq!(f.data, vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
     }
 
     /// 解析远程帧: r1234\r

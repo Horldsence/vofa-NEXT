@@ -164,10 +164,7 @@ pub struct LoopbackResult {
 
 #[tauri::command]
 #[allow(dead_code)]
-pub async fn send_and_capture(
-    state: State<'_, AppState>,
-    data: Vec<u8>,
-) -> Result<LoopbackResult> {
+pub async fn send_and_capture(state: State<'_, AppState>, data: Vec<u8>) -> Result<LoopbackResult> {
     // 1. 发送到 transport (TestData 模式下回环)
     {
         let manager = state.transport.lock().await;
@@ -180,10 +177,17 @@ pub async fn send_and_capture(
     let can_count = proto.feed_can(&data).len();
 
     Ok(LoopbackResult {
-        sent_hex: data.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" "),
+        sent_hex: data
+            .iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" "),
         rx_bytes: data.clone(),
         frame_count: frames.len(),
-        channels: frames.first().map(|f| f.channels.clone()).unwrap_or_default(),
+        channels: frames
+            .first()
+            .map(|f| f.channels.clone())
+            .unwrap_or_default(),
         can_count,
     })
 }

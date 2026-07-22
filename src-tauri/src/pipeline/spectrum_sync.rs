@@ -16,7 +16,15 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
     let mut analyzers = state.spectrum_analyzers.lock();
 
     // 收集所有 graph 中当前的 SpectrumSink id → config
-    let mut current_configs: HashMap<String, (usize, vofa_next_dsp::WindowType, vofa_next_dsp::SpectrumOutput, f32)> = HashMap::new();
+    let mut current_configs: HashMap<
+        String,
+        (
+            usize,
+            vofa_next_dsp::WindowType,
+            vofa_next_dsp::SpectrumOutput,
+            f32,
+        ),
+    > = HashMap::new();
     for (_, graph) in graphs.iter() {
         for sink_id in graph.spectrum_sink_ids() {
             if let Some(cfg) = graph.spectrum_sink_config(&sink_id) {
@@ -46,12 +54,7 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
             }
         };
         if need_rebuild {
-            let analyzer = SpectrumAnalyzer::new(
-                *window_size,
-                *window_type,
-                *output,
-                *sample_rate,
-            );
+            let analyzer = SpectrumAnalyzer::new(*window_size, *window_type, *output, *sample_rate);
             analyzers.insert(sink_id.clone(), analyzer);
             log::info!(
                 "频谱分析器已 (重新)创建: sink={} window={} output={} fs={}",

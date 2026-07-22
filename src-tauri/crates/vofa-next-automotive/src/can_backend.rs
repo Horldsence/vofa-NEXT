@@ -70,13 +70,10 @@ impl BridgeCanBackend {
                     break;
                 }
                 // 用 recv_timeout 而非 recv,以便周期性检查 cancel
-                match tokio::time::timeout(
-                    std::time::Duration::from_millis(100),
-                    byte_rx.recv(),
-                )
-                .await
+                match tokio::time::timeout(std::time::Duration::from_millis(100), byte_rx.recv())
+                    .await
                 {
-                    Err(_) => {}, // timeout,继续循环检查 cancel
+                    Err(_) => {}         // timeout,继续循环检查 cancel
                     Ok(Err(_)) => break, // channel 关闭
                     Ok(Ok(bytes)) => {
                         if bytes.is_empty() {
@@ -186,13 +183,10 @@ mod tests {
         let _ = byte_tx.send(b"t123401020304\r".to_vec());
 
         // 等待解码任务产出 CanFrame
-        let frame = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            frame_rx.recv(),
-        )
-        .await
-        .expect("timeout 等待 CanFrame")
-        .expect("channel 关闭");
+        let frame = tokio::time::timeout(std::time::Duration::from_millis(500), frame_rx.recv())
+            .await
+            .expect("timeout 等待 CanFrame")
+            .expect("channel 关闭");
 
         assert_eq!(frame.id, 0x123);
         assert_eq!(frame.dlc, 4);
@@ -217,13 +211,10 @@ mod tests {
         };
         backend.send_frame(&frame).await.unwrap();
 
-        let encoded = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            write_rx.recv(),
-        )
-        .await
-        .expect("timeout 等待编码字节")
-        .expect("channel 关闭");
+        let encoded = tokio::time::timeout(std::time::Duration::from_millis(500), write_rx.recv())
+            .await
+            .expect("timeout 等待编码字节")
+            .expect("channel 关闭");
 
         // SlcanEngine::encode_can 应输出 "t123401020304\r"
         assert_eq!(encoded, b"t123401020304\r");
@@ -247,13 +238,10 @@ mod tests {
         pkt[16..20].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
         let _ = byte_tx.send(pkt);
 
-        let frame = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            frame_rx.recv(),
-        )
-        .await
-        .expect("timeout 等待 CanFrame")
-        .expect("channel 关闭");
+        let frame = tokio::time::timeout(std::time::Duration::from_millis(500), frame_rx.recv())
+            .await
+            .expect("timeout 等待 CanFrame")
+            .expect("channel 关闭");
 
         assert_eq!(frame.id, 0x123);
         assert_eq!(frame.dlc, 4);
@@ -280,13 +268,10 @@ mod tests {
         };
         backend.send_frame(&frame).await.unwrap();
 
-        let encoded = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            write_rx.recv(),
-        )
-        .await
-        .expect("timeout 等待编码字节")
-        .expect("channel 关闭");
+        let encoded = tokio::time::timeout(std::time::Duration::from_millis(500), write_rx.recv())
+            .await
+            .expect("timeout 等待编码字节")
+            .expect("channel 关闭");
 
         // 应为 24 字节 candleLight TX 帧
         assert_eq!(encoded.len(), 24);
@@ -315,20 +300,14 @@ mod tests {
 
         let _ = byte_tx.send(b"t123401020304\r".to_vec());
 
-        let f1 = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            rx1.recv(),
-        )
-        .await
-        .expect("rx1 timeout")
-        .expect("rx1 closed");
-        let f2 = tokio::time::timeout(
-            std::time::Duration::from_millis(500),
-            rx2.recv(),
-        )
-        .await
-        .expect("rx2 timeout")
-        .expect("rx2 closed");
+        let f1 = tokio::time::timeout(std::time::Duration::from_millis(500), rx1.recv())
+            .await
+            .expect("rx1 timeout")
+            .expect("rx1 closed");
+        let f2 = tokio::time::timeout(std::time::Duration::from_millis(500), rx2.recv())
+            .await
+            .expect("rx2 timeout")
+            .expect("rx2 closed");
 
         assert_eq!(f1.id, 0x123);
         assert_eq!(f2.id, 0x123);
@@ -349,11 +328,7 @@ mod tests {
         // 推一帧,订阅者不应收到 (任务已停止)
         let mut rx = backend.subscribe_frames();
         let _ = byte_tx.send(b"t123401020304\r".to_vec());
-        let result = tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            rx.recv(),
-        )
-        .await;
+        let result = tokio::time::timeout(std::time::Duration::from_millis(200), rx.recv()).await;
         assert!(result.is_err(), "shutdown 后不应再收到 CanFrame");
     }
 }

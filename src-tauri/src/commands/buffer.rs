@@ -29,7 +29,11 @@ pub async fn subscribe_waveform(
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
-        log::info!("波形订阅已启动, channel_id={}, 间隔={}ms", channel_id, interval.as_millis());
+        log::info!(
+            "波形订阅已启动, channel_id={}, 间隔={}ms",
+            channel_id,
+            interval.as_millis()
+        );
         loop {
             tokio::select! {
                 // 收到取消信号 → 优雅退出
@@ -122,30 +126,21 @@ pub async fn set_rawdata_buffer_capacity(
 
 /// 设置 CAN 帧缓冲区最大帧数
 #[tauri::command]
-pub async fn set_can_buffer_capacity(
-    state: State<'_, AppState>,
-    capacity: usize,
-) -> Result<()> {
+pub async fn set_can_buffer_capacity(state: State<'_, AppState>, capacity: usize) -> Result<()> {
     state.can_buffer.lock().set_max_size(capacity);
     Ok(())
 }
 
 /// 设置逻辑采样缓冲区最大采样数
 #[tauri::command]
-pub async fn set_logic_buffer_capacity(
-    state: State<'_, AppState>,
-    capacity: usize,
-) -> Result<()> {
+pub async fn set_logic_buffer_capacity(state: State<'_, AppState>, capacity: usize) -> Result<()> {
     state.logic_buffer.lock().set_max_size(capacity);
     Ok(())
 }
 
 /// 取消订阅波形 — 通过 channel_id 触发 oneshot 取消信号, 让 task 优雅退出
 #[tauri::command]
-pub async fn unsubscribe_waveform(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_waveform(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     if let Some(tx) = state.waveform_tasks.lock().remove(&channel_id) {
         let _ = tx.send(());
     }

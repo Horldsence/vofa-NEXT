@@ -10,6 +10,6 @@ pub mod filter;
 pub mod spectrum;
 pub mod window;
 
-pub use filter::{FilterKind, DigitalFilter, FilterPreset};
+pub use filter::{DigitalFilter, FilterKind, FilterPreset};
 pub use spectrum::{SpectrumAnalyzer, SpectrumOutput, SpectrumResult, WindowType};
 pub use window::apply_window;

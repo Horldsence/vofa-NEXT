@@ -20,7 +20,7 @@ pub fn set_window_acrylic<R: Runtime>(
         #[cfg(target_os = "macos")]
         {
             use window_vibrancy::{
-                NSVisualEffectMaterial, NSVisualEffectState, apply_vibrancy, clear_vibrancy,
+                apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial, NSVisualEffectState,
             };
             let radius = blur_radius.filter(|r| *r > 0.0);
             let result = if enabled {

@@ -43,7 +43,13 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
         "VOFA-Next",
         true,
         &[
-            &MenuItem::with_id(app_handle, ids::ABOUT, "About VOFA-Next", true, None::<&str>)?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::ABOUT,
+                "About VOFA-Next",
+                true,
+                None::<&str>,
+            )?,
             &PredefinedMenuItem::separator(app_handle)?,
             &MenuItem::with_id(
                 app_handle,
@@ -67,7 +73,13 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
         "File",
         true,
         &[
-            &MenuItem::with_id(app_handle, ids::NEW_TAB, "New Tab", true, Some("CmdOrCtrl+T"))?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::NEW_TAB,
+                "New Tab",
+                true,
+                Some("CmdOrCtrl+T"),
+            )?,
             &MenuItem::with_id(
                 app_handle,
                 ids::CLOSE_TAB,
@@ -110,8 +122,20 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
             )?,
             &PredefinedMenuItem::separator(app_handle)?,
             &MenuItem::with_id(app_handle, ids::RELOAD, "Reload", true, Some("CmdOrCtrl+R"))?,
-            &MenuItem::with_id(app_handle, ids::ZOOM_IN, "Zoom In", true, Some("CmdOrCtrl+="))?,
-            &MenuItem::with_id(app_handle, ids::ZOOM_OUT, "Zoom Out", true, Some("CmdOrCtrl+-"))?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::ZOOM_IN,
+                "Zoom In",
+                true,
+                Some("CmdOrCtrl+="),
+            )?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::ZOOM_OUT,
+                "Zoom Out",
+                true,
+                Some("CmdOrCtrl+-"),
+            )?,
             &MenuItem::with_id(
                 app_handle,
                 ids::ZOOM_RESET,
@@ -141,15 +165,34 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
         true,
         &[
             &MenuItem::with_id(app_handle, ids::DOCS, "Documentation", true, None::<&str>)?,
-            &MenuItem::with_id(app_handle, ids::GITHUB, "Open on GitHub", true, None::<&str>)?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::GITHUB,
+                "Open on GitHub",
+                true,
+                None::<&str>,
+            )?,
             &PredefinedMenuItem::separator(app_handle)?,
-            &MenuItem::with_id(app_handle, ids::ABOUT, "About VOFA-Next", true, None::<&str>)?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::ABOUT,
+                "About VOFA-Next",
+                true,
+                None::<&str>,
+            )?,
         ],
     )?;
 
     Menu::with_items(
         app_handle,
-        &[&app_menu, &file_menu, &edit_menu, &view_menu, &window_menu, &help_menu],
+        &[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &view_menu,
+            &window_menu,
+            &help_menu,
+        ],
     )
 }
 
@@ -157,10 +200,9 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
 pub fn on_menu_event(app: &tauri::AppHandle, id: &str) {
     match id {
         ids::GITHUB => {
-            if let Err(e) = tauri_plugin_opener::open_url(
-                "https://github.com/pengheng/vofa-next",
-                None::<&str>,
-            ) {
+            if let Err(e) =
+                tauri_plugin_opener::open_url("https://github.com/pengheng/vofa-next", None::<&str>)
+            {
                 log::warn!("打开 GitHub 失败: {}", e);
             }
         }

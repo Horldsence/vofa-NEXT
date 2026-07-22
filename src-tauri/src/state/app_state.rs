@@ -4,9 +4,7 @@ use std::sync::Arc;
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
 use vofa_next_buffer::{DataBuffer, RawDataCollector};
-use vofa_next_core::{
-    CanBuffer, CanLoadStats, DecodedBuffer, LogicBuffer, ProtocolConfig,
-};
+use vofa_next_core::{CanBuffer, CanLoadStats, DecodedBuffer, LogicBuffer, ProtocolConfig};
 use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
 use vofa_next_nodes::{CompiledGraph, FrameParser};
 use vofa_next_protocol::ProtocolEngine;
@@ -137,7 +135,9 @@ impl AppState {
     pub fn new() -> Self {
         Self {
             transport: tokio::sync::Mutex::new(TransportManager::new()),
-            protocol: Arc::new(Mutex::new(vofa_next_protocol::create_engine(&ProtocolConfig::default()))),
+            protocol: Arc::new(Mutex::new(vofa_next_protocol::create_engine(
+                &ProtocolConfig::default(),
+            ))),
             protocol_config: Mutex::new(ProtocolConfig::default()),
             buffer: Arc::new(Mutex::new(DataBuffer::new(100_000, 4))),
             graphs: Arc::new(Mutex::new(HashMap::new())),

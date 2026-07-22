@@ -30,9 +30,20 @@ pub enum I2cEvent {
 /// 协议解码结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DecodedEvent {
-    Uart { timestamp: u64, byte: u8, parity_ok: bool },
-    I2c { timestamp: u64, event: I2cEvent },
-    Spi { timestamp: u64, mosi: u8, miso: u8 },
+    Uart {
+        timestamp: u64,
+        byte: u8,
+        parity_ok: bool,
+    },
+    I2c {
+        timestamp: u64,
+        event: I2cEvent,
+    },
+    Spi {
+        timestamp: u64,
+        mosi: u8,
+        miso: u8,
+    },
 }
 
 /// 解码器配置
@@ -85,7 +96,15 @@ impl LogicBuffer {
     /// 获取最近 n 个采样 (返回顺序: 旧→新)
     pub fn get_recent(&self, count: usize) -> Vec<LogicSample> {
         let n = count.min(self.samples.len());
-        self.samples.iter().rev().take(n).cloned().collect::<Vec<_>>().into_iter().rev().collect()
+        self.samples
+            .iter()
+            .rev()
+            .take(n)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
     }
 
     pub fn clear(&mut self) {
@@ -131,7 +150,15 @@ impl DecodedBuffer {
 
     pub fn get_recent(&self, count: usize) -> Vec<DecodedEvent> {
         let n = count.min(self.events.len());
-        self.events.iter().rev().take(n).cloned().collect::<Vec<_>>().into_iter().rev().collect()
+        self.events
+            .iter()
+            .rev()
+            .take(n)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect()
     }
 
     pub fn clear(&mut self) {
@@ -490,7 +517,11 @@ mod tests {
         buf.push(original);
         let recent = buf.get_recent(1);
         match &recent[0] {
-            DecodedEvent::Spi { timestamp, mosi, miso } => {
+            DecodedEvent::Spi {
+                timestamp,
+                mosi,
+                miso,
+            } => {
                 assert_eq!(*timestamp, 999);
                 assert_eq!(*mosi, 0xA5);
                 assert_eq!(*miso, 0x3C);

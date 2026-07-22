@@ -84,10 +84,7 @@ pub async fn subscribe_can_load(
     let bitrate = resolve_can_bitrate(&state, bitrate_bps).await;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state
-        .can_load_tasks
-        .lock()
-        .insert(channel_id, cancel_tx);
+    state.can_load_tasks.lock().insert(channel_id, cancel_tx);
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -179,8 +176,10 @@ pub async fn export_can_load_csv(
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let (yyyy, mm, dd, hh, min, ss) = secs_to_local_components(now);
-    let timestamp_str =
-        format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}", yyyy, mm, dd, hh, min, ss);
+    let timestamp_str = format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
+        yyyy, mm, dd, hh, min, ss
+    );
     let filename = format!(
         "vofa-can-load-{:04}{:02}{:02}-{:02}{:02}{:02}.csv",
         yyyy, mm, dd, hh, min, ss
@@ -193,9 +192,7 @@ pub async fn export_can_load_csv(
         Ok(d) => d.join(&filename),
         Err(_) => std::env::current_dir()
             .map(|d| d.join(&filename))
-            .map_err(|e| {
-                vofa_next_core::Error::Config(format!("无法确定下载目录: {}", e))
-            })?,
+            .map_err(|e| vofa_next_core::Error::Config(format!("无法确定下载目录: {}", e)))?,
     };
 
     let mut file = std::fs::File::create(&path)?;

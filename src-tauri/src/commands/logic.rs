@@ -51,10 +51,7 @@ pub async fn subscribe_logic_samples(
 
 /// 取消订阅逻辑采样
 #[tauri::command]
-pub async fn unsubscribe_logic_samples(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_logic_samples(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     if let Some(tx) = state.logic_tasks.lock().remove(&channel_id) {
         let _ = tx.send(());
     }
@@ -130,10 +127,7 @@ pub async fn subscribe_decoded_events(
 
 /// 取消订阅解码事件
 #[tauri::command]
-pub async fn unsubscribe_decoded_events(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_decoded_events(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     if let Some(tx) = state.decoded_tasks.lock().remove(&channel_id) {
         let _ = tx.send(());
     }
