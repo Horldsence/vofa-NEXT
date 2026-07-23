@@ -1,6 +1,8 @@
 # VOFA-NEXT
 
-一个使用 Rust + Tauri 完全重构的下一代串口助手。
+[English](./README.md) | [简体中文](./README.zh-CN.md)
+
+A next-generation serial assistant fully rebuilt with Rust + Tauri — built for embedded debugging, waveform visualization, node-based dataflow orchestration, CAN/automotive diagnostics, and logic analysis.
 
 <!-- PROJECT SHIELDS -->
 
@@ -20,202 +22,309 @@
 
   <h3 align="center">VOFA-NEXT</h3>
   <p align="center">
-    现代化串口调试工具，支持波形显示、节点编辑器与多协议解析。
+    A modern serial debugging tool with waveform display, node editor, multi-protocol parsing, CAN diagnostics, and logic analysis.
     <br />
-    <a href="https://github.com/horldsence/vofa-next"><strong>查看项目仓库 »</strong></a>
+    <a href="https://github.com/horldsence/vofa-next"><strong>Explore the repo »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/horldsence/vofa-next/issues">报告 Bug</a>
+    <a href="https://github.com/horldsence/vofa-next/issues">Report Bug</a>
     ·
-    <a href="https://github.com/horldsence/vofa-next/issues">提出新特性</a>
+    <a href="https://github.com/horldsence/vofa-next/issues">Request Feature</a>
   </p>
 </p>
 
 ![](./images/example.png)
 
-## 目录
+## Table of Contents
 
-- [项目简介](#项目简介)
-- [核心特性](#核心特性)
-- [技术栈](#技术栈)
-- [目录结构](#目录结构)
-- [开发环境](#开发环境)
-- [安装与运行](#安装与运行)
-- [构建与打包](#构建与打包)
-- [测试](#测试)
-- [贡献指南](#贡献指南)
-- [版本控制](#版本控制)
-- [开源协议](#开源协议)
-- [鸣谢](#鸣谢)
+- [Introduction](#introduction)
+- [Core Features](#core-features)
+- [Tech Stack](#tech-stack)
+- [Project Structure](#project-structure)
+- [Prerequisites](#prerequisites)
+- [Installation & Running](#installation--running)
+- [Build & Packaging](#build--packaging)
+- [Testing](#testing)
+- [Contributing](#contributing)
+- [Versioning](#versioning)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
-## 项目简介
+## Introduction
 
-VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基于 React + TypeScript + Vite，后端由 Rust + Tauri 提供高性能串口 / TCP / UDP / CAN / 逻辑分析仪数据读写与协议解析。项目支持节点式数据流编排、实时波形显示、多通道采样以及 VOFA 协议（FireWater、JustFloat）解析。
+VOFA-NEXT is a desktop serial assistant designed for embedded debugging scenarios. The frontend is built with React 19 + TypeScript + Vite, while the backend is powered by Rust + Tauri 2 to deliver high-performance transport I/O, protocol parsing, a node-graph DAG engine, DSP (FIR/IIR filters, FFT spectrum), and automotive diagnostic protocols (ISO-TP / UDS / OBD-II / J1939).
 
-## 核心特性
+The app supports 7 transport types, 7 protocol engines, a React Flow-based node editor for dataflow orchestration, oscilloscope-style waveform display, CAN frame / load analysis, logic analyzer with UART/I2C/SPI decoding, and a custom JS widget system running in sandboxed iframes.
 
-- **多传输层支持**：串口（Serial）、TCP 客户端、UDP、CAN、逻辑分析仪，支持自动重连与连接状态通知。
-- **协议解析引擎**：内置 VOFA FireWater、JustFloat 协议，支持通道自动检测与原始数据查看。
-- **示波器式波形显示**：基于 uPlot，支持时基缩放、游标测量、Run/Stop 冻结、通道 Y 轴独立/共享模式。支持缩略图调整缩放。
-- **节点编辑器**：基于 React Flow，支持从侧边栏拖拽控件到画布并连接数据流。
-- **国际化**：通过 YAML 管理中文 / 英文界面文案。
-- **Tauri 插件集成**：使用 `tauri-plugin-log`、`tauri-plugin-notification`、`tauri-plugin-store` 实现日志、通知与配置持久化。
+## Core Features
 
-## 技术栈
+### Transports
 
-### 前端
+- **Serial** (USB-CDC) with configurable baud rate / data bits / parity / stop bits / flow control.
+- **TCP Client** / **TCP Server**.
+- **UDP** with independent local & remote addresses.
+- **Test Data** — built-in signal generator (Sine / Square / Triangle / Sawtooth / Random / DC / Chirp / Steps / Noise / MultiTone), ideal for offline prototyping.
+- **Slcan** — CAN over serial.
+- **CandleLight** — native USB CAN backend.
+- Auto-reconnect and connection-state notifications.
 
-- [React 19](https://react.dev/)
-- [TypeScript](https://www.typescriptlang.org/)
-- [Vite](https://vitejs.dev/)
-- [React Flow](https://reactflow.dev/)（节点编辑器）
-- [uPlot](https://github.com/leeoniya/uPlot)（波形图表）
-- [Zustand](https://github.com/pmndrs/zustand)（状态管理）
-- [lucide-react](https://lucide.dev/icons/)（图标）
+### Protocol Engines
 
-### 后端
+- **JustFloat** & **FireWater** — VOFA+ protocols with automatic channel detection.
+- **RawData** — raw byte stream inspection.
+- **Slcan** / **CandleLight** — CAN frame parsing.
+- **LogicDecode** — UART / I2C / SPI protocol decoding from sampled digital levels.
+- **Diagnostic** — ISO-TP / UDS / OBD-II / J1939 automotive diagnostic stack (powered by `libautomotive`).
 
-- [Rust](https://www.rust-lang.org/)
-- [Tauri 2](https://tauri.app/)
-- [Tokio](https://tokio.rs/)（异步运行时）
-- [Serde](https://serde.rs/)（序列化）
+### Node Editor & Dataflow
 
-## 目录结构
+- Built on **React Flow** — drag widgets from the sidebar onto the canvas and wire up dataflows.
+- Backend **DAG engine** (`vofa-next-nodes`) compiles the graph into a topological order and evaluates all node outputs per frame, with cycle detection.
+- Node kinds: `ChannelSource`, `Input`, `Math`, `Filter`, `SpectrumSink`, `FrameDecoder`, `Custom` (JS), `Sink`.
+- **Math nodes**: Add / Sub / Mul / Div / Avg / Min / Max / Abs / Neg / Square / Sqrt / Sin / Cos / Tan / Log.
+- **Filter nodes**: Lowpass / Highpass / Bandpass / Bandstop (FIR coefficients or IIR biquad), with cross-frame state persistence.
+- **SpectrumSink**: block-based FFT with selectable window (Hann / Hamming / Blackman / Rect) and output modes (Magnitude / Power / PSD / dB), driven by an independent 30 FPS ticker.
+- **FrameDecoder**: block-based byte-stream parser (Header / Length / Id / Field / Bitfield / Checksum / Tail) with multi-frame dispatch via `match_id` and checksum validation.
+- **Custom JS nodes**: user JavaScript runs in a sandboxed iframe; outputs are posted back to the backend graph.
+
+### Displays & Widgets
+
+- **Oscilloscope-style waveform** — powered by uPlot, with timebase zoom, cursor measurements, Run/Stop freeze, per-channel independent / shared Y-axis, thumbnail zoom, crosshair, hover-point markers, and cursor snap.
+- **Gauge / LED / NumberDisplay / PieChart / Label** — at-a-glance readouts.
+- **Image viewer** — RGB888 / RGB565 / Gray8 pixel formats.
+- **Spectrum chart** — real-time FFT visualization.
+- **3D model viewer** — powered by Three.js / React Three Fiber.
+- **CAN frame list / CAN sender / CAN load view** — with CSV export and load alarms.
+- **Logic timing chart** + decoded event list (UART/I2C/SPI).
+- **Command sender** (with block editor) and **frame decoder** manual test panel.
+- **Custom widget editor** — CodeMirror 6-powered JS editor with live preview.
+
+### UX & Platform
+
+- VSCode-style layout: activity bar, sidebar, resizable panels, status bar, multiple tabs.
+- Native menu bar (macOS / Windows / Linux) and global shortcuts.
+- **i18n** — Chinese / English UI copy managed via YAML.
+- **Settings modal** — general / appearance / editor / data / serial / notifications, persisted via `tauri-plugin-store`.
+- Custom theme editor, onboarding wizard, help center, and contextual hints.
+- Transparent window with acrylic / vibrancy effect (macOS).
+- Native OS notifications via `tauri-plugin-notification`.
+- Structured logging via `tauri-plugin-log` (stdout / log dir / webview).
+
+## Tech Stack
+
+### Frontend
+
+- [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) + [Vite 7](https://vitejs.dev/)
+- [Tailwind CSS 4](https://tailwindcss.com/) (via `@tailwindcss/vite`)
+- [React Flow](https://reactflow.dev/) (`@xyflow/react`) — node editor
+- [uPlot](https://github.com/leeoniya/uPlot) — waveform charts
+- [Three.js](https://threejs.org/) + [`@react-three/fiber`](https://github.com/pmndjs/react-three-fiber) — 3D viewer
+- [CodeMirror 6](https://codemirror.net/) — custom widget code editor
+- [TanStack React Virtual](https://tanstack.com/virtual) — virtualized lists
+- [react-resizable-panels](https://github.com/bvaughn/react-resizable-panels) — VSCode-style layout
+- [Zustand](https://github.com/pmndrs/zustand) — state management
+- [lucide-react](https://lucide.dev/icons/) — icons
+- [YAML](https://github.com/eemeli/yaml) — i18n
+
+### Backend
+
+- [Rust](https://www.rust-lang.org/) + [Tauri 2](https://tauri.app/)
+- [Tokio](https://tokio.rs/) — async runtime
+- [Serde](https://serde.rs/) — serialization
+- [parking_lot](https://github.com/Amanieu/parking_lot) — synchronization
+- [window-vibrancy](https://github.com/tauri-apps/window-vibrancy) — acrylic / mica effects
+- [libautomotive](https://crates.io/crates/libautomotive) — UDS / OBD-II / J1939 diagnostics
+- Tauri plugins: `tauri-plugin-log`, `tauri-plugin-notification`, `tauri-plugin-store`, `tauri-plugin-opener`
+
+### Backend Workspace Crates
+
+| Crate | Responsibility |
+| --- | --- |
+| `vofa-next-core` | Core types & config (transports, protocols, widgets, CAN, logic, diagnostics) |
+| `vofa-next-transport` | Transport layer (serial / TCP / UDP / Slcan / CandleLight / test data) + manager |
+| `vofa-next-protocol` | Protocol engines (JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode) |
+| `vofa-next-buffer` | Ring buffer, multi-channel `DataBuffer`, raw-data collector, node-graph routing |
+| `vofa-next-nodes` | DAG compiler & evaluator (Math / Filter / SpectrumSink / FrameDecoder / Custom) |
+| `vofa-next-dsp` | Digital signal processing (FIR/IIR filters, FFT spectrum, window functions) |
+| `vofa-next-automotive` | Diagnostic engine (ISO-TP / UDS / OBD-II / J1939) bridging CAN backends |
+
+## Project Structure
 
 ```
-serial+/
-├── scripts/                  # 构建脚本
-│   └── build.sh
-├── src/                      # 前端源码
-│   ├── components/           # React 组件
-│   │   ├── controls/         # 控制控件（按钮、旋钮、滑块等）
-│   │   ├── displays/         # 显示组件（波形图、原始数据等）
-│   │   ├── layout/           # 布局组件（节点编辑器、数据面板等）
-│   │   ├── nodes/            # React Flow 节点类型
-│   │   └── panels/           # 配置面板
-│   ├── i18n/                 # 国际化 YAML
-│   ├── lib/                  # 工具库
-│   ├── store/                # Zustand 状态
-│   ├── types/                # TypeScript 类型
+vofa-next/
+├── scripts/                       # Build & patch scripts
+│   ├── build.sh
+│   ├── patch_cmdsender.cjs
+│   ├── patch_remaining.cjs
+│   └── patch_widgetnode.cjs
+├── src/                           # Frontend source
+│   ├── components/
+│   │   ├── controls/              # Knob / Button / Slider / Radio / Checkbox / Label
+│   │   ├── displays/              # Waveform / Gauge / LED / PieChart / Spectrum /
+│   │   │                          # Image / NumberDisplay / Model3D / TableView /
+│   │   │                          # CanView / CanSender / CanLoadView / LogicView /
+│   │   │                          # RawDataView / CommandSender / FrameDecoder / ...
+│   │   ├── layout/                # ActivityBar / Sidebar / ControlPanel / DataPanel /
+│   │   │                          # NodeEditor / StatusBar / BufferUsageStats
+│   │   ├── nodes/                 # React Flow node types (ChannelSource / Widget)
+│   │   ├── onboarding/            # OnboardingWizard / HelpCenter / Tour / ContextualHint
+│   │   ├── panels/
+│   │   │   ├── transport/         # Serial / Udp / TcpClient / TcpServer / TestData /
+│   │   │   │                      # Slcan / Candle forms
+│   │   │   ├── PortPicker.tsx
+│   │   │   ├── ProtocolSection.tsx
+│   │   │   ├── TransportConfigPanel.tsx
+│   │   │   └── WidgetPalette.tsx
+│   │   ├── ui/                    # ContextMenu / PanelTabs / ToolbarIconButton / WidgetCard
+│   │   ├── AboutModal.tsx
+│   │   ├── CodeEditor.tsx
+│   │   ├── CustomWidgetEditor.tsx
+│   │   ├── NotificationToasts.tsx
+│   │   ├── SettingsModal.tsx
+│   │   └── ThemeEditor.tsx
+│   ├── i18n/                      # i18n loader + locales (en.yml / zh.yml)
+│   ├── lib/                       # Tauri API / buffers / subscriptions / utils
+│   ├── settings/                  # Settings schema, defaults, theme application
+│   ├── store/                     # Zustand stores (slices for connection/data/graph/...)
+│   ├── types/                     # TypeScript types (can / logic / transport / waveform / ...)
 │   ├── App.tsx
 │   └── main.tsx
-├── src-tauri/                # Tauri + Rust 后端
-│   ├── crates/               # Rust workspace 子 crate
-│   │   ├── vofa-next-core/   # 核心类型与配置
-│   │   ├── vofa-next-transport/  # 传输层（串口/TCP/UDP）
-│   │   ├── vofa-next-protocol/   # 协议解析
-│   │   └── vofa-next-buffer/     # 数据缓冲与绘图
-│   ├── src/                  # Tauri 命令与状态
-│   ├── icons/                # 应用图标
+├── src-tauri/                     # Tauri + Rust backend
+│   ├── crates/                    # Rust workspace (see table above)
+│   ├── src/
+│   │   ├── commands/              # Tauri command handlers (transport/protocol/buffer/
+│   │   │                          # graph/can/logic/can_load/frame_decoder/window/...)
+│   │   ├── pipeline/              # data_loop / decoder_feed / graph_eval / spectrum_sync
+│   │   ├── state/                 # AppState / tickers (graph output / custom input / spectrum)
+│   │   ├── subscription/          # Event subscription manager
+│   │   ├── commands.rs
+│   │   ├── menu.rs                # Native menu bar
+│   │   ├── notify.rs
+│   │   ├── lib.rs
+│   │   └── main.rs
+│   ├── capabilities/default.json
+│   ├── icons/                     # App icons (macOS / Windows / iOS / Android)
+│   ├── build.rs
+│   ├── Cargo.toml
 │   └── tauri.conf.json
+├── public/                        # Static assets (tauri.svg / vite.svg)
+├── images/                        # README assets
+├── .github/workflows/             # CI: build.yml / release.yml
 ├── package.json
 ├── pnpm-workspace.yaml
 ├── tsconfig.json
+├── tsconfig.node.json
 ├── vite.config.ts
+├── index.html
 └── README.md
 ```
 
-## 开发环境
+## Prerequisites
 
-- [Node.js](https://nodejs.org/)（建议 LTS）
+- [Node.js](https://nodejs.org/) (LTS recommended)
 - [pnpm](https://pnpm.io/)
-- [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri 2 系统依赖](https://tauri.app/start/prerequisites/)
+- [Rust](https://www.rust-lang.org/tools/install) (stable)
+- [Tauri 2 system dependencies](https://tauri.app/start/prerequisites/)
+- For CAN diagnostics: a compatible CAN interface (Slcan adapter or CandleLight-compatible USB dongle)
 
-## 安装与运行
+## Installation & Running
 
-1. 克隆仓库
+1. Clone the repository
 
 ```sh
 git clone https://github.com/horldsence/vofa-next.git
 cd vofa-next
 ```
 
-2. 安装前端依赖
+2. Install frontend dependencies
 
 ```sh
 pnpm install
 ```
 
-3. 启动开发环境
+3. Start the dev environment
 
 ```sh
 pnpm tauri dev
 ```
 
-应用默认会在 `http://localhost:1420` 加载前端，并启动 Tauri 桌面窗口。
+The app loads the frontend at `http://localhost:1420` by default and launches a Tauri desktop window.
 
-## 构建与打包
+## Build & Packaging
 
-生成生产环境前端资源并打包桌面应用：
+Build production frontend assets and package the desktop app:
 
 ```sh
 pnpm tauri build
 ```
 
-输出产物位于 `src-tauri/target/release/bundle/`。
+Artifacts are output to `src-tauri/target/release/bundle/`.
 
-项目脚本中也包含跨平台构建示例：
+Cross-platform build examples (see `scripts/build.sh`):
 
 ```sh
-# Windows 交叉编译
+# Windows cross-compilation
 pnpm tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 
-# macOS dmg 包
+# macOS dmg package
 pnpm tauri build --bundles dmg
 ```
 
-## 测试
+CI workflows are provided in `.github/workflows/` (`build.yml`, `release.yml`).
 
-前端类型检查：
+## Testing
+
+Frontend type check:
 
 ```sh
 pnpm tsc --noEmit
 ```
 
-前端生产构建：
+Frontend production build:
 
 ```sh
 pnpm build
 ```
 
-后端单元测试：
+Backend unit tests (workspace-wide):
 
 ```sh
 cd src-tauri && cargo test
 ```
 
-或运行完整 Rust 构建：
+The backend enforces strict Clippy lints (`all` / `pedantic` / `nursery` / `cargo` denied by default with curated allows) — run `cargo clippy --workspace` before submitting PRs.
 
-```sh
-cd src-tauri && cargo build
-```
+## Contributing
 
-## 贡献指南
+Contributions are what make the open-source community such a great place to learn, inspire, and create. Any contributions you make are **greatly appreciated**.
 
-贡献使开源社区成为一个学习、激励和创造的绝佳场所。你所作的任何贡献都**非常感谢**。
+1. Fork this project
+2. Create a feature branch: `git checkout -b feature/AmazingFeature`
+3. Commit your changes: `git commit -m 'Add some AmazingFeature'`
+4. Push to the branch: `git push origin feature/AmazingFeature`
+5. Open a Pull Request
 
-1. Fork 本项目
-2. 创建功能分支：`git checkout -b feature/AmazingFeature`
-3. 提交改动：`git commit -m 'Add some AmazingFeature'`
-4. 推送到分支：`git push origin feature/AmazingFeature`
-5. 提交 Pull Request
+Please make sure `pnpm tsc --noEmit` and `cd src-tauri && cargo clippy --workspace && cargo test` pass before opening a PR.
 
-## 版本控制
+## Versioning
 
-本项目使用 Git 进行版本管理。你可以在 [Releases](https://github.com/horldsence/vofa-next/releases) 页面查看可用版本。
+This project is managed with Git. Available releases can be found on the [Releases](https://github.com/horldsence/vofa-next/releases) page.
 
-## 开源协议
+## License
 
-本项目基于 MIT 协议开源，详情请参阅 [LICENSE](./LICENSE)。
+This project is licensed under the MIT License — see [LICENSE](./LICENSE) for details.
 
-## 鸣谢
+## Acknowledgements
 
-- [VOFA+](https://www.vofa.plus/) 提供的 FireWater / JustFloat 协议参考
+- [VOFA+](https://www.vofa.plus/) for the FireWater / JustFloat protocol references
 - [Tauri](https://tauri.app/)
 - [React Flow](https://reactflow.dev/)
 - [uPlot](https://github.com/leeoniya/uPlot)
+- [Three.js](https://threejs.org/) / [React Three Fiber](https://github.com/pmndjs/react-three-fiber)
+- [CodeMirror](https://codemirror.net/)
+- [Tailwind CSS](https://tailwindcss.com/)
 - [lucide-react](https://lucide.dev/)
+- [libautomotive](https://crates.io/crates/libautomotive)
 
 <!-- links -->
 [contributors-shield]: https://img.shields.io/github/contributors/horldsence/vofa-next.svg?style=flat-square
