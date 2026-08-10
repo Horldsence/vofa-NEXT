@@ -9,6 +9,8 @@ import {
 } from '../../types';
 import { AllTabContent } from './AllTabContent';
 import { ChannelTabContent } from './ChannelTabContent';
+import { AnimatedSwitch } from '../ui/AnimatedSwitch';
+import { useSlidingPill, SlidingPill } from '../ui/SlidingPill';
 import { CHANNEL_TAB_COLORS, type RenderStepSelect } from './scopeShared';
 
 interface ScopePanelProps {
@@ -34,6 +36,9 @@ export function AxisSettings({
   const lang = useAppStore((s) => s.lang);
   const [activeTab, setActiveTab] = useState<TabId>('all');
 
+  // Tab 滑动指示器 (竖向)
+  const { containerRef: tabColRef, pill: tabPill } = useSlidingPill(activeTab);
+
   // channels 数组与 channelCount 对齐
   const channels: ChannelAxisConfig[] = Array.from({ length: channelCount }, (_, i) =>
     config.channels[i] ?? { vPerDiv: 1, position: 0, show: true, coupling: 'DC' as Coupling }
@@ -49,7 +54,7 @@ export function AxisSettings({
   // 通用档位下拉
   const renderStepSelect: RenderStepSelect = (steps, value, onPick, format) => (
     <select
-      className="form-select"
+      className="form-select flex-1 min-w-0 text-xs"
       value={value}
       onChange={(e) => onPick(parseFloat(e.target.value))}
     >
@@ -61,10 +66,12 @@ export function AxisSettings({
 
   return (
     <div className="flex h-full w-full overflow-hidden">
-      {/* 左侧竖排通道 Tab */}
-      <div className="flex-none w-14 flex flex-col gap-[1px] py-1 bg-bg-panel-header border-r border-border overflow-y-auto">
+      {/* 左侧竖排通道 Tab — 圆角分段风格 + 滑动指示器 */}
+      <div ref={tabColRef} className="relative flex-none w-12 flex flex-col gap-1 p-1.5 bg-bg-panel-header border-r border-border overflow-y-auto">
+        <SlidingPill pill={tabPill} variant="panel" />
         <button
-          className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === 'all' ? 'bg-bg-active text-text-bright border-l-accent' : 'text-text-secondary'}`}
+          data-tab-key="all"
+          className={`relative flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 rounded-md bg-transparent border-none text-[10px] font-mono cursor-pointer transition-colors duration-150 ${activeTab === 'all' ? 'text-text-bright' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'}`}
           onClick={() => setActiveTab('all')}
           title={t(lang, 'channels')}
         >
@@ -73,7 +80,8 @@ export function AxisSettings({
         {channels.map((ch, idx) => (
           <button
             key={idx}
-            className={`flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 bg-transparent border-none border-l-2 border-transparent text-[10px] font-mono cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-primary ${activeTab === `ch${idx}` ? 'bg-bg-active text-text-bright border-l-accent' : 'text-text-secondary'} ${!ch.show ? 'opacity-50' : ''}`}
+            data-tab-key={`ch${idx}`}
+            className={`relative flex flex-col items-center justify-center gap-0.5 px-0.5 py-1.5 rounded-md bg-transparent border-none text-[10px] font-mono cursor-pointer transition-colors duration-150 ${activeTab === `ch${idx}` ? 'text-text-bright' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'} ${!ch.show ? 'opacity-50' : ''}`}
             onClick={() => setActiveTab(`ch${idx}` as TabId)}
             title={`CH${idx}`}
           >
@@ -88,28 +96,34 @@ export function AxisSettings({
 
       {/* 右侧内容 */}
       <div className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
-        {activeTab === 'all' ? (
-          <AllTabContent
-            config={config}
-            channels={channels}
-            measurements={measurements}
-            onAutoSet={onAutoSet}
-            lang={lang}
-            patch={patch}
-            patchChannel={patchChannel}
-            renderStepSelect={renderStepSelect}
-          />
-        ) : (
-          <ChannelTabContent
-            idx={Number(activeTab.replace('ch', ''))}
-            ch={channels[Number(activeTab.replace('ch', ''))]}
-            yUnit={config.yUnit}
-            sharedY={config.sharedY}
-            onPatchChannel={patchChannel}
-            renderStepSelect={renderStepSelect}
-            lang={lang}
-          />
-        )}
+        <AnimatedSwitch
+          switchKey={activeTab}
+          order={['all', ...channels.map((_, i) => `ch${i}`)]}
+          axis="y"
+        >
+          {activeTab === 'all' ? (
+            <AllTabContent
+              config={config}
+              channels={channels}
+              measurements={measurements}
+              onAutoSet={onAutoSet}
+              lang={lang}
+              patch={patch}
+              patchChannel={patchChannel}
+              renderStepSelect={renderStepSelect}
+            />
+          ) : (
+            <ChannelTabContent
+              idx={Number(activeTab.replace('ch', ''))}
+              ch={channels[Number(activeTab.replace('ch', ''))]}
+              yUnit={config.yUnit}
+              sharedY={config.sharedY}
+              onPatchChannel={patchChannel}
+              renderStepSelect={renderStepSelect}
+              lang={lang}
+            />
+          )}
+        </AnimatedSwitch>
       </div>
     </div>
   );

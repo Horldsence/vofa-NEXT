@@ -15,8 +15,8 @@ interface Props {
 export function CurveRenderControls({ render, onChange, lang, compact = false }: Props) {
   const r: SeriesRender = render ?? DEFAULT_RENDER;
   const selectCls = compact
-    ? 'form-select w-auto flex-none text-[10px] py-0.5 px-1'
-    : 'form-select text-xs py-0.5';
+    ? 'flex-1 min-w-0 h-6 text-[10px] px-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors'
+    : 'form-select text-xs flex-1 min-w-0';
   return (
     <div className="flex items-center gap-1">
       <span className="text-[10px] text-text-secondary min-w-[24px]">{t(lang, 'curve')}</span>

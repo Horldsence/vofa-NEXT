@@ -79,6 +79,8 @@ export function WidgetCard({
     <div
       className={clsx(
         'group bg-bg-sidebar border border-border rounded p-2.5 flex flex-col gap-1.5 relative',
+        'shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-[border-color,box-shadow] duration-150',
+        'hover:border-white/15 hover:shadow-[0_4px_14px_rgba(0,0,0,0.4)]',
         !noMinWidth && 'min-w-[140px]',
         className,
       )}

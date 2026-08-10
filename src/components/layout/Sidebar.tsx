@@ -6,6 +6,8 @@ import { TransportConfigPanel } from '../panels/TransportConfigPanel';
 import { ProtocolSection } from '../panels/ProtocolSection';
 import { WidgetPalette } from '../panels/WidgetPalette';
 import { PanelLeft, RefreshCw } from 'lucide-react';
+import { AnimatedSwitch } from '../ui/AnimatedSwitch';
+import { useLayoutStore } from '../../store/layoutStore';
 
 interface SidebarProps {
   view: SidebarView;
@@ -41,15 +43,30 @@ export function Sidebar({ view }: SidebarProps) {
     widgets: 'widgetPalette',
   };
 
+  // 标题栏为拖拽源 — 拖到窗口左/右边缘可切换停靠侧
+  const setDraggingSidebar = useLayoutStore((s) => s.setDraggingSidebar);
+
   return (
     <div className="bg-bg-sidebar flex flex-col h-full w-full min-w-[200px] overflow-hidden" onContextMenu={onContextMenu}>
-      <div className="px-4 py-2 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0">
+      <div
+        className="px-4 h-9 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0 cursor-grab active:cursor-grabbing"
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.setData('text/plain', 'panel:sidebar');
+          e.dataTransfer.effectAllowed = 'move';
+          setDraggingSidebar(true);
+        }}
+        onDragEnd={() => setDraggingSidebar(false)}
+        title={t(lang, 'dragToDock')}
+      >
         <span>{t(lang, titleMap[view])}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-3 pb-3">
-        {view === 'transport' && <TransportConfigPanel />}
-        {view === 'protocol' && <ProtocolSection />}
-        {view === 'widgets' && <WidgetPalette />}
+        <AnimatedSwitch switchKey={view} order={['transport', 'protocol', 'widgets']} axis="y">
+          {view === 'transport' && <TransportConfigPanel />}
+          {view === 'protocol' && <ProtocolSection />}
+          {view === 'widgets' && <WidgetPalette />}
+        </AnimatedSwitch>
       </div>
     </div>
   );

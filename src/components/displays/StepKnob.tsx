@@ -121,7 +121,7 @@ export function StepKnob({
     <div
       ref={containerRef}
       className={`flex flex-col items-center gap-0.5 select-none ${disabled ? 'opacity-40 pointer-events-none' : ''}`}
-      style={{ width: size }}
+      style={{ minWidth: size }}
     >
       <div
         className="step-knob-dial"
@@ -138,7 +138,8 @@ export function StepKnob({
         <div className="step-knob-pointer" />
         <div className="step-knob-rim" />
       </div>
-      <div className="font-mono text-[10px] text-text-bright max-w-full overflow-hidden text-ellipsis whitespace-nowrap" title={formatValue(value)}>
+      {/* 档位值完整显示, 不随旋钮宽度截断 (如 100µs/div) */}
+      <div className="font-mono text-[10px] text-text-bright whitespace-nowrap" title={formatValue(value)}>
         {formatValue(value)}
       </div>
       {label && <div className="text-[9px] text-text-secondary uppercase tracking-[0.5px]">{label}</div>}

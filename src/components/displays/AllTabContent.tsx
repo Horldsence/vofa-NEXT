@@ -15,6 +15,7 @@ import { StepKnob } from './StepKnob';
 import { CompactChannelRow } from './CompactChannelRow';
 import { CurveRenderControls } from './CurveRenderControls';
 import { MeasureItem, formatFreq } from './MeasureItem';
+import { AnimatedSwitch } from '../ui/AnimatedSwitch';
 import { CHANNEL_TAB_COLORS, type RenderStepSelect } from './scopeShared';
 
 /// "全部" Tab — 全局控件 + 所有通道列表 + 游标 + 测量
@@ -41,7 +42,7 @@ export function AllTabContent({
     <div className="flex flex-col gap-1 px-2.5 py-2 text-text-primary text-xs">
       <div className="flex flex-row flex-wrap gap-1 pb-1.5 border-b border-border">
         <button
-          className={`inline-flex items-center gap-1 px-2 py-1 border rounded text-xs cursor-pointer transition-all duration-150 ${config.running ? 'bg-green border-green text-black' : 'bg-red border-red text-black'}`}
+          className={`inline-flex items-center gap-1 px-2 h-7 border rounded text-xs cursor-pointer transition-all duration-150 ${config.running ? 'bg-green border-green text-black' : 'bg-red border-red text-black'}`}
           onClick={() => patch({ running: !config.running })}
           title={config.running ? t(lang, 'stop') : t(lang, 'run')}
         >
@@ -49,7 +50,7 @@ export function AllTabContent({
           <span>{config.running ? t(lang, 'stop') : t(lang, 'run')}</span>
         </button>
         <button
-          className="inline-flex items-center gap-1 px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-xs cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-bright disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1 px-2 h-7 bg-bg-input text-text-primary border border-border rounded text-xs cursor-pointer transition-all duration-150 hover:bg-bg-hover hover:text-text-bright disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={() => onAutoSet?.()}
           title={t(lang, 'autoSet')}
           disabled={!onAutoSet}
@@ -58,7 +59,7 @@ export function AllTabContent({
           <span>{t(lang, 'autoSet')}</span>
         </button>
         <button
-          className={`inline-flex items-center gap-1 px-1.5 py-1 border rounded text-xs cursor-pointer transition-all duration-150 ${config.grid ? 'bg-bg-active text-text-bright border-accent' : 'bg-bg-input text-text-primary border-border hover:bg-bg-hover hover:text-text-bright'}`}
+          className={`inline-flex items-center gap-1 px-1.5 h-7 border rounded text-xs cursor-pointer transition-all duration-150 ${config.grid ? 'bg-bg-active text-text-bright border-accent' : 'bg-bg-input text-text-primary border-border hover:bg-bg-hover hover:text-text-bright'}`}
           onClick={() => patch({ grid: !config.grid })}
           title={t(lang, 'gridVisible')}
         >
@@ -96,34 +97,36 @@ export function AllTabContent({
         <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center justify-between gap-1.5">
           <span>{t(lang, 'channels')}</span>
           <button
-            className={`px-2 py-0.5 text-[10px] border rounded cursor-pointer transition-all duration-150 whitespace-nowrap ${config.sharedY ? 'bg-blue text-black border-blue' : 'bg-bg-input text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary'}`}
+            className={`inline-flex items-center px-2 h-6 text-[10px] border rounded cursor-pointer transition-all duration-150 whitespace-nowrap ${config.sharedY ? 'bg-blue text-black border-blue' : 'bg-bg-input text-text-secondary border-border hover:bg-bg-hover hover:text-text-primary'}`}
             onClick={() => patch({ sharedY: !config.sharedY })}
             title={t(lang, 'sharedYDesc')}
           >
             {config.sharedY ? t(lang, 'sharedY') : t(lang, 'independentY')}
           </button>
         </div>
-        {config.sharedY ? (
-          <SharedYControls
-            channels={channels}
-            yUnit={config.yUnit}
-            onPatchChannel={patchChannel}
-            renderStepSelect={renderStepSelect}
-            lang={lang}
-          />
-        ) : (
-          channels.map((ch, idx) => (
-            <CompactChannelRow
-              key={idx}
-              idx={idx}
-              ch={ch}
+        <AnimatedSwitch switchKey={config.sharedY ? 'shared' : 'independent'} className="flex flex-col gap-1">
+          {config.sharedY ? (
+            <SharedYControls
+              channels={channels}
               yUnit={config.yUnit}
               onPatchChannel={patchChannel}
               renderStepSelect={renderStepSelect}
               lang={lang}
             />
-          ))
-        )}
+          ) : (
+            channels.map((ch, idx) => (
+              <CompactChannelRow
+                key={idx}
+                idx={idx}
+                ch={ch}
+                yUnit={config.yUnit}
+                onPatchChannel={patchChannel}
+                renderStepSelect={renderStepSelect}
+                lang={lang}
+              />
+            ))
+          )}
+        </AnimatedSwitch>
       </div>
 
       {/* Y 轴单位 */}
@@ -226,7 +229,7 @@ function SharedYControls({
   );
 }
 
-/// 共用 Y 模式下的单通道行 — 仅 show 切换 + 耦合 (不含 V/div/Position)
+/// 共用 Y 模式下的单通道行 — show 切换 + 耦合 + 颜色点一行, 渲染方式独占一行 (避免横向溢出)
 function ChannelVisibilityRow({
   idx,
   ch,
@@ -239,30 +242,32 @@ function ChannelVisibilityRow({
   lang: Lang;
 }) {
   return (
-    <div className="flex items-center gap-1.5 py-0.5">
-      <button
-        className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer transition-all duration-150 flex-1 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
-        onClick={() => onPatchChannel(idx, { show: !ch.show })}
-        title={`CH${idx}`}
-      >
-        {ch.show ? <Eye size={11} /> : <EyeOff size={11} />}
-        <span>CH{idx}</span>
-      </button>
-      <select
-        className="form-select w-[60px] flex-none text-[10px] py-0.5 px-1"
-        value={ch.coupling}
-        onChange={(e) =>
-          onPatchChannel(idx, { coupling: e.target.value as Coupling })
-        }
-      >
-        <option value="DC">{t(lang, 'couplingDC')}</option>
-        <option value="AC">{t(lang, 'couplingAC')}</option>
-        <option value="GND">{t(lang, 'couplingGND')}</option>
-      </select>
-      <span
-        className="w-2 h-2 rounded-full flex-shrink-0"
-        style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
-      />
+    <div className="flex flex-col gap-0.5 py-1 border-t border-border/50 first:border-t-0">
+      <div className="flex items-center gap-1.5">
+        <button
+          className={`inline-flex items-center gap-1 border rounded px-1.5 h-6 text-[10px] font-mono cursor-pointer transition-all duration-150 flex-1 min-w-0 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
+          onClick={() => onPatchChannel(idx, { show: !ch.show })}
+          title={`CH${idx}`}
+        >
+          {ch.show ? <Eye size={11} /> : <EyeOff size={11} />}
+          <span>CH{idx}</span>
+        </button>
+        <select
+          className="w-[64px] flex-none h-6 text-[10px] px-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
+          value={ch.coupling}
+          onChange={(e) =>
+            onPatchChannel(idx, { coupling: e.target.value as Coupling })
+          }
+        >
+          <option value="DC">{t(lang, 'couplingDC')}</option>
+          <option value="AC">{t(lang, 'couplingAC')}</option>
+          <option value="GND">{t(lang, 'couplingGND')}</option>
+        </select>
+        <span
+          className="w-2 h-2 rounded-full flex-shrink-0"
+          style={{ background: CHANNEL_TAB_COLORS[idx % CHANNEL_TAB_COLORS.length] }}
+        />
+      </div>
       <CurveRenderControls
         render={ch.render}
         onChange={(next: SeriesRender) => onPatchChannel(idx, { render: next })}
@@ -346,7 +351,7 @@ function CursorSection({
       </div>
       <div className="flex items-center gap-1 mt-0.5">
         <select
-          className="form-select w-auto flex-none text-[10px] py-0.5 px-1"
+          className="w-auto flex-none h-6 text-[10px] px-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
           value={config.cursors.type}
           onChange={(e) =>
             patch({

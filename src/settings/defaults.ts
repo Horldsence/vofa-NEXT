@@ -78,9 +78,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appearance: {
     theme: 'dark',
     customThemes: [],
-    uiFontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    uiFontFamily: "'JetBrains Mono', 'Maple Mono CN', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
     uiFontSize: 13,
-    monoFontFamily: "'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, monospace",
+    monoFontFamily: "'JetBrains Mono', 'Maple Mono CN', 'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, 'PingFang SC', 'Microsoft YaHei', monospace",
     monoFontSize: 12,
     statusBarVisible: true,
     activityBarVisible: true,

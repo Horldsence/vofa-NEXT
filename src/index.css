@@ -1,55 +1,82 @@
 @import "tailwindcss";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@import "@fontsource/jetbrains-mono/700.css";
+
+/* ============ 内置 Maple Mono CN (GB2312 子集, 覆盖常用中文) ============ */
+/* 拉丁字形由 JetBrains Mono 承担, 中文回退到 Maple Mono CN, 保持 2:1 等宽对齐 */
+@font-face {
+  font-family: "Maple Mono CN";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/MapleMonoCN-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Maple Mono CN";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./assets/fonts/MapleMonoCN-Medium.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Maple Mono CN";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/MapleMonoCN-Bold.woff2") format("woff2");
+}
 
 /* ============ Tailwind v4 Theme (Dark-first, Light 预留) ============ */
 @theme {
   /* ---------- 背景色 ---------- */
-  --color-bg-activity: #333333;
-  --color-bg-sidebar: #252526;
-  --color-bg-editor: #1e1e1e;
-  --color-bg-panel-header: #2d2d2d;
-  --color-bg-input: #3c3c3c;
-  --color-bg-hover: #2a2d2e;
-  --color-bg-active: #094771;
-  --color-bg-button: #0e639c;
-  --color-bg-button-hover: #1177bb;
-  --color-bg-statusbar: #007acc;
-  --color-bg-danger: #5a1d1d;
-  --color-bg-danger-hover: #6b2424;
-  --color-bg-tooltip: #252526;
-  --color-bg-scrollbar: #424242;
-  --color-bg-scrollbar-hover: #4f4f4f;
-  --color-bg-node-header: rgba(255, 255, 255, 0.06);
-  --color-bg-overlay: rgba(0, 0, 0, 0.5);
+  --color-bg-activity: #23272f;
+  --color-bg-sidebar: #22262d;
+  --color-bg-editor: #1a1d24;
+  --color-bg-panel-header: #262b34;
+  --color-bg-input: #2d323d;
+  --color-bg-hover: #2c313c;
+  --color-bg-active: #34435c;
+  --color-bg-button: #3b6fd0;
+  --color-bg-button-hover: #4a7ee0;
+  --color-bg-statusbar: #21252d;
+  --color-bg-danger: #5a2626;
+  --color-bg-danger-hover: #6e2d2d;
+  --color-bg-tooltip: #262b34;
+  --color-bg-scrollbar: #3a404c;
+  --color-bg-scrollbar-hover: #4a5160;
+  --color-bg-node-header: rgba(255, 255, 255, 0.05);
+  --color-bg-overlay: rgba(0, 0, 0, 0.55);
   --color-bg-subtle: rgba(128, 128, 128, 0.08);
   --color-bg-scrim: rgba(0, 0, 0, 0.25);
 
   /* ---------- 边框色 ---------- */
-  --color-border: #3c3c3c;
-  --color-border-node-header: rgba(255, 255, 255, 0.1);
+  --color-border: #2e333e;
+  --color-border-node-header: rgba(255, 255, 255, 0.08);
 
   /* ---------- 文字色 ---------- */
-  --color-text-primary: #cccccc;
-  --color-text-secondary: #858585;
+  --color-text-primary: #d7dce4;
+  --color-text-secondary: #8a919e;
   --color-text-bright: #ffffff;
-  --color-text-disabled: #666666;
+  --color-text-disabled: #5b626e;
   --color-text-inverse: #ffffff;
 
   /* ---------- 强调与语义色 ---------- */
-  --color-accent: #007acc;
+  --color-accent: #4c8dff;
   --color-green: #89d185;
   --color-red: #f48771;
   --color-yellow: #e2c08d;
-  --color-blue: #75beff;
+  --color-blue: #6cb2ff;
   --color-purple: #c586c0;
   --color-orange: #ce9178;
-  --color-waveform-grid: #444444;
-  --color-waveform-text: #bbbbbb;
-  --color-waveform-tick: #555555;
+  --color-waveform-grid: #383d48;
+  --color-waveform-text: #aab0bc;
+  --color-waveform-tick: #4a505c;
   --color-waveform-cursor: #ffd700;
 
   /* ---------- 字体族 ---------- */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Cascadia Code", "Fira Code", "SF Mono", Menlo, monospace;
+  --font-ui: "JetBrains Mono", "Maple Mono CN", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "Maple Mono CN", "Cascadia Code", "Fira Code", "SF Mono", Menlo, "PingFang SC", "Microsoft YaHei", monospace;
 
   /* ---------- 字号 ---------- */
   --font-size-xs: 11px;
@@ -61,10 +88,14 @@
   --font-size-3xl: 24px;
 
   /* ---------- 圆角 ---------- */
-  --radius-default: 4px;
-  --radius-sm: 2px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  /* 全局现代化圆角: bare `rounded` -> 8px, 覆盖 Tailwind 默认比例 */
+  --radius: 8px;
+  --radius-default: 10px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
 
   /* ---------- 间距 ---------- */
   --spacing-1: 4px;
@@ -83,7 +114,7 @@
   --z-toast: 200;
 
   /* ---------- 阴影 ---------- */
-  --shadow-modal: 0 20px 60px rgba(0, 0, 0, 0.6);
+  --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.65);
 }
 
 /* ============ 主题变体 (data-theme 仅用于 CSS 选择器) ============ */
@@ -252,12 +283,59 @@ body {
   animation: led-pulse 1.5s ease-in-out infinite;
 }
 
+/* ============ Tab 滑动指示器 (SlidingPill) ============ */
+.tab-sliding-pill {
+  position: absolute;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-editor);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition:
+    left 0.22s cubic-bezier(0.2, 0, 0, 1),
+    top 0.22s cubic-bezier(0.2, 0, 0, 1),
+    width 0.22s cubic-bezier(0.2, 0, 0, 1),
+    height 0.22s cubic-bezier(0.2, 0, 0, 1);
+  pointer-events: none;
+}
+
+.tab-sliding-pill--panel {
+  background: var(--color-bg-active);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-sliding-pill {
+    transition: none;
+  }
+}
+
+/* ============ 大模块圆角卡片 ============ */
+/* 只定义视觉效果, 尺寸由 Tailwind utility 控制 (unlayered 类优先级高于 utility, 不能在这里写尺寸) */
+.module-card {
+  border-radius: var(--radius-default);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+/* ============ 拖拽吸附投放区提示 ============ */
+.snap-drop-zone {
+  position: absolute;
+  border-radius: var(--radius-md);
+  background: rgba(76, 141, 255, 0.16);
+  border: 1.5px dashed var(--color-accent);
+  pointer-events: none;
+  transition:
+    top 0.15s ease-out,
+    left 0.15s ease-out,
+    width 0.15s ease-out,
+    height 0.15s ease-out;
+  z-index: 30;
+}
+
 /* ============ Context Menu 右键菜单 ============ */
 .context-menu {
   background: var(--color-bg-sidebar);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-default);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.5);
   padding: var(--spacing-1) 0;
   display: flex;
   flex-direction: column;
@@ -328,12 +406,13 @@ body {
 }
 
 /* ============ Form 通用样式 ============ */
+/* 标准控件高度 28px (h-7), 全局面板输入/下拉统一 */
 .form-input {
-  @apply w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-ui focus:outline-none focus:border-accent transition-colors;
+  @apply w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm font-ui focus:outline-none focus:border-accent transition-colors;
 }
 
 .form-select {
-  @apply w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors;
+  @apply w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors;
 }
 
 /* ============ Knob 旋钮 (controls/Knob.tsx) ============ */
