@@ -76,6 +76,27 @@ function applyDataCapacity(settings: AppSettings) {
   logicSampleBuffer.setCapacity(data.logicBufferSamples);
 }
 
+/// 历史版本默认字体 — 若用户未自定义过(仍是旧默认), 迁移到最新默认
+const LEGACY_DEFAULT_UI_FONTS = [
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  "'JetBrains Mono', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+];
+const LEGACY_DEFAULT_MONO_FONTS = [
+  "'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, monospace",
+  "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, monospace",
+];
+
+function migrateSettings(settings: AppSettings): AppSettings {
+  const appearance = { ...settings.appearance };
+  if (LEGACY_DEFAULT_UI_FONTS.includes(appearance.uiFontFamily)) {
+    appearance.uiFontFamily = DEFAULT_SETTINGS.appearance.uiFontFamily;
+  }
+  if (LEGACY_DEFAULT_MONO_FONTS.includes(appearance.monoFontFamily)) {
+    appearance.monoFontFamily = DEFAULT_SETTINGS.appearance.monoFontFamily;
+  }
+  return { ...settings, appearance };
+}
+
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   isOpen: false,
@@ -101,7 +122,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const raw = await getStore().get<AppSettings>(STORE_KEY);
       if (raw) {
         // 与默认值合并, 防止新版本缺失字段
-        const merged = deepMergeSettings(DEFAULT_SETTINGS, raw);
+        const merged = migrateSettings(deepMergeSettings(DEFAULT_SETTINGS, raw));
         set({ settings: merged, loaded: true });
         applyAppearance(merged.appearance);
         applyDataCapacity(merged);

@@ -1,11 +1,10 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
 import { Settings, Info, RefreshCw, PanelLeft } from 'lucide-react';
 import { ActivityBar } from './components/layout/ActivityBar';
 import { Sidebar } from './components/layout/Sidebar';
-import { ControlPanel } from './components/layout/ControlPanel';
-import { DataPanel } from './components/layout/DataPanel';
+import { DockLayout } from './components/layout/DockLayout';
 import { StatusBar } from './components/layout/StatusBar';
 import { NotificationToasts } from './components/NotificationToasts';
 import { SettingsModal } from './components/SettingsModal';
@@ -18,6 +17,7 @@ import { useContextMenu } from './lib/useContextMenu';
 import { useAppStore } from './store/appStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useOnboardingStore } from './store/onboardingStore';
+import { useLayoutStore } from './store/layoutStore';
 import { t } from './i18n';
 
 function App() {
@@ -41,6 +41,14 @@ function App() {
   const showOnboarding = useSettingsStore((s) => s.settings.general.showOnboarding);
   const hasOpenedOnboarding = useOnboardingStore((s) => s.hasOpenedThisSession);
   const openOnboarding = useOnboardingStore((s) => s.openWizard);
+
+  // 布局编排 (侧边栏停靠; 中央区模块树由 dockStore 负责)
+  const sidebarDock = useLayoutStore((s) => s.sidebarDock);
+  const draggingSidebar = useLayoutStore((s) => s.draggingSidebar);
+  const setSidebarDock = useLayoutStore((s) => s.setSidebarDock);
+  const setDraggingSidebar = useLayoutStore((s) => s.setDraggingSidebar);
+  // 侧边栏拖拽时, 窗口左右边缘的停靠投放区高亮
+  const [dockEdge, setDockEdge] = useState<'left' | 'right' | null>(null);
 
   // 全局默认右键菜单
   const defaultMenuItems = useMemo(
@@ -143,36 +151,83 @@ function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [openSettings]);
 
-  return (
-    <div className="flex h-full flex-col" onContextMenu={onAppContextMenu}>
-      <div className="flex flex-1 min-h-0">
-        <ActivityBar
-          activeView={sidebarVisible ? sidebarView : null}
-          onSelect={toggleSidebar}
-        />
-        <PanelGroup direction="horizontal" autoSaveId="sp-main">
-          {sidebarVisible && (
-            <>
-              <Panel defaultSize={18} minSize={12} maxSize={35} order={1}>
-                <Sidebar view={sidebarView} />
-              </Panel>
-              <PanelResizeHandle className="w-px bg-border cursor-col-resize" />
-            </>
-          )}
-          <Panel order={2}>
-            <PanelGroup direction="vertical" autoSaveId="sp-center">
-              <Panel defaultSize={45} minSize={15} order={1}>
-                <ControlPanel />
-              </Panel>
-              <PanelResizeHandle className="h-px bg-border cursor-row-resize" />
-              <Panel defaultSize={55} minSize={15} order={2}>
-                <DataPanel />
-              </Panel>
-            </PanelGroup>
-          </Panel>
-        </PanelGroup>
+  // 中央区 — Dock 布局树 (卡片可拆分/合并/重排, 尺寸比例跟随卡片)
+  const centerNode = (
+    <Panel key="center" id="center" order={sidebarDock === 'left' ? 2 : 1} className="min-w-0">
+      <DockLayout />
+    </Panel>
+  );
+  const sidebarNode = sidebarVisible ? (
+    <Panel key="sidebar" id="sidebar" order={sidebarDock === 'left' ? 1 : 2} defaultSize={18} minSize={12} maxSize={35}>
+      <div className="module-card h-full w-full">
+        <Sidebar view={sidebarView} />
       </div>
-      <StatusBar />
+    </Panel>
+  ) : null;
+  const mainHandle = sidebarVisible ? (
+    <PanelResizeHandle
+      key="main-handle"
+      className="w-1 rounded-full bg-transparent hover:bg-accent/50 transition-colors"
+    />
+  ) : null;
+
+  return (
+    <div className="relative flex h-full flex-col bg-bg-activity p-1" onContextMenu={onAppContextMenu}>
+      <div className="flex flex-1 min-h-0 gap-1">
+        <div className="module-card w-12 flex-shrink-0">
+          <ActivityBar
+            activeView={sidebarVisible ? sidebarView : null}
+            onSelect={toggleSidebar}
+          />
+        </div>
+        <div className="flex-1 min-w-0">
+          <PanelGroup key={sidebarDock} direction="horizontal" autoSaveId="sp-main" className="gap-1">
+            {(sidebarDock === 'left'
+              ? [sidebarNode, mainHandle, centerNode]
+              : [centerNode, mainHandle, sidebarNode]
+            ).filter(Boolean)}
+          </PanelGroup>
+        </div>
+      </div>
+      <div className="module-card flex-shrink-0 mt-1">
+        <StatusBar />
+      </div>
+
+      {/* 侧边栏拖拽时: 窗口左右边缘的停靠投放区 */}
+      {draggingSidebar && (
+        <>
+          {(['left', 'right'] as const).map((edge) => (
+            <div
+              key={edge}
+              className={`absolute top-0 bottom-0 w-20 z-40 ${edge === 'left' ? 'left-0' : 'right-0'}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                setDockEdge(edge);
+              }}
+              onDragLeave={() => setDockEdge(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setSidebarDock(edge);
+                setDockEdge(null);
+                setDraggingSidebar(false);
+              }}
+            />
+          ))}
+          {dockEdge && (
+            <div
+              className="snap-drop-zone"
+              style={{
+                top: 6,
+                left: dockEdge === 'left' ? 6 : '82%',
+                width: '18%',
+                height: 'calc(100% - 12px)',
+              }}
+            />
+          )}
+        </>
+      )}
+
       <ContextMenu />
       <NotificationToasts />
       <SettingsModal />

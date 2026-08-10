@@ -25,7 +25,7 @@ export function PanelTabs<T extends string>({ tabs, active, onChange }: PanelTab
             type="button"
             onClick={() => onChange(tab.value)}
             className={clsx(
-              'flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all cursor-pointer',
+              'flex items-center gap-1.5 px-2.5 h-7 rounded text-xs font-medium transition-all cursor-pointer',
               isActive
                 ? 'bg-accent/15 text-text-bright'
                 : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',

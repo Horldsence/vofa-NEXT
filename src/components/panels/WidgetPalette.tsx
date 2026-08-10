@@ -21,7 +21,6 @@ import {
   Minus,
   Divide,
   Sigma,
-  Filter as FilterIcon,
   Activity,
   ArrowDownToLine,
   ArrowUpToLine,
@@ -182,71 +181,103 @@ export function WidgetPalette() {
     activeCategory === 'custom' ? customItems :
     []; // math 类别特殊处理
 
-  const categoryBorderClass: Record<WidgetCategory, string> = {
-    input: 'border-l-[3px] border-l-blue',
-    display: 'border-l-[3px] border-l-green',
-    math: 'border-l-[3px] border-l-orange bg-gradient-to-r from-orange/10 to-bg-input via-bg-input',
-    custom: 'border-l-[3px] border-l-purple',
+  /// 各类别的图标底色 / 悬停边框 (静态类名, 保证 Tailwind 可扫描)
+  const categoryTileClass: Record<WidgetCategory, string> = {
+    input: 'bg-blue/15 text-blue',
+    display: 'bg-green/15 text-green',
+    math: 'bg-orange/15 text-orange',
+    custom: 'bg-purple/15 text-purple',
   };
+
+  const categoryHoverClass: Record<WidgetCategory, string> = {
+    input: 'hover:border-blue/50',
+    display: 'hover:border-green/50',
+    math: 'hover:border-orange/50',
+    custom: 'hover:border-purple/50',
+  };
+
+  /// 统一卡片样式 — 图标块 + 标签, 圆角悬浮
+  const cardClass = (cat: WidgetCategory) =>
+    clsx(
+      'group bg-bg-input border border-border rounded-lg p-2 flex flex-col items-center gap-1.5',
+      'cursor-grab transition-all duration-150 select-none active:cursor-grabbing',
+      'hover:bg-bg-hover hover:-translate-y-px hover:shadow-[0_4px_12px_rgba(0,0,0,0.35)]',
+      categoryHoverClass[cat],
+    );
+
+  const tileClass = (cat: WidgetCategory) =>
+    clsx(
+      'w-8 h-8 rounded-md flex items-center justify-center [&_svg]:w-4 [&_svg]:h-4',
+      'bg-bg-editor text-text-secondary transition-colors',
+      categoryTileClass[cat],
+    );
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 分类 Tab */}
-      <div className="flex border-b border-border flex-shrink-0 bg-bg-panel-header">
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            className={clsx(
-              'flex-1 flex items-center justify-center gap-1 py-2 px-1 text-xs font-medium text-text-secondary bg-transparent border-none border-b-2 border-transparent cursor-pointer transition-all select-none hover:bg-bg-hover hover:text-text-primary',
-              activeCategory === cat.id && 'font-semibold',
-            )}
-            data-category={cat.id}
-            onClick={() => setActiveCategory(cat.id)}
-            style={{
-              borderBottomColor: activeCategory === cat.id ? cat.color : 'transparent',
-              color: activeCategory === cat.id ? cat.color : undefined,
-            }}
-          >
-            <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: cat.color }} />
-            {cat.label}
-          </button>
-        ))}
+      {/* 分类 Tab — 分段控件风格 */}
+      <div className="flex gap-1 p-1 border-b border-border flex-shrink-0 bg-bg-panel-header">
+        {categories.map((cat) => {
+          const active = activeCategory === cat.id;
+          return (
+            <button
+              key={cat.id}
+              className={clsx(
+                'flex-1 flex items-center justify-center gap-1.5 h-7 px-1 text-xs font-medium rounded-md cursor-pointer transition-all duration-150 select-none',
+                active
+                  ? 'bg-bg-editor text-text-bright shadow-[0_1px_3px_rgba(0,0,0,0.35)]'
+                  : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+              )}
+              data-category={cat.id}
+              onClick={() => setActiveCategory(cat.id)}
+            >
+              <span
+                className={clsx('w-1.5 h-1.5 rounded-full flex-shrink-0 transition-opacity', !active && 'opacity-50')}
+                style={{ background: cat.color }}
+              />
+              {cat.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* 控件网格 — auto-rows-min + content-start 防止项被剩余空间纵向拉伸 */}
-      <div className="grid grid-cols-2 gap-1.5 flex-1 overflow-y-auto p-2 auto-rows-min content-start">
+      <div className="grid grid-cols-2 gap-2 flex-1 overflow-y-auto p-2.5 auto-rows-min content-start">
         {activeCategory === 'math' ? (
           <>
             {/* 算术控件: 每个 op 一个项 */}
             {mathItems.map((item) => (
               <div
                 key={item.op}
-                className="border-l-[3px] border-l-orange bg-gradient-to-r from-orange/10 to-bg-input via-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:from-orange/20 hover:text-text-primary active:cursor-grabbing"
+                className={cardClass('math')}
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Math', item.op)}
                 onClick={() => handleClickAdd('Math', item.op)}
                 title={`${item.label} (${item.isUnary ? t(lang, 'mathUnary') : t(lang, 'mathBinary')})`}
               >
-                <div className="w-5 h-5 flex items-center justify-center">
+                <div className={tileClass('math')}>
                   {item.icon}
                 </div>
-                <span>{item.label}</span>
+                <span className="text-[11px] text-text-secondary transition-colors group-hover:text-text-primary">
+                  {item.label}
+                </span>
               </div>
             ))}
             {/* 滤波器: 每个 preset 一个项 */}
             {filterItems.map((item) => (
               <div
                 key={item.preset}
-                className="bg-bg-input border border-orange/30 rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:border-orange hover:text-orange active:cursor-grabbing"
+                className={cardClass('math')}
                 draggable
                 onDragStart={(e) => handleDragStart(e, 'Filter', undefined, item.preset)}
                 onClick={() => handleClickAdd('Filter', undefined, undefined, item.preset)}
                 title={`${t(lang, 'filter')}: ${item.label}`}
               >
-                <div className="w-5 h-5 flex items-center justify-center">
-                  <FilterIcon size={14} />
+                <div className={tileClass('math')}>
+                  {item.icon}
                 </div>
-                <span>{item.label}</span>
+                <span className="text-[11px] text-text-secondary transition-colors group-hover:text-text-primary">
+                  {item.label}
+                </span>
               </div>
             ))}
           </>
@@ -254,10 +285,7 @@ export function WidgetPalette() {
           activeItems.map((item) => (
             <div
               key={item.kind}
-              className={clsx(
-                'bg-bg-input border border-border rounded p-2.5 flex flex-col items-center gap-1 cursor-grab transition-all text-xs text-text-secondary select-none hover:bg-bg-hover hover:border-accent hover:text-text-primary active:cursor-grabbing',
-                categoryBorderClass[activeCategory],
-              )}
+              className={cardClass(activeCategory)}
               draggable
               onDragStart={(e) => handleDragStart(e, item.kind)}
               onClick={() => {
@@ -267,17 +295,19 @@ export function WidgetPalette() {
               }}
               title={item.label}
             >
-              <div className="w-5 h-5 flex items-center justify-center">
+              <div className={tileClass(activeCategory)}>
                 {item.icon}
               </div>
-              <span>{item.label}</span>
+              <span className="text-[11px] text-text-secondary transition-colors group-hover:text-text-primary">
+                {item.label}
+              </span>
             </div>
           ))
         )}
       </div>
 
       {/* 当前类别说明 */}
-      <div className="px-2 py-1.5 text-[10px] text-text-secondary border-t border-border bg-bg-panel-header leading-relaxed flex-shrink-0">
+      <div className="px-2.5 py-2 text-[10px] text-text-secondary border-t border-border bg-bg-panel-header leading-relaxed flex-shrink-0">
         {activeCategory === 'input' && t(lang, 'catInputHelp')}
         {activeCategory === 'display' && t(lang, 'catDisplayHelp')}
         {activeCategory === 'math' && t(lang, 'catMathHelp')}

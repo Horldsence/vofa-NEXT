@@ -101,8 +101,8 @@ export function ProtocolSection() {
     { value: 'LogicDecode', label: t(lang, 'logicAnalyzer') },
   ];
 
-  const selectClass = 'w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors';
-  const inputClass = selectClass;
+  const selectClass = 'form-select';
+  const inputClass = 'form-input';
 
   return (
     <div>
@@ -126,7 +126,7 @@ export function ProtocolSection() {
               type="button"
               onClick={() => stopTestData()}
               disabled={!isConnected}
-              className="w-full px-3 py-1.5 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+              className="w-full px-3 h-8 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             >
               <Square size={14} />
               {t(lang, 'stopTestData')}
@@ -136,7 +136,7 @@ export function ProtocolSection() {
               type="button"
               onClick={() => startTestData()}
               disabled={!isConnected}
-              className="w-full px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+              className="w-full px-3 h-8 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             >
               <Play size={14} />
               {t(lang, 'startTestData')}

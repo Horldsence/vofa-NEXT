@@ -32,7 +32,7 @@ export function CompactChannelRow({
     <div className="flex flex-col gap-0.5 py-1 border-t border-border/50 first:border-t-0">
       <div className="flex items-center justify-between gap-1">
         <button
-          className={`inline-flex items-center gap-1 border rounded px-1.5 py-0.5 text-[10px] font-mono cursor-pointer transition-all duration-150 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
+          className={`inline-flex items-center gap-1 border rounded px-1.5 h-6 text-[10px] font-mono cursor-pointer transition-all duration-150 ${ch.show ? 'text-text-bright border-blue bg-blue/10' : 'text-text-secondary border-border opacity-60'} hover:bg-bg-hover`}
           onClick={() => onPatchChannel(idx, { show: !ch.show })}
           title={`CH${idx}`}
         >
@@ -40,7 +40,7 @@ export function CompactChannelRow({
           <span>CH{idx}</span>
         </button>
         <select
-          className="form-select w-auto flex-none text-[10px] py-0.5 px-1"
+          className="w-auto flex-none h-6 text-[10px] px-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
           value={ch.coupling}
           onChange={(e) =>
             onPatchChannel(idx, { coupling: e.target.value as Coupling })

@@ -844,3 +844,7 @@ cmdLoopbackManual: Manual send
 cmdLoopbackOnChange: Send on change
 cmdLoopbackTimer: Timed send
 cmdLoopbackInterval: Interval (ms)
+
+# Layout arrangement (drag to rearrange panels)
+dragToRearrange: Drag to another panel's edge to rearrange
+dragToDock: Drag to the window's left/right edge to change dock side

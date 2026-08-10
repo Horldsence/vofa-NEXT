@@ -73,7 +73,7 @@ export function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
   ];
 
   return (
-    <div className="w-12 bg-bg-activity flex flex-col items-center pt-1 flex-shrink-0" onContextMenu={onContextMenu}>
+    <div className="w-12 h-full bg-bg-activity flex flex-col items-center pt-1 flex-shrink-0" onContextMenu={onContextMenu}>
       {items.map((item) => (
         <div
           key={item.view}

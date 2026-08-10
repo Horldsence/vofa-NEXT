@@ -79,7 +79,7 @@ export function StatusBar() {
   }[connectionState];
 
   return (
-    <div className="h-[22px] bg-bg-statusbar text-text-inverse flex items-center px-2 text-xs gap-3 flex-shrink-0" onContextMenu={onContextMenu}>
+    <div className="h-[24px] bg-bg-statusbar text-text-secondary flex items-center px-2 text-xs gap-3 flex-shrink-0" onContextMenu={onContextMenu}>
       <div className="flex items-center gap-1">
         <span className={clsx("w-2 h-2 rounded-full inline-block", dotColorClass)} />
         <span>{stateLabel[connectionState]}</span>
@@ -108,7 +108,7 @@ export function StatusBar() {
       <BufferUsageStats />
       <div className="w-px h-3 bg-border mx-1" />
       <button
-        className="w-6 h-6 flex items-center justify-center rounded text-text-inverse hover:bg-text-inverse/10 transition-colors duration-150"
+        className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-150"
         title={t(lang, 'refresh')}
         onClick={() => refreshPorts()}
       >

@@ -844,3 +844,7 @@ cmdLoopbackManual: 手动发送
 cmdLoopbackOnChange: 值变化发送
 cmdLoopbackTimer: 定时发送
 cmdLoopbackInterval: 定时间隔 (ms)
+
+# 布局编排 (模块拖拽重排)
+dragToRearrange: 拖动到其他模块边缘以重新排列
+dragToDock: 拖动到窗口左/右边缘以切换停靠侧
