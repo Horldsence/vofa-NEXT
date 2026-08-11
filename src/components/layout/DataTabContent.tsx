@@ -24,8 +24,8 @@ import { FrameDecoder } from '../displays/decoder/FrameDecoder';
 import { TableView } from '../displays/widgets/TableView';
 import { AxisSettings } from '../displays/waveform/AxisSettings';
 import { SuspenseFallback } from '../ui/SuspenseFallback';
-import { lazy, Suspense, useEffect, useMemo } from 'react';
-import type { WidgetConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
+import { lazy, Suspense, memo, useCallback, useEffect, useMemo } from 'react';
+import type { WidgetConfig, ScopeMeasurements, ScopeAxisConfig, ProtocolConfig, LoopbackResult } from '../../types';
 import { getEffectiveChannel } from '../../types';
 import { waveformWindow } from '../../lib/buffers/dataBuffer';
 import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/utils/scopeUtils';
@@ -38,10 +38,167 @@ const Model3DWidget = lazy(() => import('../displays/widgets/Model3DWidget.lazy'
 /// 稳定空回调 — DataPanel 展示控件不可删除; 共享引用让 memo 包装的控件跳过父级重渲染
 const noopRemove = () => {};
 
+// =====================================================================
+// 各 Tab 类型分支 — 全部 memo 化, 且只接收稳定 props (模块级常量回调 /
+// store 中稳定引用的 widget 对象), 使 DataTabContent 自身的重渲染
+// (lang / widgets / rfEdges 等 store 订阅变化) 不会级联进重型子视图
+// =====================================================================
+
+interface WaveformTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'Waveform' }>;
+  axisConfig: ScopeAxisConfig;
+  measurements: ScopeMeasurements | null;
+  channelCount: number;
+  onConfigChange: (next: ScopeAxisConfig) => void;
+  onAutoSet: () => void;
+}
+
+/// 波形分支 — 主图 + AxisSettings 侧栏
+const WaveformTabView = memo(function WaveformTabView({
+  widget,
+  axisConfig,
+  measurements,
+  channelCount,
+  onConfigChange,
+  onAutoSet,
+}: WaveformTabViewProps) {
+  return (
+    <div className="flex h-full w-full">
+      <div className="flex-1 min-w-0 relative">
+        <WaveformChart widget={widget} axisConfig={axisConfig} onConfigChange={onConfigChange} />
+      </div>
+      <div className="w-[256px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
+        <AxisSettings
+          config={axisConfig}
+          onChange={onConfigChange}
+          channelCount={channelCount}
+          measurements={measurements}
+          onAutoSet={onAutoSet}
+        />
+      </div>
+    </div>
+  );
+});
+
+interface RawTabViewProps {
+  widgetId?: string;
+}
+
+const RawTabView = memo(function RawTabView({ widgetId }: RawTabViewProps) {
+  return <RawDataView widgetId={widgetId} />;
+});
+
+interface PieTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'PieChart' }>;
+  onRemove: () => void;
+}
+
+const PieTabView = memo(function PieTabView({ widget, onRemove }: PieTabViewProps) {
+  return (
+    <div className="flex h-full p-2">
+      <PieChart widget={widget} onRemove={onRemove} full />
+    </div>
+  );
+});
+
+interface ImageTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'Image' }>;
+  onRemove: () => void;
+}
+
+const ImageTabView = memo(function ImageTabView({ widget, onRemove }: ImageTabViewProps) {
+  return (
+    <div className="flex h-full p-2">
+      <ImageViewer widget={widget} onRemove={onRemove} full />
+    </div>
+  );
+});
+
+interface Model3DTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'Model3D' }>;
+  onRemove: () => void;
+}
+
+const Model3DTabView = memo(function Model3DTabView({ widget, onRemove }: Model3DTabViewProps) {
+  return (
+    <div className="flex h-full p-2">
+      <Suspense fallback={<SuspenseFallback />}>
+        <Model3DWidget widget={widget} onRemove={onRemove} />
+      </Suspense>
+    </div>
+  );
+});
+
+interface SpectrumTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'Spectrum' }>;
+  onRemove: () => void;
+}
+
+const SpectrumTabView = memo(function SpectrumTabView({ widget, onRemove }: SpectrumTabViewProps) {
+  return (
+    <div className="flex h-full p-2">
+      <SpectrumChart widget={widget} onRemove={onRemove} />
+    </div>
+  );
+});
+
+interface CommandTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'Command' }>;
+  onRemove: () => void;
+}
+
+const CommandTabView = memo(function CommandTabView({ widget, onRemove }: CommandTabViewProps) {
+  return (
+    <div className="flex h-full p-2">
+      <CommandSender widget={widget} onRemove={onRemove} />
+    </div>
+  );
+});
+
+interface TableTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'TableView' }>;
+  onRemove: () => void;
+  loopbackHistory: LoopbackResult[] | undefined;
+}
+
+const TableTabView = memo(function TableTabView({ widget, onRemove, loopbackHistory }: TableTabViewProps) {
+  return (
+    <div className="flex h-full w-full">
+      <TableView widget={widget} onRemove={onRemove} loopbackHistory={loopbackHistory} />
+    </div>
+  );
+});
+
+interface FrameDecoderTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'FrameDecoder' }>;
+  onRemove: () => void;
+}
+
+const FrameDecoderTabView = memo(function FrameDecoderTabView({ widget, onRemove }: FrameDecoderTabViewProps) {
+  return (
+    <div className="flex h-full w-full">
+      <FrameDecoder widget={widget} onRemove={onRemove} />
+    </div>
+  );
+});
+
+/// 无 props 分支 — 模块级元素常量, 每次渲染返回同一引用, React 在 beginWork 中
+/// 因 props 引用相等直接 bailout, 完全跳过子树重渲染
+const canTabContent = (
+  <div className="flex h-full w-full">
+    <CanView />
+  </div>
+);
+const logicTabContent = (
+  <div className="flex h-full w-full">
+    <LogicView />
+  </div>
+);
+
 /// 单个数据 Tab 的内容渲染器 — 由 DockCardFrame 挂载, 可被多个卡片各自实例化
 /// 波形 Tab 的 axisConfig / measurements 按 widgetId 存于 waveformScopeStore,
 /// Tab 在卡片间移动或拆分为独立面板时配置不丢失
-export function DataTabContent({ tabId }: { tabId: string }) {
+export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: string }) {
   const lang = useAppStore((s) => s.lang);
   const dataTabs = useAppStore((s) => s.dataTabs);
   const widgets = useAppStore((s) => s.widgets);
@@ -91,6 +248,9 @@ export function DataTabContent({ tabId }: { tabId: string }) {
   const pruneWidgets = useWaveformScopeStore((s) => s.pruneWidgets);
   const widgetState = useWaveformScopeStore((s) => s.states[wid]);
 
+  // 波形 state 兜底 — memo 保持引用稳定, 避免每次渲染新建对象击穿 WaveformTabView memo
+  const fallbackState = useMemo(() => createPerWidgetState(channelCount), [channelCount]);
+
   // 懒初始化 + 通道数扩展
   useEffect(() => {
     if (isWaveformTab) ensureWidget(wid, channelCount);
@@ -130,6 +290,27 @@ export function DataTabContent({ tabId }: { tabId: string }) {
     return () => cancelAnimationFrame(raf);
   }, [running, wid, channelCount, setMeasurements]);
 
+  /// 稳定回调 — 仅在 widget 身份 / 连线变化时重建, 保证 memo 分支在无关重渲染时跳过
+  const handleConfigChange = useCallback(
+    (next: ScopeAxisConfig) => setConfig(wid, channelCount, next),
+    [wid, channelCount, setConfig]
+  );
+
+  const handleAutoSet = useCallback(() => {
+    const win = waveformWindow.get();
+    // 与主图/缩略图共用 computeConnectedInputs, 避免 "空则全通道" 回退分叉
+    const connected =
+      wid === 'default-waveform'
+        ? Array.from({ length: win.channel_count || channelCount }, (_, i) => i)
+        : computeConnectedInputs(wid, channelCount, rfEdges)
+            .filter((i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel')
+            .map((i) => i.idx);
+    // 读最新 config (不经 selector 依赖), 避免测量更新导致回调重建
+    const curConfig = useWaveformScopeStore.getState().states[wid]?.config ?? createPerWidgetState(channelCount).config;
+    const autoNext = computeAutoSetConfig(win, curConfig, connected);
+    setConfig(wid, channelCount, autoNext);
+  }, [wid, channelCount, rfEdges, setConfig]);
+
   if (!tab) return null;
 
   const noWidget = (
@@ -141,110 +322,59 @@ export function DataTabContent({ tabId }: { tabId: string }) {
   switch (tab.type) {
     case 'waveform':
     case 'waveform-extra': {
-      const st = widgetState ?? createPerWidgetState(channelCount);
+      const st = widgetState ?? fallbackState;
       return (
-        <div className="flex h-full w-full">
-          <div className="flex-1 min-w-0 relative">
-            <WaveformChart
-              widget={waveWidget}
-              axisConfig={st.config}
-              onConfigChange={(next) => setConfig(wid, channelCount, next)}
-            />
-          </div>
-          <div className="w-[256px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
-            <AxisSettings
-              config={st.config}
-              onChange={(next) => setConfig(wid, channelCount, next)}
-              channelCount={channelCount}
-              measurements={st.measurements}
-              onAutoSet={() => {
-                const win = waveformWindow.get();
-                // 与主图/缩略图共用 computeConnectedInputs, 避免 "空则全通道" 回退分叉
-                const connected =
-                  wid === 'default-waveform'
-                    ? Array.from({ length: win.channel_count || channelCount }, (_, i) => i)
-                    : computeConnectedInputs(wid, channelCount, rfEdges)
-                        .filter((i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel')
-                        .map((i) => i.idx);
-                const autoNext = computeAutoSetConfig(win, st.config, connected);
-                setConfig(wid, channelCount, autoNext);
-              }}
-            />
-          </div>
-        </div>
+        <WaveformTabView
+          widget={waveWidget}
+          axisConfig={st.config}
+          measurements={st.measurements}
+          channelCount={channelCount}
+          onConfigChange={handleConfigChange}
+          onAutoSet={handleAutoSet}
+        />
       );
     }
     case 'raw':
-      return <RawDataView widgetId={tab.widgetId} />;
+      return <RawTabView widgetId={tab.widgetId} />;
     case 'pie': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'PieChart'
       ) as Extract<WidgetConfig, { kind: 'PieChart' }> | undefined;
       if (!widget) return noWidget;
-      return (
-        <div className="flex h-full p-2">
-          <PieChart widget={widget} onRemove={noopRemove} full />
-        </div>
-      );
+      return <PieTabView widget={widget} onRemove={noopRemove} />;
     }
     case 'image': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Image'
       ) as Extract<WidgetConfig, { kind: 'Image' }> | undefined;
       if (!widget) return noWidget;
-      return (
-        <div className="flex h-full p-2">
-          <ImageViewer widget={widget} onRemove={noopRemove} full />
-        </div>
-      );
+      return <ImageTabView widget={widget} onRemove={noopRemove} />;
     }
     case 'model3d': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Model3D'
       ) as Extract<WidgetConfig, { kind: 'Model3D' }> | undefined;
       if (!widget) return noWidget;
-      return (
-        <div className="flex h-full p-2">
-          <Suspense fallback={<SuspenseFallback />}>
-            <Model3DWidget widget={widget} onRemove={noopRemove} />
-          </Suspense>
-        </div>
-      );
+      return <Model3DTabView widget={widget} onRemove={noopRemove} />;
     }
     case 'spectrum': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Spectrum'
       ) as Extract<WidgetConfig, { kind: 'Spectrum' }> | undefined;
       if (!widget) return noWidget;
-      return (
-        <div className="flex h-full p-2">
-          <SpectrumChart widget={widget} onRemove={noopRemove} />
-        </div>
-      );
+      return <SpectrumTabView widget={widget} onRemove={noopRemove} />;
     }
     case 'command': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Command'
       ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
       if (!widget) return noWidget;
-      return (
-        <div className="flex h-full p-2">
-          <CommandSender widget={widget} onRemove={noopRemove} />
-        </div>
-      );
+      return <CommandTabView widget={widget} onRemove={noopRemove} />;
     }
     case 'can':
-      return (
-        <div className="flex h-full w-full">
-          <CanView />
-        </div>
-      );
+      return canTabContent;
     case 'logic':
-      return (
-        <div className="flex h-full w-full">
-          <LogicView />
-        </div>
-      );
+      return logicTabContent;
     case 'table-view': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'TableView'
@@ -253,27 +383,19 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       const cmdWidget = widgets.find(
         (w) => w.kind === 'Command' && w.params.loopbackEnabled
       ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
-      return (
-        <div className="flex h-full w-full">
-          <TableView widget={widget} onRemove={noopRemove} loopbackHistory={cmdWidget?.params.loopbackHistory} />
-        </div>
-      );
+      return <TableTabView widget={widget} onRemove={noopRemove} loopbackHistory={cmdWidget?.params.loopbackHistory} />;
     }
     case 'frame-decoder': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'FrameDecoder'
       ) as Extract<WidgetConfig, { kind: 'FrameDecoder' }> | undefined;
       if (!widget) return noWidget;
-      return (
-        <div className="flex h-full w-full">
-          <FrameDecoder widget={widget} onRemove={noopRemove} />
-        </div>
-      );
+      return <FrameDecoderTabView widget={widget} onRemove={noopRemove} />;
     }
     default:
       return null;
   }
-}
+});
 
 /// 数据 Tab 图标 (按类型)
 export function DataTabIcon({ type, size = 12 }: { type: string; size?: number }) {

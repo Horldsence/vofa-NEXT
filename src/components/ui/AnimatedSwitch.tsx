@@ -12,9 +12,15 @@ interface AnimatedSwitchProps {
   className?: string;
 }
 
+const EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+const DURATION_MS = 180;
+const SLIDE_X = 16;
+const SLIDE_Y = 10;
+
 /// 通用切换转场容器
-/// 用 Web Animations API 在不 remount 子树的前提下播放过渡动画,
-/// 适用于 Tab / 视图切换 (保留子组件内部状态, 如 ReactFlow 视口)
+/// 纯 CSS transition (transform + opacity) — 动画由合成器线程接管, 不触发任何
+/// React 状态更新 / rAF 逐帧重渲染, 也不依赖 Web Animations API。
+/// 在不 remount 子树的前提下播放过渡动画, 保留子组件内部状态 (如 ReactFlow 视口)
 export function AnimatedSwitch({ switchKey, order, axis, children, className }: AnimatedSwitchProps) {
   const ref = useRef<HTMLDivElement>(null);
   const prevKey = useRef(switchKey);
@@ -30,23 +36,29 @@ export function AnimatedSwitch({ switchKey, order, axis, children, className }: 
     if (!el) return;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 
-    // 默认纯淡入淡出; 有序切换按方向滑入
-    let keyframes: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }];
+    // 默认纯淡入淡出; 有序切换按方向滑入 (与旧 WAAPI keyframes 完全一致的视觉)
+    let translate = '';
+    let dist = 0;
     const { order: ord, axis: ax } = navRef.current;
     if (ord && ax) {
       const fromIdx = ord.indexOf(from);
       const toIdx = ord.indexOf(switchKey);
       if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
         const dir = toIdx > fromIdx ? 1 : -1;
-        const dist = ax === 'x' ? 16 : 10;
-        const translate = ax === 'x' ? 'translateX' : 'translateY';
-        keyframes = [
-          { opacity: 0, transform: `${translate}(${dir * dist}px)` },
-          { opacity: 1, transform: `${translate}(0px)` },
-        ];
+        translate = ax === 'x' ? 'translateX' : 'translateY';
+        dist = dir * (ax === 'x' ? SLIDE_X : SLIDE_Y);
       }
     }
-    el.animate(keyframes, { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+
+    // 两阶段 CSS transition: 先无过渡地落到起始态, 强制同步 reflow 后过渡到终态
+    const fromTransform = translate ? `${translate}(${dist}px)` : 'none';
+    el.style.transition = 'none';
+    el.style.opacity = '0';
+    el.style.transform = fromTransform;
+    void el.offsetWidth; // 让起始态立即生效
+    el.style.transition = `opacity ${DURATION_MS}ms ${EASE}, transform ${DURATION_MS}ms ${EASE}`;
+    el.style.opacity = '1';
+    el.style.transform = 'none';
   }, [switchKey]);
 
   return (

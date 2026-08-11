@@ -187,8 +187,12 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const virtualizer = useVirtualizer({
     count: modeCount,
     getScrollElement: () => parentRef.current,
+    // 固定行高: estimateSize 返回常量, 跳过 measureElement 的 DOM 测量开销,
+    // 行内容按 buffer 实时读取, 无行高变化, 保证 60fps 滚动
     estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
+    overscan: 5,
+    // 行无唯一 id, 追加型缓冲区中 index 即稳定身份 (视图切换时按 index 重取行)
+    getItemKey: (index) => index,
   });
 
   const selection = useSelection(modeCount);

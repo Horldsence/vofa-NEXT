@@ -171,8 +171,12 @@ export function CanFrameList() {
   const virtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => parentRef.current,
+    // 固定行高: estimateSize 返回常量, 跳过 measureElement 的 DOM 测量开销,
+    // 行高波动时由浏览器处理, 保证 60fps 滚动
     estimateSize: () => ROW_HEIGHT,
-    overscan: 10,
+    overscan: 5,
+    // CAN 帧无唯一 id, 追加型缓冲区中 index 即稳定身份 (过滤切换时按 index 重取帧)
+    getItemKey: (index) => index,
   });
 
   const selection = useSelection(filtered.length);

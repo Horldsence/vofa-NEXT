@@ -68,6 +68,23 @@ const tauriMock = vi.hoisted(() => {
 
 export { tauriMock };
 
+/// jsdom 未实现 window.matchMedia — uPlot 模块初始化 / AnimatedSwitch 动画均依赖。
+/// 在 setup 阶段 (早于任何被测模块 import) 注入, 避免组件树加载时抛错。
+vi.stubGlobal(
+  'matchMedia',
+  (query: string): MediaQueryList =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList
+);
+
 /// 最小 Channel 桩 — 仅需可构造、含 id/onmessage 即可
 function createChannelStub() {
   return class Channel<T = unknown> {
