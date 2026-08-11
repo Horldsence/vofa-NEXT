@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
 import { useGraphInput } from '../../../lib/hooks/useGraphInput';
@@ -10,7 +11,7 @@ interface LEDProps {
 
 /// LED 指示灯 — 输入值 >= threshold 显示 ON 颜色, 否则 OFF
 /// 数据源: edge 连线 (后端图输出) 优先, 否则回退到 channel 参数
-export function LED({ widget, onEdit }: LEDProps) {
+export const LED = memo(function LED({ widget, onEdit }: LEDProps) {
   const { threshold, on_color, off_color, channel } = widget.params;
   const value = useGraphInput(widget.params.id, 'value', channel, 0);
 
@@ -32,4 +33,4 @@ export function LED({ widget, onEdit }: LEDProps) {
       </div>
     </WidgetCard>
   );
-}
+});

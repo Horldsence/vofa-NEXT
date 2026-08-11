@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -40,13 +40,13 @@ const nodeTypes: NodeTypes = {
 ///
 /// 必须用 ReactFlowProvider 包裹, 才能在内部使用 useReactFlow().screenToFlowPosition()
 /// 否则拖拽放置的节点会落到错误的画布坐标 (尤其 fitView/pan/zoom 后)
-export function NodeEditor({ tabId }: NodeEditorProps) {
+export const NodeEditor = memo(function NodeEditor({ tabId }: NodeEditorProps) {
   return (
     <ReactFlowProvider>
       <NodeEditorInner tabId={tabId} />
     </ReactFlowProvider>
   );
-}
+});
 
 function NodeEditorInner({ tabId }: NodeEditorProps) {
   const lang = useAppStore((s) => s.lang);

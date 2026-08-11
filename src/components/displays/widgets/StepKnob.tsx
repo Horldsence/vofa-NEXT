@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from 'react';
+import { memo, useCallback, useRef, useEffect } from 'react';
 
 interface StepKnobProps {
   /// 当前值
@@ -24,7 +24,7 @@ interface StepKnobProps {
 /// - 滚轮也可改变档位 (使用原生非被动监听器, 避免页面同时滚动)
 /// - 中心点击重置为 defaultValue
 /// 旋钮指针角度: 最小档位 = -135°, 最大档位 = +135° (共 270°)
-export function StepKnob({
+export const StepKnob = memo(function StepKnob({
   value,
   steps,
   onChange,
@@ -145,4 +145,4 @@ export function StepKnob({
       {label && <div className="text-[9px] text-text-secondary uppercase tracking-[0.5px]">{label}</div>}
     </div>
   );
-}
+});

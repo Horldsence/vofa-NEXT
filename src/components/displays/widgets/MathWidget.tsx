@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig, MathOp } from '../../../types';
@@ -38,7 +38,7 @@ const OP_SYMBOLS: Record<MathOp, string> = {
 ///   2. 后端 graph_output_ticker 每 16ms 将所有节点输出快照推送至前端
 ///   3. 本组件直接读 graphOutputs[id].result 显示结果
 ///   4. 输入端口值 (用于展开显示) 通过 useGraphInputs 读上游输出
-export function MathWidget({ widget, onEdit }: MathWidgetProps) {
+export const MathWidget = memo(function MathWidget({ widget, onEdit }: MathWidgetProps) {
   const { op, unit, precision, inputCount, id } = widget.params;
   // 只订阅本 widget 的结果, 避免 graphOutputs 全局更新时所有 MathWidget 重渲染
   const result = useAppStore((s) => s.graphOutputs[id]?.result ?? 0);
@@ -93,4 +93,4 @@ export function MathWidget({ widget, onEdit }: MathWidgetProps) {
       </div>
     </WidgetCard>
   );
-}
+});

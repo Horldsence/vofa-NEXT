@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
 import { waveformWindow } from '../../../lib/buffers/dataBuffer';
@@ -18,7 +18,7 @@ const COLORS = [
 /// 饼图控件 — 实时显示各通道最新值占比
 /// full 模式: Canvas 铺满主区 + 图例侧栏 (固定 200px)
 /// 紧凑模式: 固定 120x120 Canvas + 下方图例 (节点编辑器内)
-export function PieChart({ widget, full = false }: PieChartProps) {
+export const PieChart = memo(function PieChart({ widget, full = false }: PieChartProps) {
   const { segments, channels } = widget.params;
   const [values, setValues] = useState<number[]>(channels.map(() => 0));
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -168,4 +168,4 @@ export function PieChart({ widget, full = false }: PieChartProps) {
       </div>
     </WidgetCard>
   );
-}
+});

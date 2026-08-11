@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { memo, useState, useCallback, useEffect } from 'react';
 import { Plus, X, Type, Trash2, Copy, Cpu, CircuitBoard } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
@@ -16,7 +16,7 @@ import { t } from '../../i18n';
 /// - 拖动单个 Tab 到本卡片标题栏 → 合并为本卡片的一个 Tab
 /// - 拖动单个 Tab 到卡片边缘 → 拆分为独立面板
 /// - 拖动标题栏空白处 → 整卡移动到其他卡片边缘
-export function DockCardFrame({ cardId }: { cardId: string }) {
+export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: string }) {
   const lang = useAppStore((s) => s.lang);
   const card = useDockStore((s) => s.cards[cardId]);
   const controlTabs = useAppStore((s) => s.controlTabs);
@@ -291,4 +291,4 @@ export function DockCardFrame({ cardId }: { cardId: string }) {
       </div>
     </div>
   );
-}
+});

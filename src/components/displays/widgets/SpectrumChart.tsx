@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Settings2 } from 'lucide-react';
 import type { WidgetConfig, WindowType, SpectrumOutput } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
@@ -40,7 +40,7 @@ const OUTPUT_OPTIONS: { value: SpectrumOutput; labelKey: string }[] = [
 ///      - 对每个 analyzer 调用 compute() (窗口未填满返回 None)
 ///      - 推送 SpectrumBatch 到所有订阅者
 ///   4. 本组件从 store.spectrumResults[id] 读取最新结果并绘制
-export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
+export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
   const { windowSize, windowType, output, sampleRate, id } = widget.params;
   // 只订阅本 widget 的频谱结果, 避免全局 spectrumResults 更新时所有 SpectrumChart 重渲染
   const result = useAppStore((s) => s.spectrumResults[id]);
@@ -289,8 +289,7 @@ export function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
       </div>
     </div>
   );
-}
-
+});
 
 
 /// 格式化频率 (Hz / kHz)

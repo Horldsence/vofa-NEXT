@@ -1,4 +1,4 @@
-import { useMemo, useRef, useEffect } from 'react';
+import { memo, useMemo, useRef, useEffect } from 'react';
 import { useAppStore } from '../../../store/appStore';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
 import { t } from '../../../i18n';
@@ -23,7 +23,7 @@ interface TableViewProps {
 /// 数据来源:
 /// - graphInputs (从连线获取实时值)
 /// - loopbackHistory (从 CommandSender 回环模式获取历史)
-export function TableView({ widget, loopbackHistory }: TableViewProps) {
+export const TableView = memo(function TableView({ widget, loopbackHistory }: TableViewProps) {
   const params = widget.params;
   const lang = useAppStore((s) => s.lang);
 
@@ -202,4 +202,4 @@ export function TableView({ widget, loopbackHistory }: TableViewProps) {
       </div>
     </div>
   );
-}
+});

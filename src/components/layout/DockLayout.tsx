@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, type CSSProperties } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAppStore } from '../../store/appStore';
 import { useDockStore, edgeDir, removeCardNode, type DockNode, type DropTarget } from '../../store/dockStore';
@@ -106,7 +106,7 @@ const HOT_ZONE_CLASS: Record<SnapEdge, string> = {
 /// - 与 appStore 的 Tab 列表对账 (新增安置 / 删除剔除 / 空卡片裁剪)
 /// - 全局投放预览 (几何与 dockStore 插入逻辑一致)
 /// - 页面四边热区 (整行/整列条带停靠)
-export function DockLayout() {
+export const DockLayout = memo(function DockLayout() {
   const root = useDockStore((s) => s.root);
   const dropTarget = useDockStore((s) => s.dropTarget);
   const draggingTab = useDockStore((s) => s.draggingTab);
@@ -170,7 +170,7 @@ export function DockLayout() {
       {preview && <div className="snap-drop-zone" style={previewStyle(preview)} />}
     </div>
   );
-}
+});
 
 function DockNodeView({ node }: { node: DockNode }) {
   const setSizes = useDockStore((s) => s.setSizes);

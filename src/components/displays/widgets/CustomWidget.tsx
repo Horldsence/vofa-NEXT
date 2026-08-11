@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback, useMemo, useContext } from 'react';
+import { memo, useRef, useEffect, useState, useCallback, useMemo, useContext } from 'react';
 import { Settings2, AlertCircle } from 'lucide-react';
 import type { WidgetConfig } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
@@ -186,7 +186,7 @@ function buildSrcDoc(code: string, def: CustomWidgetDef): string {
 </html>`;
 }
 
-export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps) {
+export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -343,4 +343,4 @@ export function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps
       )}
     </div>
   );
-}
+});

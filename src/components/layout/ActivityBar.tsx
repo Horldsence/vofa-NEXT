@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import {
   Cable,
   Binary,
@@ -23,7 +24,7 @@ interface ActivityBarProps {
 
 /// 左侧活动栏 — VSCode 风格图标导航
 /// 顺序符合配置操作流: 数据接口 → 协议引擎 → 控件
-export function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
+export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
   const lang = useAppStore((s) => s.lang);
   const sidebarView = useAppStore((s) => s.sidebarView);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
@@ -114,4 +115,4 @@ export function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
       </div>
     </div>
   );
-}
+});

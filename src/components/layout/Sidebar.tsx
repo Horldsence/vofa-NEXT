@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useAppStore } from '../../store/appStore';
 import type { SidebarView } from '../../store/appStore';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
@@ -15,7 +16,7 @@ interface SidebarProps {
 }
 
 /// 侧边栏容器 — 根据当前视图切换面板
-export function Sidebar({ view }: SidebarProps) {
+export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
   const lang = useAppStore((s) => s.lang);
   const sidebarView = useAppStore((s) => s.sidebarView);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
@@ -71,4 +72,4 @@ export function Sidebar({ view }: SidebarProps) {
       </div>
     </div>
   );
-}
+});

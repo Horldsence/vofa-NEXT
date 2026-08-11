@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
@@ -13,7 +13,7 @@ interface ImageViewerProps {
 /// 图像控件 — 占位实现, 后续可扩展为图像数据流显示
 /// full 模式: 图像区铺满主区 + 信息侧栏 (固定 200px)
 /// 紧凑模式: 单个 aspect-ratio 容器 (节点编辑器内)
-export function ImageViewer({ widget, full = false }: ImageViewerProps) {
+export const ImageViewer = memo(function ImageViewer({ widget, full = false }: ImageViewerProps) {
   const { width, height, format } = widget.params;
   const [hasImage] = useState(false);
 
@@ -94,4 +94,4 @@ export function ImageViewer({ widget, full = false }: ImageViewerProps) {
       </div>
     </WidgetCard>
   );
-}
+});

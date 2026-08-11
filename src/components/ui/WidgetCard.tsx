@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, memo, useContext, type ReactNode } from 'react';
 import { X, Settings2 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -43,7 +43,7 @@ const BADGE_CLASSES: Record<string, string> = {
 ///   3. Optional header label (uppercase, text-secondary)
 ///   4. Optional colored badge pill
 ///   5. Children slot for widget-specific content
-export function WidgetCard({
+export const WidgetCard = memo(function WidgetCard({
   children,
   label,
   badge,
@@ -135,4 +135,4 @@ export function WidgetCard({
       {children}
     </div>
   );
-}
+});

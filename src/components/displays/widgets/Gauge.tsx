@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
 import { useGraphInput } from '../../../lib/hooks/useGraphInput';
@@ -11,7 +11,7 @@ interface GaugeProps {
 
 /// 仪表盘控件 — 半圆指针 + 弧形进度, 显示单通道实时值
 /// 数据源: edge 连线 (后端图输出) 优先, 否则回退到 channel 参数
-export function Gauge({ widget, onEdit }: GaugeProps) {
+export const Gauge = memo(function Gauge({ widget, onEdit }: GaugeProps) {
   const { min, max, unit, channel } = widget.params;
   const value = useGraphInput(widget.params.id, 'value', channel, min);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -114,4 +114,4 @@ export function Gauge({ widget, onEdit }: GaugeProps) {
       </div>
     </WidgetCard>
   );
-}
+});

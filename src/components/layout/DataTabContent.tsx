@@ -35,6 +35,9 @@ import { useWaveformScopeStore, createPerWidgetState } from '../../store/wavefor
 // 重型 3D 控件 (Three.js) — 懒加载, 首次切到 model3d Tab 时才拉取
 const Model3DWidget = lazy(() => import('../displays/widgets/Model3DWidget.lazy'));
 
+/// 稳定空回调 — DataPanel 展示控件不可删除; 共享引用让 memo 包装的控件跳过父级重渲染
+const noopRemove = () => {};
+
 /// 单个数据 Tab 的内容渲染器 — 由 DockCardFrame 挂载, 可被多个卡片各自实例化
 /// 波形 Tab 的 axisConfig / measurements 按 widgetId 存于 waveformScopeStore,
 /// Tab 在卡片间移动或拆分为独立面板时配置不丢失
@@ -180,7 +183,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       if (!widget) return noWidget;
       return (
         <div className="flex h-full p-2">
-          <PieChart widget={widget} onRemove={() => {}} full />
+          <PieChart widget={widget} onRemove={noopRemove} full />
         </div>
       );
     }
@@ -191,7 +194,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       if (!widget) return noWidget;
       return (
         <div className="flex h-full p-2">
-          <ImageViewer widget={widget} onRemove={() => {}} full />
+          <ImageViewer widget={widget} onRemove={noopRemove} full />
         </div>
       );
     }
@@ -203,7 +206,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       return (
         <div className="flex h-full p-2">
           <Suspense fallback={<SuspenseFallback />}>
-            <Model3DWidget widget={widget} onRemove={() => {}} />
+            <Model3DWidget widget={widget} onRemove={noopRemove} />
           </Suspense>
         </div>
       );
@@ -215,7 +218,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       if (!widget) return noWidget;
       return (
         <div className="flex h-full p-2">
-          <SpectrumChart widget={widget} onRemove={() => {}} />
+          <SpectrumChart widget={widget} onRemove={noopRemove} />
         </div>
       );
     }
@@ -226,7 +229,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       if (!widget) return noWidget;
       return (
         <div className="flex h-full p-2">
-          <CommandSender widget={widget} onRemove={() => {}} />
+          <CommandSender widget={widget} onRemove={noopRemove} />
         </div>
       );
     }
@@ -252,7 +255,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
       return (
         <div className="flex h-full w-full">
-          <TableView widget={widget} onRemove={() => {}} loopbackHistory={cmdWidget?.params.loopbackHistory} />
+          <TableView widget={widget} onRemove={noopRemove} loopbackHistory={cmdWidget?.params.loopbackHistory} />
         </div>
       );
     }
@@ -263,7 +266,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       if (!widget) return noWidget;
       return (
         <div className="flex h-full w-full">
-          <FrameDecoder widget={widget} onRemove={() => {}} />
+          <FrameDecoder widget={widget} onRemove={noopRemove} />
         </div>
       );
     }

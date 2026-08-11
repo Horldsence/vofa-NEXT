@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig, FilterPresetKind } from '../../../types';
@@ -31,7 +31,7 @@ const PRESET_OPTIONS: { value: FilterPresetKind; labelKey: string }[] = [
 ///
 /// 配置变更 (preset/cutoff/sampleRate) → updateWidget → syncTabGraph
 /// → 后端重建 DigitalFilter (kind 变化触发状态重置, 符合滤波器语义)
-export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
+export const FilterWidget = memo(function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
   const { preset, cutoff, low, high, sampleRate, precision, id } = widget.params;
   const graphOutputs = useAppStore((s) => s.graphOutputs);
   const updateWidget = useAppStore((s) => s.updateWidget);
@@ -156,4 +156,4 @@ export function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
       </div>
     </WidgetCard>
   );
-}
+});

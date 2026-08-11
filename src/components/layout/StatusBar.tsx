@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
@@ -8,7 +9,7 @@ import { CanLoadAlarm } from './CanLoadAlarm';
 import { useSettingsStore } from '../../store/settingsStore';
 
 /// 底部状态栏 — 显示连接状态、统计数据
-export function StatusBar() {
+export const StatusBar = memo(function StatusBar() {
   const lang = useAppStore((s) => s.lang);
   const connectionState = useAppStore((s) => s.connectionState);
   // 单独订阅 stats 字段, 避免 transport:rx 每次创建新 stats 对象导致整个 StatusBar 重渲染
@@ -116,4 +117,4 @@ export function StatusBar() {
       </button>
     </div>
   );
-}
+});

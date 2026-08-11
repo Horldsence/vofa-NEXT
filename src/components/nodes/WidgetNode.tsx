@@ -1,3 +1,4 @@
+import { memo, useCallback } from 'react';
 import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { X, Settings2 } from 'lucide-react';
@@ -161,17 +162,20 @@ function deriveRawDataPorts(
 }
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
-export function WidgetNode({ id, data }: NodeProps) {
+export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const widget = data.widget as WidgetConfig | undefined;
   const removeWidget = useAppStore((s) => s.removeWidget);
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
   const rfEdges = useAppStore((s) => s.rfEdges);
 
+  // 稳定回调 — memo 包装的嵌入控件 (Gauge/LED/...) 依赖同引用 props 才能跳过重渲染
+  const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
+  const handleEditCustom = useCallback(() => openCustomEditor(id), [openCustomEditor, id]);
+
   if (!widget) {
     return <div className="p-2 text-red text-xs">Missing widget</div>;
   }
 
-  const onRemove = () => removeWidget(id);
   const ports = getWidgetPorts(widget);
   // RawData 输入端口动态派生自连接边 (每个已连接的 source = 一个通道端口), 其余控件用静态定义
   const effectivePorts = widget.kind === 'RawData' ? deriveRawDataPorts(rfEdges, id) : ports;
@@ -187,8 +191,6 @@ export function WidgetNode({ id, data }: NodeProps) {
     // RawData 动态端口 id 是 `src:<sourceId>:<handle>` — 按 (source, sourceHandle) 标记已连接
     if (widget.kind === 'RawData' && e.target === id) connectedHandles.add(`src:${e.source}:${e.sourceHandle ?? 'data'}`);
   }
-
-  const handleEditCustom = () => openCustomEditor(id);
 
   const renderContent = () => {
     switch (widget.kind) {
@@ -336,4 +338,4 @@ export function WidgetNode({ id, data }: NodeProps) {
       </div>
     </div>
   );
-}
+});
