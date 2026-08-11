@@ -11,6 +11,12 @@ import {
   deepMergeSettings,
 } from '../settings/defaults';
 import { applyAppearance } from '../settings/applyTheme';
+import {
+  DARK_THEME,
+  THEME_TOKENS,
+  type ThemeDefinition,
+  type ThemeToken,
+} from '../settings/theme';
 import { api } from '../lib/tauri/tauri';
 import { rawDataBuffer } from '../lib/buffers/dataBuffer';
 import { canFrameBuffer } from '../lib/buffers/canBuffer';
@@ -87,6 +93,29 @@ const LEGACY_DEFAULT_MONO_FONTS = [
   "'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, monospace",
 ];
 
+/// 防御性 token 迁移映射: 历史版本曾用过的旧 token 名 -> 当前名。
+/// 当前语义层为纯增量 (未重命名任何可持久化 token), 映射保持为空;
+/// 未来若重命名 THEME_TOKENS 中的 key, 在此补条目即可平滑迁移已保存的自定义主题。
+const LEGACY_TOKEN_RENAMES: Readonly<Record<string, ThemeToken>> = {};
+
+/// 归一化自定义主题: 应用旧 key 重命名 + 补齐缺失 token。
+/// 防御旧版本/损坏数据 — 保证每个主题都持有完整 token 集合 (新语义结构)。
+export function migrateCustomTheme(theme: ThemeDefinition): ThemeDefinition {
+  const tokens: Record<string, string> = { ...theme.tokens };
+  for (const [oldKey, newKey] of Object.entries(LEGACY_TOKEN_RENAMES)) {
+    if (oldKey in tokens && !(newKey in tokens)) {
+      tokens[newKey] = tokens[oldKey];
+    }
+    delete tokens[oldKey];
+  }
+  for (const token of THEME_TOKENS) {
+    if (!(token in tokens)) {
+      tokens[token] = DARK_THEME.tokens[token];
+    }
+  }
+  return { ...theme, tokens: tokens as Record<ThemeToken, string> };
+}
+
 function migrateSettings(settings: AppSettings): AppSettings {
   const appearance = { ...settings.appearance };
   if (LEGACY_DEFAULT_UI_FONTS.includes(appearance.uiFontFamily)) {
@@ -94,6 +123,9 @@ function migrateSettings(settings: AppSettings): AppSettings {
   }
   if (LEGACY_DEFAULT_MONO_FONTS.includes(appearance.monoFontFamily)) {
     appearance.monoFontFamily = DEFAULT_SETTINGS.appearance.monoFontFamily;
+  }
+  if (appearance.customThemes?.length) {
+    appearance.customThemes = appearance.customThemes.map(migrateCustomTheme);
   }
   return { ...settings, appearance };
 }

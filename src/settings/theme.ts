@@ -155,6 +155,23 @@ export function getCssVariableName(token: ThemeToken): string {
   return `--color-${kebab}`;
 }
 
+/// 语义 token 别名: 语义 CSS 变量名 -> 其对应的原始 token。
+/// 与 index.css @theme 中的语义层保持一致; 纯增量, 不改动 THEME_TOKENS 可编辑集合。
+export const SEMANTIC_TOKEN_ALIASES: Readonly<Record<string, ThemeToken>> = {
+  '--color-bg-surface': 'bgEditor',
+  '--color-bg-elevated': 'bgSidebar',
+  '--color-bg-inset': 'bgInput',
+  '--color-text-muted': 'textDisabled',
+  '--color-border-subtle': 'border',
+  '--color-accent-hover': 'bgButtonHover',
+  '--color-accent-active': 'bgActive',
+  '--color-danger': 'red',
+  '--color-warning': 'yellow',
+  '--color-success': 'green',
+  '--color-info': 'blue',
+  '--color-danger-surface': 'bgDanger',
+};
+
 /// 暗色主题 — 当前项目默认 (现代冷调深色)
 export const DARK_THEME: ThemeDefinition = {
   id: 'dark',
@@ -275,12 +292,23 @@ export function resolveActiveTheme(appearance: AppSettings['appearance']): Theme
   return DARK_THEME;
 }
 
+/// 将语义变量以别名形式写入 :root。
+/// 值保持 var(--color-*) 形式, 运行时动态解析到原始 token —— 自定义主题
+/// 与亚克力透明化 (applyAppearance 对原始背景 token 的 rgba 变换) 仍能穿透生效。
+export function applySemanticTheme(): void {
+  const root = document.documentElement;
+  for (const [semVar, rawToken] of Object.entries(SEMANTIC_TOKEN_ALIASES)) {
+    root.style.setProperty(semVar, `var(${getCssVariableName(rawToken)})`);
+  }
+}
+
 /// 将主题应用到 DOM
 export function applyTheme(theme: ThemeDefinition): void {
   const root = document.documentElement;
   for (const token of THEME_TOKENS) {
     root.style.setProperty(getCssVariableName(token), theme.tokens[token]);
   }
+  applySemanticTheme();
   root.dataset.theme = theme.isBuiltIn ? theme.id : `custom-${theme.id}`;
 }
 
