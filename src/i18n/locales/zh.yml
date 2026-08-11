@@ -101,8 +101,12 @@ options: 选项
 
 # 数据区
 rawData: 原始数据
+gridView: 网格
+lineView: 行
 hexView: HEX
 asciiView: ASCII
+rawDataGlobal: 全局
+rawDataChannel: 通道
 send: 发送
 clear: 清空
 autoScroll: 自动滚动
@@ -285,6 +289,16 @@ settingsData: 数据缓存
 settingsSerial: 串口默认值
 settingsNotifications: 通知
 settingsAbout: 关于
+backupCategory: 备份
+exportConfig: 导出配置
+importConfig: 导入配置
+backupExportSuccess: 配置导出成功
+backupExportSuccessDesc: 应用完整配置已保存到文件
+backupImportSuccess: 配置导入成功
+backupImportSuccessDesc: 已从备份文件恢复配置
+backupImportSuccessDescReconnect: 已从备份文件恢复配置。请重新连接传输以应用导入的连接设置。
+backupExportFailed: 导出失败
+backupImportFailed: 导入失败
 
 # 设置项 - General
 settingLanguage: 语言

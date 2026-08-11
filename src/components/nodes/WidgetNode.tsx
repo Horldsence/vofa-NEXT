@@ -1,4 +1,4 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
@@ -126,9 +126,38 @@ function getWidgetPorts(widget: WidgetConfig): {
         outputs: def?.outputs ?? [],
       };
     }
+    case 'RawData':
+      // 关联端口 (ASSOCIATIVE): 端口在此仅为回退值 — 实际端口由 WidgetNode 动态派生,
+      // 每个已连接的 source 节点 = 一个通道端口。边只是用户意图标记: 控件视图展示
+      // 选中通道的原始数据, 字节不路由进 f32 图 — 后端通过旁路通道捕获各解码器字节。
+      return { inputs: [{ id: 'data', label: 'data' }], outputs: [] };
     default:
       return { inputs: [{ id: 'in', label: 'in' }], outputs: [] };
   }
+}
+
+/// 派生 RawData 输入端口 — 动态: 每条入边的 (source, sourceHandle) 组合 = 一个通道端口。
+/// 端口 id 用 `src:<sourceId>:<sourceHandle>` (稳定, 不随源节点 label 变化),
+/// label 取源节点的输出端口名 (handle)。尚未连接任何边时回退到单个默认端口, 便于用户建立第一条连接。
+function deriveRawDataPorts(
+  edges: Edge[],
+  nodeId: string
+): { inputs: { id: string; label: string }[]; outputs: { id: string; label: string }[] } {
+  const seen = new Set<string>();
+  const inputs: { id: string; label: string }[] = [];
+  for (const e of edges) {
+    // 目标是本节点即视为通道连接; 同一 (source, sourceHandle) 去重为一个端口
+    if (e.target !== nodeId) continue;
+    const handle = e.sourceHandle ?? 'data';
+    const key = `src:${e.source}:${handle}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    inputs.push({ id: key, label: handle });
+  }
+  if (inputs.length === 0) {
+    return { inputs: [{ id: 'data', label: 'data' }], outputs: [] };
+  }
+  return { inputs, outputs: [] };
 }
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
@@ -144,6 +173,8 @@ export function WidgetNode({ id, data }: NodeProps) {
 
   const onRemove = () => removeWidget(id);
   const ports = getWidgetPorts(widget);
+  // RawData 输入端口动态派生自连接边 (每个已连接的 source = 一个通道端口), 其余控件用静态定义
+  const effectivePorts = widget.kind === 'RawData' ? deriveRawDataPorts(rfEdges, id) : ports;
   // 按控件类别着色 (与 WidgetPalette 分组颜色一致)
   const categoryColor = WIDGET_CATEGORY_COLORS[getWidgetCategory(widget.kind)];
   // 支持代码编辑的控件 — 节点头部显示编辑入口 (替代内嵌卡片的悬浮 ⚙)
@@ -153,6 +184,8 @@ export function WidgetNode({ id, data }: NodeProps) {
   for (const e of rfEdges) {
     if (e.source === id && e.sourceHandle) connectedHandles.add(e.sourceHandle);
     if (e.target === id && e.targetHandle) connectedHandles.add(e.targetHandle);
+    // RawData 动态端口 id 是 `src:<sourceId>:<handle>` — 按 (source, sourceHandle) 标记已连接
+    if (widget.kind === 'RawData' && e.target === id) connectedHandles.add(`src:${e.source}:${e.sourceHandle ?? 'data'}`);
   }
 
   const handleEditCustom = () => openCustomEditor(id);
@@ -211,6 +244,7 @@ export function WidgetNode({ id, data }: NodeProps) {
     case 'Waveform':
     case 'Command':
     case 'FrameDecoder':
+    case 'RawData':
         // 这些控件在节点内仅显示占位, 实际渲染在 DataPanel
         return (
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">
@@ -272,7 +306,7 @@ export function WidgetNode({ id, data }: NodeProps) {
       </div>
       {/* 输入端口 (左侧) — Handle 覆盖 position:relative 让多端口纵向分布 */}
       <div className="absolute top-1/2 left-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
-        {ports.inputs.map((port) => (
+        {effectivePorts.inputs.map((port) => (
           <div key={port.id} className="flex items-center gap-1 h-[14px] relative pl-0.5">
             <Handle
               type="target"
@@ -287,7 +321,7 @@ export function WidgetNode({ id, data }: NodeProps) {
       </div>
       {/* 输出端口 (右侧) — 标签在 Handle 左侧, 允许向左延伸适应过长端口名 */}
       <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-end gap-0.5 py-1 z-10">
-        {ports.outputs.map((port) => (
+        {effectivePorts.outputs.map((port) => (
           <div key={port.id} className="flex items-center gap-1 h-[14px] relative pr-0.5">
             <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
             <Handle

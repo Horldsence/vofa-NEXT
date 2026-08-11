@@ -22,6 +22,28 @@ export function subscribeRawData(
   };
 }
 
+/// 订阅指定节点的原始数据 (后端周期性推送该节点输出字节流)
+/// 返回取消订阅函数
+export function subscribeRawDataNode(
+  nodeId: string,
+  onEvent: (batch: RawDataBatch) => void,
+  options?: { intervalMs?: number; maxBytes?: number }
+): { cancel: () => void } {
+  const channel = new Channel<RawDataBatch>();
+  channel.onmessage = onEvent;
+  void invoke('subscribe_rawdata_node', {
+    nodeId,
+    onEvent: channel,
+    intervalMs: options?.intervalMs,
+    maxBytes: options?.maxBytes,
+  });
+  return {
+    cancel: () => {
+      void closeTauriChannel(channel, 'unsubscribe_rawdata_node', channel.id);
+    },
+  };
+}
+
 /// 清空后端原始数据收集器
 export function clearRawDataBuffer(): Promise<void> {
   return invoke('clear_raw_data_collector');

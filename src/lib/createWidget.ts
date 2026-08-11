@@ -220,5 +220,10 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           mode: 'live',
         },
       };
+    case 'RawData':
+      return {
+        kind: 'RawData',
+        params: { id, label: 'Raw Data' },
+      };
   }
 }

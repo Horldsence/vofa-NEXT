@@ -103,6 +103,7 @@ export function WidgetPalette() {
     { kind: 'Label', icon: <Tag />, label: t(lang, 'label') },
     { kind: 'Spectrum', icon: <Activity />, label: t(lang, 'spectrum') },
     { kind: 'Model3D', icon: <Box />, label: t(lang, 'model3d') },
+    { kind: 'RawData', icon: <Activity size={14} />, label: t(lang, 'rawData') },
   ];
 
   const customItems: {

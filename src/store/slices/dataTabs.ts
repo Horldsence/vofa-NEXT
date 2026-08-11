@@ -15,7 +15,6 @@ export function createDataTabSlice(set: any, get: any): DataTabSlice {
   return {
     dataTabs: [
       { id: 'waveform-fixed', type: 'waveform' as const, name: 'Waveform', closable: false },
-      { id: 'raw-fixed', type: 'raw' as const, name: 'Raw Data', closable: false },
     ],
     activeDataTabId: 'waveform-fixed',
 

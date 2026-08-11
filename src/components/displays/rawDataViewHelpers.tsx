@@ -3,6 +3,10 @@ import { RAWDATA_BYTES_PER_ROW } from '../../lib/dataBuffer';
 export type AppendMode = 'none' | 'nl' | 'tab' | 'nl_tab';
 export type SendPanelMode = 'bottom' | 'separate';
 export type HexColorMode = 'none' | 'printable' | 'range';
+/// 行分组方式: grid = 固定 16 字节一行, line = 换行分隔
+export type RawDataGrouping = 'grid' | 'line';
+/// 字节表示方式: hex = 十六进制 (+ascii 尾列), ascii = 仅 ascii
+export type RawDataRepr = 'hex' | 'ascii';
 
 export const ROW_HEIGHT = 22;
 export const GROUP_SIZE = 8;

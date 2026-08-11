@@ -119,6 +119,12 @@ export interface CustomConfig {
   settings: Record<string, string | number | boolean>; // 用户在设置面板里填写的值
 }
 
+/// 原始字节流查看控件 — 数据 Tab 渲染全局原始字节流 (RawDataView)
+export interface RawDataConfig {
+  id: string;
+  label: string;
+}
+
 // ============ 控件类别 ============
 
 /// 控件类别 — 用于 WidgetPalette 分组与颜色区分
@@ -148,7 +154,8 @@ export type WidgetConfig =
   | { kind: 'Model3D'; params: Model3DConfig }
   | { kind: 'Command'; params: CommandConfig }
   | { kind: 'FrameDecoder'; params: FrameDecoderConfig }
-  | { kind: 'TableView'; params: TableViewConfig };
+  | { kind: 'TableView'; params: TableViewConfig }
+  | { kind: 'RawData'; params: RawDataConfig };
 
 /// 获取控件所属类别 (用于 palette 分组与着色)
 export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
@@ -170,6 +177,7 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'Spectrum':
     case 'Model3D':
     case 'TableView':
+    case 'RawData':
       return 'display';
     case 'Math':
     case 'Filter':

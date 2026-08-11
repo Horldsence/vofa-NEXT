@@ -19,6 +19,7 @@ import { useSettingsStore } from './store/settingsStore';
 import { useOnboardingStore } from './store/onboardingStore';
 import { useLayoutStore } from './store/layoutStore';
 import { t } from './i18n';
+import { createWidget } from './lib/createWidget';
 
 function App() {
   const initEventListeners = useAppStore((s) => s.initEventListeners);
@@ -97,6 +98,14 @@ function App() {
       }
     });
     refreshPorts();
+
+    // 首次启动种子: widgets/tabs/nodes 均为内存态不持久化, 默认放一个 RawData 控件
+    // 以保留旧版固定 raw Tab 的常驻行为 (画布占位节点 + raw 数据 Tab)
+    const st = useAppStore.getState();
+    if (st.widgets.length === 0 && !st.dataTabs.some((t) => t.type === 'raw')) {
+      st.addWidget(createWidget('RawData'), 'default', { x: 420, y: 120 });
+    }
+
     return () => {
       cancelled = true;
       cleanupRef.fn?.();

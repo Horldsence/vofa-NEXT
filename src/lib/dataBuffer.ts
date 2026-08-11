@@ -100,6 +100,12 @@ export class RawDataBuffer {
   private rafScheduled = false;
   /// 脏标记: 本帧内是否有新数据
   private dirty = false;
+  /// 换行索引: 每个元素的值为换行行的起始绝对流偏移 (0x0A 作为行末字节被包含)
+  private lineStarts: number[] = [];
+  /// 增量扫描已覆盖到的最大绝对偏移
+  private lastScannedOffset = 0;
+  /// 脏标记: 容量变更后需全量重建换行索引
+  private lineIndexDirty = false;
 
   constructor(capacity = 1_048_576) {
     this.capacity = capacity;
@@ -127,6 +133,7 @@ export class RawDataBuffer {
     }
     // 限制分片索引数量, 避免无限增长
     this.trimChunks();
+    this.updateLineIndex();
     this.dirty = true;
     this.scheduleNotify();
   }
@@ -183,6 +190,82 @@ export class RawDataBuffer {
       lines.push(this.getLine(i));
     }
     return lines;
+  }
+
+  /// 复制绝对偏移 [startOffset, endOffset) 区间的环形字节 (定位方式与 getLine 一致)
+  private readRange(startOffset: number, endOffset: number): Uint8Array {
+    const length = Math.max(0, endOffset - startOffset);
+    const bytes = new Uint8Array(length);
+    if (length === 0) return bytes;
+    const stored = this.storedBytes;
+    const baseOffset = Math.max(0, this.totalWritten - stored);
+    const startPos = (this.writePos - stored + (startOffset - baseOffset) + this.capacity) % this.capacity;
+    for (let i = 0; i < length; i++) {
+      bytes[i] = this.buf[(startPos + i) % this.capacity];
+    }
+    return bytes;
+  }
+
+  /// 增量维护换行索引 — 只扫描新写入的字节 (pushBatch 后调用)
+  private updateLineIndex() {
+    const stored = this.storedBytes;
+    const baseOffset = Math.max(0, this.totalWritten - stored);
+
+    while (this.lineStarts.length > 0 && this.lineStarts[0] < baseOffset) {
+      this.lineStarts.shift();
+    }
+    if (this.lineStarts.length === 0 || this.lineStarts[0] !== baseOffset) {
+      this.lineStarts.unshift(baseOffset);
+    }
+
+    const scanStart = Math.max(this.lastScannedOffset, baseOffset);
+    const scanCount = Math.max(0, this.totalWritten - scanStart);
+    const startPos = (this.writePos - stored + (scanStart - baseOffset) + this.capacity) % this.capacity;
+    for (let i = 0; i < scanCount; i++) {
+      if (this.buf[(startPos + i) % this.capacity] === 0x0a) {
+        this.lineStarts.push(scanStart + i + 1);
+      }
+    }
+
+    this.lastScannedOffset = this.totalWritten;
+  }
+
+  /// 全量重建换行索引 (仅在容量变更后惰性调用)
+  private rebuildLineIndex() {
+    this.lineStarts = [];
+    this.lastScannedOffset = this.totalWritten;
+    this.lineIndexDirty = false;
+    const stored = this.storedBytes;
+    const baseOffset = Math.max(0, this.totalWritten - stored);
+    if (stored === 0) return;
+    this.lineStarts.push(baseOffset);
+    const startPos = (this.writePos - stored + this.capacity) % this.capacity;
+    for (let i = 0; i < stored; i++) {
+      if (this.buf[(startPos + i) % this.capacity] === 0x0a) {
+        this.lineStarts.push(baseOffset + i + 1);
+      }
+    }
+  }
+
+  /// 换行模式行数 (0x0A 分隔; 换行符作为行末字节, 空行计 1 行)
+  get newlineLineCount(): number {
+    if (this.lineIndexDirty) this.rebuildLineIndex();
+    return this.lineStarts.length;
+  }
+
+  /// 获取换行模式下的指定行视图 (行跨 [lineStarts[i], lineStarts[i+1]))
+  getNewlineLine(rowIndex: number): RawDataLineView {
+    if (this.lineIndexDirty) this.rebuildLineIndex();
+    if (rowIndex < 0 || rowIndex >= this.lineStarts.length) {
+      return { offset: this.totalWritten, timestamp: this.getTimeForOffset(this.totalWritten), bytes: new Uint8Array(0) };
+    }
+    const start = this.lineStarts[rowIndex];
+    const end = rowIndex + 1 < this.lineStarts.length ? this.lineStarts[rowIndex + 1] : this.totalWritten;
+    return {
+      offset: start,
+      timestamp: this.getTimeForOffset(start),
+      bytes: this.readRange(start, end),
+    };
   }
 
   /** 查找给定字节偏移对应的时间戳 (毫秒) */
@@ -248,6 +331,7 @@ export class RawDataBuffer {
     this.writePos = stored % cap;
     this.totalWritten = stored;
     this.capacity = cap;
+    this.lineIndexDirty = true;
     this.dirty = true;
     this.scheduleNotify();
   }
@@ -258,6 +342,9 @@ export class RawDataBuffer {
     this.totalWritten = 0;
     this.totalDropped = 0;
     this.chunks = [];
+    this.lineStarts = [];
+    this.lastScannedOffset = 0;
+    this.lineIndexDirty = false;
     this.dirty = true;
     this.scheduleNotify();
   }

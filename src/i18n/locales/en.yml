@@ -101,8 +101,12 @@ options: Options
 
 # Data
 rawData: Raw Data
+gridView: Grid
+lineView: Line
 hexView: HEX
 asciiView: ASCII
+rawDataGlobal: Global
+rawDataChannel: Channel
 send: Send
 clear: Clear
 autoScroll: Auto Scroll
@@ -285,6 +289,16 @@ settingsData: Data Cache
 settingsSerial: Serial Defaults
 settingsNotifications: Notifications
 settingsAbout: About
+backupCategory: Backup
+exportConfig: Export Config
+importConfig: Import Config
+backupExportSuccess: Config exported
+backupExportSuccessDesc: Full app config saved to file
+backupImportSuccess: Config imported
+backupImportSuccessDesc: Restored from backup file
+backupImportSuccessDescReconnect: Restored from backup file. Reconnect the transport to apply the imported connection settings.
+backupExportFailed: Export failed
+backupImportFailed: Import failed
 
 # Setting items - General
 settingLanguage: Language

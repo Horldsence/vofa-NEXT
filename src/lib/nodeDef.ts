@@ -104,6 +104,7 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     case 'Model3D':
     case 'Command':
     case 'TableView':
+    case 'RawData':
       return { kind: 'Sink' };
 
     case 'FrameDecoder': {

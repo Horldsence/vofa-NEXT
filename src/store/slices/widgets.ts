@@ -63,7 +63,8 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
           widget.kind === 'Model3D' ||
           widget.kind === 'Spectrum' ||
           widget.kind === 'Command' ||
-          widget.kind === 'FrameDecoder'
+          widget.kind === 'FrameDecoder' ||
+          widget.kind === 'RawData'
         ) {
           const tabType =
             widget.kind === 'Waveform'
@@ -78,6 +79,8 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
               ? 'spectrum'
               : widget.kind === 'Command'
               ? 'command'
+              : widget.kind === 'RawData'
+              ? 'raw'
               : 'frame-decoder';
           const tabName =
             widget.kind === 'Waveform'
@@ -116,7 +119,8 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
           widget &&
           (widget.kind === 'Waveform' ||
             widget.kind === 'PieChart' ||
-            widget.kind === 'Image')
+            widget.kind === 'Image' ||
+            widget.kind === 'RawData')
         ) {
           const remaining = s.dataTabs.filter((t: any) => t.id !== id);
           newState.dataTabs = remaining;

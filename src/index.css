@@ -749,3 +749,43 @@ body {
     transform-origin: bottom right;
   }
 }
+
+/* ============ RawData 视图动画 ============ */
+/* 内容区切换 (grouping/repr/channel) 入场: 淡入 + 轻微上滑 */
+@keyframes rawdata-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 数值行入场: 淡入 + 轻微下滑 (新行挂载时播放, 已有行不重放) */
+@keyframes rawdata-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rawdata-enter {
+  animation: rawdata-enter 150ms ease-out;
+}
+
+.animate-rawdata-row {
+  animation: rawdata-row-enter 120ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rawdata-enter,
+  .animate-rawdata-row {
+    animation: none;
+  }
+}

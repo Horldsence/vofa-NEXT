@@ -169,7 +169,7 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       );
     }
     case 'raw':
-      return <RawDataView />;
+      return <RawDataView widgetId={tab.widgetId} />;
     case 'pie': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'PieChart'
