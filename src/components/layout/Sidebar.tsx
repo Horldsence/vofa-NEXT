@@ -47,11 +47,17 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
 
   // 标题栏为拖拽源 — 拖到窗口左/右边缘可切换停靠侧
   const setDraggingSidebar = useLayoutStore((s) => s.setDraggingSidebar);
+  const draggingSidebar = useLayoutStore((s) => s.draggingSidebar);
 
   return (
-    <div className="bg-bg-sidebar flex flex-col h-full w-full min-w-[200px] overflow-hidden" onContextMenu={onContextMenu}>
+    <div
+      className={`bg-bg-sidebar flex flex-col h-full w-full min-w-[200px] overflow-hidden ${
+        draggingSidebar ? 'ring-2 ring-inset ring-accent' : ''
+      }`}
+      onContextMenu={onContextMenu}
+    >
       <div
-        className="px-4 h-9 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0 cursor-grab active:cursor-grabbing"
+        className="px-4 h-9 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0 cursor-grab active:cursor-grabbing border-b border-border-subtle"
         draggable
         onDragStart={(e) => {
           e.dataTransfer.setData('text/plain', 'panel:sidebar');
@@ -63,7 +69,7 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
       >
         <span>{t(lang, titleMap[view])}</span>
       </div>
-      <div className="flex-1 overflow-y-auto px-3 pb-3">
+      <div className="flex-1 overflow-y-auto px-3 py-3">
         <AnimatedSwitch switchKey={view} order={['transport', 'protocol', 'widgets']} axis="y">
           {view === 'transport' && <TransportConfigPanel />}
           {view === 'protocol' && <ProtocolSection />}

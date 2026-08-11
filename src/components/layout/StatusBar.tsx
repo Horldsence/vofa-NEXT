@@ -74,7 +74,7 @@ export const StatusBar = memo(function StatusBar() {
   };
 
   const dotColorClass = {
-    Disconnected: 'bg-text-secondary',
+    Disconnected: 'bg-text-muted',
     Connecting: 'bg-yellow animate-pulse',
     Connected: 'bg-green',
     Error: 'bg-red',
@@ -82,35 +82,35 @@ export const StatusBar = memo(function StatusBar() {
 
   return (
     <div className="h-[24px] bg-bg-statusbar text-text-secondary flex items-center px-2 text-xs gap-3 flex-shrink-0" onContextMenu={onContextMenu}>
-      <div className="flex items-center gap-1">
-        <span className={clsx("w-2 h-2 rounded-full inline-block", dotColorClass)} />
-        <span>{stateLabel[connectionState]}</span>
+      <div className="flex items-center gap-1.5 h-full">
+        <span className={clsx("w-2.5 h-2.5 rounded-full inline-block flex-shrink-0", dotColorClass)} />
+        <span className="whitespace-nowrap">{stateLabel[connectionState]}</span>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 h-full whitespace-nowrap">
         {transportLabel[transportKind]}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 h-full whitespace-nowrap">
         {protocolLabel[protocolKind]}
       </div>
       <div className="flex-1" />
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 h-full whitespace-nowrap tabular-nums">
         {t(lang, 'rxBytes')}: {formatBytes(rxBytes)}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 h-full whitespace-nowrap tabular-nums">
         {t(lang, 'txBytes')}: {formatBytes(txBytes)}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 h-full whitespace-nowrap tabular-nums">
         {t(lang, 'rxFrames')}: {rxFrames}
       </div>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 h-full whitespace-nowrap tabular-nums">
         {t(lang, 'txFrames')}: {txFrames}
       </div>
-      <div className="w-px h-3 bg-border mx-1" />
+      <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <CanLoadAlarm />
       <BufferUsageStats />
-      <div className="w-px h-3 bg-border mx-1" />
+      <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <button
-        className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors duration-150"
+        className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors duration-150 flex-shrink-0"
         title={t(lang, 'refresh')}
         onClick={() => refreshPorts()}
       >

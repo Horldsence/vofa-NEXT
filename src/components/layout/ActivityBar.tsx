@@ -75,14 +75,14 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
   ];
 
   return (
-    <div className="w-12 h-full bg-bg-activity flex flex-col items-center pt-1 flex-shrink-0" onContextMenu={onContextMenu}>
+    <div className="w-12 h-full bg-bg-activity flex flex-col items-center py-1 gap-0.5 flex-shrink-0" onContextMenu={onContextMenu}>
       {items.map((item) => (
         <div
           key={item.view}
           data-tour={item.view}
           className={clsx(
-            "w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 relative transition-colors duration-150 hover:text-text-inverse hover:bg-text-inverse/5",
-            activeView === item.view && "text-text-inverse before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-text-inverse"
+            "w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 relative transition-colors duration-150 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active",
+            activeView === item.view && "text-text-inverse bg-accent/10 before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
           )}
           title={t(lang, item.key)}
           onClick={() => transitionStore(() => onSelect(item.view))}
@@ -93,21 +93,21 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
       <div className="flex-1" />
       <div
         data-tour="help"
-        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-text-inverse/5 transition-colors duration-150"
+        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'helpCenterOpen')}
         onClick={openHelp}
       >
         <HelpCircle size={22} />
       </div>
       <div
-        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-text-inverse/5 transition-colors duration-150"
+        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'about')}
         onClick={openAbout}
       >
         <Info size={22} />
       </div>
       <div
-        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-text-inverse/5 transition-colors duration-150"
+        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'settings')}
         onClick={() => openSettings()}
       >

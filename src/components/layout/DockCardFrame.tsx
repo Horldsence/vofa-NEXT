@@ -163,7 +163,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
 
   return (
     <div
-      className="module-card relative flex flex-col bg-bg-editor h-full w-full"
+      className="module-card relative flex flex-col bg-bg-surface h-full w-full"
       onMouseDown={() => setFocusedCard(cardId)}
       {...snapHandlers}
     >
@@ -171,8 +171,12 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
       <div
         ref={tabBarRef}
         data-tour={kind === 'data' ? 'data-tabs' : undefined}
-        className={`relative flex items-center gap-1 bg-bg-panel-header border-b border-border flex-shrink-0 p-1 overflow-x-auto ${
-          mergeHover ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent)]' : ''
+        className={`relative flex items-center gap-1 bg-bg-panel-header border-b border-border-subtle flex-shrink-0 px-2 py-1 overflow-x-auto transition duration-150 ${
+          mergeHover
+            ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent)] bg-accent/10'
+            : mergeActive
+              ? 'bg-accent/5'
+              : ''
         }`}
         onContextMenu={tabBarContextMenu}
         draggable={editingTabId === null}
@@ -210,7 +214,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
             className={`relative px-2.5 h-7 text-xs cursor-pointer rounded-md flex items-center gap-1.5 flex-shrink-0 transition-colors duration-150 ${
               tab.id === activeTabId
                 ? 'text-text-bright'
-                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+                : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active'
             }`}
             draggable={editingTabId !== tab.id}
             onDragStart={(e) => {
@@ -252,7 +256,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
             )}
             {closable(tab.id) && (
               <button
-                className="w-4 h-4 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-0.5 p-0"
+                className="w-4 h-4 flex items-center justify-center rounded-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors cursor-pointer ml-0.5 p-0 flex-shrink-0"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (kind === 'control') removeControlTab(tab.id);
@@ -266,7 +270,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
         ))}
         {kind === 'control' ? (
           <button
-            className="w-6 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer ml-1"
+            className="w-6 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors cursor-pointer ml-1 flex-shrink-0"
             onClick={() => addControlTab()}
             title={t(lang, 'newTab')}
           >
@@ -275,14 +279,14 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
         ) : (
           <>
             <button
-              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center flex-shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center flex-shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors"
               onClick={() => useAppStore.getState().addCanTab()}
               title={t(lang, 'addCanTab')}
             >
               <Cpu size={12} />
             </button>
             <button
-              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center flex-shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center flex-shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors"
               onClick={() => useAppStore.getState().addLogicTab()}
               title={t(lang, 'addLogicTab')}
             >

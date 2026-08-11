@@ -78,7 +78,7 @@ export const WidgetCard = memo(function WidgetCard({
   return (
     <div
       className={clsx(
-        'group bg-bg-sidebar border border-border rounded p-2.5 flex flex-col gap-1.5 relative',
+        'group bg-bg-elevated border border-border rounded p-2.5 flex flex-col gap-1.5 relative',
         'shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-[border-color,box-shadow] duration-150',
         'hover:border-white/15 hover:shadow-[0_4px_14px_rgba(0,0,0,0.4)]',
         !noMinWidth && 'min-w-[140px]',
@@ -89,7 +89,7 @@ export const WidgetCard = memo(function WidgetCard({
       {onRemove && (
         <button
           type="button"
-          className="absolute top-1 right-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary cursor-pointer z-10"
+          className="absolute top-1 right-1 opacity-0 transition duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active cursor-pointer z-10"
           onClick={onRemove}
         >
           <X size={12} />
@@ -101,7 +101,7 @@ export const WidgetCard = memo(function WidgetCard({
         <button
           type="button"
           className={clsx(
-            'absolute top-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary cursor-pointer z-10',
+            'absolute top-1 opacity-0 transition duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active cursor-pointer z-10',
             onRemove ? 'right-7' : 'right-1',
           )}
           onClick={onEdit}
@@ -125,7 +125,7 @@ export const WidgetCard = memo(function WidgetCard({
             </span>
           )}
           {label && (
-            <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">
+            <div className="text-xs text-text-secondary uppercase tracking-[0.3px] min-w-0 truncate leading-none">
               {label}
             </div>
           )}
