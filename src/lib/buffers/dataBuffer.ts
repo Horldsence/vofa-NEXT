@@ -1,4 +1,5 @@
 import type { DataFrame, RawDataBatch, WaveformWindow } from '../../types';
+import { createFrameBatcher } from '../utils/frameBatcher';
 
 export const RAWDATA_BYTES_PER_ROW = 16;
 
@@ -22,12 +23,16 @@ class WaveformWindowCache {
   private _version = 0;
   private listeners = new Set<() => void>();
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
+  /// 统计通知按帧合并: 同一帧内多次 set/clear 只通知一次, 避免状态栏 30FPS+ 重渲染
+  private statsBatcher = createFrameBatcher<{ usage: number; length: number; capacity: number }>(
+    (s) => this.flushStats(s.usage, s.length, s.capacity)
+  );
 
   set(window: WaveformWindow) {
     this.latest = window;
     this._version++;
     this.notify();
-    this.notifyStats();
+    this.statsBatcher.push(this.currentStats());
   }
 
   get(): WaveformWindow {
@@ -42,7 +47,7 @@ class WaveformWindowCache {
     this.latest = { timestamps: [], channels: [], channel_count: 0 };
     this._version++;
     this.notify();
-    this.notifyStats();
+    this.statsBatcher.push(this.currentStats());
   }
 
   subscribe(fn: () => void): () => void {
@@ -53,9 +58,8 @@ class WaveformWindowCache {
   /// 订阅波形缓存使用率统计, usage ∈ [0,1]
   subscribeStats(fn: (usage: number, length: number, capacity: number) => void): () => void {
     this.statsListeners.add(fn);
-    const capacity = Math.max(1, this.latest.buffer_capacity ?? 1);
-    const length = this.latest.buffer_points ?? 0;
-    fn(length / capacity, length, capacity);
+    const stats = this.currentStats();
+    fn(stats.usage, stats.length, stats.capacity);
     return () => this.statsListeners.delete(fn);
   }
 
@@ -63,10 +67,13 @@ class WaveformWindowCache {
     this.listeners.forEach((fn) => fn());
   }
 
-  private notifyStats() {
+  private currentStats() {
     const capacity = Math.max(1, this.latest.buffer_capacity ?? 1);
     const length = this.latest.buffer_points ?? 0;
-    const usage = length / capacity;
+    return { usage: length / capacity, length, capacity };
+  }
+
+  private flushStats(usage: number, length: number, capacity: number) {
     this.statsListeners.forEach((fn) => fn(usage, length, capacity));
   }
 }

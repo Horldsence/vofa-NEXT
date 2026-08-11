@@ -64,11 +64,15 @@ export const useWaveformScopeStore = create<WaveformScopeStore>()((set) => ({
 
   setMeasurements: (widgetId, channelCount, version, m) =>
     set((prev) => {
-      const cur = prev.states[widgetId] ?? createPerWidgetState(channelCount);
+      const cur = prev.states[widgetId];
+      // 同版本重复写入跳过: 测量循环每帧读取版本, 版本未变时数据也未变,
+      // 避免无谓地创建新 states 对象触发订阅组件重渲染
+      if (cur && version === cur.lastMeasureVersion) return prev;
+      const next = cur ?? createPerWidgetState(channelCount);
       return {
         states: {
           ...prev.states,
-          [widgetId]: { ...cur, lastMeasureVersion: version, measurements: m },
+          [widgetId]: { ...next, lastMeasureVersion: version, measurements: m },
         },
       };
     }),

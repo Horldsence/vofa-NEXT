@@ -25,14 +25,16 @@ let decodedEventsSub: { cancel: () => void } | null = null;
 /// RAF 节流的 graphOutputs setter: 60 FPS 推送到模块级缓存,
 /// 但只在 RAF 回调中更新 zustand store (约 16ms 一次, 而非每帧多次)
 let _latestGraphOutputs: Record<string, Record<string, number>> | null = null;
+let _latestGraphOutputsTick = 0;
 let _graphOutputsRafId: number | null = null;
 function throttledSetGraphOutputs(set: any, values: Record<string, Record<string, number>>, tick: number) {
   _latestGraphOutputs = values;
+  _latestGraphOutputsTick = tick;
   if (_graphOutputsRafId !== null) return;
   _graphOutputsRafId = requestAnimationFrame(() => {
     _graphOutputsRafId = null;
     if (_latestGraphOutputs) {
-      set({ graphOutputs: _latestGraphOutputs, graphOutputsTick: tick });
+      set({ graphOutputs: _latestGraphOutputs, graphOutputsTick: _latestGraphOutputsTick });
       _latestGraphOutputs = null;
     }
   });
@@ -126,6 +128,7 @@ export function createEventSlice(set: any, get: any): EventSlice {
           _graphOutputsRafId = null;
         }
         _latestGraphOutputs = null;
+        _latestGraphOutputsTick = 0;
         cleanupWaveformSub();
         if (graphOutputSub) {
           graphOutputSub.cancel();
