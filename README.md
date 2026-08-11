@@ -34,6 +34,7 @@ A next-generation serial assistant fully rebuilt with Rust + Tauri — built for
 </p>
 
 ![](./images/example.png)
+![](./images/example2.png)
 
 ## Table of Contents
 
