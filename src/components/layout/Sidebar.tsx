@@ -1,6 +1,7 @@
 import { useAppStore } from '../../store/appStore';
 import type { SidebarView } from '../../store/appStore';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
+import { transitionStore } from '../../lib/utils/transitionStore';
 import { t } from '../../i18n';
 import { TransportConfigPanel } from '../panels/TransportConfigPanel';
 import { ProtocolSection } from '../panels/ProtocolSection';
@@ -26,7 +27,7 @@ export function Sidebar({ view }: SidebarProps) {
       id: 'toggle-sidebar',
       label: sidebarVisible ? t(lang, 'contextMenuHideSidebar') : t(lang, 'contextMenuShowSidebar'),
       icon: <PanelLeft />,
-      onClick: () => toggleSidebar(sidebarView),
+      onClick: () => transitionStore(() => toggleSidebar(sidebarView)),
     },
     { kind: 'separator' },
     {

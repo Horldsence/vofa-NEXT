@@ -15,6 +15,7 @@ import { api } from '../lib/tauri/tauri';
 import { rawDataBuffer } from '../lib/buffers/dataBuffer';
 import { canFrameBuffer } from '../lib/buffers/canBuffer';
 import { logicSampleBuffer } from '../lib/buffers/logicBuffer';
+import { transitionStore } from '../lib/utils/transitionStore';
 
 const STORE_FILE = 'settings.json';
 const STORE_KEY = 'app';
@@ -140,31 +141,40 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   update: (category, field, value) => {
-    set((s) => {
-      const newSettings: AppSettings = {
-        ...s.settings,
-        [category]: {
-          ...s.settings[category],
-          [field]: value,
-        },
-      };
-      // 异步保存 (防抖 300ms)
-      if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        getStore()
-          .set(STORE_KEY, get().settings)
-          .catch((e: unknown) => console.warn('[settings] 保存失败:', e));
-      }, 300);
-      // 立即应用 appearance 变更
-      if (category === 'appearance') {
-        applyAppearance(newSettings.appearance);
-      }
-      // 立即应用 data 缓存容量变更
-      if (category === 'data') {
-        applyDataCapacity(newSettings);
-      }
-      return { settings: newSettings };
-    });
+    // 外观/主题应用 (CSS 变量 + 全量重绘) 为非紧急更新 — 延迟到 transition 渲染。
+    // 调用点 SettingsModal 不在本次变更范围, 故在 store 动作内包装。
+    const commit = () => {
+      set((s) => {
+        const newSettings: AppSettings = {
+          ...s.settings,
+          [category]: {
+            ...s.settings[category],
+            [field]: value,
+          },
+        };
+        // 异步保存 (防抖 300ms)
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          getStore()
+            .set(STORE_KEY, get().settings)
+            .catch((e: unknown) => console.warn('[settings] 保存失败:', e));
+        }, 300);
+        // 立即应用 appearance 变更
+        if (category === 'appearance') {
+          applyAppearance(newSettings.appearance);
+        }
+        // 立即应用 data 缓存容量变更
+        if (category === 'data') {
+          applyDataCapacity(newSettings);
+        }
+        return { settings: newSettings };
+      });
+    };
+    if (category === 'appearance') {
+      transitionStore(commit);
+    } else {
+      commit();
+    }
   },
 
   reset: () => {

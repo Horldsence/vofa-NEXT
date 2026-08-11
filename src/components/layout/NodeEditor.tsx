@@ -16,6 +16,7 @@ import { useAppStore } from '../../store/appStore';
 import { createWidget } from '../../lib/utils/createWidget';
 import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
+import { transitionStore } from '../../lib/utils/transitionStore';
 import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
@@ -77,7 +78,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       id: 'open-widget-palette',
       label: t(lang, 'widgetPalette'),
       icon: <LayoutGrid />,
-      onClick: () => setSidebarView('widgets'),
+      onClick: () => transitionStore(() => setSidebarView('widgets')),
     },
   ]);
 

@@ -13,6 +13,7 @@ import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
+import { transitionStore } from '../../lib/utils/transitionStore';
 import { t } from '../../i18n';
 
 interface ActivityBarProps {
@@ -37,7 +38,7 @@ export function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
       id: 'toggle-sidebar',
       label: sidebarVisible ? t(lang, 'contextMenuHideSidebar') : t(lang, 'contextMenuShowSidebar'),
       icon: <PanelLeft />,
-      onClick: () => toggleSidebar(sidebarView),
+      onClick: () => transitionStore(() => toggleSidebar(sidebarView)),
     },
     { kind: 'separator' },
     {
@@ -83,7 +84,7 @@ export function ActivityBar({ activeView, onSelect }: ActivityBarProps) {
             activeView === item.view && "text-text-inverse before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-text-inverse"
           )}
           title={t(lang, item.key)}
-          onClick={() => onSelect(item.view)}
+          onClick={() => transitionStore(() => onSelect(item.view))}
         >
           {item.icon}
         </div>

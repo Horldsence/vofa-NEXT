@@ -8,6 +8,7 @@ import { useSnapDrop } from '../ui/SnapDropOverlay';
 import { NodeEditor } from './NodeEditor';
 import { DataTabContent, DataTabIcon } from './DataTabContent';
 import { useContextMenu, showContextMenu } from '../../lib/hooks/useContextMenu';
+import { transitionStore } from '../../lib/utils/transitionStore';
 import { t } from '../../i18n';
 
 /// 通用 Dock 卡片框架 — 标题栏 (Tab 条 + 滑动指示器) + 内容区 + 吸附投放层
@@ -211,7 +212,7 @@ export function DockCardFrame({ cardId }: { cardId: string }) {
               setDraggingTab(null);
               setDropTarget(null);
             }}
-            onClick={() => setActiveTab(cardId, tab.id)}
+            onClick={() => transitionStore(() => setActiveTab(cardId, tab.id))}
             onDoubleClick={() => kind === 'control' && handleStartRename(tab.id, tab.name)}
             onContextMenu={(e) => {
               e.preventDefault();
