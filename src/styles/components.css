@@ -24,10 +24,18 @@
   background-clip: padding-box;
 }
 
+/* ============ 统一键盘焦点环 (全局基线) ============ */
+/* 所有可聚焦交互元素: 仅键盘导航 (:focus-visible) 显示 2px accent 焦点环,
+   鼠标点击聚焦不显示. 各组件可通过更高的特异性覆盖 outline. */
+:where(button, [role='button'], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /* ============ Resize Handle (react-resizable-panels) ============ */
 [data-panel-resize-handle-id] {
   background: transparent;
-  transition: background 0.15s;
+  transition: background-color var(--transition-fast) var(--ease-out-cubic);
 }
 
 [data-panel-resize-handle-id][data-resize-handle-active],
@@ -144,10 +152,11 @@
   background: var(--color-bg-editor);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
   transition:
-    left 0.22s cubic-bezier(0.2, 0, 0, 1),
-    top 0.22s cubic-bezier(0.2, 0, 0, 1),
-    width 0.22s cubic-bezier(0.2, 0, 0, 1),
-    height 0.22s cubic-bezier(0.2, 0, 0, 1);
+    left var(--transition-base) cubic-bezier(0.2, 0, 0, 1),
+    top var(--transition-base) cubic-bezier(0.2, 0, 0, 1),
+    width var(--transition-base) cubic-bezier(0.2, 0, 0, 1),
+    height var(--transition-base) cubic-bezier(0.2, 0, 0, 1),
+    background-color var(--transition-base) var(--ease-in-out);
   pointer-events: none;
 }
 
@@ -204,9 +213,9 @@
 .context-menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-2);
   padding: 0 10px;
-  margin: 0 4px;
+  margin: 0 var(--spacing-1);
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -214,10 +223,16 @@
   text-align: left;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.12s ease;
+  transition: background-color var(--transition-fast) var(--ease-out-cubic);
 }
 
-.context-menu-item:hover:not(:disabled) {
+.context-menu-item:hover:not(:disabled),
+.context-menu-item:focus-visible:not(:disabled) {
+  background: var(--color-bg-hover);
+  color: var(--color-text-bright);
+}
+
+.context-menu-item:active:not(:disabled) {
   background: var(--color-bg-active);
   color: var(--color-text-bright);
 }
@@ -243,30 +258,45 @@
 }
 
 .context-menu-shortcut {
-  margin-left: 16px;
+  margin-left: var(--spacing-4);
   color: var(--color-text-secondary);
   font-size: var(--font-size-xs);
   flex-shrink: 0;
 }
 
-.context-menu-item:hover:not(:disabled) .context-menu-shortcut {
+.context-menu-item:hover:not(:disabled) .context-menu-shortcut,
+.context-menu-item:focus-visible:not(:disabled) .context-menu-shortcut {
   color: var(--color-text-bright);
 }
 
 .context-menu-separator {
   height: 1px;
   background: var(--color-border);
-  margin: 4px 8px;
+  margin: var(--spacing-1) var(--spacing-2);
 }
 
 /* ============ Form 通用样式 ============ */
 /* 标准控件高度 28px (h-7), 全局面板输入/下拉统一 */
-.form-input {
-  @apply w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm font-ui focus:outline-none focus:border-accent transition-colors;
+/* 焦点环: 仅 :focus-visible (键盘导航); hover 用 accent-hover 语义 */
+.form-input,
+.form-select {
+  @apply w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm font-ui;
+  outline: none;
+  transition:
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    box-shadow var(--transition-fast) var(--ease-out-cubic);
 }
 
-.form-select {
-  @apply w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent transition-colors;
+.form-input:hover,
+.form-select:hover {
+  border-color: var(--color-accent-hover);
+}
+
+.form-input:focus-visible,
+.form-select:focus-visible {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 /* ============ Knob 旋钮 (controls/Knob.tsx) ============ */
@@ -278,10 +308,20 @@
   border: 2px solid var(--color-border);
   position: relative;
   cursor: grab;
+  transition: border-color var(--transition-fast) var(--ease-out-cubic);
+}
+
+.knob-dial:hover {
+  border-color: var(--color-accent-hover);
 }
 
 .knob-dial:active {
   cursor: grabbing;
+  border-color: var(--color-accent-active);
+}
+
+.knob-dial:focus-visible {
+  outline-offset: 3px;
 }
 
 .knob-indicator-line {
@@ -305,12 +345,23 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     0 1px 2px rgba(0, 0, 0, 0.6);
   cursor: grab;
-  transition: transform 0.08s ease-out;
+  transition:
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    transform var(--transition-fast) var(--ease-out-cubic);
   touch-action: none;
+}
+
+.step-knob-dial:hover {
+  border-color: var(--color-accent-hover);
 }
 
 .step-knob-dial:active {
   cursor: grabbing;
+  border-color: var(--color-accent-active);
+}
+
+.step-knob-dial:focus-visible {
+  outline-offset: 3px;
 }
 
 .step-knob-rim {
@@ -341,7 +392,17 @@
   width: 100%;
   height: 4px;
   background: var(--color-bg-input);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
+  outline: none;
+  cursor: pointer;
+  transition: background-color var(--transition-fast) var(--ease-out-cubic);
+}
+
+.slider-input:hover {
+  background: var(--color-bg-hover);
+}
+
+.slider-input:focus-visible {
   outline: none;
 }
 
@@ -354,6 +415,10 @@
   background: var(--color-accent);
   cursor: pointer;
   border: 2px solid var(--color-bg-editor);
+  transition:
+    background-color var(--transition-fast) var(--ease-out-cubic),
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    box-shadow var(--transition-fast) var(--ease-out-cubic);
 }
 
 .slider-input::-moz-range-thumb {
@@ -363,6 +428,26 @@
   background: var(--color-accent);
   cursor: pointer;
   border: 2px solid var(--color-bg-editor);
+  transition:
+    background-color var(--transition-fast) var(--ease-out-cubic),
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    box-shadow var(--transition-fast) var(--ease-out-cubic);
+}
+
+.slider-input:hover::-webkit-slider-thumb,
+.slider-input:hover::-moz-range-thumb {
+  background: var(--color-accent-hover);
+}
+
+.slider-input:active::-webkit-slider-thumb,
+.slider-input:active::-moz-range-thumb {
+  background: var(--color-accent-active);
+  box-shadow: 0 0 0 3px var(--color-bg-active);
+}
+
+.slider-input:focus-visible::-webkit-slider-thumb,
+.slider-input:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
 /* ============ Settings Toggle Switch ============ */
@@ -386,7 +471,10 @@
   background: var(--color-bg-input);
   border: 1px solid var(--color-border);
   border-radius: 9px;
-  transition: 0.2s;
+  transition:
+    background-color var(--transition-base) var(--ease-in-out),
+    border-color var(--transition-base) var(--ease-in-out),
+    box-shadow var(--transition-base) var(--ease-in-out);
 }
 
 .settings-toggle-slider::before {
@@ -398,7 +486,13 @@
   top: 2px;
   background: var(--color-text-secondary);
   border-radius: 50%;
-  transition: 0.2s;
+  transition:
+    transform var(--transition-base) var(--ease-in-out),
+    background-color var(--transition-base) var(--ease-in-out);
+}
+
+.settings-toggle:hover .settings-toggle-slider {
+  border-color: var(--color-accent-hover);
 }
 
 .settings-toggle input:checked + .settings-toggle-slider {
@@ -406,9 +500,23 @@
   border-color: var(--color-bg-button);
 }
 
+.settings-toggle input:checked:hover + .settings-toggle-slider {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.settings-toggle input:checked:active + .settings-toggle-slider {
+  background: var(--color-accent-active);
+  border-color: var(--color-accent-active);
+}
+
 .settings-toggle input:checked + .settings-toggle-slider::before {
   transform: translateX(18px);
   background: var(--color-text-bright);
+}
+
+.settings-toggle input:focus-visible + .settings-toggle-slider {
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
 /* ============ Notification Progress Bar ============ */
@@ -641,5 +749,23 @@
   .animate-rawdata-enter,
   .animate-rawdata-row {
     animation: none;
+  }
+}
+
+/* ============ 减少动效: 关闭交互态非必要过渡 ============ */
+/* 仅保留即时反馈 (颜色/边框直接切换), 去掉时延缓动 */
+@media (prefers-reduced-motion: reduce) {
+  [data-panel-resize-handle-id],
+  .context-menu-item,
+  .form-input,
+  .form-select,
+  .knob-dial,
+  .step-knob-dial,
+  .slider-input,
+  .slider-input::-webkit-slider-thumb,
+  .slider-input::-moz-range-thumb,
+  .settings-toggle-slider,
+  .settings-toggle-slider::before {
+    transition: none;
   }
 }

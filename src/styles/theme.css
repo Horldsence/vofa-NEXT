@@ -131,6 +131,19 @@
 
   /* ---------- 阴影 ---------- */
   --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.65);
+
+  /* ---------- 动效 (Motion tokens) ---------- */
+  /* 语义时长别名 — components.css 原生 CSS 直接引用 var(--transition-*) */
+  --transition-fast: 120ms;
+  --transition-base: 200ms;
+  --transition-slow: 320ms;
+  /* Tailwind v4 命名空间: duration-fast/base/slow 工具类 (transition-duration 属主) */
+  --transition-duration-fast: var(--transition-fast);
+  --transition-duration-base: var(--transition-base);
+  --transition-duration-slow: var(--transition-slow);
+  /* 缓动: ease-out-cubic 工具类 + var(--ease-*) 直接引用 */
+  --ease-out-cubic: cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ============ 主题变体 (data-theme 仅用于 CSS 选择器) ============ */
