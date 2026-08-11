@@ -30,16 +30,19 @@ jobs:
             args: '--target universal-apple-darwin'
             artifact-name: macos-universal
             rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            updater-arch: universal
           - platform: macos-latest
             target: aarch64-apple-darwin
             args: '--target aarch64-apple-darwin'
             artifact-name: macos-arm64
             rust-targets: aarch64-apple-darwin
+            updater-arch: aarch64
           - platform: macos-latest
             target: x86_64-apple-darwin
             args: '--target x86_64-apple-darwin'
             artifact-name: macos-amd64
             rust-targets: x86_64-apple-darwin
+            updater-arch: x64
           - platform: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             args: ''
@@ -105,6 +108,19 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
+
+      - name: Rename macOS updater artifacts
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          # tauri 生成的 .app.tar.gz 不含架构名, 三个 macOS target 产物同名 —
+          # 上传 Release 时会冲突 (HTTP 422 name already exists), 补上架构后缀
+          find src-tauri/target -type f -name "*.app.tar.gz*" -path "*/bundle/*" | while read -r f; do
+            case "$f" in
+              *.app.tar.gz)     mv -v "$f" "${f%.app.tar.gz}_${{ matrix.updater-arch }}.app.tar.gz" ;;
+              *.app.tar.gz.sig) mv -v "$f" "${f%.app.tar.gz.sig}_${{ matrix.updater-arch }}.app.tar.gz.sig" ;;
+            esac
+          done
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
