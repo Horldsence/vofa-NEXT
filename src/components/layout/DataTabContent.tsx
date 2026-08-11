@@ -16,7 +16,6 @@ import { WaveformChart } from '../displays/waveform/WaveformChart';
 import { RawDataView } from '../displays/rawdata/RawDataView';
 import { PieChart } from '../displays/widgets/PieChart';
 import { ImageViewer } from '../displays/widgets/ImageViewer';
-import { Model3DWidget } from '../displays/widgets/Model3DWidget';
 import { SpectrumChart } from '../displays/widgets/SpectrumChart';
 import { CommandSender } from '../displays/command/CommandSender';
 import { CanView } from '../displays/can/CanView';
@@ -24,13 +23,17 @@ import { LogicView } from '../displays/logic/LogicView';
 import { FrameDecoder } from '../displays/decoder/FrameDecoder';
 import { TableView } from '../displays/widgets/TableView';
 import { AxisSettings } from '../displays/waveform/AxisSettings';
-import { useEffect, useMemo } from 'react';
+import { SuspenseFallback } from '../ui/SuspenseFallback';
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 import type { WidgetConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
 import { getEffectiveChannel } from '../../types';
 import { waveformWindow } from '../../lib/buffers/dataBuffer';
 import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/utils/scopeUtils';
 import { computeConnectedInputs, type ConnectedInput } from '../displays/waveform/waveformSeries';
 import { useWaveformScopeStore, createPerWidgetState } from '../../store/waveformScopeStore';
+
+// 重型 3D 控件 (Three.js) — 懒加载, 首次切到 model3d Tab 时才拉取
+const Model3DWidget = lazy(() => import('../displays/widgets/Model3DWidget.lazy'));
 
 /// 单个数据 Tab 的内容渲染器 — 由 DockCardFrame 挂载, 可被多个卡片各自实例化
 /// 波形 Tab 的 axisConfig / measurements 按 widgetId 存于 waveformScopeStore,
@@ -199,7 +202,9 @@ export function DataTabContent({ tabId }: { tabId: string }) {
       if (!widget) return noWidget;
       return (
         <div className="flex h-full p-2">
-          <Model3DWidget widget={widget} onRemove={() => {}} />
+          <Suspense fallback={<SuspenseFallback />}>
+            <Model3DWidget widget={widget} onRemove={() => {}} />
+          </Suspense>
         </div>
       );
     }

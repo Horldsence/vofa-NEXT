@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
 import { Settings, Info, RefreshCw, PanelLeft } from 'lucide-react';
@@ -7,12 +7,8 @@ import { Sidebar } from './components/layout/Sidebar';
 import { DockLayout } from './components/layout/DockLayout';
 import { StatusBar } from './components/layout/StatusBar';
 import { NotificationToasts } from './components/NotificationToasts';
-import { SettingsModal } from './components/SettingsModal';
-import { AboutModal } from './components/AboutModal';
-import { CustomWidgetEditorContainer } from './components/CustomWidgetEditorContainer';
-import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
-import { HelpCenterModal } from './components/onboarding/HelpCenterModal';
 import { ContextMenu } from './components/ui/ContextMenu';
+import { SuspenseFallback } from './components/ui/SuspenseFallback';
 import { useContextMenu } from './lib/hooks/useContextMenu';
 import { useAppStore } from './store/appStore';
 import { useSettingsStore } from './store/settingsStore';
@@ -20,6 +16,13 @@ import { useOnboardingStore } from './store/onboardingStore';
 import { useLayoutStore } from './store/layoutStore';
 import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
+
+// 重型弹窗 — 懒加载 (各模块仅含 named export, 经 *.lazy.tsx 包装为 default)
+const SettingsModal = lazy(() => import('./components/SettingsModal.lazy'));
+const AboutModal = lazy(() => import('./components/AboutModal.lazy'));
+const CustomWidgetEditorContainer = lazy(() => import('./components/CustomWidgetEditorContainer.lazy'));
+const OnboardingWizard = lazy(() => import('./components/onboarding/OnboardingWizard.lazy'));
+const HelpCenterModal = lazy(() => import('./components/onboarding/HelpCenterModal.lazy'));
 
 function App() {
   const initEventListeners = useAppStore((s) => s.initEventListeners);
@@ -239,11 +242,21 @@ function App() {
 
       <ContextMenu />
       <NotificationToasts />
-      <SettingsModal />
-      <AboutModal isOpen={isAboutOpen} onClose={closeAbout} />
-      <CustomWidgetEditorContainer />
-      <OnboardingWizard />
-      <HelpCenterModal />
+      <Suspense fallback={<SuspenseFallback overlay />}>
+        <SettingsModal />
+      </Suspense>
+      <Suspense fallback={<SuspenseFallback overlay />}>
+        <AboutModal isOpen={isAboutOpen} onClose={closeAbout} />
+      </Suspense>
+      <Suspense fallback={<SuspenseFallback overlay />}>
+        <CustomWidgetEditorContainer />
+      </Suspense>
+      <Suspense fallback={<SuspenseFallback overlay />}>
+        <OnboardingWizard />
+      </Suspense>
+      <Suspense fallback={<SuspenseFallback overlay />}>
+        <HelpCenterModal />
+      </Suspense>
     </div>
   );
 }
