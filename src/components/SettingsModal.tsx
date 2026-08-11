@@ -20,6 +20,8 @@ import {
   Type,
   Database,
   Pencil,
+  Download,
+  Upload,
 } from 'lucide-react';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAppStore } from '../store/appStore';
@@ -29,6 +31,7 @@ import type { AppSettings } from '../settings/defaults';
 import { ThemeEditor } from './ThemeEditor';
 import { BUILT_IN_THEMES, type ThemeDefinition } from '../settings/theme';
 import { SettingFieldDef, SETTING_FIELDS } from './settingFields';
+import { exportAppToFile, importAppFromFile } from '../lib/appExport';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   general: <SettingsIcon size={16} />,
@@ -272,6 +275,27 @@ export function SettingsModal() {
               );
             })}
             <div className="flex-1" />
+            <div className="mt-2 border-t border-border px-4 pt-2 pb-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary mb-1">
+                {t(lang, 'backupCategory')}
+              </div>
+              <button
+                className="w-full flex items-center gap-2.5 py-1.5 text-text-secondary text-sm cursor-pointer transition-all duration-150 hover:text-text-bright"
+                onClick={() => void exportAppToFile()}
+                title={t(lang, 'exportConfig')}
+              >
+                <Download size={14} />
+                <span>{t(lang, 'exportConfig')}</span>
+              </button>
+              <button
+                className="w-full flex items-center gap-2.5 py-1.5 text-text-secondary text-sm cursor-pointer transition-all duration-150 hover:text-text-bright"
+                onClick={() => void importAppFromFile()}
+                title={t(lang, 'importConfig')}
+              >
+                <Upload size={14} />
+                <span>{t(lang, 'importConfig')}</span>
+              </button>
+            </div>
             <div
               className="flex items-center gap-2.5 px-4 py-2 text-text-secondary text-sm cursor-pointer transition-all duration-150 border-l-2 border-transparent hover:bg-bg-hover hover:text-text-primary"
               onClick={reset}

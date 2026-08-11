@@ -25,6 +25,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(AppState::new())
         .setup(|app| {
             // 构建并设置原生菜单栏 (macOS/Windows/Linux)
@@ -98,6 +100,8 @@ pub fn run() {
             // 原始数据
             commands::subscribe_rawdata,
             commands::unsubscribe_rawdata,
+            commands::subscribe_rawdata_node,
+            commands::unsubscribe_rawdata_node,
             commands::clear_raw_data_collector,
             // CAN 帧
             commands::send_can_frame,
