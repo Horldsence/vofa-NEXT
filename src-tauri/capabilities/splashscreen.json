@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "splashscreen",
+  "description": "Minimal capability for the splashscreen window (plugins inject init scripts into every webview)",
+  "windows": [
+    "splashscreen"
+  ],
+  "permissions": [
+    "notification:allow-is-permission-granted"
+  ]
+}

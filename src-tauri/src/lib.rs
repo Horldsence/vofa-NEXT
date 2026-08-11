@@ -56,6 +56,21 @@ pub fn run() {
             };
             tauri::async_runtime::spawn(state::spectrum_ticker(eval_state_for_spectrum));
 
+            // 启动页兜底: 前端应在初始化完成后调用 close_splashscreen 关闭启动页;
+            // 若前端异常迟迟未调用, 超时强制切换, 防止永远卡在启动页
+            let fallback_handle = app.handle().clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                if let Some(splash) = fallback_handle.get_webview_window("splashscreen") {
+                    log::warn!("splashscreen fallback: force closing after timeout");
+                    let _ = splash.close();
+                }
+                if let Some(main) = fallback_handle.get_webview_window("main") {
+                    let _ = main.show();
+                    let _ = main.set_focus();
+                }
+            });
+
             Ok(())
         })
         .on_menu_event(|app, event| menu::on_menu_event(app, event.id().as_ref()))
@@ -138,6 +153,7 @@ pub fn run() {
             commands::inspect_element,
             // 窗口
             commands::set_window_acrylic,
+            commands::close_splashscreen,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

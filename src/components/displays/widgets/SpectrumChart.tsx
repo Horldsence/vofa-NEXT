@@ -3,6 +3,8 @@ import { Settings2 } from 'lucide-react';
 import type { WidgetConfig, WindowType, SpectrumOutput } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { t } from '../../../i18n';
+import { getThemeColor } from '../waveform/wavechartFormatters';
+import { chipClass } from '../../ui/chip';
 
 interface SpectrumChartProps {
   widget: Extract<WidgetConfig, { kind: 'Spectrum' }>;
@@ -49,6 +51,8 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 跟踪容器尺寸, 触发 canvas 重绘 (响应式)
   const [size, setSize] = useState({ w: 0, h: 0 });
+  // 十字光标位置 (相对 canvas 的 CSS 像素坐标), null = 隐藏
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   // ResizeObserver: 容器尺寸变化时更新 size, 触发重绘
   useEffect(() => {
@@ -173,7 +177,53 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
     ctx.fillStyle = '#aaaaaa';
     ctx.fillText(formatValue(vMax, output), 2, 10);
     ctx.fillText(formatValue(vMin, output), 2, h - 12);
-  }, [result, sampleRate, output, lang, size]);
+
+    // 十字光标 (与示波器一致: 金色虚线 + 读数标签)
+    // Y 轴吸附: X 对齐到最近频点 bin, Y 取该 bin 的曲线值, 交点落在谱线上
+    if (cursor) {
+      const i = Math.max(0, Math.min(n - 1, Math.round((cursor.x / w) * (n - 1))));
+      const snapX = (i / (n - 1)) * w;
+      const snapValue = values[i];
+      const snapY = h - ((snapValue - vMin) / (vMax - vMin)) * h;
+
+      const cursorColor = getThemeColor('--color-waveform-cursor', '#ffd700');
+      ctx.save();
+      ctx.strokeStyle = cursorColor;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 2]);
+      ctx.beginPath();
+      ctx.moveTo(snapX, 0);
+      ctx.lineTo(snapX, h);
+      ctx.moveTo(0, snapY);
+      ctx.lineTo(w, snapY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 吸附点 — 实心圆标记谱线上的实际取值
+      ctx.fillStyle = cursorColor;
+      ctx.beginPath();
+      ctx.arc(snapX, snapY, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 吸附点 频率 / 幅值 读数
+      const freq = freqs[i] ?? (i / (n - 1)) * maxFreq;
+      const label = `${formatFreq(freq)}  ${formatValue(snapValue, output)}`;
+      ctx.font = '10px "JetBrains Mono", monospace';
+      const textW = ctx.measureText(label).width;
+      let lx = snapX + 10;
+      let ly = snapY - 10;
+      if (lx + textW + 8 > w) lx = snapX - textW - 18;
+      if (ly - 13 < 0) ly = snapY + 20;
+      ctx.fillStyle = 'rgba(38, 43, 52, 0.92)';
+      ctx.fillRect(lx - 4, ly - 11, textW + 8, 15);
+      ctx.strokeStyle = cursorColor;
+      ctx.strokeRect(lx - 4, ly - 11, textW + 8, 15);
+      ctx.fillStyle = '#d7dce4';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, lx, ly);
+      ctx.restore();
+    }
+  }, [result, sampleRate, output, lang, size, cursor]);
 
   const handleWindowSizeChange = (sz: number) => {
     updateWidget(id, {
@@ -206,15 +256,22 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
   };
 
   return (
-    <div className="group bg-bg-sidebar border border-[#81c784] rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+    <div className="group bg-bg-sidebar flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
       {/* 主区: 频谱 Canvas 铺满 */}
-      <div className="flex-1 min-w-0 min-h-0 relative bg-[#1e1e1e]">
+      <div
+        className="flex-1 min-w-0 min-h-0 relative bg-[#1e1e1e] cursor-crosshair"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setCursor({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        }}
+        onMouseLeave={() => setCursor(null)}
+      >
         <canvas
           ref={canvasRef}
           style={{ width: '100%', height: '100%', display: 'block' }}
         />
         {/* 状态标签覆盖左上角 */}
-        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-[#81c784]/15 text-[#81c784] border border-[#81c784]/40 rounded-sm text-[10px] font-semibold pointer-events-none">
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-accent/15 text-accent border border-accent/40 rounded-sm text-[10px] font-semibold pointer-events-none">
           {windowSize} · {output}
         </div>
         {onEdit && (
@@ -230,14 +287,14 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
       {/* 侧栏: 设置面板 (固定宽, 纵向滚动, 直接展开) */}
       <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-2.5">
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1">{t(lang, 'spectrumSettings')}</div>
-        <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim rounded-sm border border-border">
+        <div className="flex flex-col gap-1.5 px-1">
             <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
               <label className="text-text-secondary">{t(lang, 'spectrumWindowSize')}</label>
               <div className="flex flex-wrap gap-0.5 col-span-2">
                 {WINDOW_SIZE_OPTIONS.map((sz) => (
                   <button
                     key={sz}
-                    className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#81c784] hover:text-[#81c784] ${windowSize === sz ? 'bg-[#81c784]/20 border-[#81c784] text-[#81c784]' : ''}`}
+                    className={chipClass(windowSize === sz)}
                     onClick={() => handleWindowSizeChange(sz)}
                   >
                     {sz}
@@ -251,7 +308,7 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
                 {WINDOW_TYPE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#81c784] hover:text-[#81c784] ${windowType === opt.value ? 'bg-[#81c784]/20 border-[#81c784] text-[#81c784]' : ''}`}
+                    className={chipClass(windowType === opt.value)}
                     onClick={() => handleWindowTypeChange(opt.value)}
                   >
                     {t(lang, opt.labelKey)}
@@ -265,7 +322,7 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
                 {OUTPUT_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#81c784] hover:text-[#81c784] ${output === opt.value ? 'bg-[#81c784]/20 border-[#81c784] text-[#81c784]' : ''}`}
+                    className={chipClass(output === opt.value)}
                     onClick={() => handleOutputChange(opt.value)}
                   >
                     {t(lang, opt.labelKey)}

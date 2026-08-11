@@ -121,7 +121,7 @@ interface Model3DTabViewProps {
 
 const Model3DTabView = memo(function Model3DTabView({ widget, onRemove }: Model3DTabViewProps) {
   return (
-    <div className="flex h-full p-2">
+    <div className="flex h-full">
       <Suspense fallback={<SuspenseFallback />}>
         <Model3DWidget widget={widget} onRemove={onRemove} />
       </Suspense>
@@ -136,7 +136,7 @@ interface SpectrumTabViewProps {
 
 const SpectrumTabView = memo(function SpectrumTabView({ widget, onRemove }: SpectrumTabViewProps) {
   return (
-    <div className="flex h-full p-2">
+    <div className="flex h-full">
       <SpectrumChart widget={widget} onRemove={onRemove} />
     </div>
   );

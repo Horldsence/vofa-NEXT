@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { Settings, Info, RefreshCw, PanelLeft } from 'lucide-react';
 import { ActivityBar } from './components/layout/ActivityBar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -37,11 +38,15 @@ function App() {
   const openAbout = useSettingsStore((s) => s.openAbout);
   const isAboutOpen = useSettingsStore((s) => s.isAboutOpen);
   const closeAbout = useSettingsStore((s) => s.closeAbout);
+  const isSettingsOpen = useSettingsStore((s) => s.isOpen);
 
   const settingsLoaded = useSettingsStore((s) => s.loaded);
   const showOnboarding = useSettingsStore((s) => s.settings.general.showOnboarding);
   const hasOpenedOnboarding = useOnboardingStore((s) => s.hasOpenedThisSession);
   const openOnboarding = useOnboardingStore((s) => s.openWizard);
+  const isWizardOpen = useOnboardingStore((s) => s.isWizardOpen);
+  const isHelpOpen = useOnboardingStore((s) => s.isHelpOpen);
+  const isCustomEditorOpen = useAppStore((s) => s.customEditorState.open);
 
   // 布局编排 (侧边栏停靠; 中央区模块树由 dockStore 负责)
   const sidebarDock = useLayoutStore((s) => s.sidebarDock);
@@ -112,6 +117,13 @@ function App() {
       cleanupRef.fn?.();
     };
   }, []);
+
+  // 设置加载完成后: 关闭启动页并显示主窗口
+  // 注意不能用 requestAnimationFrame 等待首帧 — 窗口隐藏时 rAF 会被系统节流不触发
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    void invoke('close_splashscreen');
+  }, [settingsLoaded]);
 
   // 设置加载完成后，根据 showOnboarding 自动弹出首次引导（仅一次）
   useEffect(() => {
@@ -243,21 +255,32 @@ function App() {
 
       <ContextMenu />
       <NotificationToasts />
-      <Suspense fallback={<SuspenseFallback overlay />}>
-        <SettingsModal />
-      </Suspense>
-      <Suspense fallback={<SuspenseFallback overlay />}>
-        <AboutModal isOpen={isAboutOpen} onClose={closeAbout} />
-      </Suspense>
-      <Suspense fallback={<SuspenseFallback overlay />}>
-        <CustomWidgetEditorContainer />
-      </Suspense>
-      <Suspense fallback={<SuspenseFallback overlay />}>
-        <OnboardingWizard />
-      </Suspense>
-      <Suspense fallback={<SuspenseFallback overlay />}>
-        <HelpCenterModal />
-      </Suspense>
+      {/* 弹窗按需挂载: 打开时才触发懒加载, 避免启动时 5 个 lazy chunk 并发加载导致全屏遮罩闪烁 */}
+      {isSettingsOpen && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <SettingsModal />
+        </Suspense>
+      )}
+      {isAboutOpen && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <AboutModal isOpen={isAboutOpen} onClose={closeAbout} />
+        </Suspense>
+      )}
+      {isCustomEditorOpen && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <CustomWidgetEditorContainer />
+        </Suspense>
+      )}
+      {isWizardOpen && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <OnboardingWizard />
+        </Suspense>
+      )}
+      {isHelpOpen && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <HelpCenterModal />
+        </Suspense>
+      )}
     </div>
   );
 }

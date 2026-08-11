@@ -51,3 +51,22 @@ pub fn set_window_acrylic<R: Runtime>(window: WebviewWindow<R>, enabled: bool) {
         let _ = (&window, enabled);
     });
 }
+
+/// 关闭启动页窗口并显示主窗口。
+///
+/// 前端在应用初始化完成（设置加载完毕、首帧已渲染）后调用本命令。
+/// 两个窗口都可能已不存在（如重复调用），失败仅记录日志。
+#[tauri::command]
+pub fn close_splashscreen(app: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(splash) = app.get_webview_window("splashscreen") {
+        if let Err(e) = splash.close() {
+            log::warn!("close splashscreen failed: {e}");
+        }
+    }
+    if let Some(main) = app.get_webview_window("main") {
+        if let Err(e) = main.show().and_then(|_| main.set_focus()) {
+            log::warn!("show main window failed: {e}");
+        }
+    }
+}

@@ -7,6 +7,7 @@ import type { WidgetConfig, Model3DMode } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
 import { t } from '../../../i18n';
+import { chipClass } from '../../ui/chip';
 
 interface Model3DWidgetProps {
   widget: Extract<WidgetConfig, { kind: 'Model3D' }>;
@@ -21,8 +22,9 @@ const MODE_OPTIONS: { value: Model3DMode; labelKey: string }[] = [
 
 /// 拖尾轨迹 — 维护历史点队列, 用 Line + Points 渲染
 ///
-/// 使用 useEffect 累积点而非直接渲染 [x,y,z], 这样 Three.js 只更新 geometry attribute,
-/// 不会因 React 重建对象导致 GC 压力
+/// Line/geometry/material 只创建一次, 后续通过更新 position attribute 驱动;
+/// 不能在 JSX 里 new THREE.Line() — R3F 的 <primitive> 未换 key 不会替换已挂载实例,
+/// 会导致画面永远停留在首帧的空 geometry (轨迹"固定在原点"的 bug 根源)
 function Trajectory({
   positions,
   color,
@@ -30,34 +32,54 @@ function Trajectory({
   positions: Float32Array;
   color: string;
 }) {
-  const lineRef = useRef<THREE.Line>(null);
+  // 一次性创建底层对象 (frustumCulled=false: 拖尾增长期包围球滞后, 防止误剔除)
+  const { line, geometry, material } = useMemo(() => {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const material = new THREE.LineBasicMaterial({ color });
+    const line = new THREE.Line(geometry, material);
+    line.frustumCulled = false;
+    return { line, geometry, material };
+    // 仅创建一次, 后续变化由下方 effect 原地更新
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // 创建一份可复用的 geometry, 每次 positions 变化时更新 attribute
-  const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry();
-    const attr = new THREE.BufferAttribute(positions, 3);
-    geo.setAttribute('position', attr);
-    return geo;
-  }, [positions]);
-
+  // 颜色变化 → 原地更新材质
   useEffect(() => {
-    geometry.attributes.position.needsUpdate = true;
+    material.color.set(color);
+  }, [material, color]);
+
+  // 轨迹点变化 → 更新 position attribute (长度不变时复用缓冲, 避免每帧分配)
+  useEffect(() => {
+    const attr = geometry.attributes.position as THREE.BufferAttribute;
+    if (attr.count === positions.length / 3) {
+      attr.array.set(positions);
+      attr.needsUpdate = true;
+    } else {
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    }
   }, [geometry, positions]);
+
+  // 卸载时释放 GPU 资源
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      material.dispose();
+    },
+    [geometry, material]
+  );
+
+  // 端点小球跟随最新轨迹点
+  const n = positions.length;
+  const end: [number, number, number] =
+    n >= 3 ? [positions[n - 3], positions[n - 2], positions[n - 1]] : [0, 0, 0];
 
   return (
     <>
       {/* 折线 */}
-      <primitive
-        object={
-          new THREE.Line(
-            geometry,
-            new THREE.LineBasicMaterial({ color, linewidth: 2 })
-          )
-        }
-        ref={lineRef}
-      />
+      <primitive object={line} />
       {/* 端点小球 */}
-      <mesh>
+      <mesh position={end}>
         <sphereGeometry args={[0.05, 12, 12]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.5} />
       </mesh>
@@ -174,7 +196,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
   const modeLabel = t(lang, MODE_OPTIONS.find((o) => o.value === mode)?.labelKey ?? 'model3dTrajectory');
 
   return (
-    <div className="group bg-bg-sidebar border border-blue/30 rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+    <div className="group bg-bg-sidebar flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
       {/* 主区: 3D Canvas 铺满 */}
       <div className="flex-1 min-w-0 min-h-0 bg-[#0a0a0a] relative">
         <Canvas
@@ -205,7 +227,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
           <OrbitControls makeDefault />
         </Canvas>
         {/* 模式标签覆盖在左上角 */}
-        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-blue/15 border border-blue/40 rounded-sm text-blue text-[10px] font-semibold uppercase tracking-[0.3px] pointer-events-none">
+        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-accent/15 border border-accent/40 rounded-sm text-accent text-[10px] font-semibold uppercase tracking-[0.3px] pointer-events-none">
           {modeLabel}
         </div>
         {onEdit && (
@@ -230,14 +252,14 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
           ))}
         </div>
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1 pt-1">{t(lang, 'model3dSettings')}</div>
-        <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim border border-border rounded-sm">
+        <div className="flex flex-col gap-1.5 px-1">
           <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
             <label className="text-[10px] text-text-secondary">{t(lang, 'model3dMode')}</label>
             <div className="flex gap-0.5">
               {MODE_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
-                  className={`flex-1 px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-blue hover:text-blue ${mode === opt.value ? 'bg-blue/20 border-blue text-blue' : ''}`}
+                  className={`flex-1 ${chipClass(mode === opt.value)}`}
                   onClick={() => handleModeChange(opt.value)}
                 >
                   {t(lang, opt.labelKey)}

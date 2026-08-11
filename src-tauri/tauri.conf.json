@@ -19,7 +19,23 @@
         "minWidth": 900,
         "minHeight": 600,
         "dragDropEnabled": false,
-        "transparent": true
+        "transparent": true,
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "title": "VOFA-Next",
+        "width": 480,
+        "height": 220,
+        "resizable": false,
+        "maximizable": false,
+        "minimizable": false,
+        "decorations": false,
+        "transparent": true,
+        "center": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "url": "/splashscreen.html"
       }
     ],
     "security": {
