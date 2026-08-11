@@ -82,6 +82,8 @@ jobs:
             -name "*.AppImage" -o \
             -name "*.msi" -o \
             -name "*.exe" -o \
+            -name "*.app.tar.gz" -o \
+            -name "*.nsis.zip" -o \
             -name "*.sig" \
           \) | sort)
           if [ ${#FILES[@]} -eq 0 ]; then
@@ -92,6 +94,58 @@ jobs:
           printf '  %s\n' "${FILES[@]}"
           printf '%s\n' "${FILES[@]}" > /tmp/release-assets.txt
           echo "count=${#FILES[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate latest.json (updater manifest)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v${{ inputs.version }}"
+          BASE="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          PLATFORMS='{}'
+
+          add_platform() {
+            local key="$1" file="$2"
+            local sig_file="${file}.sig"
+            if [ ! -f "$sig_file" ]; then
+              echo "::warning::缺少签名文件 $sig_file，跳过平台 $key"
+              return 0
+            fi
+            local sig name
+            sig=$(tr -d '\r\n' < "$sig_file")
+            name=$(basename "$file")
+            PLATFORMS=$(jq --arg k "$key" --arg sig "$sig" --arg url "$BASE/$name" \
+              '. + {($k): {signature: $sig, url: $url}}' <<< "$PLATFORMS")
+            echo "平台 $key → $name"
+          }
+
+          while IFS= read -r f; do
+            case "$f" in
+              *_universal.app.tar.gz) add_platform darwin-universal "$f" ;;
+              *_aarch64.app.tar.gz)   add_platform darwin-aarch64 "$f" ;;
+              *_x64.app.tar.gz)       add_platform darwin-x86_64 "$f" ;;
+              *_amd64.AppImage)       add_platform linux-x86_64 "$f" ;;
+              *.nsis.zip)             add_platform windows-x86_64 "$f" ;;
+            esac
+          done < <(find artifacts -type f \( \
+            -name "*.app.tar.gz" -o -name "*.AppImage" -o -name "*.nsis.zip" \
+          \) | sort)
+
+          if [ "$PLATFORMS" = '{}' ]; then
+            echo "::warning::未找到任何带签名的更新包，跳过 latest.json 生成 (应用内检查更新将不可用)。请确认 CI 已配置 TAURI_SIGNING_PRIVATE_KEY。"
+            exit 0
+          fi
+
+          jq -n \
+            --arg version "${{ inputs.version }}" \
+            --arg notes "v${{ inputs.version }}" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --argjson platforms "$PLATFORMS" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
+            > artifacts/latest.json
+
+          echo "=== latest.json ==="
+          cat artifacts/latest.json
+          echo "$(pwd)/artifacts/latest.json" >> /tmp/release-assets.txt
 
       - name: Create GitHub Release
         shell: bash

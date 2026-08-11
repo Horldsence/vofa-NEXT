@@ -22,7 +22,9 @@ import {
   Pencil,
   Download,
   Upload,
+  RefreshCw,
 } from 'lucide-react';
+import { getVersion } from '@tauri-apps/api/app';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAppStore } from '../store/appStore';
 import { t } from '../i18n';
@@ -32,6 +34,7 @@ import { ThemeEditor } from './ThemeEditor';
 import { BUILT_IN_THEMES, type ThemeDefinition } from '../settings/theme';
 import { SettingFieldDef, SETTING_FIELDS } from './settingFields';
 import { exportAppToFile, importAppFromFile } from '../lib/appExport';
+import { useUpdater } from '../lib/useUpdater';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   general: <SettingsIcon size={16} />,
@@ -65,8 +68,15 @@ export function SettingsModal() {
   const reset = useSettingsStore((s) => s.reset);
   const resetCategory = useSettingsStore((s) => s.resetCategory);
   const [themeEditorOpen, setThemeEditorOpen] = useState(false);
+  const { state: updateState, checkUpdate, install, restart } = useUpdater();
+  const [appVersion, setAppVersion] = useState('');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // 读取当前应用版本
+  useEffect(() => {
+    void getVersion().then(setAppVersion).catch(() => setAppVersion(''));
+  }, []);
 
   // ESC 关闭 + 自动聚焦搜索框
   useEffect(() => {
@@ -111,6 +121,24 @@ export function SettingsModal() {
   }, [filteredFields]);
 
   if (!isOpen) return null;
+
+  // 更新按钮行为与状态文案
+  const updateBusy = updateState.status === 'checking' || updateState.status === 'downloading';
+  const updateLabel =
+    updateState.status === 'checking'
+      ? t(lang, 'updateChecking')
+      : updateState.status === 'available'
+        ? `${t(lang, 'updateDownload')} v${updateState.version}`
+        : updateState.status === 'downloading'
+          ? `${t(lang, 'updateDownloading')} ${updateState.percent}%`
+          : updateState.status === 'ready'
+            ? t(lang, 'updateRelaunch')
+            : t(lang, 'updateCheck');
+  const handleUpdateClick = () => {
+    if (updateState.status === 'ready') void restart();
+    else if (updateState.status === 'available') void install();
+    else if (!updateBusy) void checkUpdate();
+  };
 
   // 渲染单个控件
   const renderControl = (def: SettingFieldDef) => {
@@ -295,6 +323,46 @@ export function SettingsModal() {
                 <Upload size={14} />
                 <span>{t(lang, 'importConfig')}</span>
               </button>
+            </div>
+            <div className="mt-2 border-t border-border px-4 pt-2 pb-1">
+              <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary mb-1">
+                {t(lang, 'updateCategory')}
+              </div>
+              {appVersion && (
+                <div className="text-xs text-text-secondary pb-1">
+                  {t(lang, 'updateCurrentVersion')}: v{appVersion}
+                </div>
+              )}
+              <button
+                className={`w-full flex items-center gap-2.5 py-1.5 text-text-secondary text-sm transition-all duration-150 ${
+                  updateBusy ? 'opacity-60 cursor-wait' : 'cursor-pointer hover:text-text-bright'
+                }`}
+                onClick={handleUpdateClick}
+                disabled={updateBusy}
+                title={updateLabel}
+              >
+                <RefreshCw size={14} className={updateBusy ? 'animate-spin' : ''} />
+                <span>{updateLabel}</span>
+              </button>
+              {updateState.status === 'downloading' && (
+                <div className="h-1 rounded-full bg-bg-hover overflow-hidden mb-1">
+                  <div
+                    className="h-full bg-accent transition-all duration-200"
+                    style={{ width: `${updateState.percent}%` }}
+                  />
+                </div>
+              )}
+              {updateState.status === 'up-to-date' && (
+                <div className="text-xs text-text-secondary pb-1">{t(lang, 'updateUpToDate')}</div>
+              )}
+              {updateState.status === 'ready' && (
+                <div className="text-xs text-text-secondary pb-1">{t(lang, 'updateReady')}</div>
+              )}
+              {updateState.status === 'error' && (
+                <div className="text-xs text-red-400 pb-1 break-all">
+                  {t(lang, 'updateError')}: {updateState.message}
+                </div>
+              )}
             </div>
             <div
               className="flex items-center gap-2.5 px-4 py-2 text-text-secondary text-sm cursor-pointer transition-all duration-150 border-l-2 border-transparent hover:bg-bg-hover hover:text-text-primary"

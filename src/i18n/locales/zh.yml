@@ -292,6 +292,16 @@ settingsAbout: 关于
 backupCategory: 备份
 exportConfig: 导出配置
 importConfig: 导入配置
+updateCategory: 应用更新
+updateCurrentVersion: 当前版本
+updateCheck: 检查更新
+updateChecking: 正在检查…
+updateDownload: 下载更新
+updateDownloading: 正在下载
+updateReady: 更新已安装，重启后生效
+updateRelaunch: 重启应用
+updateUpToDate: 已是最新版本
+updateError: 更新失败
 backupExportSuccess: 配置导出成功
 backupExportSuccessDesc: 应用完整配置已保存到文件
 backupImportSuccess: 配置导入成功
@@ -647,6 +657,10 @@ tourConnectTitle: 连接设备
 tourConnectContent: 参数配置完成后，点击这里的“连接”按钮开始接收数据。连接状态会在底部状态栏显示。
 tourDataTitle: 数据显示区
 tourDataContent: 底部会显示波形、原始数据、CAN 帧、逻辑分析仪等 Tab。点击右侧的 CPU / 电路板图标可新增 CAN 或逻辑分析仪页面。
+tourWindowOrganizeTitle: 多窗口组织
+tourWindowOrganizeContent: 拖动 Tab 到其他窗口的标题栏可合并为一组；拖动 Tab 或标题栏空白处到窗口边缘，可拆分为并排窗口；拖到页面四边可停靠为整行/整列。
+tourWindowResizeTitle: 窗口调整
+tourWindowResizeContent: 拖动窗口之间的分隔条可调整大小；双击控件 Tab 可重命名，右键 Tab 可关闭或关闭其他 Tab。窗口布局会自动保存，下次打开保持不变。
 tourHelpTitle: 帮助中心
 tourHelpContent: 任何时候点击左下角的帮助图标，都可以重新打开帮助中心或本引导。你也能在设置中关闭使用引导。
 
@@ -705,6 +719,23 @@ helpCustomSteps: |-
   render 函数通过 ctx.inputs / ctx.settings 读取数据并操作 ctx.el
   使用 ctx.send 向下游输出端口发送值
   自定义脚本在 iframe 沙箱中运行，受安全限制，首次使用会显示性能警告
+helpWindowOrganize: 多窗口组织
+helpWindowOrganizeDesc: 中央工作区由可停靠的窗口（卡片）组成，控件画布与数据视图可自由拆分、合并。
+helpWindowOrganizeSteps: |-
+  拖动单个 Tab 到另一窗口的标题栏，将其合并为该窗口的一个 Tab（仅限同类型窗口）
+  拖动 Tab 到某个窗口的边缘（上/下/左/右），将其拆分为独立窗口
+  拖动标题栏空白处可整体移动窗口，放到其他窗口边缘或页面四边
+  拖到页面四边的热区，可将窗口停靠为整行/整列条带
+  拖拽过程中会显示蓝色预览区，指示释放后的落点位置
+  清空所有 Tab 的窗口会自动移除
+helpWindowResize: 窗口调整
+helpWindowResizeDesc: 调整窗口大小与管理 Tab，布局会自动保存。
+helpWindowResizeSteps: |-
+  拖动相邻窗口之间的分隔条，调整各窗口的宽高占比
+  双击控件画布的 Tab 可重命名
+  右键 Tab 可关闭当前 Tab、关闭其他 Tab；控件画布 Tab 还支持复制
+  右键标题栏空白处可新建控件 Tab 或添加 CAN / 逻辑分析仪页面
+  窗口布局（拆分方式与大小）会自动持久化，重启应用后保持不变
 
 # CAN
 canFrames: CAN 帧

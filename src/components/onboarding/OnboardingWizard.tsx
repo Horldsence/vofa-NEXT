@@ -49,6 +49,15 @@ export function OnboardingWizard() {
       contentKey: 'tourDataContent',
     },
     {
+      target: 'data-tabs',
+      titleKey: 'tourWindowOrganizeTitle',
+      contentKey: 'tourWindowOrganizeContent',
+    },
+    {
+      titleKey: 'tourWindowResizeTitle',
+      contentKey: 'tourWindowResizeContent',
+    },
+    {
       target: 'help',
       titleKey: 'tourHelpTitle',
       contentKey: 'tourHelpContent',

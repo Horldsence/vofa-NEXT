@@ -10,6 +10,8 @@ import {
   Cpu,
   CircuitBoard,
   BookOpen,
+  PanelsTopLeft,
+  Scaling,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -70,6 +72,20 @@ export const HELP_SECTIONS: HelpSection[] = [
     titleKey: 'helpCustom',
     descKey: 'helpCustomDesc',
     stepsKey: 'helpCustomSteps',
+  },
+  {
+    id: 'window-organize',
+    icon: PanelsTopLeft,
+    titleKey: 'helpWindowOrganize',
+    descKey: 'helpWindowOrganizeDesc',
+    stepsKey: 'helpWindowOrganizeSteps',
+  },
+  {
+    id: 'window-resize',
+    icon: Scaling,
+    titleKey: 'helpWindowResize',
+    descKey: 'helpWindowResizeDesc',
+    stepsKey: 'helpWindowResizeSteps',
   },
 ];
 

@@ -292,6 +292,16 @@ settingsAbout: About
 backupCategory: Backup
 exportConfig: Export Config
 importConfig: Import Config
+updateCategory: App Update
+updateCurrentVersion: Current version
+updateCheck: Check for Updates
+updateChecking: Checking…
+updateDownload: Download Update
+updateDownloading: Downloading
+updateReady: Update installed, takes effect after restart
+updateRelaunch: Relaunch App
+updateUpToDate: You're up to date
+updateError: Update failed
 backupExportSuccess: Config exported
 backupExportSuccessDesc: Full app config saved to file
 backupImportSuccess: Config imported
@@ -647,6 +657,10 @@ tourConnectTitle: Connect Device
 tourConnectContent: After configuring parameters, click Connect here to start receiving data. Connection status is shown in the bottom status bar.
 tourDataTitle: Data Display Area
 tourDataContent: The bottom area shows tabs for Waveform, Raw Data, CAN Frames, Logic Analyzer, etc. Click the CPU / circuit icons on the right to add CAN or Logic Analyzer tabs.
+tourWindowOrganizeTitle: Multi-Window Organization
+tourWindowOrganizeContent: Drag a tab onto another window's title bar to merge them; drag a tab or the title bar to a window's edge to split it into a side-by-side window; drag to the page edges to dock as a full row or column.
+tourWindowResizeTitle: Window Adjustment
+tourWindowResizeContent: Drag the divider between windows to resize them; double-click a control tab to rename it, and right-click a tab to close it or close others. The window layout is saved automatically.
 tourHelpTitle: Help Center
 tourHelpContent: You can reopen the Help Center or this tour anytime by clicking the help icon at the bottom-left. You can also disable the tour in Settings.
 
@@ -705,6 +719,23 @@ helpCustomSteps: |-
   The render function reads ctx.inputs / ctx.settings and manipulates ctx.el
   Use ctx.send to emit values to downstream output ports
   Custom scripts run in an iframe sandbox with security restrictions; a performance warning is shown on first use
+helpWindowOrganize: Multi-Window Organization
+helpWindowOrganizeDesc: The central workspace is made of dockable windows (cards); widget canvases and data views can be split and merged freely.
+helpWindowOrganizeSteps: |-
+  Drag a tab onto another window's title bar to merge it as a tab of that window (same window kind only)
+  Drag a tab to a window's edge (top/bottom/left/right) to split it into a separate window
+  Drag the empty area of a title bar to move the whole window onto another window's edge or the page edges
+  Drop onto the hot zones at the page edges to dock the window as a full row / column strip
+  A blue preview area shows where the window will land before you release
+  A window is removed automatically once all its tabs are gone
+helpWindowResize: Window Adjustment
+helpWindowResizeDesc: Resize windows and manage tabs; the layout is saved automatically.
+helpWindowResizeSteps: |-
+  Drag the divider between adjacent windows to adjust their width / height ratio
+  Double-click a control-canvas tab to rename it
+  Right-click a tab to close it or close others; control-canvas tabs can also be duplicated
+  Right-click the empty title-bar area to add a control tab or a CAN / Logic Analyzer page
+  The window layout (splits and sizes) is persisted automatically and restored on next launch
 
 # CAN
 canFrames: CAN Frames

@@ -116,6 +116,8 @@ jobs:
             src-tauri/target/**/bundle/**/*.AppImage
             src-tauri/target/**/bundle/**/*.msi
             src-tauri/target/**/bundle/**/*.exe
+            src-tauri/target/**/bundle/**/*.app.tar.gz
+            src-tauri/target/**/bundle/**/*.nsis.zip
             src-tauri/target/**/bundle/**/*.sig
           retention-days: 30
           if-no-files-found: error
