@@ -39,6 +39,7 @@ A next-generation serial assistant fully rebuilt with Rust + Tauri — built for
 
 - [Introduction](#introduction)
 - [Core Features](#core-features)
+- [Usage Guide](#usage-guide)
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
@@ -55,6 +56,8 @@ A next-generation serial assistant fully rebuilt with Rust + Tauri — built for
 VOFA-NEXT is a desktop serial assistant designed for embedded debugging scenarios. The frontend is built with React 19 + TypeScript + Vite, while the backend is powered by Rust + Tauri 2 to deliver high-performance transport I/O, protocol parsing, a node-graph DAG engine, DSP (FIR/IIR filters, FFT spectrum), and automotive diagnostic protocols (ISO-TP / UDS / OBD-II / J1939).
 
 The app supports 7 transport types, 7 protocol engines, a React Flow-based node editor for dataflow orchestration, oscilloscope-style waveform display, CAN frame / load analysis, logic analyzer with UART/I2C/SPI decoding, and a custom JS widget system running in sandboxed iframes.
+
+The UI features a **dock-style window layout**: control canvases and data views are presented as splittable, mergeable, dockable cards with multi-tab switching, and the layout is persisted automatically.
 
 ## Core Features
 
@@ -97,18 +100,81 @@ The app supports 7 transport types, 7 protocol engines, a React Flow-based node 
 - **CAN frame list / CAN sender / CAN load view** — with CSV export and load alarms.
 - **Logic timing chart** + decoded event list (UART/I2C/SPI).
 - **Command sender** (with block editor) and **frame decoder** manual test panel.
+- **Raw data view** — standalone widget with grid / line grouping, HEX / ASCII representation, per-port channel switching, timestamp / offset display, and send panel.
 - **Custom widget editor** — CodeMirror 6-powered JS editor with live preview.
+
+### Window Organization & Layout
+
+- **Activity bar** — VSCode-style icon rail on the left, one-click switching of the sidebar view (Data Interface / Protocol Engine / Widget Palette).
+- **Dockable sidebar** — docks to the left or right edge of the window; drag its title bar to the window edge to switch sides, and show / hide it anytime.
+- **Dock-style center area** — control canvases and data views live in splittable / mergeable cards:
+  - Drag a tab onto another card's title bar → merge it into that card's tabs;
+  - Drag a tab to a card's edge → split it into a standalone panel;
+  - Drag an empty area of the title bar → move the whole card next to another card;
+  - Drag a tab / card to the four edges of the page → dock as a full row / column strip.
+  - The layout tree and card sizes persist automatically (`vofa-dock`) and survive restarts.
+- **Dual tab system** — control-canvas tabs (node editor) and data tabs (waveform / raw data / CAN / logic analyzer, etc.) can be mixed and arranged freely.
+- **Status bar** — connection state, transport / protocol, RX / TX bytes and frames, CAN load, and buffer usage at a glance.
+- **Multiple tabs** — each tab can be named, renamed, duplicated, and closed independently.
 
 ### UX & Platform
 
 - VSCode-style layout: activity bar, sidebar, resizable panels, status bar, multiple tabs.
-- Native menu bar (macOS / Windows / Linux) and global shortcuts.
+- Native menu bar (macOS / Windows / Linux) and global shortcuts (`Ctrl+,` for settings; menu items for new / close tab and toggle sidebar).
 - **i18n** — Chinese / English UI copy managed via YAML.
 - **Settings modal** — general / appearance / editor / data / serial / notifications, persisted via `tauri-plugin-store`.
+- **Full-app config export / import** — back up settings, protocol, transport, widgets, node graph, data tabs and view preferences to a single JSON file via system file dialogs, for easy migration.
 - Custom theme editor, onboarding wizard, help center, and contextual hints.
 - Transparent window with acrylic / vibrancy effect (macOS).
 - Native OS notifications via `tauri-plugin-notification`.
 - Structured logging via `tauri-plugin-log` (stdout / log dir / webview).
+
+## Usage Guide
+
+### Quick Start
+
+1. **Configure the transport** — click the Data Interface icon in the left activity bar, choose a transport (Serial / TCP / UDP / Test Data / Slcan / CandleLight) in the sidebar, fill in the parameters, then click **Connect**.
+2. **Select the protocol** — click the Protocol Engine icon and pick the protocol matching your device (JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode).
+3. **Build a dataflow** — click the Widget icon to open the Widget Palette, drag widgets onto the canvas, and wire them to channel sources or upstream widgets.
+4. **View data** — display widgets such as Waveform automatically create matching data tabs; you can also click the "＋" in the data card's title bar to add CAN Frames, Logic Analyzer, and other tabs manually.
+
+### Window Organization
+
+The default layout looks like this (all panels can be freely rearranged):
+
+```
+┌──────────┬──────────────────────────────────────────────┐
+│          │  Control canvas card (tab bar + node editor)  │
+│ Activity ├──────────────────────────────────────────────┤
+│  Bar     │  Data view card (Waveform / RawData / CAN /   │
+│          │  Logic / ...)                                 │
+│          ├──────────────────────────────────────────────┤
+│          │  Status bar: connection · transport/protocol  │
+│          │  · RX/TX · load                               │
+└──────────┴──────────────────────────────────────────────┘
+```
+
+- **Activity bar** (leftmost rail) — click an icon to switch the sidebar view; the bottom icons open the help center, About, and Settings.
+- **Sidebar** (left by default) — shows the configuration panel for the current view; drag its title bar to the window's left / right edge to switch the dock side; toggle visibility via the activity bar icons or the "Toggle Sidebar" menu item.
+- **Dock center area** — made of cards, each hosting one or more tabs:
+  - **Merge**: drag a tab onto another card's title bar and release to merge it into that card.
+  - **Split**: drag a tab to a card's edge (top / bottom / left / right) and release to split it into a standalone panel.
+  - **Move card**: drag the empty area of the title bar to move the whole card next to another card.
+  - **Page docking**: drag a tab / card to any edge of the window (center area) to dock it as a full row or column strip.
+  - **Resize**: drag the separator between cards to change sizes; all sizes and the layout are saved automatically and restored on restart.
+- **Status bar** (bottom) — connection state, current transport & protocol, RX / TX bytes and frames, CAN load alarm, and buffer usage; refresh button on the right.
+
+### Tab Management
+
+- **Control-canvas tabs** — each tab is an independent node-editor canvas. Click "＋" in the title bar to create a new one; right-click a tab to rename / duplicate / close / close others; double-click the tab label to rename it directly.
+- **Data tabs** — Waveform, Raw Data, Pie Chart, Image, 3D Model, Spectrum, Command Sender, CAN Frames, Logic Analyzer, Table View, Frame Decoder, etc. The "＋" in the data card's title bar adds CAN Frames and Logic Analyzer tabs.
+- Tabs can be freely dragged between cards to merge / split, and closed via the context menu.
+
+### Common Actions
+
+- **Settings**: `Ctrl+,` / `Cmd+,` or the gear icon in the activity bar; full-app config export / import is available (backup to a single JSON file).
+- **Refresh ports**: the refresh button in the status bar or the context menu.
+- **Help & onboarding**: the help icon at the bottom of the activity bar opens the Help Center anytime; a guided tour appears on first launch (can be disabled in Settings).
 
 ## Tech Stack
 
@@ -164,8 +230,9 @@ vofa-next/
 │   │   │                          # Image / NumberDisplay / Model3D / TableView /
 │   │   │                          # CanView / CanSender / CanLoadView / LogicView /
 │   │   │                          # RawDataView / CommandSender / FrameDecoder / ...
-│   │   ├── layout/                # ActivityBar / Sidebar / ControlPanel / DataPanel /
-│   │   │                          # NodeEditor / StatusBar / BufferUsageStats
+│   │   ├── layout/                # ActivityBar / Sidebar / DockLayout /
+│   │   │                          # DockCardFrame / DataTabContent / NodeEditor /
+│   │   │                          # StatusBar / BufferUsageStats / CanLoadAlarm
 │   │   ├── nodes/                 # React Flow node types (ChannelSource / Widget)
 │   │   ├── onboarding/            # OnboardingWizard / HelpCenter / Tour / ContextualHint
 │   │   ├── panels/
@@ -175,7 +242,9 @@ vofa-next/
 │   │   │   ├── ProtocolSection.tsx
 │   │   │   ├── TransportConfigPanel.tsx
 │   │   │   └── WidgetPalette.tsx
-│   │   ├── ui/                    # ContextMenu / PanelTabs / ToolbarIconButton / WidgetCard
+│   │   ├── ui/                    # ContextMenu / PanelTabs / ToolbarIconButton /
+│   │   │                          # WidgetCard / SlidingPill / SnapDropOverlay /
+│   │   │                          # AnimatedSwitch
 │   │   ├── AboutModal.tsx
 │   │   ├── CodeEditor.tsx
 │   │   ├── CustomWidgetEditor.tsx
@@ -183,11 +252,13 @@ vofa-next/
 │   │   ├── SettingsModal.tsx
 │   │   └── ThemeEditor.tsx
 │   ├── i18n/                      # i18n loader + locales (en.yml / zh.yml)
-│   ├── lib/                       # Tauri API / buffers / subscriptions / utils
+│   ├── lib/                       # Tauri API / buffers / subscriptions / utils / config export
 │   ├── settings/                  # Settings schema, defaults, theme application
-│   ├── store/                     # Zustand stores (slices for connection/data/graph/...)
+│   ├── store/                     # Zustand stores (connection / data / graph / tabs /
+│   │                              # dock layout / waveform scope / ... slices)
 │   ├── types/                     # TypeScript types (can / logic / transport / waveform / ...)
-│   ├── App.tsx
+│   ├── App.tsx                    # Top-level layout orchestration (activity bar + sidebar
+│   │                              # + dock area + status bar)
 │   └── main.tsx
 ├── src-tauri/                     # Tauri + Rust backend
 │   ├── crates/                    # Rust workspace (see table above)
