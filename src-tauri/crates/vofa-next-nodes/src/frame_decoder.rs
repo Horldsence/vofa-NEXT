@@ -169,6 +169,9 @@ pub struct ParsedFrame {
     pub timestamp_us: u64,
     /// 当前 id_value (用于多帧分派, None=未设置)
     pub id_value: Option<i64>,
+    /// 本帧消耗的原始字节 (header 至末尾, 供前端 RawData 旁路通道显示)
+    /// 默认空; 仅在 feed() 解析成功后填充, 不序列化到前端
+    pub raw_bytes: Vec<u8>,
 }
 
 /// 内部解析结果 (含消耗字节数)
@@ -296,13 +299,18 @@ impl FrameParser {
                 }
                 ParseState::ParseFields => {
                     match self.try_parse_frame(timestamp_us) {
-                        Some(result) => {
+                        Some(mut result) => {
                             // 解析成功: 丢弃 consumed_bytes, 回到 WaitForHeader
                             let consumed = result.consumed_bytes;
                             // consumed 包括 header + 所有 blocks 消耗的字节
                             // frame_start 是 header 末尾, consumed 是从 buf 开头算的总消耗
                             let total_drain = self.frame_start + (consumed - self.frame_start);
                             let _ = total_drain; // 等价于 consumed, 保留语义
+
+                            // 捕获本帧消耗的原始字节 (header 至末尾), 供旁路 RawData 通道使用
+                            let raw = self.buf[0..consumed].to_vec();
+                            result.frame.raw_bytes = raw;
+
                             self.buf.drain(0..consumed);
                             self.state = ParseState::WaitForHeader;
                             self.frame_start = 0;
@@ -647,6 +655,7 @@ impl FrameParser {
                 valid,
                 timestamp_us,
                 id_value,
+                raw_bytes: Vec::new(),
             },
             consumed_bytes,
         })

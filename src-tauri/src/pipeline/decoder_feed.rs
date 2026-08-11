@@ -11,6 +11,8 @@ use vofa_next_nodes::FrameParser;
 ///    - 若 parser 不存在 → 按当前 config 创建
 ///    - 若 parser 存在但 config 变了 → 重建
 ///    - 调用 parser.feed(data, ts) 喂入字节, 更新 last_frame
+/// 4. 将每帧消费的原始字节 (frame.raw_bytes) 推入该 decoder 的旁路收集器,
+///    供前端 RawData 以独立通道显示每个节点的原始帧内容
 ///
 /// 由 data_loop 在每包数据上调用, 保证 parser 与图拓扑一致。
 ///
@@ -18,6 +20,7 @@ use vofa_next_nodes::FrameParser;
 pub fn feed_frame_decoders(eval_state: &GraphEvalState, data: &[u8], ts_us: u64) -> bool {
     let graphs = eval_state.graphs.lock();
     let mut decoder_states = eval_state.decoder_states.lock();
+    let mut decoder_raw_collectors = eval_state.decoder_raw_collectors.lock();
 
     // 收集所有 graph 中当前的 FrameDecoder id → config
     let mut current_configs: HashMap<
@@ -40,6 +43,8 @@ pub fn feed_frame_decoders(eval_state: &GraphEvalState, data: &[u8], ts_us: u64)
 
     // 删除已不存在的 decoder 对应的 parser
     decoder_states.retain(|id, _| current_configs.contains_key(id));
+    // 同步清理旁路收集器
+    decoder_raw_collectors.retain(|id, _| current_configs.contains_key(id));
 
     // 新建/重建 parser, 并喂入字节
     for (dec_id, (blocks, ev, efc, elt, efps)) in &current_configs {
@@ -60,9 +65,20 @@ pub fn feed_frame_decoders(eval_state: &GraphEvalState, data: &[u8], ts_us: u64)
                 efps
             );
         }
+        // 确保旁路收集器存在 (Arc<Mutex<RawDataCollector>> 实现 Default, 供订阅任务共享)
+        let collector = decoder_raw_collectors.entry(dec_id.clone()).or_default();
         // 喂入字节 (无论是否重建, 都要喂 — 重建后 buf 为空, 直接从新数据开始解析)
         if let Some(parser) = decoder_states.get_mut(dec_id) {
-            parser.feed(data, ts_us);
+            let parsed = parser.feed(data, ts_us);
+            // 将每帧消费的原始字节推入该 decoder 的旁路收集器
+            if !parsed.is_empty() {
+                let mut col = collector.lock();
+                for frame in &parsed {
+                    if !frame.raw_bytes.is_empty() {
+                        col.push_chunk(ts_us, &frame.raw_bytes);
+                    }
+                }
+            }
         }
     }
 

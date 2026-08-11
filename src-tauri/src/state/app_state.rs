@@ -58,6 +58,10 @@ pub struct GraphEvalState {
     /// key: FrameDecoder widget id, value: FrameParser (含 buf/state/last_frame)
     /// 由 data_loop 在每包数据上调用 feed_frame_decoders 同步并喂入字节
     pub decoder_states: Arc<Mutex<HashMap<String, FrameParser>>>,
+    /// FrameDecoder 节点旁路原始字节收集器 (供前端 RawData 显示"每帧消费的原始字节")
+    /// key: FrameDecoder widget id, value: Arc<Mutex<RawDataCollector>> (共享实例)
+    /// 与 decoder_states 生命周期同步 (由 feed_frame_decoders 增删), 独立于全局 raw_data_collector
+    pub decoder_raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
     /// SpectrumSink 节点对应的频谱分析器
     /// key: SpectrumSink widget id, value: SpectrumAnalyzer (含滑动窗口)
     /// 由 spectrum_ticker 在每 tick 开头与 graphs 同步 (增删)
@@ -99,6 +103,10 @@ pub struct AppState {
     pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
     /// FrameDecoder 节点状态 (跨帧持久化)
     pub decoder_states: Arc<Mutex<HashMap<String, FrameParser>>>,
+    /// FrameDecoder 节点旁路原始字节收集器 (供前端 RawData 显示"每帧消费的原始字节")
+    /// key: FrameDecoder widget id, value: Arc<Mutex<RawDataCollector>> (共享实例)
+    /// 与 decoder_states 生命周期同步, 独立于全局 raw_data_collector
+    pub decoder_raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
     /// SpectrumSink 节点对应的频谱分析器
     pub spectrum_analyzers: Arc<Mutex<HashMap<String, SpectrumAnalyzer>>>,
     /// 最新一次 FFT 结果快照
@@ -113,6 +121,9 @@ pub struct AppState {
     pub raw_data_collector: Arc<Mutex<RawDataCollector>>,
     /// 原始数据订阅任务的取消句柄
     pub raw_data_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    /// FrameDecoder 节点原始数据订阅任务的取消句柄 — key: channel_id
+    /// 前端调用 unsubscribe_rawdata_node 时, 通过 channel_id 取出 sender 发送取消信号
+    pub raw_data_node_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// CAN 帧缓冲区
     pub can_buffer: Arc<Mutex<CanBuffer>>,
     /// CAN 负载统计器 (滑动窗口)
@@ -151,12 +162,14 @@ impl AppState {
             custom_input_subscribers: Arc::new(Mutex::new(Vec::new())),
             filter_states: Arc::new(Mutex::new(HashMap::new())),
             decoder_states: Arc::new(Mutex::new(HashMap::new())),
+            decoder_raw_collectors: Arc::new(Mutex::new(HashMap::new())),
             spectrum_analyzers: Arc::new(Mutex::new(HashMap::new())),
             spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
             spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
             waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
             raw_data_collector: Arc::new(Mutex::new(RawDataCollector::new())),
             raw_data_tasks: Arc::new(Mutex::new(HashMap::new())),
+            raw_data_node_tasks: Arc::new(Mutex::new(HashMap::new())),
             can_buffer: Arc::new(Mutex::new(CanBuffer::new(50_000))),
             can_load_stats: Arc::new(Mutex::new(CanLoadStats::new(1_000_000, 120))),
             can_load_tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -179,6 +192,7 @@ impl AppState {
             custom_input_subscribers: self.custom_input_subscribers.clone(),
             filter_states: self.filter_states.clone(),
             decoder_states: self.decoder_states.clone(),
+            decoder_raw_collectors: self.decoder_raw_collectors.clone(),
             spectrum_analyzers: self.spectrum_analyzers.clone(),
             spectrum_snapshot: self.spectrum_snapshot.clone(),
             spectrum_subscribers: self.spectrum_subscribers.clone(),

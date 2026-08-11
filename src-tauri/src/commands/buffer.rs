@@ -183,9 +183,59 @@ pub async fn unsubscribe_rawdata(state: State<'_, AppState>, channel_id: u32) ->
     Ok(())
 }
 
-/// 清空原始数据收集器
+/// 订阅指定 FrameDecoder 节点的原始数据 — 通过 Channel 周期性推送该节点消费的原始帧字节
+///
+/// 与 subscribe_rawdata (全局原始字节流) 不同, 本命令只推送指定 FrameDecoder 节点
+/// 在 feed_frame_decoders 中每帧消费的原始字节 (frame.raw_bytes), 供前端 RawData
+/// 以独立通道 (旁路) 展示每个节点的原始帧内容, 不影响全局 f32 图快照。
+///
+/// node_id: FrameDecoder widget id; 若节点不存在则返回 Ok(()) (no-op)
+/// interval_ms: 推送间隔 (毫秒), 默认 16ms (~60 FPS)
+/// max_bytes: 单次推送的最大字节数, 默认 65536
+///
+/// 取消方式: 前端调用 unsubscribe_rawdata_node(channel_id) 触发 oneshot 取消信号,
+/// task 在 select! 中收到信号后优雅退出。
+#[tauri::command]
+pub async fn subscribe_rawdata_node(
+    state: State<'_, AppState>,
+    node_id: String,
+    on_event: Channel<RawDataBatch>,
+    interval_ms: Option<u64>,
+    max_bytes: Option<usize>,
+) -> Result<()> {
+    // 节点不存在 → no-op, 不报错
+    let collector = match state.decoder_raw_collectors.lock().get(&node_id) {
+        Some(c) => c.clone(),
+        None => return Ok(()),
+    };
+    let interval = Duration::from_millis(interval_ms.unwrap_or(16));
+    let max_n = max_bytes.unwrap_or(65536);
+    let channel_id = on_event.id();
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.raw_data_node_tasks.lock().insert(channel_id, cancel_tx);
+
+    tokio::spawn(async move {
+        crate::state::rawdata_loop(collector, on_event, interval, max_n, cancel_rx).await;
+    });
+    Ok(())
+}
+
+/// 取消订阅指定 FrameDecoder 节点的原始数据
+#[tauri::command]
+pub async fn unsubscribe_rawdata_node(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
+    if let Some(tx) = state.raw_data_node_tasks.lock().remove(&channel_id) {
+        let _ = tx.send(());
+    }
+    Ok(())
+}
+
+/// 清空原始数据收集器 (全局 + 各 FrameDecoder 节点旁路收集器)
 #[tauri::command]
 pub async fn clear_raw_data_collector(state: State<'_, AppState>) -> Result<()> {
     state.raw_data_collector.lock().clear();
+    for collector in state.decoder_raw_collectors.lock().values() {
+        collector.lock().clear();
+    }
     Ok(())
 }
