@@ -4,6 +4,7 @@ import { Plug, PlugZap } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { listCandleDevices } from '../../lib/buffers/canSubscription';
 import { SerialForm, UdpForm, TcpClientForm, TcpServerForm, TestDataForm, SlcanForm, CandleForm } from './transport';
+import { useConnectAction } from './transport/useConnectAction';
 import type {
   TransportConfig,
   UdpConfig,
@@ -22,8 +23,8 @@ export function TransportConfigPanel() {
   const transportConfig = useAppStore((s) => s.transportConfig);
   const setTransportConfig = useAppStore((s) => s.setTransportConfig);
   const connectionState = useAppStore((s) => s.connectionState);
-  const connect = useAppStore((s) => s.connect);
   const disconnect = useAppStore((s) => s.disconnect);
+  const { state: connectState, formAction: connectAction, isPending: connectPending } = useConnectAction();
 
   const [candleDevices, setCandleDevices] = useState<CandleDeviceInfo[]>([]);
   const [candleLoading, setCandleLoading] = useState(false);
@@ -230,14 +231,19 @@ export function TransportConfigPanel() {
             {t(lang, 'disconnect')}
           </button>
         ) : (
-          <button
-            className="w-full px-3 h-8 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-            onClick={() => connect()}
-            disabled={connectionState === 'Connecting'}
-          >
-            <Plug size={14} />
-            {t(lang, 'connect')}
-          </button>
+          <form action={connectAction}>
+            <button
+              type="submit"
+              className="w-full px-3 h-8 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+              disabled={connectPending || connectionState === 'Connecting'}
+            >
+              <Plug size={14} />
+              {connectPending ? t(lang, 'connecting') : t(lang, 'connect')}
+            </button>
+            {connectState.error && (
+              <div className="mt-1.5 text-xs text-red-400 text-center break-all">{connectState.error}</div>
+            )}
+          </form>
         )}
       </div>
     </div>

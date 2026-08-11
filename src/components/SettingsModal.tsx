@@ -6,7 +6,7 @@
 //! - 底部 Reset / Done 按钮
 //! - ESC 关闭, 点击遮罩关闭
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useActionState } from 'react';
 import {
   X,
   Search,
@@ -34,6 +34,7 @@ import { ThemeEditor } from './ThemeEditor';
 import { BUILT_IN_THEMES, type ThemeDefinition } from '../settings/theme';
 import { SettingFieldDef, SETTING_FIELDS } from './settingFields';
 import { exportAppToFile, importAppFromFile } from '../lib/tauri/appExport';
+import { formatError } from '../lib/tauri/notifications';
 import { useUpdater } from '../lib/hooks/useUpdater';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
@@ -119,6 +120,31 @@ export function SettingsModal() {
     }
     return groups;
   }, [filteredFields]);
+
+  // Done / Reset Category 提交 action — 包装现有 store action, isPending 禁用按钮
+  const [saveState, saveAction, isSaving] = useActionState<{ ok: boolean; error?: string }>(
+    async () => {
+      try {
+        close();
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: formatError(e) };
+      }
+    },
+    { ok: true }
+  );
+
+  const [resetCategoryState, resetCategoryAction, isResettingCategory] = useActionState<{ ok: boolean; error?: string }>(
+    async () => {
+      try {
+        resetCategory(activeCategory);
+        return { ok: true };
+      } catch (e) {
+        return { ok: false, error: formatError(e) };
+      }
+    },
+    { ok: true }
+  );
 
   if (!isOpen) return null;
 
@@ -399,15 +425,19 @@ export function SettingsModal() {
               );
             })}
             {!searchQuery.trim() && (
-              <div className="py-4 flex gap-2">
+              <form action={resetCategoryAction} className="py-4">
                 <button
-                  className="px-3 py-1.5 bg-transparent text-text-secondary border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-hover hover:text-text-primary inline-flex items-center gap-1.5"
-                  onClick={() => resetCategory(activeCategory)}
+                  type="submit"
+                  className="px-3 py-1.5 bg-transparent text-text-secondary border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-hover hover:text-text-primary inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+                  disabled={isResettingCategory}
                 >
                   <RotateCcw size={12} />
                   <span>{t(lang, 'settingsResetCategory')}</span>
                 </button>
-              </div>
+                {resetCategoryState.error && (
+                  <div className="text-xs text-red-400 break-all">{resetCategoryState.error}</div>
+                )}
+              </form>
             )}
           </div>
         </div>
@@ -415,10 +445,19 @@ export function SettingsModal() {
         {/* 底部 — 完成按钮 */}
         <div className="flex items-center px-4 py-2.5 border-t border-border bg-bg-panel-header flex-shrink-0">
           <div className="flex-1" />
-          <button className="bg-bg-button text-text-inverse border-none py-1.5 px-4 text-sm font-ui cursor-pointer rounded inline-flex items-center gap-1.5 transition-colors hover:bg-bg-button-hover" onClick={close}>
-            <Check size={14} />
-            <span>{t(lang, 'settingsDone')}</span>
-          </button>
+          <form action={saveAction}>
+            <button
+              type="submit"
+              className="bg-bg-button text-text-inverse border-none py-1.5 px-4 text-sm font-ui cursor-pointer rounded inline-flex items-center gap-1.5 transition-colors hover:bg-bg-button-hover disabled:opacity-50 disabled:cursor-default"
+              disabled={isSaving}
+            >
+              <Check size={14} />
+              <span>{t(lang, 'settingsDone')}</span>
+            </button>
+            {saveState.error && (
+              <div className="text-xs text-red-400 break-all">{saveState.error}</div>
+            )}
+          </form>
         </div>
       </div>
       <ThemeEditor
