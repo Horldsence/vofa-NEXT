@@ -30,9 +30,6 @@ function App() {
   const sidebarView = useAppStore((s) => s.sidebarView);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
-  const addControlTab = useAppStore((s) => s.addControlTab);
-  const removeControlTab = useAppStore((s) => s.removeControlTab);
-  const activeControlTabId = useAppStore((s) => s.activeControlTabId);
   const lang = useAppStore((s) => s.lang);
 
   const loadSettings = useSettingsStore((s) => s.load);
@@ -89,6 +86,7 @@ function App() {
   const onAppContextMenu = useContextMenu(defaultMenuItems);
 
   // 启动: 加载设置 + 初始化事件监听 + 刷新端口
+  // 依赖均为 store 动作 (引用稳定), 只需挂载时执行一次
   useEffect(() => {
     void loadSettings();
     const cleanupRef: { fn: (() => void) | null } = { fn: null };
@@ -113,7 +111,7 @@ function App() {
       cancelled = true;
       cleanupRef.fn?.();
     };
-  }, [initEventListeners, refreshPorts, loadSettings]);
+  }, []);
 
   // 设置加载完成后，根据 showOnboarding 自动弹出首次引导（仅一次）
   useEffect(() => {
@@ -123,6 +121,7 @@ function App() {
   }, [settingsLoaded, showOnboarding, hasOpenedOnboarding, openOnboarding]);
 
   // 监听原生菜单事件 (menu:about / menu:settings / menu:new-tab / menu:close-tab / menu:toggle-sidebar)
+  // 事件处理器内通过 getState() 读取最新状态, 避免订阅易变字段导致反复重订阅
   useEffect(() => {
     const unlistenProm = listen<string>('menu-event', (event) => {
       const id = event.payload;
@@ -131,17 +130,19 @@ function App() {
           useSettingsStore.getState().openAbout();
           break;
         case 'menu:settings':
-          openSettings();
+          useSettingsStore.getState().open();
           break;
         case 'menu:new-tab':
-          addControlTab();
+          useAppStore.getState().addControlTab();
           break;
         case 'menu:close-tab':
-          removeControlTab(activeControlTabId);
+          useAppStore.getState().removeControlTab(useAppStore.getState().activeControlTabId);
           break;
-        case 'menu:toggle-sidebar':
-          toggleSidebar(sidebarView);
+        case 'menu:toggle-sidebar': {
+          const st = useAppStore.getState();
+          st.toggleSidebar(st.sidebarView);
           break;
+        }
         default:
           break;
       }
@@ -149,7 +150,7 @@ function App() {
     return () => {
       void unlistenProm.then((fn) => fn());
     };
-  }, [openSettings, addControlTab, removeControlTab, activeControlTabId, toggleSidebar, sidebarView]);
+  }, []);
 
   // 全局快捷键: Cmd+, / Ctrl+, 打开设置
   useEffect(() => {
@@ -161,7 +162,7 @@ function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [openSettings]);
+  }, []);
 
   // 中央区 — Dock 布局树 (卡片可拆分/合并/重排, 尺寸比例跟随卡片)
   const centerNode = (

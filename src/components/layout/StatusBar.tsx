@@ -17,8 +17,9 @@ export const StatusBar = memo(function StatusBar() {
   const txBytes = useAppStore((s) => s.stats.tx_bytes);
   const rxFrames = useAppStore((s) => s.stats.rx_frames);
   const txFrames = useAppStore((s) => s.stats.tx_frames);
-  const transportConfig = useAppStore((s) => s.transportConfig);
-  const protocolConfig = useAppStore((s) => s.protocolConfig);
+  // 仅订阅 kind 标量 — 修改传输/协议参数 (如串口端口名) 不触发状态栏重渲染
+  const transportKind = useAppStore((s) => s.transportConfig.kind);
+  const protocolKind = useAppStore((s) => s.protocolConfig.kind);
   const refreshPorts = useAppStore((s) => s.refreshPorts);
   const openSettings = useSettingsStore((s) => s.open);
   const openAbout = useSettingsStore((s) => s.openAbout);
@@ -86,10 +87,10 @@ export const StatusBar = memo(function StatusBar() {
         <span>{stateLabel[connectionState]}</span>
       </div>
       <div className="flex items-center gap-1">
-        {transportLabel[transportConfig.kind]}
+        {transportLabel[transportKind]}
       </div>
       <div className="flex items-center gap-1">
-        {protocolLabel[protocolConfig.kind]}
+        {protocolLabel[protocolKind]}
       </div>
       <div className="flex-1" />
       <div className="flex items-center gap-1">

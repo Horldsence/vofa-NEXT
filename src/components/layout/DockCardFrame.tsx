@@ -1,6 +1,7 @@
 import { memo, useState, useCallback, useEffect } from 'react';
 import { Plus, X, Type, Trash2, Copy, Cpu, CircuitBoard } from 'lucide-react';
-import { useAppStore } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
+import { useAppStore, type AppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
 import { useSlidingPill, SlidingPill } from '../ui/SlidingPill';
 import { AnimatedSwitch } from '../ui/AnimatedSwitch';
@@ -19,8 +20,6 @@ import { t } from '../../i18n';
 export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: string }) {
   const lang = useAppStore((s) => s.lang);
   const card = useDockStore((s) => s.cards[cardId]);
-  const controlTabs = useAppStore((s) => s.controlTabs);
-  const dataTabs = useAppStore((s) => s.dataTabs);
   const addControlTab = useAppStore((s) => s.addControlTab);
   const removeControlTab = useAppStore((s) => s.removeControlTab);
   const renameControlTab = useAppStore((s) => s.renameControlTab);
@@ -45,11 +44,20 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   const cardTabIds = card?.tabIds ?? [];
   const activeTabId = card ? (card.activeTabId ?? card.tabIds[0] ?? null) : null;
 
-  // 本卡片承载的 Tab 元数据 (保持 appStore 中的顺序)
-  const tabs =
-    kind === 'control'
-      ? controlTabs.filter((tab) => cardTabIds.includes(tab.id))
-      : dataTabs.filter((tab) => cardTabIds.includes(tab.id));
+  // 本卡片承载的 Tab 列表 — 按 cardId 窄化订阅 (useShallow 顶层数组逐元素比较):
+  // 其他卡片 Tab 的名称/列表变化时, 本卡片的重渲染被抑制
+  const tabs: Array<{ id: string; name: string; type?: string; closable?: boolean }> = useAppStore(
+    useShallow(
+      ((s: AppStore): Array<{ id: string; name: string; type?: string; closable?: boolean }> =>
+        kind === 'control'
+          ? s.controlTabs.filter((tab) => cardTabIds.includes(tab.id))
+          : s.dataTabs.filter((tab) => cardTabIds.includes(tab.id)))
+    )
+  );
+  // 全局 Tab 数量/类型派生标量 — 窄化为布尔/数字, 仅在对应状态翻转时触发重渲染
+  const canClose = useAppStore((s) => s.controlTabs.length > 1);
+  const hasCanTab = useAppStore((s) => s.dataTabs.some((tab) => tab.type === 'can'));
+  const hasLogicTab = useAppStore((s) => s.dataTabs.some((tab) => tab.type === 'logic'));
 
   // Tab 滑动指示器
   const { containerRef: tabBarRef, pill: tabPill } = useSlidingPill(activeTabId);
@@ -63,7 +71,8 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   });
 
   // 悬停边缘上报到 dockStore → DockLayout 渲染全局预览 (区域与实际落点一致)
-  const dropTarget = useDockStore((s) => s.dropTarget);
+  // 窄化到「仅当投放目标是本卡片」— 其他卡片的 dropTarget 变化不触发本卡片重渲染
+  const dropTarget = useDockStore((s) => (s.dropTarget && s.dropTarget.cardId === cardId ? s.dropTarget : null));
   useEffect(() => {
     if (snapEdge) {
       setDropTarget({ cardId, edge: snapEdge });
@@ -96,14 +105,14 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
             id: 'add-can-tab',
             label: t(lang, 'addCanTab'),
             icon: <Cpu size={14} />,
-            disabled: dataTabs.some((tab) => tab.type === 'can'),
+            disabled: hasCanTab,
             onClick: () => useAppStore.getState().addCanTab(),
           },
           {
             id: 'add-logic-tab',
             label: t(lang, 'addLogicTab'),
             icon: <CircuitBoard size={14} />,
-            disabled: dataTabs.some((tab) => tab.type === 'logic'),
+            disabled: hasLogicTab,
             onClick: () => useAppStore.getState().addLogicTab(),
           },
         ]
@@ -112,13 +121,14 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   const makeTabContextMenu = useCallback(
     (tabId: string, currentName: string) => {
       if (kind === 'control') {
-        const canClose = controlTabs.length > 1;
-        const otherTabs = controlTabs.filter((tab) => tab.id !== tabId);
+        const allControlTabs = useAppStore.getState().controlTabs;
+        const canCloseTab = allControlTabs.length > 1;
+        const otherTabs = allControlTabs.filter((tab) => tab.id !== tabId);
         return [
           { id: 'rename', label: t(lang, 'contextMenuRename'), icon: <Type />, onClick: () => handleStartRename(tabId, currentName) },
           { id: 'duplicate', label: t(lang, 'contextMenuDuplicate'), icon: <Copy />, onClick: () => addControlTab(currentName) },
           { kind: 'separator' as const },
-          { id: 'close', label: t(lang, 'contextMenuCloseTab'), icon: <Trash2 />, disabled: !canClose, onClick: () => removeControlTab(tabId) },
+          { id: 'close', label: t(lang, 'contextMenuCloseTab'), icon: <Trash2 />, disabled: !canCloseTab, onClick: () => removeControlTab(tabId) },
           {
             id: 'close-others',
             label: t(lang, 'contextMenuCloseOtherTabs'),
@@ -128,9 +138,10 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
           },
         ];
       }
-      const tab = dataTabs.find((tb) => tb.id === tabId);
+      const allDataTabs = useAppStore.getState().dataTabs;
+      const tab = allDataTabs.find((tb) => tb.id === tabId);
       if (!tab) return [];
-      const otherClosable = dataTabs.filter((tb) => tb.id !== tabId && tb.closable);
+      const otherClosable = allDataTabs.filter((tb) => tb.id !== tabId && tb.closable);
       return [
         { id: 'close', label: t(lang, 'contextMenuCloseTab'), icon: <Trash2 size={14} />, disabled: !tab.closable, onClick: () => removeDataTab(tabId) },
         {
@@ -142,11 +153,11 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
         },
       ];
     },
-    [kind, controlTabs, dataTabs, lang, addControlTab, removeControlTab, removeDataTab, handleStartRename]
+    [kind, lang, addControlTab, removeControlTab, removeDataTab, handleStartRename]
   );
 
   const closable = (tabId: string) =>
-    kind === 'control' ? controlTabs.length > 1 : (dataTabs.find((tb) => tb.id === tabId)?.closable ?? false);
+    kind === 'control' ? canClose : (tabs.find((tb) => tb.id === tabId)?.closable ?? false);
 
   if (!card) return null;
 
@@ -221,7 +232,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
               if (items.length > 0) showContextMenu(e.clientX, e.clientY, items);
             }}
           >
-            {kind === 'data' && <DataTabIcon type={(tab as { type?: string }).type ?? ''} />}
+            {kind === 'data' && <DataTabIcon type={tab.type ?? ''} />}
             {editingTabId === tab.id ? (
               <input
                 type="text"
