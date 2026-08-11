@@ -33,8 +33,8 @@ import type { AppSettings } from '../settings/defaults';
 import { ThemeEditor } from './ThemeEditor';
 import { BUILT_IN_THEMES, type ThemeDefinition } from '../settings/theme';
 import { SettingFieldDef, SETTING_FIELDS } from './settingFields';
-import { exportAppToFile, importAppFromFile } from '../lib/appExport';
-import { useUpdater } from '../lib/useUpdater';
+import { exportAppToFile, importAppFromFile } from '../lib/tauri/appExport';
+import { useUpdater } from '../lib/hooks/useUpdater';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   general: <SettingsIcon size={16} />,

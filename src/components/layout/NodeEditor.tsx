@@ -13,9 +13,9 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../../store/appStore';
-import { createWidget } from '../../lib/createWidget';
+import { createWidget } from '../../lib/utils/createWidget';
 import { t } from '../../i18n';
-import { useContextMenu } from '../../lib/useContextMenu';
+import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';

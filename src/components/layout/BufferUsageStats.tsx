@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { canFrameBuffer } from '../../lib/canBuffer';
-import { rawDataBuffer, waveformWindow } from '../../lib/dataBuffer';
-import { logicSampleBuffer, decodedEventBuffer } from '../../lib/logicBuffer';
+import { canFrameBuffer } from '../../lib/buffers/canBuffer';
+import { rawDataBuffer, waveformWindow } from '../../lib/buffers/dataBuffer';
+import { logicSampleBuffer, decodedEventBuffer } from '../../lib/buffers/logicBuffer';
 
 interface BufferStats {
   usage: number; // 0-1

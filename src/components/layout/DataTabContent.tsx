@@ -12,24 +12,24 @@ import {
   CircuitBoard as CircuitBoardIcon,
   ScanText as ScanTextIcon,
 } from 'lucide-react';
-import { WaveformChart } from '../displays/WaveformChart';
-import { RawDataView } from '../displays/RawDataView';
-import { PieChart } from '../displays/PieChart';
-import { ImageViewer } from '../displays/ImageViewer';
-import { Model3DWidget } from '../displays/Model3DWidget';
-import { SpectrumChart } from '../displays/SpectrumChart';
-import { CommandSender } from '../displays/CommandSender';
-import { CanView } from '../displays/CanView';
-import { LogicView } from '../displays/LogicView';
-import { FrameDecoder } from '../displays/FrameDecoder';
-import { TableView } from '../displays/TableView';
-import { AxisSettings } from '../displays/AxisSettings';
+import { WaveformChart } from '../displays/waveform/WaveformChart';
+import { RawDataView } from '../displays/rawdata/RawDataView';
+import { PieChart } from '../displays/widgets/PieChart';
+import { ImageViewer } from '../displays/widgets/ImageViewer';
+import { Model3DWidget } from '../displays/widgets/Model3DWidget';
+import { SpectrumChart } from '../displays/widgets/SpectrumChart';
+import { CommandSender } from '../displays/command/CommandSender';
+import { CanView } from '../displays/can/CanView';
+import { LogicView } from '../displays/logic/LogicView';
+import { FrameDecoder } from '../displays/decoder/FrameDecoder';
+import { TableView } from '../displays/widgets/TableView';
+import { AxisSettings } from '../displays/waveform/AxisSettings';
 import { useEffect, useMemo } from 'react';
 import type { WidgetConfig, ScopeMeasurements, ProtocolConfig } from '../../types';
 import { getEffectiveChannel } from '../../types';
-import { waveformWindow } from '../../lib/dataBuffer';
-import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/scopeUtils';
-import { computeConnectedInputs, type ConnectedInput } from '../displays/waveformSeries';
+import { waveformWindow } from '../../lib/buffers/dataBuffer';
+import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/utils/scopeUtils';
+import { computeConnectedInputs, type ConnectedInput } from '../displays/waveform/waveformSeries';
 import { useWaveformScopeStore, createPerWidgetState } from '../../store/waveformScopeStore';
 
 /// 单个数据 Tab 的内容渲染器 — 由 DockCardFrame 挂载, 可被多个卡片各自实例化

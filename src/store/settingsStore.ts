@@ -11,10 +11,10 @@ import {
   deepMergeSettings,
 } from '../settings/defaults';
 import { applyAppearance } from '../settings/applyTheme';
-import { api } from '../lib/tauri';
-import { rawDataBuffer } from '../lib/dataBuffer';
-import { canFrameBuffer } from '../lib/canBuffer';
-import { logicSampleBuffer } from '../lib/logicBuffer';
+import { api } from '../lib/tauri/tauri';
+import { rawDataBuffer } from '../lib/buffers/dataBuffer';
+import { canFrameBuffer } from '../lib/buffers/canBuffer';
+import { logicSampleBuffer } from '../lib/buffers/logicBuffer';
 
 const STORE_FILE = 'settings.json';
 const STORE_KEY = 'app';

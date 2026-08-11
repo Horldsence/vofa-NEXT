@@ -1,6 +1,6 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { useContextMenu } from '../../lib/useContextMenu';
+import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { RefreshCw, Settings, Info } from 'lucide-react';
 import clsx from 'clsx';
 import { BufferUsageStats } from './BufferUsageStats';

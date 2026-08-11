@@ -10,14 +10,14 @@ import { Radio } from '../controls/Radio';
 import { Checkbox } from '../controls/Checkbox';
 import { Slider } from '../controls/Slider';
 import { Label } from '../controls/Label';
-import { PieChart } from '../displays/PieChart';
-import { ImageViewer } from '../displays/ImageViewer';
-import { Gauge } from '../displays/Gauge';
-import { LED } from '../displays/LED';
-import { NumberDisplay } from '../displays/NumberDisplay';
-import { CustomWidget, evalCustomWidgetDef } from '../displays/CustomWidget';
-import { MathWidget } from '../displays/MathWidget';
-import { FilterWidget } from '../displays/FilterWidget';
+import { PieChart } from '../displays/widgets/PieChart';
+import { ImageViewer } from '../displays/widgets/ImageViewer';
+import { Gauge } from '../displays/widgets/Gauge';
+import { LED } from '../displays/widgets/LED';
+import { NumberDisplay } from '../displays/widgets/NumberDisplay';
+import { CustomWidget, evalCustomWidgetDef } from '../displays/widgets/CustomWidget';
+import { MathWidget } from '../displays/widgets/MathWidget';
+import { FilterWidget } from '../displays/widgets/FilterWidget';
 
 /// 获取模块的端口定义
 function getWidgetPorts(widget: WidgetConfig): {

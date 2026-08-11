@@ -13,13 +13,13 @@ import { CustomWidgetEditorContainer } from './components/CustomWidgetEditorCont
 import { OnboardingWizard } from './components/onboarding/OnboardingWizard';
 import { HelpCenterModal } from './components/onboarding/HelpCenterModal';
 import { ContextMenu } from './components/ui/ContextMenu';
-import { useContextMenu } from './lib/useContextMenu';
+import { useContextMenu } from './lib/hooks/useContextMenu';
 import { useAppStore } from './store/appStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useOnboardingStore } from './store/onboardingStore';
 import { useLayoutStore } from './store/layoutStore';
 import { t } from './i18n';
-import { createWidget } from './lib/createWidget';
+import { createWidget } from './lib/utils/createWidget';
 
 function App() {
   const initEventListeners = useAppStore((s) => s.initEventListeners);

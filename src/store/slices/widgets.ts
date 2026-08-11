@@ -1,6 +1,6 @@
 import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
-import { createWidget } from '../../lib/createWidget';
+import { createWidget } from '../../lib/utils/createWidget';
 
 export interface WidgetSlice {
   widgets: WidgetConfig[];

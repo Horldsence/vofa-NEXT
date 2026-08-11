@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { WidgetConfig } from '../../types';
-import { waveformWindow } from '../../lib/dataBuffer';
+import { waveformWindow } from '../../lib/buffers/dataBuffer';
 import { WidgetCard } from '../ui/WidgetCard';
 
 interface LabelProps {

@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { X, Play, Save, FileCode, AlertCircle, AlertTriangle, RotateCcw, HelpCircle } from 'lucide-react';
 import { CodeEditor } from './CodeEditor';
-import { CustomWidget, evalCustomWidgetDef } from './displays/CustomWidget';
+import { CustomWidget, evalCustomWidgetDef } from './displays/widgets/CustomWidget';
 import { CustomWidgetHelpModal } from './CustomWidgetHelpModal';
 import type { WidgetConfig } from '../types';
 import { useAppStore } from '../store/appStore';

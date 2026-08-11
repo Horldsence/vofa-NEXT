@@ -12,7 +12,7 @@ import type { SidebarView } from '../../store/appStore';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
-import { useContextMenu } from '../../lib/useContextMenu';
+import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { t } from '../../i18n';
 
 interface ActivityBarProps {

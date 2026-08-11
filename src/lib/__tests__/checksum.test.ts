@@ -8,7 +8,7 @@ import {
   sum8,
   xor8,
   lrc,
-} from '../checksum';
+} from '../utils/checksum';
 
 const CHECK_DATA = new TextEncoder().encode('123456789');
 

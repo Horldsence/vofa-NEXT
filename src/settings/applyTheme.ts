@@ -5,7 +5,7 @@
 //! 并通知原生窗口启用系统毛玻璃效果。
 
 import { invoke } from '@tauri-apps/api/core';
-import type { AppSettings } from '../settings/defaults';
+import type { AppSettings } from './defaults';
 import { applyTheme, getCssVariableName, resolveActiveTheme, type ThemeToken } from './theme';
 
 /// 亚克力模式下各背景 token 的基准透明度 (未列出的 token 保持不透明)

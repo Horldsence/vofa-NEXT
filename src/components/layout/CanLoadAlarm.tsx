@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { api } from '../../lib/tauri';
-import { notify } from '../../lib/notifications';
+import { api } from '../../lib/tauri/tauri';
+import { notify } from '../../lib/tauri/notifications';
 import { t } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { useCanLoadAlarmStore } from '../../store/canLoadAlarmStore';

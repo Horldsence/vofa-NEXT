@@ -9,8 +9,8 @@ import {
   type Connection,
 } from '@xyflow/react';
 import { nanoid } from 'nanoid';
-import { api } from '../../lib/tauri';
-import { setInputValue as apiSetInputValue, submitCustomOutput as apiSubmitCustomOutput } from '../../lib/graphSubscription';
+import { api } from '../../lib/tauri/tauri';
+import { setInputValue as apiSetInputValue, submitCustomOutput as apiSubmitCustomOutput } from '../../lib/buffers/graphSubscription';
 import { CHANNEL_SOURCE_ID, createChannelSourceNode, syncTabGraphToBackend } from '../appStoreHelpers';
 
 export interface GraphSlice {

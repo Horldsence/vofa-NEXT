@@ -1,6 +1,6 @@
 import { useAppStore } from '../../store/appStore';
 import type { SidebarView } from '../../store/appStore';
-import { useContextMenu } from '../../lib/useContextMenu';
+import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { t } from '../../i18n';
 import { TransportConfigPanel } from '../panels/TransportConfigPanel';
 import { ProtocolSection } from '../panels/ProtocolSection';

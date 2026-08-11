@@ -1,7 +1,7 @@
 import { type UnlistenFn } from '@tauri-apps/api/event';
-import { api } from '../../lib/tauri';
-import { waveformWindow, rawDataBuffer } from '../../lib/dataBuffer';
-import { notify, formatError } from '../../lib/notifications';
+import { api } from '../../lib/tauri/tauri';
+import { waveformWindow, rawDataBuffer } from '../../lib/buffers/dataBuffer';
+import { notify, formatError } from '../../lib/tauri/notifications';
 import { t } from '../../i18n';
 import type { ConnectionState, PortInfo, TransportConfig, TransportStats, WidgetBinding } from '../../types';
 import type { SidebarView } from './sidebar';

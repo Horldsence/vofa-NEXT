@@ -1,15 +1,15 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { rawDataBuffer } from '../../lib/dataBuffer';
+import { rawDataBuffer } from '../../lib/buffers/dataBuffer';
 import {
   subscribeGraphOutputs,
   subscribeCustomInputs,
   subscribeSpectrum,
-} from '../../lib/graphSubscription';
-import { canFrameBuffer } from '../../lib/canBuffer';
-import { subscribeCanFrames } from '../../lib/canSubscription';
-import { subscribeRawData } from '../../lib/rawDataSubscription';
-import { logicSampleBuffer, decodedEventBuffer } from '../../lib/logicBuffer';
-import { subscribeLogicSamples, subscribeDecodedEvents } from '../../lib/logicSubscription';
+} from '../../lib/buffers/graphSubscription';
+import { canFrameBuffer } from '../../lib/buffers/canBuffer';
+import { subscribeCanFrames } from '../../lib/buffers/canSubscription';
+import { subscribeRawData } from '../../lib/buffers/rawDataSubscription';
+import { logicSampleBuffer, decodedEventBuffer } from '../../lib/buffers/logicBuffer';
+import { subscribeLogicSamples, subscribeDecodedEvents } from '../../lib/buffers/logicSubscription';
 import type { DataFrame, ConnectionState, TransportStats, CanFrame, LogicSample, DecodedEvent } from '../../types';
 import { cleanupWaveformSub, cleanupDetectedChannelsPoller } from './connection';
 

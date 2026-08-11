@@ -2,7 +2,7 @@ import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { Plug, PlugZap } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
-import { listCandleDevices } from '../../lib/canSubscription';
+import { listCandleDevices } from '../../lib/buffers/canSubscription';
 import { SerialForm, UdpForm, TcpClientForm, TcpServerForm, TestDataForm, SlcanForm, CandleForm } from './transport';
 import type {
   TransportConfig,
