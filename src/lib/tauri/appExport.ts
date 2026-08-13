@@ -13,6 +13,7 @@ import { applyAppearance } from '../../settings/applyTheme';
 import type { AppSettings } from '../../settings/defaults';
 import type { ControlTab, DataTab, ProtocolConfig, TransportConfig, WidgetConfig } from '../../types';
 import { api } from './tauri';
+import { rawDataPortId } from '../utils/nodeDef';
 import { rawDataBuffer } from '../buffers/dataBuffer';
 import { canFrameBuffer } from '../buffers/canBuffer';
 import { logicSampleBuffer } from '../buffers/logicBuffer';
@@ -184,7 +185,20 @@ export async function applySnapshot(snap: AppSnapshot): Promise<void> {
   });
 
   // 5. 节点图
-  useAppStore.setState({ rfNodes: snap.rfNodes, rfEdges: snap.rfEdges });
+  // 迁移旧版快照: 连到 RawData 的边可能还带着回退端口 'data' 作为 targetHandle,
+  // 而 RawData 的端口是动态派生的 (`src:<source>:<handle>`) — 不归一化会导致
+  // React Flow 找不到 handle (warning #008), 边无法渲染
+  const rawDataNodeIds = new Set(
+    snap.rfNodes
+      .filter((n) => (n.data?.widget as WidgetConfig | undefined)?.kind === 'RawData')
+      .map((n) => n.id)
+  );
+  const rfEdges = snap.rfEdges.map((e) =>
+    rawDataNodeIds.has(e.target) && !e.targetHandle?.startsWith('src:')
+      ? { ...e, targetHandle: rawDataPortId(e.source, e.sourceHandle) }
+      : e
+  );
+  useAppStore.setState({ rfNodes: snap.rfNodes, rfEdges });
 
   // 6. 重新同步后端节点图
   for (const tab of snap.controlTabs) {

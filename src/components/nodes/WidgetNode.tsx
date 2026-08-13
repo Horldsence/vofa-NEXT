@@ -5,6 +5,7 @@ import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
 import { UNARY_MATH_OPS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
+import { rawDataPortId } from '../../lib/utils/nodeDef';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
 import { Radio } from '../controls/Radio';
@@ -161,7 +162,7 @@ function deriveRawDataPorts(
     // 目标是本节点即视为通道连接; 同一 (source, sourceHandle) 去重为一个端口
     if (e.target !== nodeId) continue;
     const handle = e.sourceHandle ?? 'data';
-    const key = `src:${e.source}:${handle}`;
+    const key = rawDataPortId(e.source, e.sourceHandle);
     if (seen.has(key)) continue;
     seen.add(key);
     inputs.push({ id: key, label: handle });
@@ -214,7 +215,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
     if (e.source === id && e.sourceHandle) connectedHandles.add(e.sourceHandle);
     if (e.target === id && e.targetHandle) connectedHandles.add(e.targetHandle);
     // RawData 动态端口 id 是 `src:<sourceId>:<handle>` — 按 (source, sourceHandle) 标记已连接
-    if (widget.kind === 'RawData' && e.target === id) connectedHandles.add(`src:${e.source}:${e.sourceHandle ?? 'data'}`);
+    if (widget.kind === 'RawData' && e.target === id) connectedHandles.add(rawDataPortId(e.source, e.sourceHandle));
   }
 
   const renderContent = () => {

@@ -124,6 +124,12 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
   }
 }
 
+/// RawData 动态输入端口 id 约定: `src:<sourceId>:<sourceHandle>`
+/// 每个已连接的 (source, sourceHandle) 组合 = 一个通道端口 (见 WidgetNode.deriveRawDataPorts)
+export function rawDataPortId(sourceId: string, sourceHandle?: string | null): string {
+  return `src:${sourceId}:${sourceHandle ?? 'data'}`;
+}
+
 /// 构造通道源节点的 NodeDef
 export function makeChannelSourceNodeDef(tabId: string, channels: number): NodeDef {
   return {

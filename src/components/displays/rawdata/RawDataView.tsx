@@ -5,6 +5,7 @@ import { rawDataBuffer, type RawDataBuffer } from '../../../lib/buffers/dataBuff
 import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
 import { useSelection } from '../../../lib/hooks/useSelection';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
+import { rawDataPortId } from '../../../lib/utils/nodeDef';
 import { t } from '../../../i18n';
 import {
   Trash2,
@@ -84,7 +85,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     for (const e of rfEdges) {
       if (e.target !== widgetId) continue;
       const sourceHandle = e.sourceHandle ?? undefined;
-      const key = `src:${e.source}:${sourceHandle ?? 'data'}`;
+      const key = rawDataPortId(e.source, sourceHandle);
       if (seen.has(key)) continue;
       seen.add(key);
       options.push({ key, sourceId: e.source, sourceHandle });

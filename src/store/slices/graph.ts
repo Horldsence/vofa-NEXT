@@ -12,6 +12,8 @@ import { nanoid } from 'nanoid';
 import { api } from '../../lib/tauri/tauri';
 import { setInputValue as apiSetInputValue, submitCustomOutput as apiSubmitCustomOutput } from '../../lib/buffers/graphSubscription';
 import { CHANNEL_SOURCE_ID, createChannelSourceNode, syncTabGraphToBackend } from '../appStoreHelpers';
+import { rawDataPortId } from '../../lib/utils/nodeDef';
+import type { WidgetConfig } from '../../types';
 
 export interface GraphSlice {
   rfNodes: Node[];
@@ -80,12 +82,19 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
       let tabId: string | undefined;
       const sourceNode = get().rfNodes.find((n: Node) => n.id === connection.source);
       tabId = sourceNode?.data?.tabId as string | undefined;
+      const targetNode = get().rfNodes.find((n: Node) => n.id === connection.target);
       if (!tabId) {
-        const targetNode = get().rfNodes.find((n: Node) => n.id === connection.target);
         tabId = targetNode?.data?.tabId as string | undefined;
         if (!tabId && connection.source.startsWith(CHANNEL_SOURCE_ID)) {
           tabId = connection.source.slice(CHANNEL_SOURCE_ID.length + 1);
         }
+      }
+      // RawData 输入端口是动态派生的 (`src:<source>:<handle>`), 连接时它显示的回退端口 'data'
+      // 在入边建立后即消失 — 必须把边的 targetHandle 改写为派生端口 id,
+      // 否则 React Flow 找不到 handle (warning #008), 边无法渲染
+      const targetWidget = targetNode?.data?.widget as WidgetConfig | undefined;
+      if (targetWidget?.kind === 'RawData') {
+        newEdge.targetHandle = rawDataPortId(connection.source, connection.sourceHandle);
       }
       set((s: any) => ({
         rfEdges: addEdge(newEdge, s.rfEdges),
