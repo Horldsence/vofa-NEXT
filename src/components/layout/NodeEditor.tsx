@@ -157,6 +157,18 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     }
   }, []);
 
+  // 回环节点连线校验: loopbackOut (字节发送口) 只能连 loopbackIn (字节输入口), 反之亦然;
+  // 普通数值口之间维持现状 (不做类型限制)
+  const isValidConnection = useCallback(
+    (conn: { sourceHandle?: string | null; targetHandle?: string | null }) => {
+      const fromLoopback = conn.sourceHandle === 'loopbackOut';
+      const toLoopback = conn.targetHandle === 'loopbackIn';
+      // 一端是回环口时, 另一端必须也是对应回环口; 两端都不是则放行
+      return fromLoopback === toLoopback;
+    },
+    []
+  );
+
   return (
     <div
       className={`absolute inset-0 bg-bg-editor overflow-hidden node-editor-rf${isDragOver ? ' drag-over' : ''}`}
@@ -169,6 +181,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}

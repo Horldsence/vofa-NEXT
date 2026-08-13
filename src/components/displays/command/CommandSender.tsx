@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   Send,
   Plus,
@@ -14,6 +14,7 @@ import type {
   CommandBlock,
 } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
+import { api } from '../../../lib/tauri/tauri';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
 import { computeChecksum, type ChecksumKind } from '../../../lib/utils/checksum';
 import { parseHex, packField, bytesToHex, bytesToAscii } from '../../../lib/utils/commandParser';
@@ -115,19 +116,69 @@ export function CommandSender({ widget }: CommandSenderProps) {
     }
   }, [blocks, graphInputs, params.appendNewline]);
 
+  /// 实际发送 (回环仅决定走 sendAndCapture+图注入 还是 sendData, 与发送模式无关)
+  /// 返回是否真正发出了数据 (空 payload / 编译错误时不发)
+  const doSend = useCallback(async (): Promise<boolean> => {
+    if (!computed.bytes || computed.bytes.length === 0 || computed.error) return false;
+    try {
+      if (params.loopbackEnabled) {
+        const bytes = Array.from(computed.bytes);
+        // 本地解析对照 (loopbackHistory, 与串口开关无关) + 沿回环边注入连线的 FrameDecoder
+        await sendAndCapture(bytes);
+        await api.injectLoopbackBytes(id, bytes);
+      } else {
+        await sendData(Array.from(computed.bytes));
+      }
+      sendCountRef.current += 1;
+      setLastSent(`${new Date().toLocaleTimeString()} #${sendCountRef.current} [${computed.bytes.length}B] ${bytesToHex(computed.bytes)}`);
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    }
+  }, [computed, params.loopbackEnabled, sendAndCapture, sendData, id]);
+
+  /// doSend 最新引用, 供定时器 / onChange 副作用调用 (避免 interval 随每次值变化重建)
+  const doSendRef = useRef(doSend);
+  useEffect(() => { doSendRef.current = doSend; }, [doSend]);
+
+  // 发送模式与回环无关 — 兼容旧配置 (无 sendMode 字段时按 manual)
+  const sendMode = params.sendMode ?? 'manual';
+  const timerMs = params.timerMs ?? 100;
+
+  // timer 模式: 按间隔自动发送
+  useEffect(() => {
+    if (sendMode !== 'timer') return;
+    const id = setInterval(() => { void doSendRef.current(); }, timerMs);
+    return () => clearInterval(id);
+  }, [sendMode, timerMs]);
+
+  // onChange 模式: 最终字节流变化时自动发送 (切换模式/挂载时只记录基线, 不立即发送)
+  const lastAutoSentHexRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (sendMode !== 'onChange' || !computed.bytes || computed.error) {
+      lastAutoSentHexRef.current = null;
+      return;
+    }
+    const hex = bytesToHex(computed.bytes);
+    if (lastAutoSentHexRef.current === null) {
+      lastAutoSentHexRef.current = hex;
+      return;
+    }
+    if (hex !== lastAutoSentHexRef.current) {
+      lastAutoSentHexRef.current = hex;
+      void doSendRef.current();
+    }
+  }, [sendMode, computed]);
+
+  /// 手动发送按钮 — 任何发送模式下均可手动点发
   const handleSend = async () => {
     setError(null);
     if (!computed.bytes || computed.bytes.length === 0) {
       setError(t(lang, 'cmdErrorEmpty'));
       return;
     }
-    try {
-      if (params.loopbackEnabled) { await sendAndCapture(Array.from(computed.bytes)); } else { await sendData(Array.from(computed.bytes)); }
-      sendCountRef.current += 1;
-      setLastSent(`${new Date().toLocaleTimeString()} #${sendCountRef.current} [${computed.bytes.length}B] ${bytesToHex(computed.bytes)}`);
-    } catch (e) {
-      setError((e as Error).message);
-    }
+    await doSend();
   };
 
   const updateParams = (changes: Partial<typeof params>) => {
@@ -410,9 +461,35 @@ export function CommandSender({ widget }: CommandSenderProps) {
               {params.appendNewline ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
             </button>
           </div>
+          {/* 发送模式 — 与回环无关, 任何模式下手动按钮都可点发 */}
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-xs text-text-secondary">{t(lang, 'cmdSendMode')}</label>
+            <select
+              value={sendMode}
+              onChange={(e) => updateParams({ sendMode: e.target.value as 'manual' | 'onChange' | 'timer' })}
+              className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
+            >
+              <option value="manual">{t(lang, 'cmdSendModeManual')}</option>
+              <option value="onChange">{t(lang, 'cmdSendModeOnChange')}</option>
+              <option value="timer">{t(lang, 'cmdSendModeTimer')}</option>
+            </select>
+          </div>
+          {sendMode === 'timer' && (
+            <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+              <label className="text-xs text-text-secondary">{t(lang, 'cmdSendModeInterval')}</label>
+              <input
+                type="number"
+                min={10}
+                max={10000}
+                value={timerMs}
+                onChange={(e) => updateParams({ timerMs: parseInt(e.target.value) || 100 })}
+                className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
+              />
+            </div>
+          )}
           </div>
 
-        {/* 回环模式设置 */}
+        {/* 回环模式设置 (仅决定发送路径, 与发送模式无关) */}
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-2">{t(lang, 'cmdLoopback')}</div>
         <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
           <div className="grid grid-cols-[80px_1fr] items-center gap-2">
@@ -424,35 +501,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
               {params.loopbackEnabled ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
             </button>
           </div>
-          {params.loopbackEnabled && (
-            <>
-              <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-                <label className="text-xs text-text-secondary">{t(lang, 'cmdLoopbackManual')}</label>
-                <select
-                  value={params.loopbackSendMode}
-                  onChange={(e) => updateParams({ loopbackSendMode: e.target.value as 'manual' | 'onChange' | 'timer' })}
-                  className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
-                >
-                  <option value="manual">{t(lang, 'cmdLoopbackManual')}</option>
-                  <option value="onChange">{t(lang, 'cmdLoopbackOnChange')}</option>
-                  <option value="timer">{t(lang, 'cmdLoopbackTimer')}</option>
-                </select>
-              </div>
-              {params.loopbackSendMode === 'timer' && (
-                <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-                  <label className="text-xs text-text-secondary">{t(lang, 'cmdLoopbackInterval')}</label>
-                  <input
-                    type="number"
-                    min={10}
-                    max={10000}
-                    value={params.loopbackTimerMs}
-                    onChange={(e) => updateParams({ loopbackTimerMs: parseInt(e.target.value) || 100 })}
-                    className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
-                  />
-                </div>
-              )}
-            </>
-          )}
         </div>
       </div>
     </div>

@@ -163,12 +163,14 @@ pub struct LoopbackResult {
 }
 
 #[tauri::command]
-#[allow(dead_code)]
 pub async fn send_and_capture(state: State<'_, AppState>, data: Vec<u8>) -> Result<LoopbackResult> {
     // 1. 发送到 transport (TestData 模式下回环)
+    //    回环与串口开关无关: 未连接时跳过发送, 仅做本地解析对照
     {
         let manager = state.transport.lock().await;
-        manager.send(&data).await?;
+        if manager.state() == ConnectionState::Connected {
+            manager.send(&data).await?;
+        }
     }
 
     // 2. 即时调用协议引擎解析 (同步, 不依赖 data_loop 管道)

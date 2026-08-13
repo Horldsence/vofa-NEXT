@@ -788,6 +788,8 @@ fdEnableValid: 输出 valid 端口
 fdEnableFrameCount: 输出 frame_count 端口
 fdEnableLastTimestamp: 输出 last_timestamp 端口
 fdEnableFps: 输出 fps 端口
+fdLoopback: 回环模式
+fdLoopbackDesc: 显示 loopbackIn 输入口, 只接收回环边注入的字节, 不再默认接收实时 RX
 fdBlocksEmpty: 暂无块, 点击下方按钮添加
 fdLiveOutputs: 实时输出
 fdLiveHint: 连接传输后, 解析结果将实时显示在下方端口
@@ -885,10 +887,13 @@ closeTableViewTab: 关闭表格
 # Loopback
 cmdLoopback: 回环模式
 cmdLoopbackDesc: 发送后捕获协议引擎解析结果
-cmdLoopbackManual: 手动发送
-cmdLoopbackOnChange: 值变化发送
-cmdLoopbackTimer: 定时发送
-cmdLoopbackInterval: 定时间隔 (ms)
+
+# 发送模式 (与回环无关)
+cmdSendMode: 发送模式
+cmdSendModeManual: 手动发送
+cmdSendModeOnChange: 值变化发送
+cmdSendModeTimer: 定时发送
+cmdSendModeInterval: 定时间隔 (ms)
 
 # 布局编排 (模块拖拽重排)
 dragToRearrange: 拖动到其他模块边缘以重新排列

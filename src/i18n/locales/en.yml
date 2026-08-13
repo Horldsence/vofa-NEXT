@@ -788,6 +788,8 @@ fdEnableValid: Output valid port
 fdEnableFrameCount: Output frame_count port
 fdEnableLastTimestamp: Output last_timestamp port
 fdEnableFps: Output fps port
+fdLoopback: Loopback mode
+fdLoopbackDesc: Show loopbackIn input port; only receive bytes injected via loopback edges instead of the live RX stream
 fdBlocksEmpty: No blocks yet, click below to add
 fdLiveOutputs: Live Outputs
 fdLiveHint: After connecting transport, parsed results appear in ports below
@@ -885,10 +887,13 @@ closeTableViewTab: Close Table
 # Loopback
 cmdLoopback: Loopback
 cmdLoopbackDesc: Capture protocol parsed results after sending
-cmdLoopbackManual: Manual send
-cmdLoopbackOnChange: Send on change
-cmdLoopbackTimer: Timed send
-cmdLoopbackInterval: Interval (ms)
+
+# Send mode (independent of loopback)
+cmdSendMode: Send mode
+cmdSendModeManual: Manual send
+cmdSendModeOnChange: Send on change
+cmdSendModeTimer: Timed send
+cmdSendModeInterval: Interval (ms)
 
 # Layout arrangement (drag to rearrange panels)
 dragToRearrange: Drag to another panel's edge to rearrange

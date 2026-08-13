@@ -390,9 +390,9 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
           />
         )}
 
-        {/* 全局设置 */}
+        {/* 全局设置 (与 CommandSender 同款 grid 行 + 开关按钮) */}
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-1">{t(lang, 'fdSettings')}</div>
-        <div className="flex flex-col gap-1.5 p-2 bg-bg-editor border border-border rounded">
+        <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
           <div className="grid grid-cols-[80px_1fr] items-center gap-2">
             <label className="text-xs text-text-secondary">{t(lang, 'cmdLabel')}</label>
             <input
@@ -402,42 +402,29 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
               className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
             />
           </div>
-          <label className="flex items-center gap-1.5 text-xs text-text-primary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={params.enableValid}
-              onChange={(e) => updateParams({ enableValid: e.target.checked })}
-              className="accent-accent"
-            />
-            <span>{t(lang, 'fdEnableValid')}</span>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-text-primary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={params.enableFrameCount}
-              onChange={(e) => updateParams({ enableFrameCount: e.target.checked })}
-              className="accent-accent"
-            />
-            <span>{t(lang, 'fdEnableFrameCount')}</span>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-text-primary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={params.enableLastTimestamp}
-              onChange={(e) => updateParams({ enableLastTimestamp: e.target.checked })}
-              className="accent-accent"
-            />
-            <span>{t(lang, 'fdEnableLastTimestamp')}</span>
-          </label>
-          <label className="flex items-center gap-1.5 text-xs text-text-primary cursor-pointer">
-            <input
-              type="checkbox"
-              checked={params.enableFps}
-              onChange={(e) => updateParams({ enableFps: e.target.checked })}
-              className="accent-accent"
-            />
-            <span>{t(lang, 'fdEnableFps')}</span>
-          </label>
+          {(
+            [
+              ['fdEnableValid', 'enableValid'],
+              ['fdEnableFrameCount', 'enableFrameCount'],
+              ['fdEnableLastTimestamp', 'enableLastTimestamp'],
+              ['fdEnableFps', 'enableFps'],
+              ['fdLoopback', 'loopbackEnabled'],
+            ] as const
+          ).map(([labelKey, paramKey]) => {
+            const on = params[paramKey] ?? false;
+            return (
+              <div key={paramKey} className="grid grid-cols-[80px_1fr] items-center gap-2">
+                <label className="text-xs text-text-secondary">{t(lang, labelKey)}</label>
+                <button
+                  className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${on ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
+                  onClick={() => updateParams({ [paramKey]: !on })}
+                  title={paramKey === 'loopbackEnabled' ? t(lang, 'fdLoopbackDesc') : undefined}
+                >
+                  {on ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

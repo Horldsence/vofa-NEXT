@@ -72,6 +72,11 @@ export const api = {
   sendAndCapture: (data: number[]) =>
     invoke<import('../../types').LoopbackResult>('send_and_capture', { data }),
 
+  /// 回环字节注入 — 将字节沿回环边路由到连线的 FrameDecoder (与串口开关无关)
+  /// 返回实际注入的解码器数量 (0 = 未连线)
+  injectLoopbackBytes: (sourceWidgetId: string, data: number[]) =>
+    invoke<number>('inject_loopback_bytes', { sourceWidgetId, data }),
+
   // ===== 协议 =====
   setProtocol: (config: ProtocolConfig) =>
     invoke<void>('set_protocol', { config }),

@@ -26,7 +26,7 @@ export function ChannelSourceNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className="border border-border rounded-md min-w-[140px] text-[11px] [&.selected]:border-accent"
+      className="nowheel border border-border rounded-md min-w-[140px] text-[11px] [&.selected]:border-accent"
       style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 25%, var(--color-bg-sidebar))' }}
     >
       <div

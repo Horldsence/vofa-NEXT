@@ -110,7 +110,7 @@ describe('DataTabContent sibling-tab isolation', () => {
     expect(spy).toHaveBeenCalledTimes(1);
 
     // 兄弟 heavy 数据变化 (widgets 数组新增无关控件) 同样不级联
-    act(() => useAppStore.setState({ widgets: [PIE_WIDGET, { kind: 'Command', params: { id: 'cmd-1', label: 'Cmd', blocks: [], appendNewline: false, loopbackEnabled: false, loopbackSendMode: 'manual', loopbackTimerMs: 100, loopbackHistory: [] } }] }));
+    act(() => useAppStore.setState({ widgets: [PIE_WIDGET, { kind: 'Command', params: { id: 'cmd-1', label: 'Cmd', blocks: [], appendNewline: false, loopbackEnabled: false, sendMode: 'manual', timerMs: 100, loopbackHistory: [] } }] }));
     expect(spy).toHaveBeenCalledTimes(1);
   });
 

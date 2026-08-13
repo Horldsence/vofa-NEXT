@@ -38,20 +38,36 @@ export function Slider({ widget, onRemove }: SliderProps) {
   };
 
   // 鼠标滚轮调整: 向上加 step, 向下减 step
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const dir = e.deltaY < 0 ? 1 : -1;
-    const increment = step >= 1 ? step : step * 5;
-    const raw = value + dir * increment;
-    const stepped = Math.round(raw / step) * step;
-    const clamped = Math.max(min, Math.min(max, stepped));
-    updateWidget(widget.params.id, {
-      kind: 'Slider',
-      params: { ...widget.params, default: clamped },
-    });
-    sendBindingValue(binding, clamped);
-    lastSentRef.current = clamped;
-  };
+  // 原生非被动监听 — React onWheel 默认 passive, preventDefault 无效会导致页面同时滚动
+  const inputRef = useRef<HTMLInputElement>(null);
+  const wheelStateRef = useRef({ value, min, max, step, binding, params: widget.params });
+  useEffect(() => {
+    wheelStateRef.current = { value, min, max, step, binding, params: widget.params };
+  });
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const { value: v, min: mn, max: mx, step: st, binding: bd, params } = wheelStateRef.current;
+      const dir = e.deltaY < 0 ? 1 : -1;
+      const increment = st >= 1 ? st : st * 5;
+      const raw = v + dir * increment;
+      const stepped = Math.round(raw / st) * st;
+      const clamped = Math.max(mn, Math.min(mx, stepped));
+      if (clamped === v) return;
+      updateWidget(widget.params.id, {
+        kind: 'Slider',
+        params: { ...params, default: clamped },
+      });
+      sendBindingValue(bd, clamped);
+      lastSentRef.current = clamped;
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 同步当前值到后端图 (事件驱动, 供下游 widget 读取)
   useEffect(() => {
@@ -62,6 +78,7 @@ export function Slider({ widget, onRemove }: SliderProps) {
     <WidgetCard label={label} onRemove={onRemove}>
       <div className="flex flex-col gap-1 w-full">
         <input
+          ref={inputRef}
           type="range"
           className="slider-input"
           min={min}
@@ -71,7 +88,6 @@ export function Slider({ widget, onRemove }: SliderProps) {
           onChange={handleChange}
           onPointerUp={handleRelease}
           onKeyUp={handleRelease}
-          onWheel={handleWheel}
         />
         <div className="text-xl font-semibold text-text-bright font-mono text-center">{value.toFixed(2)}</div>
       </div>

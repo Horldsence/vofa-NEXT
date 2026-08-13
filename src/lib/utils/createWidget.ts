@@ -181,8 +181,8 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           ],
           appendNewline: false,
           loopbackEnabled: false,
-          loopbackSendMode: 'manual',
-          loopbackTimerMs: 100,
+          sendMode: 'manual',
+          timerMs: 100,
           loopbackHistory: [],
         },
       };
@@ -218,6 +218,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           enableLastTimestamp: false,
           enableFps: false,
           mode: 'live',
+          loopbackEnabled: false,
         },
       };
     case 'RawData':

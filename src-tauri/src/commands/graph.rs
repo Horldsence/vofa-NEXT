@@ -33,6 +33,10 @@ pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Res
 /// 设置输入控件当前值 (Knob/Slider/Button/Radio/Checkbox 拖动时调用)
 ///
 /// 该值会在下一帧 evaluate 时作为 Input 节点的输出
+///
+/// 立即空帧 evaluate 一次: 输入控件的值变化必须即时反映到图输出,
+/// 不能依赖 transport 数据流 — 断开/无帧时下游 (CommandSender onChange 发送、
+/// Gauge 等显示控件) 也要能感知变化。
 #[tauri::command]
 pub async fn set_input_value(
     state: State<'_, AppState>,
@@ -40,12 +44,17 @@ pub async fn set_input_value(
     value: f32,
 ) -> Result<()> {
     state.input_values.lock().insert(widget_id, value);
+    crate::pipeline::graph_eval::evaluate_all_graphs_with(
+        &state.eval_state(),
+        &vofa_next_core::DataFrame::new(vec![]),
+    );
     Ok(())
 }
 
 /// 提交 Custom widget 的输出 (前端 iframe 调用 ctx.send 后回传)
 ///
 /// 后端在下一帧 evaluate 时使用这些值作为 Custom 节点的输出
+/// (同 set_input_value: 立即 evaluate, 不依赖 transport 数据流)
 #[tauri::command]
 pub async fn submit_custom_output(
     state: State<'_, AppState>,
@@ -53,7 +62,63 @@ pub async fn submit_custom_output(
     outputs: std::collections::HashMap<String, f32>,
 ) -> Result<()> {
     state.custom_outputs.lock().insert(widget_id, outputs);
+    crate::pipeline::graph_eval::evaluate_all_graphs_with(
+        &state.eval_state(),
+        &vofa_next_core::DataFrame::new(vec![]),
+    );
     Ok(())
+}
+
+/// 回环字节注入 — CommandSender 回环模式的发送路径
+///
+/// 将字节沿回环边 (target_handle == loopbackIn) 路由到连线的 FrameDecoder:
+/// 1. 在所有 tab 图中查找 loopback_targets_for(source_widget_id)
+/// 2. 对每个目标解码器 feed_one_decoder (ensure parser + feed + 旁路收集)
+/// 3. 空帧 evaluate 一次, 刷新 output_snapshot (60 FPS ticker 推送前端)
+///
+/// 与串口开关无关 — 不触碰 transport, 无连接时 data_loop 不跑也能工作。
+///
+/// 返回: 实际注入的解码器数量 (0 = 未连线, 前端可忽略)
+#[tauri::command]
+pub async fn inject_loopback_bytes(
+    state: State<'_, AppState>,
+    source_widget_id: String,
+    data: Vec<u8>,
+) -> Result<usize> {
+    let ts_us = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0);
+
+    // 1. 收集 (decoder_id, parse_config) — 先取快照再逐个 feed, 避免长时持锁
+    let targets: Vec<(String, crate::pipeline::decoder_feed::DecoderParseConfig)> = {
+        let graphs = state.graphs.lock();
+        let mut v = Vec::new();
+        for (_, graph) in graphs.iter() {
+            for dec_id in graph.loopback_targets_for(&source_widget_id) {
+                if let Some(cfg) = graph.decoder_config(&dec_id) {
+                    v.push((dec_id, (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4)));
+                }
+            }
+        }
+        v
+    };
+
+    // 2. 逐个喂入 (与 live 帧同等对待: 更新 last_frame + 旁路收集)
+    let eval_state = state.eval_state();
+    for (dec_id, config) in &targets {
+        crate::pipeline::decoder_feed::feed_one_decoder(&eval_state, dec_id, config, &data, ts_us);
+    }
+
+    // 3. 空帧 evaluate — decoder 输出来自 last_frame 缓存 (先例: data_loop.rs 空闲帧求值)
+    if !targets.is_empty() {
+        crate::pipeline::graph_eval::evaluate_all_graphs_with(
+            &eval_state,
+            &vofa_next_core::DataFrame::new(vec![]),
+        );
+    }
+
+    Ok(targets.len())
 }
 
 /// 订阅图输出快照 — 60 FPS 推送 HashMap<widgetId, HashMap<portId, value>>

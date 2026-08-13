@@ -53,17 +53,31 @@ export function Knob({ widget, onRemove }: KnobProps) {
   };
 
   // 鼠标滚轮调整: 向上加 step, 向下减 step
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    const dir = e.deltaY < 0 ? 1 : -1;
-    // 滚轮加速: 大步长时按 step, 小步长时按 5*step
-    const increment = step >= 1 ? step : step * 5;
-    const raw = value + dir * increment;
-    const stepped = Math.round(raw / step) * step;
-    const clamped = Math.max(min, Math.min(max, stepped));
-    setValue(clamped);
-    sendBindingValue(binding, clamped);
-  };
+  // 原生非被动监听 — React onWheel 默认 passive, preventDefault 无效会导致页面同时滚动
+  const wheelStateRef = useRef({ value, min, max, step, binding });
+  useEffect(() => {
+    wheelStateRef.current = { value, min, max, step, binding };
+  });
+  useEffect(() => {
+    const el = knobRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const { value: v, min: mn, max: mx, step: st, binding: bd } = wheelStateRef.current;
+      const dir = e.deltaY < 0 ? 1 : -1;
+      // 滚轮加速: 大步长时按 step, 小步长时按 5*step
+      const increment = st >= 1 ? st : st * 5;
+      const raw = v + dir * increment;
+      const stepped = Math.round(raw / st) * st;
+      const clamped = Math.max(mn, Math.min(mx, stepped));
+      if (clamped === v) return;
+      setValue(clamped);
+      sendBindingValue(bd, clamped);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   // 切换控件时重置默认值
   useEffect(() => {
@@ -84,7 +98,6 @@ export function Knob({ widget, onRemove }: KnobProps) {
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
-          onWheel={handleWheel}
         >
           <div
             className="knob-indicator-line"

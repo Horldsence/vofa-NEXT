@@ -1,5 +1,5 @@
-import { memo, useCallback } from 'react';
-import { Handle, Position, type NodeProps, type Edge } from '@xyflow/react';
+import { memo, useCallback, useEffect } from 'react';
+import { Handle, Position, useUpdateNodeInternals, type NodeProps, type Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
@@ -91,16 +91,24 @@ function getWidgetPorts(widget: WidgetConfig): {
       };
     case 'Command': {
       // 命令发送: 从 blocks 中 var_ref 块推导输入端口 (端口名自定义)
+      // 回环模式: 追加 loopbackOut 字节发送口 — 发送的字节沿回环边路由到 FrameDecoder loopbackIn
       const blocks = widget.params.blocks ?? [];
       const inputs = blocks
         .filter((b) => b.type === 'var_ref' && b.portName)
         .map((b) => ({ id: b.portName!, label: b.portName! }));
-      return { inputs, outputs: [] };
+      const outputs = widget.params.loopbackEnabled
+        ? [{ id: 'loopbackOut', label: 'loopbackOut' }]
+        : [];
+      return { inputs, outputs };
     }
     case 'FrameDecoder': {
-      // 帧解码器: SOURCE 节点 — 输出端口 = length/id/field/bitfield 块的 portName + 可选附加端口
-      // 无输入端口 (直接消费原始字节流, 由后端 data_loop 喂入)
+      // 帧解码器: 输出端口 = length/id/field/bitfield 块的 portName + 可选附加端口
+      // 默认无输入端口 (直接消费实时 RX 字节流, 由后端 data_loop 喂入);
+      // 回环模式: 追加 loopbackIn 字节输入口, 只接收回环边注入的字节
       const blocks = widget.params.blocks ?? [];
+      const inputs = widget.params.loopbackEnabled
+        ? [{ id: 'loopbackIn', label: 'loopbackIn' }]
+        : [];
       const outputs: { id: string; label: string }[] = [];
       for (const b of blocks) {
         if (b.type === 'length') {
@@ -117,7 +125,10 @@ function getWidgetPorts(widget: WidgetConfig): {
       if (widget.params.enableFrameCount) outputs.push({ id: 'frame_count', label: 'frame_count' });
       if (widget.params.enableLastTimestamp) outputs.push({ id: 'last_timestamp', label: 'last_timestamp' });
       if (widget.params.enableFps) outputs.push({ id: 'fps', label: 'fps' });
-      return { inputs: [], outputs };
+      // raw 输出口: 整帧原始字节 (无 f32 语义) — 连到 RawData 时显示该解码器消费的完整帧字节;
+      // 普通 field 口连 RawData 则显示该字段的数值流
+      outputs.push({ id: 'raw', label: 'raw' });
+      return { inputs, outputs };
     }
     case 'Custom': {
       // Custom: 从用户代码中解析端口定义
@@ -171,6 +182,20 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   // 稳定回调 — memo 包装的嵌入控件 (Gauge/LED/...) 依赖同引用 props 才能跳过重渲染
   const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
   const handleEditCustom = useCallback(() => openCustomEditor(id), [openCustomEditor, id]);
+  const updateNodeInternals = useUpdateNodeInternals();
+
+  // 端口 id 集合签名 (与下方渲染用 effectivePorts 同源, 提前算一份供 hook 依赖)
+  const widgetPortsKey = widget
+    ? (() => {
+        const p = widget.kind === 'RawData' ? deriveRawDataPorts(rfEdges, id) : getWidgetPorts(widget);
+        return `${p.inputs.map((x) => x.id).join(',')}|${p.outputs.map((x) => x.id).join(',')}`;
+      })()
+    : '';
+  // 端口 id 集合变化 (var_ref 增删 / loopback 开关增减 loopback 端口) 后,
+  // 必须通知 React Flow 重测 handle 位置, 否则新端口可见但无法连接
+  useEffect(() => {
+    updateNodeInternals(id);
+  }, [updateNodeInternals, id, widgetPortsKey]);
 
   if (!widget) {
     return <div className="p-2 text-red text-xs">Missing widget</div>;
@@ -269,7 +294,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className="border border-border rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
+      className="nowheel border border-border rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
       style={{ backgroundColor: `color-mix(in srgb, ${categoryColor} 25%, var(--color-bg-sidebar))` }}
     >
       <div

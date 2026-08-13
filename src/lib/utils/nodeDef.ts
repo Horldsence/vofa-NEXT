@@ -22,7 +22,7 @@ export type NodeKind =
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
   | { kind: 'Filter'; params: { kind: { IIR: { b: [number, number, number]; a: [number, number, number] } } } }
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
-  | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean } }
+  | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean; loopback: boolean } }
   | { kind: 'Sink' };
 
 /// 节点定义 DTO (IPC)
@@ -116,6 +116,8 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
           enable_frame_count: widget.params.enableFrameCount,
           enable_last_timestamp: widget.params.enableLastTimestamp,
           enable_fps: widget.params.enableFps,
+          // 旧布局无该字段时按 false (默认接收实时 RX)
+          loopback: widget.params.loopbackEnabled ?? false,
         },
       };
     }

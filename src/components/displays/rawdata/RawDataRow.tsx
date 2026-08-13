@@ -74,7 +74,7 @@ export const Row = memo(function Row({
 
   return (
     <div
-      className={`flex items-center gap-2 px-2 select-none ${isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover'}`}
+      className={`flex items-center gap-2 px-2 select-text ${isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover'}`}
       style={{ height: ROW_HEIGHT }}
       onMouseDown={(e) => onMouseDown(e, index)}
       onMouseLeave={() => setHovered(null)}

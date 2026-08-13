@@ -80,13 +80,18 @@ pub enum NodeKind {
         /// 采样率 (Hz), 用于计算频率轴
         sample_rate: f32,
     },
-    /// 帧解码节点 (SOURCE 类型, 无输入端口, 输出来自字节流解析)
+    /// 帧解码节点 (SOURCE 类型, 输出来自字节流解析)
     ///
     /// 设计动机: 类似 CommandSender 但反向 — 字节流 → 按块定义解析 → 输出端口。
     /// 每个 field/bitfield 块对应一个输出端口, 另有可选 valid/frame_count/last_timestamp/fps 端口。
     ///
-    /// 跨帧状态: FrameParser 状态机由调用方 (data_loop) 管理,
-    /// 字节流通过 feed_frame_decoders 推入, 解析完成后输出缓存到 decoder_states,
+    /// 字节来源:
+    /// - loopback=false: data_loop 将实时 RX 字节流默认喂入 (无输入端口)
+    /// - loopback=true:  显示 loopbackIn 字节输入口, 只接收回环边注入的字节,
+    ///   data_loop 的默认喂入被跳过 (见 decoder_feed.rs)
+    ///
+    /// 跨帧状态: FrameParser 状态机由调用方 (data_loop / inject_loopback_bytes) 管理,
+    /// 字节流通过 feed_frame_decoders / feed_one_decoder 推入, 解析完成后输出缓存到 decoder_states,
     /// evaluate 时从缓存读取最近一次解析结果。
     FrameDecoder {
         /// 块列表 (按顺序定义帧布局)
@@ -96,6 +101,8 @@ pub enum NodeKind {
         enable_frame_count: bool,
         enable_last_timestamp: bool,
         enable_fps: bool,
+        /// 回环模式: 只接收 loopbackIn 回环边注入的字节, 不再默认接收实时 RX
+        loopback: bool,
     },
     /// Sink 节点 (Label/Gauge/LED/NumberDisplay/PieChart/Image/Waveform)
     /// 这些节点没有输出, 后端 DAG 不评估它们, 前端通过 edges 自行查值
@@ -437,6 +444,10 @@ pub struct NodeDef {
     pub kind: NodeKind,
 }
 
+/// 回环字节输入端口 handle 名 (FrameDecoder loopback 模式的字节入口)
+/// 以该 handle 为 target 的边是"字节路由边", 不参与 f32 拓扑排序/求值
+pub const LOOPBACK_IN_HANDLE: &str = "loopbackIn";
+
 /// 编译后的图 — 包含拓扑序的评估计划
 pub struct CompiledGraph {
     pub tab_id: String,
@@ -444,6 +455,9 @@ pub struct CompiledGraph {
     nodes: HashMap<String, NodeDef>,
     /// 边集合
     edges: Vec<Edge>,
+    /// 字节路由边 (target_handle == loopbackIn) — 仅用于回环字节注入查找,
+    /// 不参与拓扑排序 (避免 Command var_ref 输入回连解码器输出时误判循环)
+    byte_edges: Vec<Edge>,
     /// 拓扑序 — 仅包含有输出的节点 (ChannelSource/Input/Math/Custom)
     /// Sink 节点不参与评估
     eval_order: Vec<String>,
@@ -481,6 +495,19 @@ impl CompiledGraph {
             }
             node_map.insert(n.id.clone(), n);
         }
+
+        // 字节路由边 (target_handle == loopbackIn) 单独收集, 不参与 f32 拓扑排序
+        // (字节不经 evaluate 流动; 若参与 DFS, Command var_ref 输入回连解码器输出会误判循环)
+        let byte_edges: Vec<Edge> = edges
+            .iter()
+            .filter(|e| e.target_handle == LOOPBACK_IN_HANDLE)
+            .cloned()
+            .collect();
+        let f32_edges: Vec<Edge> = edges
+            .iter()
+            .filter(|e| e.target_handle != LOOPBACK_IN_HANDLE)
+            .cloned()
+            .collect();
 
         // 构建 input_index: (target, target_handle) → (source, source_handle)
         let mut input_index: HashMap<(String, String), (String, String)> = HashMap::new();
@@ -532,13 +559,14 @@ impl CompiledGraph {
             .collect();
 
         for id in &output_node_ids {
-            dfs(id, &node_map, &edges, &mut visited, &mut order)?;
+            dfs(id, &node_map, &f32_edges, &mut visited, &mut order)?;
         }
 
         Ok(Self {
             tab_id,
             nodes: node_map,
             edges,
+            byte_edges,
             eval_order: order,
             input_index,
             channel_source_id,
@@ -634,6 +662,7 @@ impl CompiledGraph {
                     enable_frame_count,
                     enable_last_timestamp,
                     enable_fps,
+                    loopback: _,
                 } => {
                     // FrameDecoder 的输出由 data_loop 喂入字节流后缓存到 decoder_states,
                     // evaluate 阶段仅读取 last_frame 缓存。
@@ -802,12 +831,12 @@ impl CompiledGraph {
             .collect()
     }
 
-    /// 获取 FrameDecoder 节点的配置 (blocks + 附加端口开关)
-    /// 用于 state.rs 在节点变更时重建 FrameParser
+    /// 获取 FrameDecoder 节点的配置 (blocks + 附加端口开关 + loopback 标志)
+    /// 用于 decoder_feed / inject_loopback_bytes 在节点变更时重建 FrameParser
     pub fn decoder_config(
         &self,
         node_id: &str,
-    ) -> Option<(&[DecoderBlockDef], bool, bool, bool, bool)> {
+    ) -> Option<(&[DecoderBlockDef], bool, bool, bool, bool, bool)> {
         let node = self.nodes.get(node_id)?;
         if let NodeKind::FrameDecoder {
             blocks,
@@ -815,6 +844,7 @@ impl CompiledGraph {
             enable_frame_count,
             enable_last_timestamp,
             enable_fps,
+            loopback,
         } = &node.kind
         {
             Some((
@@ -823,10 +853,27 @@ impl CompiledGraph {
                 *enable_frame_count,
                 *enable_last_timestamp,
                 *enable_fps,
+                *loopback,
             ))
         } else {
             None
         }
+    }
+
+    /// 查找回环字节注入的目标解码器:
+    /// 字节路由边 (target_handle == loopbackIn) 中, source 为指定控件的所有 FrameDecoder target
+    pub fn loopback_targets_for(&self, source_id: &str) -> Vec<String> {
+        self.byte_edges
+            .iter()
+            .filter(|e| {
+                e.source == source_id
+                    && matches!(
+                        self.nodes.get(&e.target).map(|n| &n.kind),
+                        Some(NodeKind::FrameDecoder { .. })
+                    )
+            })
+            .map(|e| e.target.clone())
+            .collect()
     }
 
     /// 获取 SpectrumSink 节点的配置 (window_size, window_type, output, sample_rate)

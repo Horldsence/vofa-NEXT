@@ -33,8 +33,9 @@ const REPR_OPTIONS: { value: RawDataRepr; label: string }[] = [
   { value: 'ascii', label: 'asciiView' },
 ];
 
-/// 原始数据显示 — Grid/Line × HEX/ASCII 四视图, 支持虚拟滚动、选中复制、时间戳、发送
-/// widgetId 存在时展示通道选择器, 可查看连入该控件的 FrameDecoder 节点独立字节流
+/// 原始数据显示 — Grid/Line × HEX/ASCII 四视图, 支持虚拟滚动、文本选中/行选中复制、时间戳、发送
+/// widgetId 存在时展示通道选择器: FrameDecoder 的 raw 口 = 该节点独立整帧字节流,
+/// field 口及其他数值源 = 数值流 (graphOutputs)
 export function RawDataView({ widgetId }: { widgetId?: string }) {
   const lang = useAppStore((s) => s.lang);
   const clearData = useAppStore((s) => s.clearData);
@@ -104,9 +105,14 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     [widgets]
   );
 
-  // 当前选中通道 → 分类: FrameDecoder 源 = 解码器消费的原始帧字节; 其余 (ChannelSource/Math/Filter/...) = 数值流
+  // 当前选中通道 → 分类:
+  // - FrameDecoder 的 raw 口 = 该解码器消费的整帧原始字节 (节点独立字节流)
+  // - 其余 (FrameDecoder field 口 / ChannelSource / Math / Filter / ...) = 数值流 (graphOutputs)
   const selectedChannel = channelOptions.find((o) => o.key === channel);
-  const isDec = !!selectedChannel && sourceIsFrameDecoder(selectedChannel.sourceId);
+  const isDec =
+    !!selectedChannel &&
+    selectedChannel.sourceHandle === 'raw' &&
+    sourceIsFrameDecoder(selectedChannel.sourceId);
   const isNum = !!selectedChannel && !isDec;
 
   // 切换控件 / 通道消失时回退到 global
@@ -302,6 +308,9 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
         selection.selectAll();
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        // 有原生文本选区且没有行选择时, 让浏览器执行原生复制
+        const native = window.getSelection();
+        if (selection.selected.size === 0 && native && !native.isCollapsed) return;
         e.preventDefault();
         void copySelected();
       }
@@ -377,7 +386,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const renderNumericContent = () => (
     <div
       key={`${grouping}:${repr}:${channel}`}
-      className="flex-1 flex flex-col min-h-0 overflow-hidden font-mono animate-rawdata-enter"
+      className="flex-1 flex flex-col min-h-0 overflow-hidden font-mono animate-rawdata-enter select-text"
     >
       <div className="flex-1 overflow-auto min-h-0" ref={numScrollRef}>
         {numRows.length === 0 ? (
