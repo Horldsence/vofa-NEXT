@@ -219,11 +219,8 @@ VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基�
 
 ```
 vofa-next/
-├── scripts/                       # 构建与补丁脚本
-│   ├── build.sh
-│   ├── patch_cmdsender.cjs
-│   ├── patch_remaining.cjs
-│   └── patch_widgetnode.cjs
+├── scripts/                       # 构建脚本
+│   └── build.sh
 ├── src/                           # 前端源码
 │   ├── components/
 │   │   ├── controls/              # 旋钮 / 按钮 / 滑块 / 单选 / 复选 / 标签

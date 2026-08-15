@@ -219,11 +219,8 @@ The default layout looks like this (all panels can be freely rearranged):
 
 ```
 vofa-next/
-├── scripts/                       # Build & patch scripts
-│   ├── build.sh
-│   ├── patch_cmdsender.cjs
-│   ├── patch_remaining.cjs
-│   └── patch_widgetnode.cjs
+├── scripts/                       # Build scripts
+│   └── build.sh
 ├── src/                           # Frontend source
 │   ├── components/
 │   │   ├── controls/              # Knob / Button / Slider / Radio / Checkbox / Label

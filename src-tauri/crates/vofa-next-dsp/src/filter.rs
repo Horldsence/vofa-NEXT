@@ -170,6 +170,24 @@ fn w0(cutoff: f32, sample_rate: f32) -> f32 {
     2.0 * PI_F32 * cutoff / sample_rate
 }
 
+/// 将滤波器频率参数限制在 (0, Nyquist) 开区间内。
+///
+/// RBJ biquad 系数公式仅在 0 < w0 < π (即 freq < sample_rate/2) 时有效;
+/// 越界会使 α = sin(w0)/(2Q) 变号甚至为负, a0 = 1+α 可能 ≤ 1,
+/// 极点半平面位置偏移, 严重时滤波器发散。此处把越界/非法输入收敛到稳定范围,
+/// 保证任意用户输入都产出有限且稳定的 biquad 系数。
+#[allow(clippy::cast_precision_loss)]
+fn clamp_to_nyquist(freq: f32, sample_rate: f32) -> f32 {
+    if !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return if freq.is_finite() && freq > 0.0 { freq } else { 1.0 };
+    }
+    let nyquist = sample_rate * 0.5;
+    if !freq.is_finite() {
+        return nyquist * 0.1;
+    }
+    freq.clamp(nyquist * 0.001, nyquist * 0.999)
+}
+
 /// alpha = sin(w0) / (2 * Q)
 fn alpha(w0: f32, q: f32) -> f32 {
     w0.sin() / (2.0 * q)
