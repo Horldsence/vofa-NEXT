@@ -36,6 +36,11 @@ use std::collections::HashMap;
 use vofa_next_buffer::graph::Edge;
 use vofa_next_core::DataFrame;
 
+/// 图输出值表 (热路径) — FxHash 替代 SipHash, 高码率逐帧覆盖写时查找快 3~5 倍。
+/// serde 对任意 BuildHasher+Default 的 HashMap 透明, 线上 JSON 格式不变。
+pub type ValuesMap = HashMap<String, HashMap<String, f32, FxBuildHasher>, FxBuildHasher>;
+use rustc_hash::FxBuildHasher;
+
 /// 节点种类 — 决定节点如何被评估
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "kind", content = "params")]
@@ -448,6 +453,399 @@ pub struct NodeDef {
 /// 以该 handle 为 target 的边是"字节路由边", 不参与 f32 拓扑排序/求值
 pub const LOOPBACK_IN_HANDLE: &str = "loopbackIn";
 
+/// 取节点的输出 map (不存在则创建) — evaluate_into 热路径用
+///
+/// 不做 clear: 端口覆盖写, 稳态零分配; 过期端口清理由调用方
+/// 在图重编译时清空整个 out 保证。
+fn node_out_entry<'a>(out: &'a mut ValuesMap, node_id: &str) -> &'a mut HashMap<String, f32, FxBuildHasher> {
+    if out.get_mut(node_id).is_none() {
+        out.insert(node_id.to_string(), HashMap::default());
+    }
+    out.get_mut(node_id).unwrap()
+}
+
+/// 写端口值 — 键已存在时原位写 (零分配), 不存在才插入
+fn set_port(m: &mut HashMap<String, f32, FxBuildHasher>, port: &str, value: f32) {
+    if let Some(slot) = m.get_mut(port) {
+        *slot = value;
+    } else {
+        m.insert(port.to_string(), value);
+    }
+}
+
+// ============ 编译期槽位评估表 ============
+
+/// 分配一个输出槽位 (同名端口重复分配时后者覆盖索引, 与 set_port 覆盖写语义一致)
+fn alloc_slot(
+    slot_names: &mut Vec<(String, String)>,
+    slot_index: &mut HashMap<(String, String), usize, FxBuildHasher>,
+    node_id: &str,
+    port: &str,
+) -> usize {
+    let idx = slot_names.len();
+    slot_names.push((node_id.to_string(), port.to_string()));
+    slot_index.insert((node_id.to_string(), port.to_string()), idx);
+    idx
+}
+
+/// 输入边 (node_id, in_name) → 上游输出槽位 (无边/无槽位 = None, 与 resolve_input 缺省 0.0 对应)
+fn resolve_slot(
+    input_index: &HashMap<String, HashMap<String, (String, String)>>,
+    slot_index: &HashMap<(String, String), usize, FxBuildHasher>,
+    node_id: &str,
+    in_name: &str,
+) -> Option<usize> {
+    input_index
+        .get(node_id)
+        .and_then(|ports| ports.get(in_name))
+        .and_then(|(sn, sp)| slot_index.get(&(sn.clone(), sp.clone())).copied())
+}
+
+/// 编译期槽位操作 — 平坦操作序列 (拓扑序 == eval_order), 逐帧评估零字符串哈希
+enum CompiledOp {
+    /// ChannelSource: frame.channels[ch] → slot (越界写 0.0, 与 evaluate_into 语义一致)
+    Channel { ch: usize, slot: usize },
+    /// Input: input_values[node_id] → slot (缺省 0.0)
+    Input { node_id: String, slot: usize },
+    /// Math: 从输入槽位收集 → op.evaluate → out 槽位 (输入槽位 None = 常量 0.0)
+    Math {
+        op: MathOp,
+        inputs: Vec<Option<usize>>,
+        out: usize,
+    },
+    /// Custom: custom_outputs[node_id][port] → 各 slot (缺省全部 0.0)
+    Custom {
+        node_id: String,
+        ports: Vec<(String, usize)>,
+    },
+    /// Filter: 读 in 槽位 → filter_states[node_id] (懒建/kind 变更重建, 与现语义一致) → out
+    Filter {
+        node_id: String,
+        kind: FilterKind,
+        input: Option<usize>,
+        out: usize,
+    },
+    /// FrameDecoder: decoder_states[node_id].last_frame → 各端口 slot
+    /// (端口列表编译期确定: blocks 的 port_name (默认名规则与 output_port_name 一致)
+    ///  + 按开关的 valid/frame_count/last_timestamp/fps)
+    FrameDecoder {
+        node_id: String,
+        ports: Vec<(String, usize)>,
+        valid: Option<usize>,
+        frame_count: Option<usize>,
+        last_timestamp: Option<usize>,
+        fps: Option<usize>,
+    },
+}
+
+/// 编译期槽位评估表 — CompiledGraph::compile 时构建, 逐帧评估纯数组读写
+pub struct CompiledEval {
+    /// 槽位 i 对应的 (node_id, port) — 供快照物化/派生边反查
+    slot_names: Vec<(String, String)>,
+    /// (node_id, port) → 槽位下标
+    slot_index: HashMap<(String, String), usize, FxBuildHasher>,
+    /// 平坦操作序列 (拓扑序 == eval_order)
+    ops: Vec<CompiledOp>,
+    /// SpectrumSink 输入槽位: (sink_node_id, 源值槽位; None = 无上游边, 与缺省 0.0 对应)
+    spectrum_slots: Vec<(String, Option<usize>)>,
+}
+
+impl CompiledEval {
+    /// 编译期构建: 遍历 eval_order 按节点 kind 分配输出槽位 + 生成平坦操作序列
+    ///
+    /// 输入边在编译期经 input_index 反查 slot_index 解析为槽位下标;
+    /// 查不到 = 常量 0.0 (与 resolve_input 缺省语义一致, 以 None 表示)。
+    fn build(
+        nodes: &HashMap<String, NodeDef>,
+        eval_order: &[String],
+        input_index: &HashMap<String, HashMap<String, (String, String)>>,
+        ch_names: &[String],
+        in_names: &[String],
+    ) -> Self {
+        let mut slot_names: Vec<(String, String)> = Vec::new();
+        let mut slot_index: HashMap<(String, String), usize, FxBuildHasher> = HashMap::default();
+        let mut ops: Vec<CompiledOp> = Vec::new();
+
+        for node_id in eval_order {
+            let Some(node) = nodes.get(node_id) else {
+                continue;
+            };
+            match &node.kind {
+                NodeKind::ChannelSource { channels } => {
+                    for i in 0..*channels {
+                        let port = ch_names
+                            .get(i)
+                            .cloned()
+                            .unwrap_or_else(|| format!("ch{}", i));
+                        let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, &port);
+                        ops.push(CompiledOp::Channel { ch: i, slot });
+                    }
+                }
+                NodeKind::Input => {
+                    let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, "value");
+                    ops.push(CompiledOp::Input {
+                        node_id: node_id.clone(),
+                        slot,
+                    });
+                }
+                NodeKind::Math { op, input_count } => {
+                    let inputs = (0..*input_count)
+                        .map(|i| {
+                            let in_name = in_names
+                                .get(i)
+                                .cloned()
+                                .unwrap_or_else(|| format!("in{}", i));
+                            resolve_slot(input_index, &slot_index, node_id, &in_name)
+                        })
+                        .collect();
+                    let out = alloc_slot(&mut slot_names, &mut slot_index, node_id, "result");
+                    ops.push(CompiledOp::Math {
+                        op: *op,
+                        inputs,
+                        out,
+                    });
+                }
+                NodeKind::Custom { outputs, .. } => {
+                    let ports = outputs
+                        .iter()
+                        .map(|p| {
+                            (
+                                p.clone(),
+                                alloc_slot(&mut slot_names, &mut slot_index, node_id, p),
+                            )
+                        })
+                        .collect();
+                    ops.push(CompiledOp::Custom {
+                        node_id: node_id.clone(),
+                        ports,
+                    });
+                }
+                NodeKind::Filter { kind } => {
+                    let input = resolve_slot(input_index, &slot_index, node_id, "in0");
+                    let out = alloc_slot(&mut slot_names, &mut slot_index, node_id, "result");
+                    ops.push(CompiledOp::Filter {
+                        node_id: node_id.clone(),
+                        kind: kind.clone(),
+                        input,
+                        out,
+                    });
+                }
+                NodeKind::FrameDecoder {
+                    blocks,
+                    enable_valid,
+                    enable_frame_count,
+                    enable_last_timestamp,
+                    enable_fps,
+                    ..
+                } => {
+                    let mut ports = Vec::new();
+                    for b in blocks {
+                        if let Some(port) = b.output_port_name() {
+                            let slot =
+                                alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
+                            ports.push((port.to_string(), slot));
+                        }
+                    }
+                    let valid = enable_valid
+                        .then(|| alloc_slot(&mut slot_names, &mut slot_index, node_id, "valid"));
+                    let frame_count = enable_frame_count
+                        .then(|| alloc_slot(&mut slot_names, &mut slot_index, node_id, "frame_count"));
+                    let last_timestamp = enable_last_timestamp.then(|| {
+                        alloc_slot(&mut slot_names, &mut slot_index, node_id, "last_timestamp")
+                    });
+                    let fps = enable_fps
+                        .then(|| alloc_slot(&mut slot_names, &mut slot_index, node_id, "fps"));
+                    ops.push(CompiledOp::FrameDecoder {
+                        node_id: node_id.clone(),
+                        ports,
+                        valid,
+                        frame_count,
+                        last_timestamp,
+                        fps,
+                    });
+                }
+                NodeKind::SpectrumSink { .. } | NodeKind::Sink => {
+                    // Sink 类节点不应出现在 eval_order 中, 防御性跳过
+                    continue;
+                }
+            }
+        }
+
+        // SpectrumSink 输入槽位 (不在 eval_order, 输入端口固定 "in0")
+        let mut spectrum_slots = Vec::new();
+        for (node_id, node) in nodes {
+            if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
+                spectrum_slots.push((
+                    node_id.clone(),
+                    resolve_slot(input_index, &slot_index, node_id, "in0"),
+                ));
+            }
+        }
+
+        Self {
+            slot_names,
+            slot_index,
+            ops,
+            spectrum_slots,
+        }
+    }
+
+    /// 槽位数 (调用方据此分配 slots/written 缓冲并跨帧复用)
+    pub fn slot_count(&self) -> usize {
+        self.slot_names.len()
+    }
+
+    /// (node_id, port) → 槽位 (派生边批首解析用)
+    pub fn slot_of(&self, node: &str, port: &str) -> Option<usize> {
+        self.slot_index
+            .get(&(node.to_string(), port.to_string()))
+            .copied()
+    }
+
+    /// 逐帧评估: 纯数组读写, 零字符串哈希
+    ///
+    /// `slots` / `written` 由调用方分配 (长度 == slot_count) 并跨帧复用;
+    /// 调用方负责每帧清零 (slots 防上帧值泄漏, written 复刻 "本帧未产出 = 键不存在")。
+    /// op 写槽位时置位 written — FrameDecoder 无 parser / Custom 无回传以外的
+    /// 缺失都不写 (与 evaluate_into 的 map 语义一致)。
+    pub fn run(
+        &self,
+        frame: &DataFrame,
+        input_values: &HashMap<String, f32>,
+        custom_outputs: &HashMap<String, HashMap<String, f32>>,
+        filter_states: &mut HashMap<String, DigitalFilter>,
+        decoder_states: &HashMap<String, FrameParser>,
+        slots: &mut [f32],
+        written: &mut [bool],
+    ) {
+        for op in &self.ops {
+            match op {
+                CompiledOp::Channel { ch, slot } => {
+                    slots[*slot] = frame.channels.get(*ch).copied().unwrap_or(0.0);
+                    written[*slot] = true;
+                }
+                CompiledOp::Input { node_id, slot } => {
+                    slots[*slot] = input_values.get(node_id).copied().unwrap_or(0.0);
+                    written[*slot] = true;
+                }
+                CompiledOp::Math { op, inputs, out } => {
+                    // 16 路以内走栈数组 (与 evaluate_into 一致)
+                    let mut stack_buf = [0.0f32; 16];
+                    let mut heap_buf;
+                    let buf: &mut [f32] = if inputs.len() <= 16 {
+                        &mut stack_buf[..inputs.len()]
+                    } else {
+                        heap_buf = vec![0.0; inputs.len()];
+                        &mut heap_buf
+                    };
+                    for (i, s) in inputs.iter().enumerate() {
+                        buf[i] = s.map(|s| slots[s]).unwrap_or(0.0);
+                    }
+                    slots[*out] = op.evaluate(buf);
+                    written[*out] = true;
+                }
+                CompiledOp::Custom { node_id, ports } => {
+                    let vals = custom_outputs.get(node_id);
+                    for (port, slot) in ports {
+                        slots[*slot] = vals.and_then(|m| m.get(port)).copied().unwrap_or(0.0);
+                        written[*slot] = true;
+                    }
+                }
+                CompiledOp::Filter {
+                    node_id,
+                    kind,
+                    input,
+                    out,
+                } => {
+                    let input_val = input.map(|s| slots[s]).unwrap_or(0.0);
+                    // 懒初始化 / kind 变化时重建滤波器状态 (与 evaluate_into 一致)
+                    let need_rebuild = filter_states
+                        .get(node_id)
+                        .map(|f| f.kind() != kind)
+                        .unwrap_or(true);
+                    if need_rebuild {
+                        filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
+                    }
+                    let filter = filter_states.get_mut(node_id).unwrap();
+                    slots[*out] = filter.process(input_val);
+                    written[*out] = true;
+                }
+                CompiledOp::FrameDecoder {
+                    node_id,
+                    ports,
+                    valid,
+                    frame_count,
+                    last_timestamp,
+                    fps,
+                } => {
+                    if let Some(parser) = decoder_states.get(node_id) {
+                        // 仅写 last_frame.outputs 实际包含的端口 (线性扫描, 端口数小)
+                        for (k, &v) in &parser.last_frame.outputs {
+                            if let Some((_, slot)) = ports.iter().find(|(p, _)| p == k) {
+                                slots[*slot] = v;
+                                written[*slot] = true;
+                            }
+                        }
+                        if let Some(s) = valid {
+                            slots[*s] = if parser.last_frame.valid { 1.0 } else { 0.0 };
+                            written[*s] = true;
+                        }
+                        if let Some(s) = frame_count {
+                            slots[*s] = parser.frame_count as f32;
+                            written[*s] = true;
+                        }
+                        if let Some(s) = last_timestamp {
+                            slots[*s] = parser.last_frame.timestamp_us as f32;
+                            written[*s] = true;
+                        }
+                        if let Some(s) = fps {
+                            slots[*s] = parser.fps();
+                            written[*s] = true;
+                        }
+                    } else {
+                        // 节点刚加入但尚未喂入字节: 所有端口默认 0 (与 evaluate_into 一致)
+                        for (_, slot) in ports {
+                            slots[*slot] = 0.0;
+                            written[*slot] = true;
+                        }
+                        for s in [valid, frame_count, last_timestamp, fps]
+                            .into_iter()
+                            .flatten()
+                        {
+                            slots[*s] = 0.0;
+                            written[*s] = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 快照物化: slots + written → ValuesMap (仅快照发布点调用, 非逐帧)
+    ///
+    /// 只覆盖写本帧已产出的端口, 不清理过期键 (与 evaluate_into 语义一致)
+    pub fn materialize(&self, slots: &[f32], written: &[bool], out: &mut ValuesMap) {
+        for (i, (node_id, port)) in self.slot_names.iter().enumerate() {
+            if written[i] {
+                let m = node_out_entry(out, node_id);
+                set_port(m, port, slots[i]);
+            }
+        }
+    }
+
+    /// SpectrumSink 输入: (sink_id, value) 迭代, 仅 written 槽位
+    pub fn spectrum_values<'a>(
+        &'a self,
+        slots: &'a [f32],
+        written: &'a [bool],
+    ) -> impl Iterator<Item = (&'a str, f32)> + 'a {
+        self.spectrum_slots.iter().filter_map(move |(sink, slot)| match slot {
+            Some(s) if written[*s] => Some((sink.as_str(), slots[*s])),
+            _ => None,
+        })
+    }
+}
+
 /// 编译后的图 — 包含拓扑序的评估计划
 pub struct CompiledGraph {
     pub tab_id: String,
@@ -461,11 +859,17 @@ pub struct CompiledGraph {
     /// 拓扑序 — 仅包含有输出的节点 (ChannelSource/Input/Math/Custom)
     /// Sink 节点不参与评估
     eval_order: Vec<String>,
-    /// 反向索引: target_node + target_handle → (source_node, source_handle)
-    /// 用于查询某节点某输入端口的上游
-    input_index: HashMap<(String, String), (String, String)>,
+    /// 反向索引: target_node → (target_handle → (source_node, source_handle))
+    /// 嵌套结构支持 &str 零分配查询 (evaluate_into 热路径)
+    input_index: HashMap<String, HashMap<String, (String, String)>>,
     /// ChannelSource 节点 ID (每个 tab 一个)
     channel_source_id: Option<String>,
+    /// 编译期缓存: ChannelSource 输出端口名 ch0..chN (避免每帧 format! 分配)
+    ch_names: Vec<String>,
+    /// 编译期缓存: Math 输入端口名 in0..inN (避免每帧 format! 分配)
+    in_names: Vec<String>,
+    /// 编译期槽位评估表 (逐帧评估零字符串哈希, process_frames_batch 热路径用)
+    compiled: CompiledEval,
 }
 
 /// 评估错误
@@ -509,14 +913,38 @@ impl CompiledGraph {
             .cloned()
             .collect();
 
-        // 构建 input_index: (target, target_handle) → (source, source_handle)
-        let mut input_index: HashMap<(String, String), (String, String)> = HashMap::new();
+        // 构建 input_index: target → (target_handle → (source, source_handle))
+        // 嵌套结构, 支持 &str 零分配查询
+        let mut input_index: HashMap<String, HashMap<String, (String, String)>> = HashMap::new();
         for e in &edges {
-            input_index.insert(
-                (e.target.clone(), e.target_handle.clone()),
-                (e.source.clone(), e.source_handle.clone()),
-            );
+            input_index
+                .entry(e.target.clone())
+                .or_default()
+                .insert(
+                    e.target_handle.clone(),
+                    (e.source.clone(), e.source_handle.clone()),
+                );
         }
+
+        // 编译期端口名缓存 (evaluate 热路径避免 format! 分配)
+        let ch_count = channel_source_id
+            .as_ref()
+            .and_then(|id| node_map.get(id))
+            .map(|n| match &n.kind {
+                NodeKind::ChannelSource { channels } => *channels,
+                _ => 0,
+            })
+            .unwrap_or(0);
+        let ch_names: Vec<String> = (0..ch_count).map(|i| format!("ch{}", i)).collect();
+        let max_inputs = node_map
+            .values()
+            .map(|n| match &n.kind {
+                NodeKind::Math { input_count, .. } => *input_count,
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0);
+        let in_names: Vec<String> = (0..max_inputs).map(|i| format!("in{}", i)).collect();
 
         // 拓扑排序 — 仅对有输出的节点
         // 使用 DFS 后序
@@ -562,6 +990,9 @@ impl CompiledGraph {
             dfs(id, &node_map, &f32_edges, &mut visited, &mut order)?;
         }
 
+        // 编译期槽位评估表 (材料齐备: eval_order/input_index/ch_names/in_names)
+        let compiled = CompiledEval::build(&node_map, &order, &input_index, &ch_names, &in_names);
+
         Ok(Self {
             tab_id,
             nodes: node_map,
@@ -570,6 +1001,9 @@ impl CompiledGraph {
             eval_order: order,
             input_index,
             channel_source_id,
+            ch_names,
+            in_names,
+            compiled,
         })
     }
 
@@ -594,55 +1028,92 @@ impl CompiledGraph {
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
-    ) -> HashMap<String, HashMap<String, f32>> {
-        let mut out: HashMap<String, HashMap<String, f32>> = HashMap::new();
+    ) -> ValuesMap {
+        let mut out = ValuesMap::default();
+        self.evaluate_into(
+            frame,
+            input_values,
+            custom_outputs,
+            filter_states,
+            decoder_states,
+            &mut out,
+        );
+        out
+    }
 
+    /// 评估图 (零分配快路径) — 结果写入调用方提供的 `out`
+    ///
+    /// 与 evaluate 语义相同, 但稳态下 (图结构不变) 几乎无堆分配:
+    /// - `out` 内外层 HashMap 跨帧复用 (调用方每帧传入同一 map, 本函数按节点覆盖写)
+    /// - 端口名/输入名用编译期缓存 (ch_names / in_names) 或 &'static str
+    /// - input_index 嵌套查询零分配
+    ///
+    /// 注意: 本函数只覆盖写当前节点的端口, 不清理过期键 — 图结构变化 (重编译)
+    /// 时调用方应清空 out (process_frames_batch 通过 graphs_version 检测)。
+    pub fn evaluate_into(
+        &self,
+        frame: &DataFrame,
+        input_values: &HashMap<String, f32>,
+        custom_outputs: &HashMap<String, HashMap<String, f32>>,
+        filter_states: &mut HashMap<String, DigitalFilter>,
+        decoder_states: &HashMap<String, FrameParser>,
+        out: &mut ValuesMap,
+    ) {
         for node_id in &self.eval_order {
             let node = match self.nodes.get(node_id) {
                 Some(n) => n,
                 None => continue,
             };
 
-            let node_out: HashMap<String, f32> = match &node.kind {
+            match &node.kind {
                 NodeKind::ChannelSource { channels } => {
-                    let mut m = HashMap::with_capacity(*channels);
+                    let m = node_out_entry(out, node_id);
                     for i in 0..*channels {
                         let v = frame.channels.get(i).copied().unwrap_or(0.0);
-                        m.insert(format!("ch{}", i), v);
+                        set_port(m, &self.ch_names[i], v);
                     }
-                    m
                 }
                 NodeKind::Input => {
                     let v = input_values.get(node_id).copied().unwrap_or(0.0);
-                    let mut m = HashMap::with_capacity(1);
-                    m.insert("value".to_string(), v);
-                    m
+                    let m = node_out_entry(out, node_id);
+                    set_port(m, "value", v);
                 }
                 NodeKind::Math { op, input_count } => {
-                    // 收集输入端口 in0..inN 的上游值
-                    let mut inputs: Vec<f32> = Vec::with_capacity(*input_count);
-                    for i in 0..*input_count {
-                        let port = format!("in{}", i);
-                        let val = self.resolve_input(node_id, &port, &out);
-                        inputs.push(val);
+                    // 先收集输入 (不可变读 out), 再取可变引用写入;
+                    // 16 路以内走栈数组, 避免每帧每节点一次堆分配 (700k 帧/s 下是热路径)
+                    let mut stack_buf = [0.0f32; 16];
+                    let mut heap_buf;
+                    let inputs: &mut [f32] = if *input_count <= 16 {
+                        &mut stack_buf[..*input_count]
+                    } else {
+                        heap_buf = vec![0.0; *input_count];
+                        &mut heap_buf
+                    };
+                    for (i, slot) in inputs.iter_mut().enumerate() {
+                        *slot = self.resolve_input(node_id, &self.in_names[i], out);
                     }
-                    let result = op.evaluate(&inputs);
-                    let mut m = HashMap::with_capacity(1);
-                    m.insert("result".to_string(), result);
-                    m
+                    let result = op.evaluate(inputs);
+                    let m = node_out_entry(out, node_id);
+                    set_port(m, "result", result);
                 }
                 NodeKind::Custom { outputs, .. } => {
                     // 输出来自前端回传
-                    custom_outputs.get(node_id).cloned().unwrap_or_else(|| {
+                    let m = node_out_entry(out, node_id);
+                    if let Some(vals) = custom_outputs.get(node_id) {
+                        for (k, &v) in vals {
+                            set_port(m, k, v);
+                        }
+                    } else {
                         // 默认: 所有输出端口为 0
-                        outputs.iter().map(|p| (p.clone(), 0.0)).collect()
-                    })
+                        for p in outputs {
+                            set_port(m, p, 0.0);
+                        }
+                    }
                 }
                 NodeKind::Filter { kind } => {
                     // 取输入 "in0" 的上游值
-                    let input_val = self.resolve_input(node_id, "in0", &out);
+                    let input_val = self.resolve_input(node_id, "in0", out);
                     // 懒初始化 / kind 变化时重建滤波器状态
-                    // 通过 kind() 比较当前配置与状态中存的配置是否一致
                     let need_rebuild = filter_states
                         .get(node_id)
                         .map(|f| f.kind() != kind)
@@ -652,9 +1123,8 @@ impl CompiledGraph {
                     }
                     let filter = filter_states.get_mut(node_id).unwrap();
                     let result = filter.process(input_val);
-                    let mut m = HashMap::with_capacity(1);
-                    m.insert("result".to_string(), result);
-                    m
+                    let m = node_out_entry(out, node_id);
+                    set_port(m, "result", result);
                 }
                 NodeKind::FrameDecoder {
                     blocks,
@@ -667,69 +1137,51 @@ impl CompiledGraph {
                     // FrameDecoder 的输出由 data_loop 喂入字节流后缓存到 decoder_states,
                     // evaluate 阶段仅读取 last_frame 缓存。
                     // 若 decoder_states 中无此节点 (尚未收到字节), 返回空 outputs + 默认 valid=0。
-                    let mut m: HashMap<String, f32> = HashMap::new();
+                    let m = node_out_entry(out, node_id);
                     if let Some(parser) = decoder_states.get(node_id) {
-                        // 复制 last_frame.outputs
                         for (k, &v) in &parser.last_frame.outputs {
-                            m.insert(k.clone(), v);
+                            set_port(m, k, v);
                         }
                         // 附加输出端口
                         if *enable_valid {
-                            m.insert(
-                                "valid".to_string(),
-                                if parser.last_frame.valid { 1.0 } else { 0.0 },
-                            );
+                            set_port(m, "valid", if parser.last_frame.valid { 1.0 } else { 0.0 });
                         }
                         if *enable_frame_count {
-                            m.insert("frame_count".to_string(), parser.frame_count as f32);
+                            set_port(m, "frame_count", parser.frame_count as f32);
                         }
                         if *enable_last_timestamp {
-                            m.insert(
-                                "last_timestamp".to_string(),
-                                parser.last_frame.timestamp_us as f32,
-                            );
+                            set_port(m, "last_timestamp", parser.last_frame.timestamp_us as f32);
                         }
                         if *enable_fps {
-                            m.insert("fps".to_string(), parser.fps());
+                            set_port(m, "fps", parser.fps());
                         }
                     } else {
                         // 节点刚加入但尚未喂入字节: 输出所有端口的默认 0
                         for b in blocks {
                             if let Some(port) = b.output_port_name() {
-                                m.insert(port.to_string(), 0.0);
+                                set_port(m, port, 0.0);
                             }
                         }
                         if *enable_valid {
-                            m.insert("valid".to_string(), 0.0);
+                            set_port(m, "valid", 0.0);
                         }
                         if *enable_frame_count {
-                            m.insert("frame_count".to_string(), 0.0);
+                            set_port(m, "frame_count", 0.0);
                         }
                         if *enable_last_timestamp {
-                            m.insert("last_timestamp".to_string(), 0.0);
+                            set_port(m, "last_timestamp", 0.0);
                         }
                         if *enable_fps {
-                            m.insert("fps".to_string(), 0.0);
+                            set_port(m, "fps", 0.0);
                         }
                     }
-                    // 触发 unused_variable 警告的 blocks 在 else 分支已使用
-                    let _ = blocks;
-                    m
                 }
-                NodeKind::SpectrumSink { .. } => {
-                    // SpectrumSink 不应出现在 eval_order 中, 但防御性处理
+                NodeKind::SpectrumSink { .. } | NodeKind::Sink => {
+                    // Sink 类节点不应出现在 eval_order 中, 防御性跳过
                     continue;
                 }
-                NodeKind::Sink => {
-                    // Sink 不应出现在 eval_order 中, 但防御性处理
-                    continue;
-                }
-            };
-
-            out.insert(node_id.clone(), node_out);
+            }
         }
-
-        out
     }
 
     /// 解析某节点某输入端口的上游输出值
@@ -738,11 +1190,12 @@ impl CompiledGraph {
         &self,
         node_id: &str,
         port_id: &str,
-        computed: &HashMap<String, HashMap<String, f32>>,
+        computed: &ValuesMap,
     ) -> f32 {
         if let Some((src_node, src_port)) = self
             .input_index
-            .get(&(node_id.to_string(), port_id.to_string()))
+            .get(node_id)
+            .and_then(|ports| ports.get(port_id))
         {
             computed
                 .get(src_node)
@@ -758,7 +1211,7 @@ impl CompiledGraph {
     /// 返回: HashMap<custom_widget_id, HashMap<input_port_id, value>>
     pub fn collect_custom_inputs(
         &self,
-        computed: &HashMap<String, HashMap<String, f32>>,
+        computed: &ValuesMap,
     ) -> HashMap<String, HashMap<String, f32>> {
         let mut result = HashMap::new();
         for (node_id, node) in &self.nodes {
@@ -782,7 +1235,7 @@ impl CompiledGraph {
     /// 将值 push 到对应的 SpectrumAnalyzer 的滑动窗口。
     pub fn collect_spectrum_inputs(
         &self,
-        computed: &HashMap<String, HashMap<String, f32>>,
+        computed: &ValuesMap,
     ) -> HashMap<String, f32> {
         let mut result = HashMap::new();
         for (node_id, node) in &self.nodes {
@@ -906,6 +1359,11 @@ impl CompiledGraph {
 
     pub fn channel_source_id(&self) -> Option<&str> {
         self.channel_source_id.as_deref()
+    }
+
+    /// 编译期槽位评估表 (process_frames_batch 热路径用)
+    pub fn compiled(&self) -> &CompiledEval {
+        &self.compiled
     }
 }
 
@@ -1464,5 +1922,115 @@ mod tests {
         assert!(!out.contains_key("s1"));
         // 但 ChannelSource 应在
         assert!(out.contains_key("__channel_source__-t1"));
+    }
+
+    // ============ CompiledEval 槽位评估等价性测试 ============
+
+    /// 槽位评估 (compiled.run + materialize) 与 evaluate_into 逐帧完全等价
+    ///
+    /// 覆盖: ChannelSource(4ch) / 链式 Math×2 / Filter(FIR, 跨帧状态) / Input /
+    /// FrameDecoder 无 parser (默认 0 端口) — 100 帧伪随机数据逐帧比对
+    #[test]
+    fn test_compiled_eval_equivalence() {
+        let cs = "__channel_source__-t1";
+        let nodes = vec![
+            make_channel_source("t1", 4),
+            make_math("m1", "t1", MathOp::Add, 2),
+            make_math("m2", "t1", MathOp::Mul, 2),
+            make_filter("f1", "t1", FilterKind::FIR { b: vec![0.5, 0.5] }),
+            make_input("knob1", "t1"),
+            // FrameDecoder 无 parser (decoder_states 为空) — 覆盖 written 语义
+            NodeDef {
+                id: "d1".to_string(),
+                tab_id: "t1".to_string(),
+                kind: NodeKind::FrameDecoder {
+                    blocks: vec![DecoderBlockDef::Field {
+                        id: "f".to_string(),
+                        field_type: FieldType::UInt8,
+                        port_name: "value".to_string(),
+                        length_ref: None,
+                        match_id: None,
+                    }],
+                    enable_valid: true,
+                    enable_frame_count: true,
+                    enable_last_timestamp: false,
+                    enable_fps: false,
+                    loopback: false,
+                },
+            },
+        ];
+        let edges = vec![
+            edge("e1", cs, "ch0", "m1", "in0"),
+            edge("e2", cs, "ch1", "m1", "in1"),
+            edge("e3", "m1", "result", "m2", "in0"),
+            edge("e4", cs, "ch2", "m2", "in1"),
+            edge("e5", "m2", "result", "f1", "in0"),
+        ];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+        let mut input_values = HashMap::new();
+        input_values.insert("knob1".to_string(), 7.0_f32);
+        let custom_outputs = HashMap::new();
+        let decoder_states = HashMap::new(); // d1 无 parser
+        // 两条路径各自独立的 filter_states (跨帧状态)
+        let mut fs_a = HashMap::new();
+        let mut fs_b = HashMap::new();
+
+        let compiled = g.compiled();
+        let n = compiled.slot_count();
+        let mut slots = vec![0.0f32; n];
+        let mut written = vec![false; n];
+
+        // 确定性伪随机 (LCG)
+        let mut seed = 0x12345678u32;
+        let mut next_f = move || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 8) as f32 / 16777216.0 * 20.0 - 10.0
+        };
+
+        for frame_idx in 0..100 {
+            let frame = DataFrame::new(vec![next_f(), next_f(), next_f(), next_f()]);
+            // 老路径: evaluate_into
+            let mut out_a = ValuesMap::default();
+            g.evaluate_into(
+                &frame,
+                &input_values,
+                &custom_outputs,
+                &mut fs_a,
+                &decoder_states,
+                &mut out_a,
+            );
+            // 新路径: compiled.run + materialize (每帧清零 slots/written)
+            slots.fill(0.0);
+            written.fill(false);
+            compiled.run(
+                &frame,
+                &input_values,
+                &custom_outputs,
+                &mut fs_b,
+                &decoder_states,
+                &mut slots,
+                &mut written,
+            );
+            let mut out_b = ValuesMap::default();
+            compiled.materialize(&slots, &written, &mut out_b);
+            assert_eq!(out_a, out_b, "帧 {} 输出不一致", frame_idx);
+        }
+
+        // FrameDecoder 无 parser: 两边都输出默认 0 端口 (value/valid/frame_count)
+        let mut out_a = ValuesMap::default();
+        g.evaluate_into(
+            &DataFrame::new(vec![1.0, 2.0, 3.0, 4.0]),
+            &input_values,
+            &custom_outputs,
+            &mut fs_a,
+            &decoder_states,
+            &mut out_a,
+        );
+        let d1 = out_a.get("d1").expect("d1 应输出默认端口");
+        assert_eq!(d1.get("value"), Some(&0.0));
+        assert_eq!(d1.get("valid"), Some(&0.0));
+        assert_eq!(d1.get("frame_count"), Some(&0.0));
+        assert!(!d1.contains_key("last_timestamp")); // enable_last_timestamp = false
     }
 }

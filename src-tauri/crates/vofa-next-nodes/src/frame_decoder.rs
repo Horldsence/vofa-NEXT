@@ -267,61 +267,49 @@ impl FrameParser {
     pub fn feed(&mut self, data: &[u8], timestamp_us: u64) -> Vec<ParsedFrame> {
         self.buf.extend_from_slice(data);
         let mut frames = Vec::new();
+        // 消费游标: 循环内只推进 base, 结束后一次性 drain
+        // (原实现逐帧 drain(0..consumed), 大批次下 O(n²) memmove)
+        let mut base = 0usize;
 
         loop {
             match self.state {
                 ParseState::WaitForHeader => {
                     let header_bytes = self.collect_header_bytes();
                     if header_bytes.is_empty() {
-                        // 无 Header 块 — 直接尝试从 buf 开头解析
+                        // 无 Header 块 — 直接尝试从当前位置解析
                         self.state = ParseState::ParseFields;
                         self.frame_start = 0;
                         continue;
                     }
-                    match find_subsequence(&self.buf, &header_bytes) {
+                    match find_subsequence(&self.buf[base..], &header_bytes) {
                         Some(pos) => {
-                            // 丢弃 header 之前的字节
-                            if pos > 0 {
-                                self.buf.drain(0..pos);
-                            }
+                            // 跳过 header 之前的字节
+                            base += pos;
                             self.frame_start = header_bytes.len();
                             self.state = ParseState::ParseFields;
                         }
                         None => {
                             // 未找到 header, 保留最后 header.len()-1 字节 (避免跨包截断)
                             let keep = header_bytes.len().saturating_sub(1);
-                            if self.buf.len() > keep {
-                                self.buf.drain(0..self.buf.len() - keep);
-                            }
+                            base = base.max(self.buf.len().saturating_sub(keep));
                             break;
                         }
                     }
                 }
                 ParseState::ParseFields => {
-                    match self.try_parse_frame(timestamp_us) {
+                    match self.try_parse_frame_from(&self.buf[base..], 0, self.frame_start, timestamp_us)
+                    {
                         Some(mut result) => {
-                            // 解析成功: 丢弃 consumed_bytes, 回到 WaitForHeader
                             let consumed = result.consumed_bytes;
-                            // consumed 包括 header + 所有 blocks 消耗的字节
-                            // frame_start 是 header 末尾, consumed 是从 buf 开头算的总消耗
-                            let total_drain = self.frame_start + (consumed - self.frame_start);
-                            let _ = total_drain; // 等价于 consumed, 保留语义
-
                             // 捕获本帧消耗的原始字节 (header 至末尾), 供旁路 RawData 通道使用
-                            let raw = self.buf[0..consumed].to_vec();
-                            result.frame.raw_bytes = raw;
-
-                            self.buf.drain(0..consumed);
+                            result.frame.raw_bytes = self.buf[base..base + consumed].to_vec();
+                            base += consumed;
                             self.state = ParseState::WaitForHeader;
                             self.frame_start = 0;
 
-                            // 更新统计
                             self.frame_count += 1;
                             self.record_timestamp(timestamp_us);
-
-                            // 缓存 last_frame
                             self.last_frame = result.frame.clone();
-
                             frames.push(result.frame);
                         }
                         None => {
@@ -333,6 +321,9 @@ impl FrameParser {
             }
         }
 
+        if base > 0 {
+            self.buf.drain(..base);
+        }
         frames
     }
 
@@ -406,13 +397,6 @@ impl FrameParser {
             }
         }
         bytes
-    }
-
-    /// 尝试从 buf 当前状态解析一帧 (state == ParseFields 时调用)
-    ///
-    /// 返回 None 表示字节不足, 调用方应等待更多数据。
-    fn try_parse_frame(&self, timestamp_us: u64) -> Option<ParseResult> {
-        self.try_parse_frame_from(&self.buf, 0, self.frame_start, timestamp_us)
     }
 
     /// 从给定字节切片解析一帧 (核心解析逻辑)
@@ -805,6 +789,14 @@ impl FrameDecoderTestData {
         blocks: &[DecoderBlockDef],
         field_values: &HashMap<String, f32>,
     ) -> Vec<u8> {
+        Self::encode_frame_inner(blocks, field_values).0
+    }
+
+    /// 编码一帧, 返回 (字节流, 各 Checksum 块的字节位置 (buf_pos, cs_len))
+    fn encode_frame_inner(
+        blocks: &[DecoderBlockDef],
+        field_values: &HashMap<String, f32>,
+    ) -> (Vec<u8>, Vec<(usize, usize)>) {
         use crate::DecoderChecksumCover::AllPrior;
         use crate::DecoderChecksumPosition::{Append, Inline, Prepend};
 
@@ -826,6 +818,8 @@ impl FrameDecoderTestData {
         let mut checksums: Vec<CsRecord> = Vec::new();
         // 记录 frame_start = Header 末尾在 buf 中的位置
         let mut frame_start: usize = 0;
+        // 当前帧的 Id 值 (match_id 条件块的判定上下文, 与解析侧一致)
+        let mut id_value: Option<i64> = None;
 
         for block in blocks {
             match block {
@@ -837,8 +831,13 @@ impl FrameDecoderTestData {
                     field_type,
                     port_name,
                     id,
+                    match_id,
                     ..
                 } => {
+                    // match_id 不匹配时跳过 (不写入字节, 与解析侧一致)
+                    if !block_should_execute(*match_id, id_value) {
+                        continue;
+                    }
                     let name = port_name.as_deref().unwrap_or("length").to_string();
                     let val = field_values.get(&name).copied().unwrap_or(0.0) as u64;
                     length_values.insert(id.clone(), val);
@@ -851,14 +850,20 @@ impl FrameDecoderTestData {
                 } => {
                     let name = port_name.as_deref().unwrap_or("id_value").to_string();
                     let val = field_values.get(&name).copied().unwrap_or(0.0) as u64;
+                    id_value = Some(val as i64);
                     encode_int(&mut buf, *field_type, val);
                 }
                 DecoderBlockDef::Field {
                     field_type,
                     port_name,
                     length_ref,
+                    match_id,
                     ..
                 } => {
+                    // match_id 不匹配时跳过 (不写入字节, 与解析侧一致)
+                    if !block_should_execute(*match_id, id_value) {
+                        continue;
+                    }
                     let val = field_values.get(port_name).copied().unwrap_or(0.0);
                     if *field_type == crate::FieldType::Bytes {
                         // Bytes 类型: 写入 length_ref 指定的字节数
@@ -878,8 +883,13 @@ impl FrameDecoderTestData {
                     bit_offset,
                     bit_length,
                     port_name,
+                    match_id,
                     ..
                 } => {
+                    // match_id 不匹配时跳过 (不写入字节, 与解析侧一致)
+                    if !block_should_execute(*match_id, id_value) {
+                        continue;
+                    }
                     let val = field_values.get(port_name).copied().unwrap_or(0.0) as u32;
                     let abs_byte_offset = frame_start + *byte_offset as usize;
                     let needed =
@@ -905,8 +915,13 @@ impl FrameDecoderTestData {
                     cover_start,
                     cover_end: _,
                     position,
+                    match_id,
                     ..
                 } => {
+                    // match_id 不匹配时跳过 (不写入字节, 与解析侧一致)
+                    if !block_should_execute(*match_id, id_value) {
+                        continue;
+                    }
                     // 先放置占位字节 (全 0), 第二遍计算后替换
                     let cs_len = checksum_byte_len(*algorithm);
                     let placeholder = vec![0u8; cs_len];
@@ -959,7 +974,11 @@ impl FrameDecoderTestData {
                     };
                     checksums.push(record);
                 }
-                DecoderBlockDef::Tail { hex, .. } => {
+                DecoderBlockDef::Tail { hex, match_id, .. } => {
+                    // match_id 不匹配时跳过 (不写入字节, 与解析侧一致)
+                    if !block_should_execute(*match_id, id_value) {
+                        continue;
+                    }
                     buf.extend_from_slice(&parse_hex(hex));
                 }
             }
@@ -984,7 +1003,8 @@ impl FrameDecoderTestData {
             }
         }
 
-        buf
+        let cs_ranges = checksums.iter().map(|c| (c.buf_pos, c.cs_len)).collect();
+        (buf, cs_ranges)
     }
 
     /// 编码多帧字节序列 (拼接 `encode_frame` 结果)
@@ -1018,18 +1038,22 @@ impl FrameDecoderTestData {
 
     /// 编码一帧但校验值错误 (用于测试校验失败场景)
     ///
-    /// 在 `encode_frame` 的基础上, 将最后一个校验字节取反。
+    /// 在 `encode_frame` 的基础上, 翻转最后一个 Checksum 块的首字节,
+    /// 使校验失败 (valid=false) 但帧结构 (含 Tail) 保持完整, 仍可正常解析。
     pub fn encode_frame_bad_checksum(
         blocks: &[DecoderBlockDef],
         field_values: &HashMap<String, f32>,
     ) -> Vec<u8> {
-        let mut data = Self::encode_frame(blocks, field_values);
-        // 尝试在 buf 中找 Checksum 块对应的位置, 翻转最后一字节
-        // 简单方法: 从最后往前扫描, 看哪些字节可能是校验值
-        // 更可靠: 用相同逻辑找到校验位置
-        // 简单实现: 将最后一个字节取反 (假设 Tail 不是校验)
-        if let Some(last) = data.last_mut() {
-            *last = !*last;
+        let (mut data, cs_ranges) = Self::encode_frame_inner(blocks, field_values);
+        // 翻转最后一个 Checksum 块的首字节, 使校验失败但帧结构 (含 Tail) 保持完整;
+        // 无 Checksum 块时退化为翻转尾字节
+        match cs_ranges.last() {
+            Some(&(pos, len)) if len > 0 && pos < data.len() => data[pos] = !data[pos],
+            _ => {
+                if let Some(last) = data.last_mut() {
+                    *last = !*last;
+                }
+            }
         }
         data
     }
