@@ -63,6 +63,16 @@ export interface AppSettings {
     showOnDisconnect: boolean;
     showOnError: boolean;
   };
+  /// 数据管道性能调优 — 更新即推送后端 set_pipeline_config (后端不持久化, 启动时重放)
+  performance: {
+    maxFeedWorkers: number;
+    feedParallelUnit: number;
+    minWorkerBytesKb: number;
+    coalesceMaxMsgs: number;
+    coalesceMaxBytesKb: number;
+    maxStreamShards: number;
+    parseChannelCap: number;
+  };
 }
 
 /// 默认设置 — 与项目当前行为保持一致
@@ -117,6 +127,15 @@ export const DEFAULT_SETTINGS: AppSettings = {
     showOnDisconnect: false,
     showOnError: true,
   },
+  performance: {
+    maxFeedWorkers: 4,
+    feedParallelUnit: 8,
+    minWorkerBytesKb: 32,
+    coalesceMaxMsgs: 64,
+    coalesceMaxBytesKb: 256,
+    maxStreamShards: 4,
+    parseChannelCap: 256,
+  },
 };
 
 /// 设置分类元数据 — 用于 SettingsModal 渲染左侧导航
@@ -132,6 +151,7 @@ export const SETTING_CATEGORIES: SettingCategoryMeta[] = [
   { key: 'data', icon: 'Database' },
   { key: 'serial', icon: 'Usb' },
   { key: 'notifications', icon: 'Bell' },
+  { key: 'performance', icon: 'Gauge' },
 ];
 
 /// 浅合并: 用任意子路径更新设置 (path 例如 'appearance.uiFontSize')

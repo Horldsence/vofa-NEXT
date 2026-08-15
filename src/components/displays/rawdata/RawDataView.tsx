@@ -23,6 +23,7 @@ import {
 import { AppendMode, SendPanelMode, HexColorMode, ROW_HEIGHT, HeaderBytes, byteToHex, byteToAscii, formatTime, type RawDataGrouping, type RawDataRepr } from './rawDataViewHelpers';
 import { Row } from './RawDataRow';
 import { useRawDataViewStore, getRawDataViewPrefs } from '../../../lib/buffers/rawDataViewStore';
+import { DroppedInfoPopover } from '../../common/DroppedInfoPopover';
 
 const GROUPING_OPTIONS: { value: RawDataGrouping; label: string }[] = [
   { value: 'grid', label: 'gridView' },
@@ -59,6 +60,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const [sendPanelMode, setSendPanelMode] = useState<SendPanelMode>(() => getRawDataViewPrefs(persistKey).sendPanelMode);
   const [hexColorMode, setHexColorMode] = useState<HexColorMode>(() => getRawDataViewPrefs(persistKey).hexColorMode);
   const [showSettings, setShowSettings] = useState(false);
+  const [droppedInfoOpen, setDroppedInfoOpen] = useState(false);
   const [sendContent, setSendContent] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
 
@@ -624,7 +626,11 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
         <div className={`flex items-center gap-1 text-text-secondary text-xs font-mono ${isNum ? 'opacity-40' : ''}`}>
           <span>{totalBytes.toLocaleString()} B</span>
           {droppedBytes > 0 && (
-            <span className="text-red flex items-center gap-0.5" title={t(lang, 'rawDataDropped')}>
+            <span
+              className="text-yellow flex items-center gap-0.5 cursor-pointer hover:underline"
+              title={t(lang, 'rawDataDropped')}
+              onClick={() => setDroppedInfoOpen(true)}
+            >
               <FileWarning size={12} />
               +{droppedBytes.toLocaleString()}
             </span>
@@ -718,6 +724,11 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
           </div>
         )}
       </div>
+      <DroppedInfoPopover
+        open={droppedInfoOpen}
+        onClose={() => setDroppedInfoOpen(false)}
+        variant="rawdata"
+      />
     </div>
   );
 }

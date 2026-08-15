@@ -85,6 +85,17 @@ vi.stubGlobal(
     }) as unknown as MediaQueryList
 );
 
+/// jsdom 未实现 ResizeObserver — StatusBar 分级收缩 / 多个图表组件依赖。
+/// 桩不触发回调, 仅保证 observe/disconnect 可调用。
+vi.stubGlobal(
+  'ResizeObserver',
+  class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+);
+
 /// 最小 Channel 桩 — 仅需可构造、含 id/onmessage 即可
 function createChannelStub() {
   return class Channel<T = unknown> {

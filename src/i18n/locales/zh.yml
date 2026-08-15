@@ -150,7 +150,7 @@ copySelected: 复制选中
 copySelection: 复制选中数据
 exportSelection: 导出选中数据
 clearSelection: 清除选择
-rawDataDropped: 部分原始数据已被丢弃
+rawDataDropped: 部分原始数据未显示 (解析不受影响)
 showTimestamp: 时间戳
 showOffset: 地址偏移
 appendNone: 无
@@ -288,6 +288,7 @@ settingsEditor: 编辑器
 settingsData: 数据缓存
 settingsSerial: 串口默认值
 settingsNotifications: 通知
+settingsPerformance: 性能
 settingsAbout: 关于
 backupCategory: 备份
 exportConfig: 导出配置
@@ -413,6 +414,22 @@ settingNotifShowOnDisconnect: 断开连接通知
 settingNotifShowOnDisconnectDesc: 传输断开时显示通知
 settingNotifShowOnError: 错误通知
 settingNotifShowOnErrorDesc: 发生错误时显示通知
+
+# 设置项 - Performance
+settingMaxFeedWorkers: 并行解析 Worker 上限
+settingMaxFeedWorkersDesc: 并行解析数据的 worker 数量上限, 数据源速率高时可调大
+settingFeedParallelUnit: 并行分发单元
+settingFeedParallelUnitDesc: 每次分发给并行 worker 的消息批大小
+settingMinWorkerBytesKb: Worker 最小数据量 (KB)
+settingMinWorkerBytesKbDesc: 低于该数据量时不拆分给多个 worker, 避免调度开销
+settingCoalesceMaxMsgs: 合批最大消息数
+settingCoalesceMaxMsgsDesc: 单次合批推送允许的最大消息条数
+settingCoalesceMaxBytesKb: 合批最大字节数 (KB)
+settingCoalesceMaxBytesKbDesc: 单次合批推送允许的最大字节数
+settingMaxStreamShards: 流分片上限
+settingMaxStreamShardsDesc: 订阅流的最大分片数量, 分片越多并发推送能力越强
+settingParseChannelCap: 解析通道容量
+settingParseChannelCapDesc: 解析管道的缓冲容量, 修改后下次连接生效
 
 # About 弹窗
 about: 关于
@@ -775,6 +792,19 @@ canLoadPerId: 按 ID 负载分布
 canLoadIdFilterHint: 点击切换时序图叠加
 canLoadThreshold: 阈值
 canLoadThresholdAlarm: 负载告警
+
+# 数据丢失警示 (状态栏 + 弹层) — 预览丢弃 (rawdata) 与真实丢失 (pipeline) 语义区分
+statusDropped: 检测到数据丢失, 点击查看说明
+notifDataDroppedTitle: 检测到数据丢失
+notifDataDroppedBody: "最近窗口丢失 {{count}} 条消息 (这些字节未进入解析, 波形存在缺口)。可尝试: 降低数据源速率; 在 设置→性能 中调大并行 worker 上限与缓冲; 关闭不需要的原始数据订阅"
+droppedInfoTitle: 数据丢失说明
+droppedInfoTitleRawdata: 预览丢弃说明
+droppedInfoWhatRawdata: 这是什么 — 原始数据预览的容量溢出计数。这些字节已被正常解析并进入波形, 只是预览没有全部保留显示。这不是数据丢失, 解析与波形不受影响。
+droppedInfoWhatPipeline: 这是什么 — 真实的数据丢失。接收速度超过解析管道的处理能力时, 部分消息在解析前被跳过 (broadcast Lagged), 波形与解析结果存在缺口。
+droppedInfoWhy: "为什么会发生 — 数据源速率过高, 或解析/渲染速度跟不上。管道使用有界缓冲, 缓冲满时多余的消息会被丢弃而不是阻塞数据流。提示: 原始数据预览的丢弃计数 (黄色) 不代表数据丢失。"
+droppedInfoHowRawdata: 怎么办 — 降低数据源速率, 或在 设置→数据缓存 中调大原始数据缓冲容量。
+droppedInfoHowPipeline: 怎么办 — 降低数据源速率; 在 设置→性能 中调大并行 worker 上限与缓冲容量; 或关闭不需要的原始数据订阅。
+droppedInfoOpenSettings: 打开设置
 canLoadExport: 导出 CSV
 canLoadExportFailed: 导出失败
 canLoadExportSuccess: 已导出

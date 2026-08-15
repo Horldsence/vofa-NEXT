@@ -19,6 +19,7 @@ import {
   Bell,
   Type,
   Database,
+  Gauge,
   Pencil,
   Download,
   Upload,
@@ -44,6 +45,7 @@ const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   data: <Database size={16} />,
   serial: <Usb size={16} />,
   notifications: <Bell size={16} />,
+  performance: <Gauge size={16} />,
 };
 
 const CATEGORY_LABEL_KEY: Record<keyof AppSettings, string> = {
@@ -53,6 +55,7 @@ const CATEGORY_LABEL_KEY: Record<keyof AppSettings, string> = {
   data: 'settingsData',
   serial: 'settingsSerial',
   notifications: 'settingsNotifications',
+  performance: 'settingsPerformance',
 };
 
 export function SettingsModal() {

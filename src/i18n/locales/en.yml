@@ -150,7 +150,7 @@ copySelected: Copy Selected
 copySelection: Copy Selection
 exportSelection: Export Selection
 clearSelection: Clear Selection
-rawDataDropped: Some raw data was dropped
+rawDataDropped: Some raw data not shown (parsing unaffected)
 showTimestamp: Timestamp
 showOffset: Offset
 appendNone: None
@@ -288,6 +288,7 @@ settingsEditor: Editor
 settingsData: Data Cache
 settingsSerial: Serial Defaults
 settingsNotifications: Notifications
+settingsPerformance: Performance
 settingsAbout: About
 backupCategory: Backup
 exportConfig: Export Config
@@ -413,6 +414,22 @@ settingNotifShowOnDisconnect: Disconnect Notification
 settingNotifShowOnDisconnectDesc: Show a notification when transport disconnects
 settingNotifShowOnError: Error Notification
 settingNotifShowOnErrorDesc: Show a notification when an error occurs
+
+# Setting items - Performance
+settingMaxFeedWorkers: Max Feed Workers
+settingMaxFeedWorkersDesc: Upper limit of workers parsing data in parallel; increase for high-rate sources
+settingFeedParallelUnit: Feed Parallel Unit
+settingFeedParallelUnitDesc: Message batch size dispatched to parallel workers each time
+settingMinWorkerBytesKb: Min Worker Bytes (KB)
+settingMinWorkerBytesKbDesc: Below this size data is not split across workers, avoiding scheduling overhead
+settingCoalesceMaxMsgs: Coalesce Max Messages
+settingCoalesceMaxMsgsDesc: Maximum messages allowed in a single coalesced push
+settingCoalesceMaxBytesKb: Coalesce Max Bytes (KB)
+settingCoalesceMaxBytesKbDesc: Maximum bytes allowed in a single coalesced push
+settingMaxStreamShards: Max Stream Shards
+settingMaxStreamShardsDesc: Maximum shards per subscription stream; more shards improve push concurrency
+settingParseChannelCap: Parse Channel Capacity
+settingParseChannelCapDesc: Buffer capacity of the parse pipeline; takes effect on the next connection
 
 # About dialog
 about: About
@@ -775,6 +792,19 @@ canLoadPerId: Per-ID Load Distribution
 canLoadIdFilterHint: Click to toggle overlay on history chart
 canLoadThreshold: Threshold
 canLoadThresholdAlarm: Load Alarm
+
+# Data loss warnings (status bar + popover) — preview drops (rawdata) vs real loss (pipeline)
+statusDropped: Data loss detected, click for details
+notifDataDroppedTitle: Data loss detected
+notifDataDroppedBody: "Lost {{count}} messages in the latest window (these bytes never reached the parser; the waveform has gaps). Try: lowering the source rate; increasing parallel worker limit and buffers in Settings → Performance; disabling unused raw data subscriptions"
+droppedInfoTitle: Data loss explained
+droppedInfoTitleRawdata: Preview drop explained
+droppedInfoWhatRawdata: What is this — An overflow counter of the raw data preview. These bytes were parsed normally and reached the waveform; the preview just did not retain all of them for display. This is not data loss — parsing and waveforms are unaffected.
+droppedInfoWhatPipeline: What is this — Real data loss. When incoming data exceeds the parse pipeline's capacity, some messages are skipped before parsing (broadcast Lagged), leaving gaps in waveforms and parse results.
+droppedInfoWhy: "Why it happens — The source rate is too high, or parsing/rendering cannot keep up. The pipeline uses bounded buffers; when full, excess messages are dropped instead of blocking the stream. Note: the raw data preview drop counter (yellow) does not indicate data loss."
+droppedInfoHowRawdata: What to do — Lower the source rate, or increase the raw data buffer capacity in Settings → Data Cache.
+droppedInfoHowPipeline: What to do — Lower the source rate; increase the parallel worker limit and buffer capacities in Settings → Performance; or disable unused raw data subscriptions.
+droppedInfoOpenSettings: Open Settings
 canLoadExport: Export CSV
 canLoadExportFailed: Export failed
 canLoadExportSuccess: Exported

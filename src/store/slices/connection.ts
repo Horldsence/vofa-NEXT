@@ -43,7 +43,9 @@ export function setUnlistenFns(fns: UnlistenFn[]) {
 
 export interface ConnectionSlice {
   connectionState: ConnectionState;
-  stats: TransportStats;
+  /// 传输统计 — rxDroppedWindow 为本窗口丢弃数 (随 transport:rx 覆盖),
+  /// rxDroppedTotal 为累计丢弃数 (前端累加)
+  stats: TransportStats & { rxDroppedWindow: number; rxDroppedTotal: number };
   transportConfig: TransportConfig;
   ports: PortInfo[];
   selectedPortIndex: number;
@@ -65,7 +67,7 @@ export interface ConnectionSlice {
 export function createConnectionSlice(set: any, get: any): ConnectionSlice {
   return {
     connectionState: 'Disconnected',
-    stats: { rx_bytes: 0, tx_bytes: 0, rx_frames: 0, tx_frames: 0 },
+    stats: { rx_bytes: 0, tx_bytes: 0, rx_frames: 0, tx_frames: 0, rx_dropped: 0, rxDroppedWindow: 0, rxDroppedTotal: 0 },
     transportConfig: DEFAULT_SERIAL,
     ports: [],
     selectedPortIndex: -1,
@@ -112,7 +114,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
           sidebarView: 'protocol' as SidebarView,
           sidebarVisible: true,
           testDataRunning: false,
-          stats: { rx_bytes: 0, tx_bytes: 0, rx_frames: 0, tx_frames: 0 },
+          stats: { rx_bytes: 0, tx_bytes: 0, rx_frames: 0, tx_frames: 0, rx_dropped: 0, rxDroppedWindow: 0, rxDroppedTotal: 0 },
           rawDataVersion: Date.now(),
         });
         if (waveformSub) {

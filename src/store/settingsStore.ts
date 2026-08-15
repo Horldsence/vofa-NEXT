@@ -17,7 +17,7 @@ import {
   type ThemeDefinition,
   type ThemeToken,
 } from '../settings/theme';
-import { api } from '../lib/tauri/tauri';
+import { api, type PipelineConfig } from '../lib/tauri/tauri';
 import { rawDataBuffer } from '../lib/buffers/dataBuffer';
 import { canFrameBuffer } from '../lib/buffers/canBuffer';
 import { logicSampleBuffer } from '../lib/buffers/logicBuffer';
@@ -81,6 +81,26 @@ function applyDataCapacity(settings: AppSettings) {
   rawDataBuffer.setCapacity(data.rawDataBufferBytes);
   canFrameBuffer.setCapacity(data.canBufferFrames);
   logicSampleBuffer.setCapacity(data.logicBufferSamples);
+}
+
+/// 将 performance 分类映射为后端 PipelineConfig (camelCase -> snake_case)
+export function toPipelineConfig(p: AppSettings['performance']): PipelineConfig {
+  return {
+    coalesce_max_msgs: p.coalesceMaxMsgs,
+    coalesce_max_bytes_kb: p.coalesceMaxBytesKb,
+    max_feed_workers: p.maxFeedWorkers,
+    feed_parallel_unit: p.feedParallelUnit,
+    min_worker_bytes_kb: p.minWorkerBytesKb,
+    max_stream_shards: p.maxStreamShards,
+    parse_channel_cap: p.parseChannelCap,
+  };
+}
+
+/// 推送管道性能配置到后端 — 后端不持久化, 失败静默 log (后端未就绪场景)
+function applyPipelineConfig(settings: AppSettings) {
+  api.setPipelineConfig(toPipelineConfig(settings.performance)).catch((e: unknown) =>
+    console.warn('[settings] 推送管道性能配置失败:', e)
+  );
 }
 
 /// 历史版本默认字体 — 若用户未自定义过(仍是旧默认), 迁移到最新默认
@@ -159,16 +179,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         set({ settings: merged, loaded: true });
         applyAppearance(merged.appearance);
         applyDataCapacity(merged);
+        applyPipelineConfig(merged);
       } else {
         set({ loaded: true });
         applyAppearance(DEFAULT_SETTINGS.appearance);
         applyDataCapacity(DEFAULT_SETTINGS);
+        applyPipelineConfig(DEFAULT_SETTINGS);
       }
     } catch (e) {
       console.warn('[settings] 加载失败, 使用默认值:', e);
       set({ loaded: true });
       applyAppearance(DEFAULT_SETTINGS.appearance);
       applyDataCapacity(DEFAULT_SETTINGS);
+      applyPipelineConfig(DEFAULT_SETTINGS);
     }
   },
 
@@ -199,6 +222,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         if (category === 'data') {
           applyDataCapacity(newSettings);
         }
+        // 立即推送 performance 管道配置变更
+        if (category === 'performance') {
+          applyPipelineConfig(newSettings);
+        }
         return { settings: newSettings };
       });
     };
@@ -213,6 +240,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ settings: DEFAULT_SETTINGS });
     applyAppearance(DEFAULT_SETTINGS.appearance);
     applyDataCapacity(DEFAULT_SETTINGS);
+    applyPipelineConfig(DEFAULT_SETTINGS);
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       getStore()
@@ -231,6 +259,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const { settings } = get();
     if (category === 'appearance') applyAppearance(settings.appearance);
     if (category === 'data') applyDataCapacity(settings);
+    if (category === 'performance') applyPipelineConfig(settings);
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       getStore()
