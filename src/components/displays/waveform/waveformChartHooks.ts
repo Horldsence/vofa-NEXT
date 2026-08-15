@@ -205,8 +205,10 @@ export function useUplotInit(
               const xSec = u.posToVal(left, 'x');
               const yPixelVal = u.posToVal(top, 'y');
               const bbox = (u as unknown as { bbox?: { left: number; top: number } }).bbox;
-              const plotLeft = bbox?.left ?? 0;
-              const plotTop = bbox?.top ?? 0;
+              // uPlot bbox 是设备像素 (内部已乘 devicePixelRatio), 需换回 CSS 像素
+              const dpr = window.devicePixelRatio || 1;
+              const plotLeft = (bbox?.left ?? 0) / dpr;
+              const plotTop = (bbox?.top ?? 0) / dpr;
               const canvasLeft = left + plotLeft;
               const canvasTop = top + plotTop;
               const slots = seriesSlotsRef.current;
