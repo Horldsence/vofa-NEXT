@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../types';
+import { dockDrag } from '../../lib/dockDrag';
 
 /// 控件面板 — 按 tab 分组分类, 不同类别颜色不同
 ///
@@ -161,19 +162,6 @@ export function WidgetPalette() {
           ? t(lang, 'catMathHelp')
           : t(lang, 'catCustomHelp');
 
-  const handleDragStart = (
-    e: React.DragEvent,
-    kind: WidgetConfig['kind'],
-    op?: MathOp,
-    preset?: FilterPresetKind
-  ) => {
-    e.dataTransfer.setData('application/widget-kind', kind);
-    if (op) e.dataTransfer.setData('application/widget-op', op);
-    if (preset) e.dataTransfer.setData('application/widget-preset', preset);
-    e.dataTransfer.effectAllowed = 'copy';
-    e.stopPropagation();
-  };
-
   const handleClickAdd = (
     kind: WidgetConfig['kind'],
     op?: MathOp,
@@ -281,9 +269,19 @@ export function WidgetPalette() {
               <div
                 key={item.key}
                 className={cardClass(activeCategory)}
-                draggable
-                onDragStart={(e) => handleDragStart(e, item.kind, item.op, item.preset)}
-                onClick={() => handleClickAdd(item.kind, item.op, item.onAdd, item.preset)}
+                onPointerDown={(e) => {
+                  if (e.button !== 0) return;
+                  if ((e.target as HTMLElement).closest('button, input')) return;
+                  dockDrag.begin(e, {
+                    kind: 'widget',
+                    widget: { kind: item.kind, op: item.op, preset: item.preset },
+                    label: item.label,
+                  });
+                }}
+                onClick={() => {
+                  if (dockDrag.consumeClick()) return;
+                  handleClickAdd(item.kind, item.op, item.onAdd, item.preset);
+                }}
                 title={item.title}
               >
                 <div className={tileClass(activeCategory)}>

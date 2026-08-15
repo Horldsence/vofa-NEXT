@@ -32,6 +32,23 @@
   outline-offset: 2px;
 }
 
+/* 内联搜索输入框 (外层 wrapper 用 focus-within 边框承担焦点高亮):
+   需去掉 input 自身的焦点环, 否则与外层边框叠成内外两圈.
+   注意本文件是未分层 CSS, 优先于 Tailwind utilities 层,
+   因此 input 上的 outline-none / focus:outline-none 无效, 必须在此显式覆盖. */
+.search-input:focus-visible {
+  outline: none;
+}
+
+/* ============ 指针拖拽期间全局禁止文字选择 ============ */
+/* dockDrag 激活时给 body 加该 class — 拖拽经过 select-text 区域 (如 RawData 数值视图)
+   或输入框时不会误选文字/误聚焦 */
+body.dragging-dock,
+body.dragging-dock * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
 /* ============ Resize Handle (react-resizable-panels) ============ */
 [data-panel-resize-handle-id] {
   background: transparent;

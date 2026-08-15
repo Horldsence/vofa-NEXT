@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -9,6 +9,7 @@ import { DockLayout } from './components/layout/DockLayout';
 import { StatusBar } from './components/layout/StatusBar';
 import { NotificationToasts } from './components/NotificationToasts';
 import { ContextMenu } from './components/ui/ContextMenu';
+import { DockDragGhost } from './components/ui/DockDragGhost';
 import { SuspenseFallback } from './components/ui/SuspenseFallback';
 import { useContextMenu } from './lib/hooks/useContextMenu';
 import { useAppStore } from './store/appStore';
@@ -51,10 +52,7 @@ function App() {
   // 布局编排 (侧边栏停靠; 中央区模块树由 dockStore 负责)
   const sidebarDock = useLayoutStore((s) => s.sidebarDock);
   const draggingSidebar = useLayoutStore((s) => s.draggingSidebar);
-  const setSidebarDock = useLayoutStore((s) => s.setSidebarDock);
-  const setDraggingSidebar = useLayoutStore((s) => s.setDraggingSidebar);
-  // 侧边栏拖拽时, 窗口左右边缘的停靠投放区高亮
-  const [dockEdge, setDockEdge] = useState<'left' | 'right' | null>(null);
+  const dockEdgeHover = useLayoutStore((s) => s.dockEdgeHover);
 
   // 全局默认右键菜单
   const defaultMenuItems = useMemo(
@@ -218,33 +216,23 @@ function App() {
         <StatusBar />
       </div>
 
-      {/* 侧边栏拖拽时: 窗口左右边缘的停靠投放区 */}
+      {/* 侧边栏拖拽时: 窗口左右边缘的停靠投放区 — dockDrag 控制器按指针命中测试 */}
       {draggingSidebar && (
         <>
           {(['left', 'right'] as const).map((edge) => (
             <div
               key={edge}
+              data-dock-zone="sidebar-dock"
+              data-dock-edge={edge}
               className={`absolute top-0 bottom-0 w-20 z-40 ${edge === 'left' ? 'left-0' : 'right-0'}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                setDockEdge(edge);
-              }}
-              onDragLeave={() => setDockEdge(null)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setSidebarDock(edge);
-                setDockEdge(null);
-                setDraggingSidebar(false);
-              }}
             />
           ))}
-          {dockEdge && (
+          {dockEdgeHover && (
             <div
               className="snap-drop-zone"
               style={{
                 top: 6,
-                left: dockEdge === 'left' ? 6 : '82%',
+                left: dockEdgeHover === 'left' ? 6 : '82%',
                 width: '18%',
                 height: 'calc(100% - 12px)',
               }}
@@ -254,6 +242,7 @@ function App() {
       )}
 
       <ContextMenu />
+      <DockDragGhost />
       <NotificationToasts />
       {/* 弹窗按需挂载: 打开时才触发懒加载, 避免启动时 5 个 lazy chunk 并发加载导致全屏遮罩闪烁 */}
       {isSettingsOpen && (

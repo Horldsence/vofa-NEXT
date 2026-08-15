@@ -1,19 +1,19 @@
-import { memo, useState, useCallback, useEffect } from 'react';
+import { memo, useState, useCallback } from 'react';
 import { Plus, X, Type, Trash2, Copy, Cpu, CircuitBoard } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore, type AppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
 import { useSlidingPill, SlidingPill } from '../ui/SlidingPill';
 import { AnimatedSwitch } from '../ui/AnimatedSwitch';
-import { useSnapDrop } from '../ui/SnapDropOverlay';
 import { NodeEditor } from './NodeEditor';
 import { DataTabContent, DataTabIcon } from './DataTabContent';
 import { useContextMenu, showContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
+import { dockDrag } from '../../lib/dockDrag';
 import { t } from '../../i18n';
 
 /// 通用 Dock 卡片框架 — 标题栏 (Tab 条 + 滑动指示器) + 内容区 + 吸附投放层
-/// 交互:
+/// 交互 (指针事件驱动, 替代 HTML5 DnD — WKWebView 下 HTML5 拖拽不可靠):
 /// - 拖动单个 Tab 到本卡片标题栏 → 合并为本卡片的一个 Tab
 /// - 拖动单个 Tab 到卡片边缘 → 拆分为独立面板
 /// - 拖动标题栏空白处 → 整卡移动到其他卡片边缘
@@ -26,18 +26,13 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   const removeDataTab = useAppStore((s) => s.removeDataTab);
 
   const draggingTab = useDockStore((s) => s.draggingTab);
-  const draggingCardId = useDockStore((s) => s.draggingCardId);
-  const setDraggingTab = useDockStore((s) => s.setDraggingTab);
-  const setDraggingCard = useDockStore((s) => s.setDraggingCard);
   const setActiveTab = useDockStore((s) => s.setActiveTab);
   const setFocusedCard = useDockStore((s) => s.setFocusedCard);
-  const moveTabToCard = useDockStore((s) => s.moveTabToCard);
-  const dropOnCardEdge = useDockStore((s) => s.dropOnCardEdge);
-  const setDropTarget = useDockStore((s) => s.setDropTarget);
 
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
-  const [mergeHover, setMergeHover] = useState(false);
+  // 合并目标高亮 — 由 dockDrag 控制器按指针悬停写入 store
+  const mergeHover = useDockStore((s) => s.mergeHoverCardId === cardId);
 
   // 卡片可能因树折叠在渲染间隙被移除 — hook 需无条件调用, 用兜底值
   const kind = card?.kind ?? 'data';
@@ -62,27 +57,29 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   // Tab 滑动指示器
   const { containerRef: tabBarRef, pill: tabPill } = useSlidingPill(activeTabId);
 
-  // 边缘吸附 — Tab 拆分 (允许跨 kind; 多 Tab 卡片可拆自身) 或整卡移动
-  const snapActive =
-    (draggingTab !== null && (draggingTab.fromCardId !== cardId || cardTabIds.length > 1)) ||
-    (draggingCardId !== null && draggingCardId !== cardId);
-  const { edge: snapEdge, handlers: snapHandlers } = useSnapDrop(snapActive, (edge) => {
-    dropOnCardEdge(cardId, edge);
-  });
-
-  // 悬停边缘上报到 dockStore → DockLayout 渲染全局预览 (区域与实际落点一致)
-  // 窄化到「仅当投放目标是本卡片」— 其他卡片的 dropTarget 变化不触发本卡片重渲染
-  const dropTarget = useDockStore((s) => (s.dropTarget && s.dropTarget.cardId === cardId ? s.dropTarget : null));
-  useEffect(() => {
-    if (snapEdge) {
-      setDropTarget({ cardId, edge: snapEdge });
-    } else if (dropTarget?.cardId === cardId) {
-      setDropTarget(null);
-    }
-  }, [snapEdge, cardId, dropTarget, setDropTarget]);
-
   // 标题栏为 Tab 合并投放目标 (仅同 kind 的跨卡片 Tab 拖拽)
   const mergeActive = draggingTab !== null && draggingTab.kind === kind && draggingTab.fromCardId !== cardId;
+
+  // 拖拽源 — Tab 拖拽 (同 kind 拖拽时也可拆到边缘) / 标题栏整卡拖拽
+  const handleTabPointerDown = useCallback(
+    (e: React.PointerEvent, tabId: string, tabName: string) => {
+      if (editingTabId === tabId) return;
+      // 关闭按钮/重命名输入框不参与拖拽
+      if ((e.target as HTMLElement).closest('button, input')) return;
+      dockDrag.begin(e, { kind: 'tab', tab: { kind, tabId, fromCardId: cardId }, label: tabName });
+    },
+    [editingTabId, kind, cardId]
+  );
+
+  const handleTitleBarPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (editingTabId !== null) return;
+      if ((e.target as HTMLElement).closest('button, input')) return;
+      const label = tabs.find((t) => t.id === activeTabId)?.name ?? (kind === 'control' ? 'Control' : 'Data');
+      dockDrag.begin(e, { kind: 'card', cardId, label });
+    },
+    [editingTabId, tabs, activeTabId, kind, cardId]
+  );
 
   const handleStartRename = useCallback((tabId: string, currentName: string) => {
     setEditingTabId(tabId);
@@ -165,13 +162,15 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
     <div
       className="module-card relative flex flex-col bg-bg-surface h-full w-full"
       onMouseDown={() => setFocusedCard(cardId)}
-      {...snapHandlers}
+      data-dock-zone="card-edge"
+      data-dock-card={cardId}
+      data-dock-kind={kind}
     >
-      {/* 标题栏 — Tab 条; 空白处拖动 = 整卡移动 */}
+      {/* 标题栏 — Tab 条; 空白处拖动 = 整卡移动; 标题栏同时是 Tab 合并投放目标 */}
       <div
         ref={tabBarRef}
         data-tour={kind === 'data' ? 'data-tabs' : undefined}
-        className={`relative flex items-center gap-1 bg-bg-panel-header border-b border-border-subtle flex-shrink-0 px-2 py-1 overflow-x-auto transition duration-150 ${
+        className={`relative flex items-center gap-1 bg-bg-panel-header border-b border-border-subtle flex-shrink-0 px-2 py-1 overflow-x-auto transition duration-150 select-none ${
           mergeHover
             ? 'shadow-[inset_0_0_0_1.5px_var(--color-accent)] bg-accent/10'
             : mergeActive
@@ -179,31 +178,10 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
               : ''
         }`}
         onContextMenu={tabBarContextMenu}
-        draggable={editingTabId === null}
-        onDragStart={(e) => {
-          e.dataTransfer.setData('text/plain', `card:${cardId}`);
-          e.dataTransfer.effectAllowed = 'move';
-          setDraggingCard(cardId);
-        }}
-        onDragEnd={() => {
-          setDraggingCard(null);
-          setDropTarget(null);
-        }}
-        onDragOver={(e) => {
-          if (!mergeActive) return;
-          e.preventDefault();
-          e.stopPropagation();
-          e.dataTransfer.dropEffect = 'move';
-          setMergeHover(true);
-        }}
-        onDragLeave={() => setMergeHover(false)}
-        onDrop={(e) => {
-          if (!mergeActive) return;
-          e.preventDefault();
-          e.stopPropagation();
-          setMergeHover(false);
-          moveTabToCard(cardId);
-        }}
+        onPointerDown={handleTitleBarPointerDown}
+        data-dock-zone="merge"
+        data-dock-card={cardId}
+        data-dock-kind={kind}
         title={t(lang, 'dragToRearrange')}
       >
         <SlidingPill pill={tabPill} />
@@ -211,23 +189,16 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
           <div
             key={tab.id}
             data-tab-key={tab.id}
-            className={`relative px-2.5 h-7 text-xs cursor-pointer rounded-md flex items-center gap-1.5 flex-shrink-0 transition-colors duration-150 ${
+            className={`relative px-2.5 h-7 text-xs cursor-pointer rounded-sm flex items-center gap-1.5 flex-shrink-0 transition-colors duration-150 select-none ${
               tab.id === activeTabId
                 ? 'text-text-bright'
                 : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active'
             }`}
-            draggable={editingTabId !== tab.id}
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.dataTransfer.setData('text/plain', `tab:${tab.id}`);
-              e.dataTransfer.effectAllowed = 'move';
-              setDraggingTab({ kind, tabId: tab.id, fromCardId: cardId });
+            onPointerDown={(e) => handleTabPointerDown(e, tab.id, tab.name)}
+            onClick={() => {
+              if (dockDrag.consumeClick()) return;
+              transitionStore(() => setActiveTab(cardId, tab.id));
             }}
-            onDragEnd={() => {
-              setDraggingTab(null);
-              setDropTarget(null);
-            }}
-            onClick={() => transitionStore(() => setActiveTab(cardId, tab.id))}
             onDoubleClick={() => kind === 'control' && handleStartRename(tab.id, tab.name)}
             onContextMenu={(e) => {
               e.preventDefault();

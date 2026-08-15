@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { useAppStore } from './appStore';
-import type { SnapEdge } from '../components/ui/SnapDropOverlay';
+
+/// 卡片四向吸附边
+export type SnapEdge = 'top' | 'bottom' | 'left' | 'right';
 
 /// 分栏方向: row = 左右, col = 上下
 export type DockDirection = 'row' | 'col';
@@ -160,12 +162,15 @@ interface DockState {
   draggingCardId: string | null;
   /// 当前悬停的投放目标 (不持久化) — 驱动全局预览
   dropTarget: DropTarget | null;
+  /// 指针悬停的合并目标卡片 (不持久化) — 标题栏 Tab 合并高亮
+  mergeHoverCardId: string | null;
   setActiveTab: (cardId: string, tabId: string) => void;
   setFocusedCard: (cardId: string) => void;
   setSizes: (splitId: string, sizes: number[]) => void;
   setDraggingTab: (d: DragTabPayload | null) => void;
   setDraggingCard: (cardId: string | null) => void;
   setDropTarget: (t: DropTarget | null) => void;
+  setMergeHover: (cardId: string | null) => void;
   /// 把当前拖拽的 Tab 合并进目标卡片 (仅同 kind)
   moveTabToCard: (targetCardId: string) => void;
   /// 在当前拖拽的 Tab / 卡片落到目标卡片的某个方位 (同级条带插入或拆分)
@@ -248,6 +253,7 @@ export const useDockStore = create<DockState>()(
       draggingTab: null,
       draggingCardId: null,
       dropTarget: null,
+      mergeHoverCardId: null,
 
       setActiveTab: (cardId, tabId) =>
         set((state) => {
@@ -283,6 +289,9 @@ export const useDockStore = create<DockState>()(
           }
           return { dropTarget };
         }),
+
+      setMergeHover: (mergeHoverCardId) =>
+        set((state) => (state.mergeHoverCardId === mergeHoverCardId ? state : { mergeHoverCardId })),
 
       moveTabToCard: (targetCardId) =>
         set((state) => {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -17,6 +17,7 @@ import { createWidget } from '../../lib/utils/createWidget';
 import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
+import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
 import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
@@ -58,7 +59,9 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   const addWidget = useAppStore((s) => s.addWidget);
   const setSidebarView = useAppStore((s) => s.setSidebarView);
   const reactFlow = useReactFlow();
+  // 控件拖拽悬停画布时的高亮 (dockDrag 控制器驱动)
   const [isDragOver, setIsDragOver] = useState(false);
+  useEffect(() => dockDrag.subscribeCanvasHover(setIsDragOver), []);
 
   const onCanvasContextMenu = useContextMenu([
     {
@@ -104,58 +107,40 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     [rfEdges, tabNodeIds]
   );
 
-  // 从侧边栏拖拽接收 — 必须绑在 <ReactFlow> 上, 否则被内部 pan/zoom 拦截
-  // 关键: 用 screenToFlowPosition 把屏幕坐标转为画布坐标 (考虑 zoom/pan),
-  // 否则 fitView 后新节点会落到屏幕外
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragOver(false);
-      const kind = e.dataTransfer.getData('application/widget-kind') as WidgetConfig['kind'] | '';
-      if (!kind) return;
-      const op = e.dataTransfer.getData('application/widget-op') as MathOp | '';
-      const preset = e.dataTransfer.getData('application/widget-preset') as FilterPresetKind | '';
-
+  // 从控件面板拖出控件 — 指针事件落点 (dockDrag 控制器命中 canvas 投放区后调用)
+  const createFromDrop = useCallback(
+    (x: number, y: number, spec: WidgetDragSpec) => {
       // 用 screenToFlowPosition 正确处理 zoom/pan 后的坐标转换
-      const position = reactFlow.screenToFlowPosition({
-        x: e.clientX,
-        y: e.clientY,
-      });
+      const position = reactFlow.screenToFlowPosition({ x, y });
 
-      const widget = createWidget(kind);
+      const widget = createWidget(spec.kind);
       // 算术控件: 应用拖拽时携带的 op
-      if (widget.kind === 'Math' && op) {
+      if (widget.kind === 'Math' && spec.op) {
         const mathWidget = widget as Extract<WidgetConfig, { kind: 'Math' }>;
-        mathWidget.params.op = op as MathOp;
-        if (UNARY_MATH_OPS.includes(op as MathOp)) {
+        mathWidget.params.op = spec.op as MathOp;
+        if (UNARY_MATH_OPS.includes(spec.op as MathOp)) {
           mathWidget.params.inputCount = 1;
         }
-        mathWidget.params.label = `Math ${op}`;
+        mathWidget.params.label = `Math ${spec.op}`;
       }
       // 滤波器控件: 应用拖拽时携带的 preset
-      if (widget.kind === 'Filter' && preset) {
+      if (widget.kind === 'Filter' && spec.preset) {
         const filterWidget = widget as Extract<WidgetConfig, { kind: 'Filter' }>;
-        filterWidget.params.preset = preset as FilterPresetKind;
-        filterWidget.params.label = `Filter ${preset}`;
+        filterWidget.params.preset = spec.preset as FilterPresetKind;
+        filterWidget.params.label = `Filter ${spec.preset}`;
       }
       addWidget(widget, tabId, position);
     },
     [addWidget, tabId, reactFlow]
   );
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    // 仅当离开整个容器 (relatedTarget 不在内部) 时才清除高亮
-    const related = e.relatedTarget as globalThis.Node | null;
-    if (!related || !e.currentTarget.contains(related)) {
-      setIsDragOver(false);
-    }
-  }, []);
+  // 当前可见画布注册为控件投放目标 (按画布元素注册 — 多个控制卡片并存时落点各归其主)
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    dockDrag.registerCanvasHandler(el, (x, y, spec) => createFromDrop(x, y, spec));
+    return () => dockDrag.registerCanvasHandler(el, null);
+  }, [createFromDrop]);
 
   // 回环节点连线校验: loopbackOut (字节发送口) 只能连 loopbackIn (字节输入口), 反之亦然;
   // 普通数值口之间维持现状 (不做类型限制)
@@ -174,6 +159,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       className={`absolute inset-0 bg-bg-editor overflow-hidden node-editor-rf${isDragOver ? ' drag-over' : ''}`}
       ref={wrapperRef}
       onContextMenu={onCanvasContextMenu}
+      data-dock-zone="canvas"
     >
       <ReactFlow
         nodes={tabNodes}
@@ -182,9 +168,6 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}

@@ -1,9 +1,15 @@
 import { memo, useEffect, useMemo, type CSSProperties } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAppStore } from '../../store/appStore';
-import { useDockStore, edgeDir, removeCardNode, type DockNode, type DropTarget } from '../../store/dockStore';
+import {
+  useDockStore,
+  edgeDir,
+  removeCardNode,
+  type DockNode,
+  type DropTarget,
+  type SnapEdge,
+} from '../../store/dockStore';
 import { DockCardFrame } from './DockCardFrame';
-import type { SnapEdge } from '../ui/SnapDropOverlay';
 
 /// 百分比矩形 (相对于中央区容器)
 interface PctRect {
@@ -111,8 +117,6 @@ export const DockLayout = memo(function DockLayout() {
   const dropTarget = useDockStore((s) => s.dropTarget);
   const draggingTab = useDockStore((s) => s.draggingTab);
   const draggingCardId = useDockStore((s) => s.draggingCardId);
-  const setDropTarget = useDockStore((s) => s.setDropTarget);
-  const dropOnRootEdge = useDockStore((s) => s.dropOnRootEdge);
   const controlTabs = useAppStore((s) => s.controlTabs);
   const dataTabs = useAppStore((s) => s.dataTabs);
   const reconcile = useDockStore((s) => s.reconcile);
@@ -145,25 +149,10 @@ export const DockLayout = memo(function DockLayout() {
     <div className="relative h-full w-full">
       <DockNodeView node={root} />
 
-      {/* 页面四边热区 */}
+      {/* 页面四边热区 — dockDrag 控制器按指针命中测试 (data-dock-zone) */}
       {dragging &&
         (['top', 'bottom', 'left', 'right'] as const).map((edge) => (
-          <div
-            key={edge}
-            className={HOT_ZONE_CLASS[edge]}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              e.dataTransfer.dropEffect = 'move';
-              setDropTarget({ cardId: null, edge });
-            }}
-            onDragLeave={() => setDropTarget(null)}
-            onDrop={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              dropOnRootEdge(edge);
-            }}
-          />
+          <div key={edge} className={HOT_ZONE_CLASS[edge]} data-dock-zone="page-edge" data-dock-edge={edge} />
         ))}
 
       {/* 投放预览 */}
@@ -183,7 +172,6 @@ function DockNodeView({ node }: { node: DockNode }) {
   return (
     <PanelGroup
       direction={horizontal ? 'horizontal' : 'vertical'}
-      className="gap-1"
       onLayout={(sizes) => {
         if (
           sizes.length === node.children.length &&
@@ -208,7 +196,7 @@ function DockNodeView({ node }: { node: DockNode }) {
         return [
           <PanelResizeHandle
             key={`handle-${child.id}`}
-            className={`${horizontal ? 'w-1' : 'h-1'} rounded-full bg-transparent hover:bg-accent/50 transition-colors`}
+            className={`${horizontal ? 'w-2' : 'h-2'} rounded-full bg-transparent hover:bg-accent/50 transition-colors`}
           />,
           panel,
         ];

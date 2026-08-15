@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/appStore';
 import type { SidebarView } from '../../store/appStore';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
+import { dockDrag } from '../../lib/dockDrag';
 import { t } from '../../i18n';
 import { TransportConfigPanel } from '../panels/TransportConfigPanel';
 import { ProtocolSection } from '../panels/ProtocolSection';
@@ -45,8 +46,7 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
     widgets: 'widgetPalette',
   };
 
-  // 标题栏为拖拽源 — 拖到窗口左/右边缘可切换停靠侧
-  const setDraggingSidebar = useLayoutStore((s) => s.setDraggingSidebar);
+  // 标题栏为拖拽源 — 拖到窗口左/右边缘可切换停靠侧 (dockDrag 控制器)
   const draggingSidebar = useLayoutStore((s) => s.draggingSidebar);
 
   return (
@@ -57,14 +57,12 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
       onContextMenu={onContextMenu}
     >
       <div
-        className="px-4 h-9 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0 cursor-grab active:cursor-grabbing border-b border-border-subtle"
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.setData('text/plain', 'panel:sidebar');
-          e.dataTransfer.effectAllowed = 'move';
-          setDraggingSidebar(true);
+        className="px-4 h-9 text-xs font-semibold uppercase tracking-wider text-text-secondary flex items-center justify-between flex-shrink-0 cursor-grab active:cursor-grabbing border-b border-border-subtle select-none"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest('button, input')) return;
+          dockDrag.begin(e, { kind: 'sidebar', label: t(lang, titleMap[view]) });
         }}
-        onDragEnd={() => setDraggingSidebar(false)}
         title={t(lang, 'dragToDock')}
       >
         <span>{t(lang, titleMap[view])}</span>
