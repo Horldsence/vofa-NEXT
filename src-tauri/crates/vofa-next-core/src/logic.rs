@@ -76,6 +76,8 @@ use std::collections::VecDeque;
 pub struct LogicBuffer {
     samples: VecDeque<LogicSample>,
     max_size: usize,
+    /// 单调递增版本号 — 每次 push +1, 供订阅循环做变化检测
+    version: u64,
 }
 
 impl LogicBuffer {
@@ -83,6 +85,7 @@ impl LogicBuffer {
         Self {
             samples: VecDeque::with_capacity(max_size.min(16384)),
             max_size,
+            version: 0,
         }
     }
 
@@ -91,6 +94,12 @@ impl LogicBuffer {
             self.samples.pop_front();
         }
         self.samples.push_back(sample);
+        self.version = self.version.wrapping_add(1);
+    }
+
+    /// 当前版本号 (单调递增, push 时变化)
+    pub const fn version(&self) -> u64 {
+        self.version
     }
 
     /// 获取最近 n 个采样 (返回顺序: 旧→新)
@@ -105,6 +114,18 @@ impl LogicBuffer {
             .into_iter()
             .rev()
             .collect()
+    }
+
+    /// 增量游标读取 — 统一分片流用 (语义同 CanBuffer::drain_from)
+    pub fn drain_from(&self, cursor: u64, max: usize) -> (Vec<LogicSample>, u64, u64) {
+        let version = self.version;
+        let oldest = version - self.samples.len() as u64;
+        let start = cursor.max(oldest);
+        let dropped = start.saturating_sub(cursor);
+        let n = usize::try_from(version - start).unwrap_or(max).min(max);
+        let skip = usize::try_from(start - oldest).unwrap_or(0);
+        let items = self.samples.iter().skip(skip).take(n).cloned().collect();
+        (items, start + n as u64, dropped)
     }
 
     pub fn clear(&mut self) {
@@ -131,6 +152,8 @@ impl LogicBuffer {
 pub struct DecodedBuffer {
     events: VecDeque<DecodedEvent>,
     max_size: usize,
+    /// 单调递增版本号 — 每次 push +1, 供订阅循环做变化检测
+    version: u64,
 }
 
 impl DecodedBuffer {
@@ -138,6 +161,7 @@ impl DecodedBuffer {
         Self {
             events: VecDeque::with_capacity(max_size.min(8192)),
             max_size,
+            version: 0,
         }
     }
 
@@ -146,6 +170,12 @@ impl DecodedBuffer {
             self.events.pop_front();
         }
         self.events.push_back(event);
+        self.version = self.version.wrapping_add(1);
+    }
+
+    /// 当前版本号 (单调递增, push 时变化)
+    pub const fn version(&self) -> u64 {
+        self.version
     }
 
     pub fn get_recent(&self, count: usize) -> Vec<DecodedEvent> {
@@ -159,6 +189,18 @@ impl DecodedBuffer {
             .into_iter()
             .rev()
             .collect()
+    }
+
+    /// 增量游标读取 — 统一分片流用 (语义同 CanBuffer::drain_from)
+    pub fn drain_from(&self, cursor: u64, max: usize) -> (Vec<DecodedEvent>, u64, u64) {
+        let version = self.version;
+        let oldest = version - self.events.len() as u64;
+        let start = cursor.max(oldest);
+        let dropped = start.saturating_sub(cursor);
+        let n = usize::try_from(version - start).unwrap_or(max).min(max);
+        let skip = usize::try_from(start - oldest).unwrap_or(0);
+        let items = self.events.iter().skip(skip).take(n).cloned().collect();
+        (items, start + n as u64, dropped)
     }
 
     pub fn clear(&mut self) {
@@ -184,12 +226,18 @@ impl DecodedBuffer {
 /// 逻辑采样批次 — 通过 Channel 推送到前端
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LogicSampleBatch {
+    /// 组级单调序号 — 分片并发推送时前端按 seq 重组
+    #[serde(default)]
+    pub seq: u64,
     pub samples: Vec<LogicSample>,
 }
 
 /// 解码事件批次 — 通过 Channel 推送到前端
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DecodedEventBatch {
+    /// 组级单调序号 — 分片并发推送时前端按 seq 重组
+    #[serde(default)]
+    pub seq: u64,
     pub events: Vec<DecodedEvent>,
 }
 

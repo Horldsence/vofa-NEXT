@@ -16,6 +16,16 @@ impl DataFrame {
             channels,
         }
     }
+
+    /// 指定时间戳构造 — 高码率协议引擎在每次 feed 只读一次时钟,
+    /// 批内所有帧共享同一时间戳 (批间隔 ≤500µs, 远小于显示精度),
+    /// 避免每帧一次 SystemTime::now() 系统调用
+    pub const fn with_timestamp(timestamp: u64, channels: Vec<f32>) -> Self {
+        Self {
+            timestamp,
+            channels,
+        }
+    }
 }
 
 /// 原始数据块 — 未经协议解析的字节流
@@ -53,10 +63,13 @@ pub struct TransportStats {
     pub tx_bytes: u64,
     pub rx_frames: u64,
     pub tx_frames: u64,
+    /// 最近 100ms 统计窗口内 broadcast Lagged 丢弃的消息数
+    #[serde(default)]
+    pub rx_dropped: u64,
 }
 
 #[allow(clippy::cast_possible_truncation)]
-fn now_us() -> u64 {
+pub fn now_us() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

@@ -373,6 +373,9 @@ pub struct CanFilter {
 /// CAN 批次 — 通过 Channel 推送到前端
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanFrameBatch {
+    /// 组级单调序号 — 分片并发推送时前端按 seq 重组
+    #[serde(default)]
+    pub seq: u64,
     pub frames: Vec<CanFrame>,
 }
 
@@ -394,6 +397,8 @@ pub struct CandleDeviceInfo {
 pub struct CanBuffer {
     frames: VecDeque<CanFrame>,
     max_size: usize,
+    /// 单调递增版本号 — 每次 push +1, 供订阅循环做变化检测 (避免无数据时全量快照)
+    version: u64,
 }
 
 impl CanBuffer {
@@ -401,6 +406,7 @@ impl CanBuffer {
         Self {
             frames: VecDeque::with_capacity(max_size.min(8192)),
             max_size,
+            version: 0,
         }
     }
 
@@ -410,12 +416,34 @@ impl CanBuffer {
             self.frames.pop_front();
         }
         self.frames.push_back(frame);
+        self.version = self.version.wrapping_add(1);
+    }
+
+    /// 当前版本号 (单调递增, push 时变化)
+    pub const fn version(&self) -> u64 {
+        self.version
     }
 
     /// 获取最近 count 帧 (按时间顺序返回, 旧的在前)
     pub fn get_recent(&self, count: usize) -> Vec<CanFrame> {
         let n = count.min(self.frames.len());
         self.frames.iter().rev().take(n).rev().cloned().collect()
+    }
+
+    /// 增量游标读取 — 统一分片流用
+    ///
+    /// cursor 为绝对序号 (version = 累计 push 数)。可读区间 = [max(cursor, version-len), version);
+    /// 游标若已被驱逐越过则顺移并计入 dropped。
+    /// 返回 (items, new_cursor, dropped)。
+    pub fn drain_from(&self, cursor: u64, max: usize) -> (Vec<CanFrame>, u64, u64) {
+        let version = self.version;
+        let oldest = version - self.frames.len() as u64;
+        let start = cursor.max(oldest);
+        let dropped = start.saturating_sub(cursor);
+        let n = usize::try_from(version - start).unwrap_or(max).min(max);
+        let skip = usize::try_from(start - oldest).unwrap_or(0);
+        let items = self.frames.iter().skip(skip).take(n).cloned().collect();
+        (items, start + n as u64, dropped)
     }
 
     /// 清空缓冲区
