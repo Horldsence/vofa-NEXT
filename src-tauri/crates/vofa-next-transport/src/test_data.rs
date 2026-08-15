@@ -88,7 +88,7 @@ pub async fn spawn(
                 }
             }
         }
-        log::info!("测试数据生成器退出");
+        log::debug!("测试数据生成器退出");
     });
 
     Ok((write_tx, data_tx, cancel, running, notify))

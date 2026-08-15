@@ -90,7 +90,7 @@ impl BridgeCanBackend {
                     }
                 }
             }
-            log::info!("BridgeCanBackend 解码任务退出 (kind={kind:?})");
+            log::debug!("BridgeCanBackend 解码任务退出 (kind={kind:?})");
         });
 
         Self {

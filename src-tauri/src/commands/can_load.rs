@@ -88,7 +88,7 @@ pub async fn subscribe_can_load(
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
-        log::info!(
+        log::debug!(
             "CAN 负载订阅已启动, channel_id={}, 间隔={}ms, bitrate={}bps",
             channel_id,
             interval.as_millis(),
@@ -98,7 +98,7 @@ pub async fn subscribe_can_load(
         loop {
             tokio::select! {
                 _ = &mut cancel_rx => {
-                    log::info!("CAN 负载订阅被取消, channel_id={}", channel_id);
+                    log::debug!("CAN 负载订阅被取消, channel_id={}", channel_id);
                     break;
                 }
                 _ = ticker.tick() => {
@@ -108,7 +108,7 @@ pub async fn subscribe_can_load(
                         s.snapshot(bitrate)
                     };
                     if on_event.send(snap).is_err() {
-                        log::info!("CAN 负载订阅通道已关闭, channel_id={}", channel_id);
+                        log::debug!("CAN 负载订阅通道已关闭, channel_id={}", channel_id);
                         break;
                     }
                 }

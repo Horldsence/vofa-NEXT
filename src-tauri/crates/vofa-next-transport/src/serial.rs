@@ -99,7 +99,7 @@ pub fn spawn(
                 Err(_) => break,
             }
         }
-        log::info!("串口读线程退出");
+        log::debug!("串口读线程退出");
     });
 
     // 写线程
@@ -116,7 +116,7 @@ pub fn spawn(
                 None => break,
             }
         }
-        log::info!("串口写线程退出");
+        log::debug!("串口写线程退出");
     });
 
     Ok((write_tx, data_tx, cancel))

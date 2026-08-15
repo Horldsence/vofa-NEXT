@@ -53,7 +53,7 @@ pub async fn spawn(
                 }
             }
         }
-        log::info!("UDP 读任务退出");
+        log::debug!("UDP 读任务退出");
     });
 
     // 写任务
@@ -77,7 +77,7 @@ pub async fn spawn(
                 }
             }
         }
-        log::info!("UDP 写任务退出");
+        log::debug!("UDP 写任务退出");
     });
 
     Ok((write_tx, data_tx, cancel))

@@ -83,7 +83,7 @@ pub async fn sharded_stream_loop<S: StreamSource>(
             // 快照流 (SNAPSHOT=true) 永远只有 shard 0 工作
             let active = shard_idx == 0 || (!S::SNAPSHOT && backlog >= shard_idx * S::ACTIVATION_UNIT);
             if active != was_active {
-                log::info!(
+                log::debug!(
                     "{} {} (积压 {}, 阈值 {})",
                     log_name,
                     if active { "激活" } else { "休眠" },

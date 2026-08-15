@@ -56,7 +56,7 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
         if need_rebuild {
             let analyzer = SpectrumAnalyzer::new(*window_size, *window_type, *output, *sample_rate);
             analyzers.insert(sink_id.clone(), analyzer);
-            log::info!(
+            log::debug!(
                 "频谱分析器已 (重新)创建: sink={} window={} output={} fs={}",
                 sink_id,
                 window_size,

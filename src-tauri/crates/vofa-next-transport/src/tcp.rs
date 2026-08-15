@@ -47,7 +47,7 @@ pub async fn spawn_client(
                 }
             }
         }
-        log::info!("TCP 客户端读任务退出");
+        log::debug!("TCP 客户端读任务退出");
     });
 
     // 写任务
@@ -72,7 +72,7 @@ pub async fn spawn_client(
                 }
             }
         }
-        log::info!("TCP 客户端写任务退出");
+        log::debug!("TCP 客户端写任务退出");
     });
 
     Ok((write_tx, data_tx, cancel))

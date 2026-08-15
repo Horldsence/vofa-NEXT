@@ -17,7 +17,7 @@ fn sync_spectrum_analyzers(state: &GraphEvalState) {
 /// 自适应: snapshot.tick 未变化 → 不发送并降频退避 (最高 250ms);
 /// 有变化 → 立即发送并提速 (最快 16ms, ~60 FPS)
 pub async fn graph_output_ticker(state: GraphEvalState) {
-    log::info!("图输出 ticker 已启动 (自适应 16ms~250ms)");
+    log::debug!("图输出 ticker 已启动 (自适应 16ms~250ms)");
     let mut rate = AdaptiveRate::new(Duration::from_millis(16), Duration::from_millis(250));
     let mut last_sent_tick: Option<u64> = None;
 
@@ -46,7 +46,7 @@ pub async fn graph_output_ticker(state: GraphEvalState) {
 ///
 /// 自适应: 输入值与上次发送相同 → 不发送并降频退避 (最高 250ms)
 pub async fn custom_input_ticker(state: GraphEvalState) {
-    log::info!("Custom 输入 ticker 已启动 (自适应 33ms~250ms)");
+    log::debug!("Custom 输入 ticker 已启动 (自适应 33ms~250ms)");
     let mut rate = AdaptiveRate::new(Duration::from_millis(33), Duration::from_millis(250));
     let mut last_sent: Option<HashMap<String, HashMap<String, f32>>> = None;
 
@@ -107,7 +107,7 @@ pub async fn custom_input_ticker(state: GraphEvalState) {
 ///
 /// 自适应: 无 analyzer 或无新结果 → 降频退避 (最高 250ms)
 pub async fn spectrum_ticker(state: GraphEvalState) {
-    log::info!("频谱分析 ticker 已启动 (自适应 33ms~250ms)");
+    log::debug!("频谱分析 ticker 已启动 (自适应 33ms~250ms)");
     let mut rate = AdaptiveRate::new(Duration::from_millis(33), Duration::from_millis(250));
 
     loop {

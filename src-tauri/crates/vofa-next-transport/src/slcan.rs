@@ -62,7 +62,7 @@ pub fn spawn(
         }
         // 关闭 CAN
         let _ = port.write_all(b"C\r");
-        log::info!("slcan 读线程退出");
+        log::debug!("slcan 读线程退出");
     });
 
     // 写线程
@@ -79,7 +79,7 @@ pub fn spawn(
                 None => break,
             }
         }
-        log::info!("slcan 写线程退出");
+        log::debug!("slcan 写线程退出");
     });
 
     Ok((write_tx, data_tx, cancel))

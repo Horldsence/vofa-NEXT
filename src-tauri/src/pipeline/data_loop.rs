@@ -130,7 +130,7 @@ impl PipelineMetrics {
         if lagged > 0 {
             log::warn!("{}", msg);
         } else {
-            log::info!("{}", msg);
+            log::debug!("{}", msg);
         }
     }
 }
@@ -156,7 +156,7 @@ pub async fn run(
     decoded_buffer: Arc<Mutex<DecodedBuffer>>,
     config: Arc<RwLock<PipelineConfig>>,
 ) {
-    log::info!("数据循环已启动");
+    log::debug!("数据循环已启动");
 
     // 解析 task 用的 mpsc (容量取自建通道时的配置快照, 传输层已是 64KB 大块,
     // 默认 256 条 ≈ 16MB 缓冲)
@@ -219,7 +219,7 @@ pub async fn run(
         }
         // eval 通道关闭 → feed_task 已退出 → 传输已断开
         let _ = app3.emit("transport:state", ConnectionState::Disconnected);
-        log::info!("评估任务已退出");
+        log::debug!("评估任务已退出");
     });
 
     let metrics_parse = metrics.clone();
@@ -273,7 +273,7 @@ pub async fn run(
                 });
             let eff_workers = if can_parallel { workers } else { 1 };
             if eff_workers != last_workers {
-                log::info!(
+                log::debug!(
                     "并行解析 worker 数 {} → {} (积压 {}/{}, 批次 {}KB)",
                     last_workers,
                     eff_workers,
@@ -403,7 +403,7 @@ pub async fn run(
                 let force_eval = frames.is_empty();
                 let t = Instant::now();
                 if eval_tx.send(EvalBatch { frames, force_eval }).await.is_err() {
-                    log::info!("评估任务已退出, 停止解析");
+                    log::debug!("评估任务已退出, 停止解析");
                     break;
                 }
                 metrics_parse
@@ -433,7 +433,7 @@ pub async fn run(
         }
 
         // mpsc 关闭 → eval_tx 随之关闭, eval_task 刷完剩余帧后 emit Disconnected
-        log::info!("解析任务已退出");
+        log::debug!("解析任务已退出");
     });
 
     // data_loop: 快速消费 broadcast, 收集原始字节 + 转发到 mpsc (不阻塞在解析上)
@@ -454,7 +454,7 @@ pub async fn run(
                     .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);
                 let t1 = Instant::now();
                 if parse_tx.send(data).await.is_err() {
-                    log::info!("解析任务已退出, 停止数据循环");
+                    log::debug!("解析任务已退出, 停止数据循环");
                     break;
                 }
                 metrics
@@ -462,7 +462,7 @@ pub async fn run(
                     .fetch_add(t1.elapsed().as_nanos() as u64, Ordering::Relaxed);
             }
             Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                log::info!("数据广播通道已关闭");
+                log::debug!("数据广播通道已关闭");
                 break;
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
@@ -494,7 +494,7 @@ pub async fn run(
     drop(parse_tx);
     let _ = feed_task.await;
     let _ = eval_task.await;
-    log::info!("数据循环已退出");
+    log::debug!("数据循环已退出");
 }
 
 fn now_us() -> u64 {

@@ -47,7 +47,7 @@ pub fn ensure_decoder(eval_state: &GraphEvalState, dec_id: &str, config: &Decode
     if need_rebuild {
         let parser = FrameParser::new(blocks.clone(), *ev, *efc, *elt, *efps);
         decoder_states.insert(dec_id.to_string(), parser);
-        log::info!(
+        log::debug!(
             "帧解码器已 (重新)创建: decoder={} blocks={} valid={} count={} ts={} fps={}",
             dec_id,
             blocks.len(),

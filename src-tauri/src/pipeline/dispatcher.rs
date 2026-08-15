@@ -73,7 +73,7 @@ pub async fn adaptive_channel_loop<T, F>(
     T: serde::Serialize,
     F: FnMut() -> Option<T>,
 {
-    log::info!(
+    log::debug!(
         "{} 订阅已启动, channel_id={}, 初始间隔={}ms",
         name,
         channel_id,
@@ -82,14 +82,14 @@ pub async fn adaptive_channel_loop<T, F>(
     loop {
         tokio::select! {
             _ = &mut cancel_rx => {
-                log::info!("{} 订阅被取消, channel_id={}", name, channel_id);
+                log::debug!("{} 订阅被取消, channel_id={}", name, channel_id);
                 break;
             }
             _ = tokio::time::sleep(rate.current()) => {
                 match make_batch() {
                     Some(batch) => {
                         if on_event.send(batch).is_err() {
-                            log::info!("{} 订阅通道已关闭, channel_id={}", name, channel_id);
+                            log::debug!("{} 订阅通道已关闭, channel_id={}", name, channel_id);
                             break;
                         }
                         rate.on_send();

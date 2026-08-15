@@ -244,7 +244,7 @@ async fn run_session(
     // rx_id → Pending (单一索引即可,因为所有接收帧 CAN ID == rx_id)
     let mut pending: HashMap<u32, Pending> = HashMap::new();
 
-    log::info!(
+    log::debug!(
         "ISO-TP 会话启动 (tx_id=0x{:X}, rx_id=0x{:X}, N_Bs={}ms, N_Cr={}ms)",
         config.tx_id, config.rx_id, n_bs.as_millis(), n_cr.as_millis()
     );
@@ -278,7 +278,7 @@ async fn run_session(
             }
         }
     }
-    log::info!("ISO-TP 会话退出");
+    log::debug!("ISO-TP 会话退出");
 }
 
 // ============ 发送流程 ============

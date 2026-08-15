@@ -135,7 +135,7 @@ pub async fn spawn(
                 }
             }
         }
-        log::info!("candleLight 读任务退出");
+        log::debug!("candleLight 读任务退出");
     });
 
     // 写任务
@@ -161,7 +161,7 @@ pub async fn spawn(
                 }
             }
         }
-        log::info!("candleLight 写任务退出");
+        log::debug!("candleLight 写任务退出");
     });
 
     Ok((write_tx, data_tx, cancel))
