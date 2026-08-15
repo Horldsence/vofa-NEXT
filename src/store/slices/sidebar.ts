@@ -1,6 +1,6 @@
 import type { Lang } from '../../i18n';
 
-export type SidebarView = 'transport' | 'protocol' | 'widgets';
+export type SidebarView = 'transport' | 'protocol' | 'widgets' | 'quickstart';
 
 export interface SidebarSlice {
   lang: Lang;

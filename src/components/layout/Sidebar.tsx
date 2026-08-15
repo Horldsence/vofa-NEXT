@@ -8,6 +8,7 @@ import { t } from '../../i18n';
 import { TransportConfigPanel } from '../panels/TransportConfigPanel';
 import { ProtocolSection } from '../panels/ProtocolSection';
 import { WidgetPalette } from '../panels/WidgetPalette';
+import { QuickStartPanel } from '../panels/QuickStartPanel';
 import { PanelLeft, RefreshCw } from 'lucide-react';
 import { AnimatedSwitch } from '../ui/AnimatedSwitch';
 import { useLayoutStore } from '../../store/layoutStore';
@@ -41,6 +42,7 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
   ]);
 
   const titleMap: Record<SidebarView, Parameters<typeof t>[1]> = {
+    quickstart: 'quickStart',
     transport: 'dataInterface',
     protocol: 'protocolEngine',
     widgets: 'widgetPalette',
@@ -68,7 +70,8 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
         <span>{t(lang, titleMap[view])}</span>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-3">
-        <AnimatedSwitch switchKey={view} order={['transport', 'protocol', 'widgets']} axis="y">
+        <AnimatedSwitch switchKey={view} order={['quickstart', 'transport', 'protocol', 'widgets']} axis="y">
+          {view === 'quickstart' && <QuickStartPanel />}
           {view === 'transport' && <TransportConfigPanel />}
           {view === 'protocol' && <ProtocolSection />}
           {view === 'widgets' && <WidgetPalette />}

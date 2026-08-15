@@ -310,6 +310,47 @@ backupImportSuccessDesc: 已从备份文件恢复配置
 backupImportSuccessDescReconnect: 已从备份文件恢复配置。请重新连接传输以应用导入的连接设置。
 backupExportFailed: 导出失败
 backupImportFailed: 导入失败
+backupCustom: 拆分备份…
+backupModalTitle: 拆分备份
+backupSelectHint: 选择要包含的分区
+backupSelectAll: 全选
+backupSelectNone: 清空
+backupSectionNodeGraph: 节点图
+backupSectionNodeGraphDesc: 画布中的节点与连线
+backupSectionWindowLayout: 窗口组织
+backupSectionWindowLayoutDesc: 卡片分栏布局与侧边栏停靠位置
+backupSectionSettings: 设置
+backupSectionSettingsDesc: 语言、主题、外观、数据缓存等应用设置
+backupSectionTransportProtocol: 传输与协议
+backupSectionTransportProtocolDesc: 串口 / CAN / 网络等传输配置与协议引擎设置
+backupSectionWidgetsTabs: 控件与标签页
+backupSectionWidgetsTabsDesc: 控件列表、控件标签页、数据标签页与活动页
+backupExportSelected: 导出所选内容
+backupImportFromFile: 从文件导入
+backupImportReady: 已加载文件，选择要恢复的分区后确认导入
+backupConfirmImport: 确认导入所选
+quickStart: 快速开始
+quickStartDesc: 选择模板快速搭建节点图与窗口布局；模板包含传输与协议配置，可一键就绪。
+templateApply: 应用
+templateImportFile: 导入模板文件…
+templateImportName: 导入的模板
+templateMath: 数学
+templateMathDesc: 演示 sin / 求和等算术节点，配 TestData 无需硬件即可运行
+templateFilter: 滤波器
+templateFilterDesc: 低通滤波演示，对比原始与滤波后波形
+templateCan: CAN
+templateCanDesc: Slcan 传输 + CAN 帧视图，连接 CAN 分析仪即可收发
+templateSerial: 串口
+templateSerialDesc: 串口浮点数据流 + 仪表 / 数字显示控件
+templateDemo: 综合演示
+templateDemoDesc: 滤波 + 数学 + 波形 / 仪表的完整流水线示例
+templateApplyTitle: 应用模板
+templateApplyReplaceConfirm: 替换将清空现有节点图与窗口组织（保留设置），是否继续？
+templateApplyMergePrompt: 将模板作为新的控件标签页合并到当前工作区？
+templateApplySuccess: 模板应用成功
+templateApplySuccessDesc: 已应用模板
+templateApplySuccessDescReconnect: 已应用模板。请重新连接传输以应用模板的连接设置。
+templateApplyFailed: 模板应用失败
 
 # 设置项 - General
 settingLanguage: 语言

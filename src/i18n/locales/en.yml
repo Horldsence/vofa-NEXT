@@ -310,6 +310,47 @@ backupImportSuccessDesc: Restored from backup file
 backupImportSuccessDescReconnect: Restored from backup file. Reconnect the transport to apply the imported connection settings.
 backupExportFailed: Export failed
 backupImportFailed: Import failed
+backupCustom: Split Backup…
+backupModalTitle: Split Backup
+backupSelectHint: Select sections to include
+backupSelectAll: Select all
+backupSelectNone: Clear
+backupSectionNodeGraph: Node Graph
+backupSectionNodeGraphDesc: Nodes and edges on the canvas
+backupSectionWindowLayout: Window Layout
+backupSectionWindowLayoutDesc: Card split layout and sidebar dock position
+backupSectionSettings: Settings
+backupSectionSettingsDesc: Language, theme, appearance, data caches, etc.
+backupSectionTransportProtocol: Transport & Protocol
+backupSectionTransportProtocolDesc: Serial / CAN / network transport and protocol engine config
+backupSectionWidgetsTabs: Widgets & Tabs
+backupSectionWidgetsTabsDesc: Widgets, control tabs, data tabs and active tabs
+backupExportSelected: Export Selected
+backupImportFromFile: Import from File
+backupImportReady: File loaded. Select sections to restore, then confirm.
+backupConfirmImport: Confirm Import
+quickStart: Quick Start
+quickStartDesc: Pick a template to scaffold a node graph and window layout. Templates include transport & protocol config for one-click readiness.
+templateApply: Apply
+templateImportFile: Import template file…
+templateImportName: Imported template
+templateMath: Math
+templateMathDesc: Demonstrates sin / sum arithmetic nodes, runs with TestData (no hardware needed)
+templateFilter: Filter
+templateFilterDesc: Lowpass filtering demo, compare raw vs filtered waveform
+templateCan: CAN
+templateCanDesc: Slcan transport + CAN frame view, connect a CAN analyzer to send/receive
+templateSerial: Serial
+templateSerialDesc: Serial float stream + gauge / number display widgets
+templateDemo: Combined Demo
+templateDemoDesc: Full pipeline example with filter + math + waveform / gauge
+templateApplyTitle: Apply Template
+templateApplyReplaceConfirm: Replacing will clear the current node graph and window layout (settings are kept). Continue?
+templateApplyMergePrompt: Merge the template as a new control tab into the current workspace?
+templateApplySuccess: Template applied
+templateApplySuccessDesc: Template applied
+templateApplySuccessDescReconnect: Template applied. Reconnect the transport to apply the template's connection settings.
+templateApplyFailed: Failed to apply template
 
 # Setting items - General
 settingLanguage: Language

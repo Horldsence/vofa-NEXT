@@ -36,6 +36,7 @@ import { BUILT_IN_THEMES, type ThemeDefinition } from '../settings/theme';
 import { SettingFieldDef, SETTING_FIELDS } from './settingFields';
 import { exportAppToFile, importAppFromFile } from '../lib/tauri/appExport';
 import { formatError } from '../lib/tauri/notifications';
+import { BackupModal } from './BackupModal';
 import { useUpdater } from '../lib/hooks/useUpdater';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
@@ -72,6 +73,7 @@ export function SettingsModal() {
   const reset = useSettingsStore((s) => s.reset);
   const resetCategory = useSettingsStore((s) => s.resetCategory);
   const [themeEditorOpen, setThemeEditorOpen] = useState(false);
+  const [backupModalOpen, setBackupModalOpen] = useState(false);
   const { state: updateState, checkUpdate, install, restart } = useUpdater();
   const [appVersion, setAppVersion] = useState('');
 
@@ -352,6 +354,14 @@ export function SettingsModal() {
                 <Upload size={14} />
                 <span>{t(lang, 'importConfig')}</span>
               </button>
+              <button
+                className="w-full flex items-center gap-2.5 py-1.5 text-text-secondary text-sm cursor-pointer transition-all duration-150 hover:text-text-bright"
+                onClick={() => setBackupModalOpen(true)}
+                title={t(lang, 'backupCustom')}
+              >
+                <Database size={14} />
+                <span>{t(lang, 'backupCustom')}</span>
+              </button>
             </div>
             <div className="mt-2 border-t border-border px-4 pt-2 pb-1">
               <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary mb-1">
@@ -483,6 +493,7 @@ export function SettingsModal() {
           )
         }
       />
+      <BackupModal isOpen={backupModalOpen} onClose={() => setBackupModalOpen(false)} />
     </div>
   );
 }
