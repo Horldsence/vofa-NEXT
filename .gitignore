@@ -25,3 +25,6 @@ dist-ssr
 *.sw?
 PLAN.md
 promo.html
+promo_cover.html
+promo_cover_vertical.html
+scripts/export_promo.mjs
