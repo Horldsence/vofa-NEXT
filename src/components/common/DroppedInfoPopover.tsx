@@ -42,7 +42,7 @@ export function DroppedInfoPopover({ open, onClose, variant }: DroppedInfoPopove
       onClick={onClose}
     >
       <div
-        className="w-[420px] max-w-[90vw] bg-bg-sidebar border border-border rounded-lg shadow-modal p-6 flex flex-col gap-3 relative animate-[settings-slide-in_0.2s_ease-out]"
+        className="w-[420px] max-w-[90vw] prompt-card p-6 flex flex-col gap-3 relative animate-[settings-slide-in_0.2s_ease-out]"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -55,22 +55,22 @@ export function DroppedInfoPopover({ open, onClose, variant }: DroppedInfoPopove
           <X size={16} />
         </button>
 
-        <h2 className="text-base font-semibold text-text-bright m-0">
+        <h2 className="prompt-card-title m-0">
           {t(lang, titleKey)}
         </h2>
-        <p className="text-sm text-text-primary leading-relaxed m-0">
+        <p className="prompt-card-body m-0">
           {t(lang, whatKey)}
         </p>
-        <p className="text-sm text-text-primary leading-relaxed m-0">
+        <p className="prompt-card-body m-0">
           {t(lang, 'droppedInfoWhy')}
         </p>
-        <p className="text-sm text-text-primary leading-relaxed m-0">
+        <p className="prompt-card-body m-0">
           {t(lang, howKey)}
         </p>
 
         <div className="flex justify-end mt-1">
           <button
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-bg-button text-text-inverse text-sm hover:opacity-90 transition-opacity cursor-pointer border-none"
+            className="prompt-card-btn"
             onClick={() => {
               onClose();
               openSettings(variant === 'rawdata' ? 'data' : 'performance');

@@ -1,11 +1,14 @@
 import { memo, useCallback, useEffect } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps, type Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
+import { useDockStore } from '../../store/dockStore';
+import { t } from '../../i18n';
 import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
 import { UNARY_MATH_OPS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
+import { widgetToTab } from '../../lib/utils/widgetTab';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
 import { Radio } from '../controls/Radio';
@@ -179,11 +182,31 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const removeWidget = useAppStore((s) => s.removeWidget);
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
   const rfEdges = useAppStore((s) => s.rfEdges);
+  const lang = useAppStore((s) => s.lang);
 
   // 稳定回调 — memo 包装的嵌入控件 (Gauge/LED/...) 依赖同引用 props 才能跳过重渲染
   const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
   const handleEditCustom = useCallback(() => openCustomEditor(id), [openCustomEditor, id]);
   const updateNodeInternals = useUpdateNodeInternals();
+
+  // 双击节点重新打开数据窗口: 窗口已存在则激活, 已关闭则重新创建
+  // (窗口 Tab id 与控件 id 相同 — 与 addWidget 自动建 Tab 共用 widgetToTab 映射)
+  const handleOpenWindow = useCallback(() => {
+    if (!widget) return;
+    const tab = widgetToTab(widget);
+    if (!tab) return;
+    const st = useAppStore.getState();
+    if (st.dataTabs.some((t) => t.id === tab.id)) {
+      const dock = useDockStore.getState();
+      const card = Object.values(dock.cards).find(
+        (c) => c.kind === 'data' && c.tabIds.includes(tab.id)
+      );
+      if (card) dock.setActiveTab(card.id, tab.id);
+      else st.setActiveDataTab(tab.id);
+    } else {
+      st.addDataTab(tab);
+    }
+  }, [widget]);
 
   // 端口 id 集合签名 (与下方渲染用 effectivePorts 同源, 提前算一份供 hook 依赖)
   const widgetPortsKey = widget
@@ -273,11 +296,11 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
     case 'Command':
     case 'FrameDecoder':
     case 'RawData':
-        // 这些控件在节点内仅显示占位, 实际渲染在 DataPanel
+        // 这些控件在节点内仅显示占位, 实际渲染在数据窗口 (双击节点可打开/激活窗口)
         return (
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">
             <span>{widget.kind}</span>
-            <span className="text-blue text-[9px]">→ DataPanel</span>
+            <span className="text-blue text-[9px]">↗ {t(lang, 'nodeOpenWindowHint')}</span>
           </div>
         );
       default:
@@ -297,6 +320,8 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
     <div
       className="nowheel border border-border rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
       style={{ backgroundColor: `color-mix(in srgb, ${categoryColor} 25%, var(--color-bg-sidebar))` }}
+      onDoubleClick={widgetToTab(widget) ? handleOpenWindow : undefined}
+      title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
     >
       <div
         className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px]"

@@ -12,6 +12,8 @@ interface OnboardingStore {
   isHelpOpen: boolean;
   dismissedTips: Set<string>;
   hasOpenedThisSession: boolean;
+  /// 首次关闭数据窗口的提示是否已弹出 (会话级, 只提示一次)
+  closeHintShown: boolean;
 
   openWizard: () => void;
   closeWizard: () => void;
@@ -22,6 +24,7 @@ interface OnboardingStore {
 
   dismissTip: (id: string) => void;
   isTipDismissed: (id: string) => boolean;
+  markCloseHintShown: () => void;
 }
 
 export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
@@ -29,6 +32,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   isHelpOpen: false,
   dismissedTips: new Set(),
   hasOpenedThisSession: false,
+  closeHintShown: false,
 
   openWizard: () => set({ isWizardOpen: true, hasOpenedThisSession: true }),
   closeWizard: () => set({ isWizardOpen: false }),
@@ -48,4 +52,5 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
       return { dismissedTips: next };
     }),
   isTipDismissed: (id) => get().dismissedTips.has(id),
+  markCloseHintShown: () => set({ closeHintShown: true }),
 }));

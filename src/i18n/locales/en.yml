@@ -969,3 +969,9 @@ cmdSendModeInterval: Interval (ms)
 # Layout arrangement (drag to rearrange panels)
 dragToRearrange: Drag to another panel's edge to rearrange
 dragToDock: Drag to the window's left/right edge to change dock side
+
+# Window close hint
+closeHintTitle: Window closed
+closeHintMessage: "The \"{{name}}\" window is closed, but the widget node stays on the canvas. Double-click the node to reopen it."
+closeHintGotIt: Got it
+nodeOpenWindowHint: Double-click to open window

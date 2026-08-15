@@ -1,6 +1,7 @@
 import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
 import { createWidget } from '../../lib/utils/createWidget';
+import { widgetToTab } from '../../lib/utils/widgetTab';
 
 export interface WidgetSlice {
   widgets: WidgetConfig[];
@@ -56,44 +57,10 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
           widgets: [...s.widgets, widget],
           rfNodes: [...s.rfNodes, newNode],
         };
-        if (
-          widget.kind === 'Waveform' ||
-          widget.kind === 'PieChart' ||
-          widget.kind === 'Image' ||
-          widget.kind === 'Model3D' ||
-          widget.kind === 'Spectrum' ||
-          widget.kind === 'Command' ||
-          widget.kind === 'FrameDecoder' ||
-          widget.kind === 'RawData'
-        ) {
-          const tabType =
-            widget.kind === 'Waveform'
-              ? 'waveform-extra'
-              : widget.kind === 'PieChart'
-              ? 'pie'
-              : widget.kind === 'Image'
-              ? 'image'
-              : widget.kind === 'Model3D'
-              ? 'model3d'
-              : widget.kind === 'Spectrum'
-              ? 'spectrum'
-              : widget.kind === 'Command'
-              ? 'command'
-              : widget.kind === 'RawData'
-              ? 'raw'
-              : 'frame-decoder';
-          const tabName =
-            widget.kind === 'Waveform'
-              ? 'Waveform'
-              : widget.params.label;
-          const newTab = {
-            id: widget.params.id,
-            type: tabType,
-            name: tabName,
-            widgetId: widget.params.id,
-            closable: true,
-          };
-          newState.dataTabs = [...s.dataTabs, newTab];
+        // 有窗口的控件: 自动创建数据窗口 Tab (关闭窗口不会删除节点, 可双击节点重开)
+        const tab = widgetToTab(widget);
+        if (tab) {
+          newState.dataTabs = [...s.dataTabs, tab];
           newState.activeDataTabId = widget.params.id;
         }
         newState.controlTabs = s.controlTabs.map((t: any) =>

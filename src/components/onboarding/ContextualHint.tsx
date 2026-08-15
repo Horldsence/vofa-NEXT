@@ -3,6 +3,7 @@
 //! - 当 settings.general.showContextualTips 关闭时不渲染
 //! - 支持当前会话级关闭 (dismissedTips)
 //! - 可配置主/次操作按钮
+//! - 样式与首次使用引导提示框统一 (prompt-card 系列类)
 
 import { X, Info } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
@@ -26,13 +27,13 @@ export function ContextualHint({ id, message, action, secondaryAction }: Context
   if (!showTips || isDismissed) return null;
 
   return (
-    <div className="flex items-start gap-2 px-3 py-2 bg-accent/10 border-b border-accent/20 text-text-primary text-xs">
+    <div className="prompt-card prompt-card--bar flex items-start gap-2 px-3 py-2 text-text-primary text-xs">
       <Info size={14} className="text-accent flex-shrink-0 mt-0.5" />
-      <div className="flex-1 leading-relaxed min-w-0">{message}</div>
+      <div className="prompt-card-body flex-1 min-w-0">{message}</div>
       <div className="flex items-center gap-2 flex-shrink-0">
         {secondaryAction && (
           <button
-            className="text-accent hover:text-accent/80 transition-colors cursor-pointer"
+            className="prompt-card-btn-ghost"
             onClick={secondaryAction.onClick}
           >
             {secondaryAction.label}
@@ -40,14 +41,14 @@ export function ContextualHint({ id, message, action, secondaryAction }: Context
         )}
         {action && (
           <button
-            className="px-2 py-0.5 bg-accent text-text-inverse rounded text-[11px] hover:bg-accent/80 transition-colors cursor-pointer"
+            className="prompt-card-btn"
             onClick={action.onClick}
           >
             {action.label}
           </button>
         )}
         <button
-          className="w-5 h-5 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer"
+          className="prompt-card-btn-ghost"
           title={t(lang, 'dismissTip')}
           onClick={() => dismiss(id)}
         >

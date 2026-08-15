@@ -3,6 +3,9 @@ import { Plus, X, Type, Trash2, Copy, Cpu, CircuitBoard } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore, type AppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
+import { useOnboardingStore } from '../../store/onboardingStore';
+import { useSettingsStore } from '../../store/settingsStore';
+import { notify } from '../../lib/tauri/notifications';
 import { useSlidingPill, SlidingPill } from '../ui/SlidingPill';
 import { AnimatedSwitch } from '../ui/AnimatedSwitch';
 import { NodeEditor } from './NodeEditor';
@@ -93,6 +96,23 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
     setEditingTabId(null);
     setEditName('');
   }, [editingTabId, editName, renameControlTab]);
+
+  // 首次叉掉数据窗口时弹出提示: 关闭窗口不删除节点, 双击画布节点可重新打开
+  // (会话级只提示一次, 且遵循全局「上下文提示」开关)
+  const maybeShowCloseHint = useCallback(
+    (tab: { name: string }) => {
+      if (!useSettingsStore.getState().settings.general.showContextualTips) return;
+      const st = useOnboardingStore.getState();
+      if (st.closeHintShown) return;
+      st.markCloseHintShown();
+      notify.info(
+        t(lang, 'closeHintTitle'),
+        t(lang, 'closeHintMessage').replace('{{name}}', tab.name),
+        { actions: [{ label: t(lang, 'closeHintGotIt'), run: () => {} }] }
+      );
+    },
+    [lang]
+  );
 
   const tabBarContextMenu = useContextMenu(
     kind === 'control'
@@ -231,7 +251,10 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
                 onClick={(e) => {
                   e.stopPropagation();
                   if (kind === 'control') removeControlTab(tab.id);
-                  else removeDataTab(tab.id);
+                  else {
+                    maybeShowCloseHint(tab);
+                    removeDataTab(tab.id);
+                  }
                 }}
               >
                 <X size={10} />

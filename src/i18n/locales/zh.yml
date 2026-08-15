@@ -969,3 +969,9 @@ cmdSendModeInterval: 定时间隔 (ms)
 # 布局编排 (模块拖拽重排)
 dragToRearrange: 拖动到其他模块边缘以重新排列
 dragToDock: 拖动到窗口左/右边缘以切换停靠侧
+
+# 窗口关闭提示
+closeHintTitle: 窗口已关闭
+closeHintMessage: "「{{name}}」窗口已关闭，控件节点仍保留在画布上。双击节点即可重新打开窗口。"
+closeHintGotIt: 知道了
+nodeOpenWindowHint: 双击打开窗口

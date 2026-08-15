@@ -786,3 +786,96 @@ body.dragging-dock * {
     transition: none;
   }
 }
+
+/* ============ 统一提示卡片 (首次使用引导同款) ============ */
+/* 视觉骨架与 TourOverlay 提示框一致: 侧栏底色 + 细边框 + 大圆角 + 深投影。
+   只定义卡片 chrome 与排版, 布局 (flex/padding/gap) 由使用方用 utility 组合,
+   避免 unlayered 类覆盖 utility 布局。供通知 Toast / 内联提示 / 弹层共用,
+   使全软件提示样式统一到首次引导风格。 */
+.prompt-card {
+  background: var(--color-bg-sidebar);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-modal);
+}
+
+/* 内联提示条变体 — 用于嵌在面板内的提示条, 去掉投影并收敛圆角 */
+.prompt-card--bar {
+  border-radius: var(--radius-md);
+  box-shadow: none;
+}
+
+/* 眉标 — 小号大写标签 (引导中的步骤指示同款) */
+.prompt-card-eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-secondary);
+}
+
+/* 标题 — 引导提示框标题同款 */
+.prompt-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* 正文 — 引导提示框正文同款 */
+.prompt-card-body {
+  font-size: 12px;
+  line-height: 1.625;
+  color: var(--color-text-secondary);
+}
+
+/* 主操作按钮 — 引导「下一步」同款 */
+.prompt-card-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  background: var(--color-bg-button);
+  color: var(--color-text-inverse);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color var(--transition-fast) var(--ease-out-cubic);
+}
+
+.prompt-card-btn:hover {
+  background: var(--color-bg-button-hover);
+}
+
+.prompt-card-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 次操作按钮 — 引导「上一步」同款 */
+.prompt-card-btn-ghost {
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast) var(--ease-out-cubic),
+    color var(--transition-fast) var(--ease-out-cubic);
+}
+
+.prompt-card-btn-ghost:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+}
+
+.prompt-card-btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-card-btn,
+  .prompt-card-btn-ghost {
+    transition: none;
+  }
+}
