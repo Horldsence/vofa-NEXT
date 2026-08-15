@@ -7,6 +7,7 @@ import { ActivityBar } from './components/layout/ActivityBar';
 import { Sidebar } from './components/layout/Sidebar';
 import { DockLayout } from './components/layout/DockLayout';
 import { StatusBar } from './components/layout/StatusBar';
+import { MenuBar } from './components/layout/MenuBar';
 import { NotificationToasts } from './components/NotificationToasts';
 import { ContextMenu } from './components/ui/ContextMenu';
 import { DockDragGhost } from './components/ui/DockDragGhost';
@@ -197,6 +198,8 @@ function App() {
 
   return (
     <div className="relative flex h-full flex-col bg-bg-activity p-2" onContextMenu={onAppContextMenu}>
+      {/* Windows: 透明窗口下原生菜单栏无法正确渲染 (白字白底/透视), 由自定义菜单栏接管; 其它平台内部返回 null */}
+      <MenuBar />
       <div className="flex flex-1 min-h-0 gap-2">
         <div className="module-card w-12 flex-shrink-0">
           <ActivityBar

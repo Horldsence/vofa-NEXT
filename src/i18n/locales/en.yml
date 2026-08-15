@@ -490,6 +490,30 @@ menuToggleSidebar: Toggle Sidebar
 menuAbout: About
 menuSettings: Settings
 
+# Windows custom menu bar (native menu bar cannot render on transparent windows, so the frontend takes over)
+menuFile: File
+menuEdit: Edit
+menuView: View
+menuWindow: Window
+menuHelp: Help
+menuUndo: Undo
+menuRedo: Redo
+menuCut: Cut
+menuCopy: Copy
+menuPaste: Paste
+menuSelectAll: Select All
+menuReload: Reload
+menuZoomIn: Zoom In
+menuZoomOut: Zoom Out
+menuZoomReset: Actual Size
+menuMinimize: Minimize
+menuMaximize: Maximize
+menuRestore: Restore
+menuCloseWindow: Close Window
+menuQuit: Quit
+menuDocs: Documentation
+menuGithub: Open on GitHub
+
 # Custom Widget Editor
 customWidgetEditor: Custom Widget Editor
 customWidgetCode: Widget Code
@@ -548,8 +572,13 @@ filterCutoff: Cutoff
 filterLow: Low
 filterHigh: High
 filterSampleRate: Sample Rate
+fft: FFT
+fftSettings: FFT Settings
 spectrum: Spectrum
 spectrumSettings: Spectrum Settings
+spectrumSource: Source
+spectrumNoSource: No source
+spectrumNoSourceHint: Select an FFT solver on the right
 spectrumWindowSize: Window Size
 spectrumWindowType: Window Function
 spectrumOutputMode: Output Mode
@@ -562,6 +591,8 @@ windowRect: Rect
 windowHann: Hann
 windowHamming: Hamming
 windowBlackman: Blackman
+domainTime: Time
+domainFreq: Freq
 
 # 3D Model widget
 model3d: 3D Model

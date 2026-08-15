@@ -490,6 +490,30 @@ menuToggleSidebar: 切换侧边栏
 menuAbout: 关于
 menuSettings: 设置
 
+# Windows 自定义菜单栏 (原生菜单栏在透明窗口上无法正确渲染, 由前端接管)
+menuFile: 文件
+menuEdit: 编辑
+menuView: 视图
+menuWindow: 窗口
+menuHelp: 帮助
+menuUndo: 撤销
+menuRedo: 重做
+menuCut: 剪切
+menuCopy: 复制
+menuPaste: 粘贴
+menuSelectAll: 全选
+menuReload: 重新加载
+menuZoomIn: 放大
+menuZoomOut: 缩小
+menuZoomReset: 实际大小
+menuMinimize: 最小化
+menuMaximize: 最大化
+menuRestore: 还原
+menuCloseWindow: 关闭窗口
+menuQuit: 退出
+menuDocs: 文档
+menuGithub: 在 GitHub 上打开
+
 # 自定义控件编辑器
 customWidgetEditor: 自定义控件编辑器
 customWidgetCode: 控件代码
@@ -548,8 +572,13 @@ filterCutoff: 截止频率
 filterLow: 下限
 filterHigh: 上限
 filterSampleRate: 采样率
+fft: 频域求解
+fftSettings: 频域设置
 spectrum: 频谱
 spectrumSettings: 频谱设置
+spectrumSource: 数据源
+spectrumNoSource: 未选择数据源
+spectrumNoSourceHint: 请在右侧选择一个 FFT 求解器
 spectrumWindowSize: 窗口大小
 spectrumWindowType: 窗函数
 spectrumOutputMode: 输出模式
@@ -562,6 +591,8 @@ windowRect: 矩形
 windowHann: 汉宁
 windowHamming: 汉明
 windowBlackman: 布莱克曼
+domainTime: 时域
+domainFreq: 频域
 
 # 3D 模型控件
 model3d: 3D 模型

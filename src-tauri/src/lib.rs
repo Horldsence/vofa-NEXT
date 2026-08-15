@@ -37,8 +37,15 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .manage(AppState::new())
         .setup(|app| {
-            // 构建并设置原生菜单栏 (macOS/Windows/Linux)
+            // 构建原生菜单栏。
+            // - macOS: 菜单位于系统全局菜单栏, 与窗口透明无关, 正常挂载。
+            // - Linux: GTK 菜单栏自带不透明背景, 无此问题, 正常挂载。
+            // - Windows: 主窗口为透明窗口 (WS_EX_LAYERED) 时, 原生菜单栏无法正确绘制:
+            //   菜单文字按深色模式渲染为白色, 但菜单背景在分层窗口上不填充, 造成
+            //   "白字白底" 且背景透视露出下层内容。因此 Windows 仅构建但不挂载原生菜单,
+            //   改由前端自定义菜单栏 (MenuBar.tsx) 承担同等功能。
             let menu = menu::build_menu(app)?;
+            #[cfg(not(target_os = "windows"))]
             app.set_menu(menu)?;
 
             // 启动图输出 ticker (60 FPS 推送快照到前端)
