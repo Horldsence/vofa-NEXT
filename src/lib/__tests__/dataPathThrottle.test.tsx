@@ -127,7 +127,7 @@ describe('buffer burst render-guard (RAF-throttled notify)', () => {
     // 通过 Channel 一次性灌入 50 个批次
     act(() => {
       for (let i = 0; i < 50; i++) {
-        channel.onmessage!({ frames: [makeCanFrame(i)] });
+        channel.onmessage!({ seq: i, frames: [makeCanFrame(i)] });
       }
     });
     expect(renderSpy).toHaveBeenCalledTimes(1);
@@ -184,7 +184,8 @@ describe('buffer burst render-guard (RAF-throttled notify)', () => {
     render(<Subscriber />);
 
     const makeBatch = (i: number): RawDataBatch => ({
-      chunks: [{ timestamp_us: i * 1000, bytes: [i & 0xff] }],
+      seq: i,
+      chunks: [{ timestamp_us: i * 1000, bytes_b64: btoa(String.fromCharCode(i & 0xff)) }],
       total_bytes: 1,
       dropped_bytes: 0,
     });
@@ -216,6 +217,7 @@ describe('buffer burst render-guard (RAF-throttled notify)', () => {
     expect(renderSpy).toHaveBeenCalledTimes(2);
 
     const makeWindow = (points: number): WaveformWindow => ({
+      seq: points,
       timestamps: Array.from({ length: points }, (_, i) => i),
       channels: [Array.from({ length: points }, (_, i) => i)],
       channel_count: 1,

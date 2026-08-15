@@ -1,25 +1,20 @@
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import type { CanFrameBatch, CanFrame, CandleDeviceInfo } from '../../types';
-import { closeTauriChannel } from '../tauri/tauri';
+import { makeOrderedSink, subscribeSharded } from './shardedSubscription';
 
-/// 订阅 CAN 帧数据 (后端周期性推送 can_buffer 中的最近帧)
+/// 订阅 CAN 帧数据 — 统一分片流 (增量 drain, 首批回溯最近历史, 之后严格增量无重复)
 /// 返回取消订阅函数
 export function subscribeCanFrames(
   onEvent: (batch: CanFrameBatch) => void,
   options?: { intervalMs?: number; maxFrames?: number }
 ): { cancel: () => void } {
-  const channel = new Channel<CanFrameBatch>();
-  channel.onmessage = onEvent;
-  void invoke('subscribe_can_frames', {
-    onEvent: channel,
-    intervalMs: options?.intervalMs,
-    maxFrames: options?.maxFrames,
-  });
-  return {
-    cancel: () => {
-      void closeTauriChannel(channel, 'unsubscribe_can_frames', channel.id);
-    },
-  };
+  return subscribeSharded<CanFrameBatch>(
+    'subscribe_can_frames',
+    'unsubscribe_can_frames',
+    {},
+    makeOrderedSink(onEvent),
+    { intervalMs: options?.intervalMs, maxFrames: options?.maxFrames }
+  );
 }
 
 /// 发送 CAN 帧

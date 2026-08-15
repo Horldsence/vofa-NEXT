@@ -3,6 +3,16 @@ import { createFrameBatcher } from '../utils/frameBatcher';
 
 export const RAWDATA_BYTES_PER_ROW = 16;
 
+/// base64 → Uint8Array (atob 一次解码 + 定长拷贝, ~100MB/s 量级)
+function decodeBase64(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    out[i] = bin.charCodeAt(i);
+  }
+  return out;
+}
+
 /// 原始数据单行视图
 export interface RawDataLineView {
   offset: number;
@@ -19,7 +29,7 @@ export interface RawDataSnapshot {
 /// 波形窗口缓存 — 接收来自后端 Tauri Channel 的推送, 由订阅者维护
 /// 不同于旧的 WaveformBuffer (前端持有完整数据), 此处仅缓存最新窗口快照
 class WaveformWindowCache {
-  private latest: WaveformWindow = { timestamps: [], channels: [], channel_count: 0 };
+  private latest: WaveformWindow = { seq: 0, timestamps: [], channels: [], channel_count: 0 };
   private _version = 0;
   private listeners = new Set<() => void>();
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
@@ -44,7 +54,7 @@ class WaveformWindowCache {
   }
 
   clear() {
-    this.latest = { timestamps: [], channels: [], channel_count: 0 };
+    this.latest = { seq: 0, timestamps: [], channels: [], channel_count: 0 };
     this._version++;
     this.notify();
     this.statsBatcher.push(this.currentStats());
@@ -119,22 +129,32 @@ export class RawDataBuffer {
     this.buf = new Uint8Array(capacity);
   }
 
-  /// 批量推入原始数据
+  /// 批量推入原始数据 (base64 解码 + 环形块拷贝, 支持 7MB/s+ 吞吐)
   pushBatch(batch: RawDataBatch) {
     if (batch.chunks.length === 0 && batch.total_bytes === 0) return;
     this.totalDropped += batch.dropped_bytes ?? 0;
     for (const chunk of batch.chunks) {
-      const bytes = chunk.bytes;
-      if (bytes.length === 0) continue;
+      const bytes = decodeBase64(chunk.bytes_b64);
+      const n = bytes.length;
+      if (n === 0) continue;
       const startOffset = this.totalWritten;
-      for (let i = 0; i < bytes.length; i++) {
-        this.buf[this.writePos] = bytes[i];
-        this.writePos = (this.writePos + 1) % this.capacity;
-        this.totalWritten++;
+      if (n >= this.capacity) {
+        // 单块即超过容量: 只保留尾部 capacity 字节, 写满整个环
+        this.buf.set(bytes.subarray(n - this.capacity), 0);
+        this.writePos = 0;
+        this.totalWritten += n;
+      } else {
+        const first = Math.min(n, this.capacity - this.writePos);
+        this.buf.set(bytes.subarray(0, first), this.writePos);
+        if (first < n) {
+          this.buf.set(bytes.subarray(first), 0);
+        }
+        this.writePos = (this.writePos + n) % this.capacity;
+        this.totalWritten += n;
       }
       this.chunks.push({
         offset: startOffset,
-        length: bytes.length,
+        length: n,
         timestamp_us: chunk.timestamp_us,
       });
     }

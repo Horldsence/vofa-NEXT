@@ -10,7 +10,7 @@ import { subscribeCanFrames } from '../../lib/buffers/canSubscription';
 import { subscribeRawData } from '../../lib/buffers/rawDataSubscription';
 import { logicSampleBuffer, decodedEventBuffer } from '../../lib/buffers/logicBuffer';
 import { subscribeLogicSamples, subscribeDecodedEvents } from '../../lib/buffers/logicSubscription';
-import type { DataFrame, ConnectionState, TransportStats, CanFrame, LogicSample, DecodedEvent } from '../../types';
+import type { ConnectionState, TransportStats } from '../../types';
 import { cleanupWaveformSub, cleanupDetectedChannelsPoller } from './connection';
 
 let unlistenFns: UnlistenFn[] = [];
@@ -22,22 +22,33 @@ let rawDataSub: { cancel: () => void } | null = null;
 let logicSamplesSub: { cancel: () => void } | null = null;
 let decodedEventsSub: { cancel: () => void } | null = null;
 
-/// RAF 节流的 graphOutputs setter: 60 FPS 推送到模块级缓存,
-/// 但只在 RAF 回调中更新 zustand store (约 16ms 一次, 而非每帧多次)
-let _latestGraphOutputs: Record<string, Record<string, number>> | null = null;
-let _latestGraphOutputsTick = 0;
-let _graphOutputsRafId: number | null = null;
-function throttledSetGraphOutputs(set: any, values: Record<string, Record<string, number>>, tick: number) {
-  _latestGraphOutputs = values;
-  _latestGraphOutputsTick = tick;
-  if (_graphOutputsRafId !== null) return;
-  _graphOutputsRafId = requestAnimationFrame(() => {
-    _graphOutputsRafId = null;
-    if (_latestGraphOutputs) {
-      set({ graphOutputs: _latestGraphOutputs, graphOutputsTick: _latestGraphOutputsTick });
-      _latestGraphOutputs = null;
-    }
-  });
+/// RAF 合批器: Channel 高频推送先写入模块级缓存,
+/// 只在 RAF 回调中更新一次 zustand store (约 16ms 一次, 而非每条消息一次)。
+/// 用于 graphOutputs / customInputs / spectrumResults 三条高频路径。
+interface RafCoalescer<T> {
+  push: (value: T) => void;
+  cancel: () => void;
+}
+function makeRafCoalescer<T>(apply: (value: T) => void): RafCoalescer<T> {
+  let pending: T | null = null;
+  let rafId: number | null = null;
+  return {
+    push(value) {
+      pending = value;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        const v = pending;
+        pending = null;
+        if (v !== null) apply(v);
+      });
+    },
+    cancel() {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = null;
+      pending = null;
+    },
+  };
 }
 
 export interface EventSlice {
@@ -50,10 +61,6 @@ export function createEventSlice(set: any, get: any): EventSlice {
       unlistenFns.forEach((fn) => fn());
       unlistenFns = [];
 
-      const unlistenFrames = await listen<DataFrame[]>('transport:frames', () => {
-        // 后端已将帧推入 DataBuffer, 通过 subscribe_waveform Channel 推送窗口
-      });
-
       const unlistenState = await listen<ConnectionState>('transport:state', (event) => {
         set({ connectionState: event.payload });
       });
@@ -65,37 +72,38 @@ export function createEventSlice(set: any, get: any): EventSlice {
             tx_bytes: s.stats.tx_bytes + event.payload.tx_bytes,
             rx_frames: s.stats.rx_frames + event.payload.rx_frames,
             tx_frames: s.stats.tx_frames + event.payload.tx_frames,
+            rx_dropped: event.payload.rx_dropped,
+            rxDroppedWindow: event.payload.rx_dropped,
+            rxDroppedTotal: s.stats.rxDroppedTotal + event.payload.rx_dropped,
           },
         }));
       });
 
-      const unlistenCanFrames = await listen<{ frames: CanFrame[] }>('transport:can-frames', () => {
-        // no-op: buffer 已由 Channel 路径维护
-      });
+      unlistenFns = [unlistenState, unlistenStats];
 
-      const unlistenLogic = await listen<{ samples: LogicSample[] }>('transport:logic-samples', () => {
-        // no-op: buffer 已由 Channel 路径维护
-      });
-
-      const unlistenDecoded = await listen<{ events: DecodedEvent[] }>('transport:decoded-events', () => {
-        // no-op: buffer 已由 Channel 路径维护
-      });
-
-      unlistenFns = [unlistenFrames, unlistenState, unlistenStats, unlistenCanFrames, unlistenLogic, unlistenDecoded];
+      const graphCoalescer = makeRafCoalescer<{ values: Record<string, Record<string, number>>; tick: number }>(
+        (v) => set({ graphOutputs: v.values, graphOutputsTick: v.tick })
+      );
+      const customCoalescer = makeRafCoalescer<Record<string, Record<string, number>>>(
+        (v) => set({ customInputs: v })
+      );
+      const spectrumCoalescer = makeRafCoalescer<Record<string, unknown>>(
+        (v) => set({ spectrumResults: v })
+      );
 
       if (graphOutputSub) graphOutputSub.cancel();
       graphOutputSub = subscribeGraphOutputs((snapshot) => {
-        throttledSetGraphOutputs(set, snapshot.values, snapshot.tick);
+        graphCoalescer.push({ values: snapshot.values, tick: snapshot.tick });
       });
 
       if (customInputSub) customInputSub.cancel();
       customInputSub = subscribeCustomInputs((batch) => {
-        set({ customInputs: batch.inputs });
+        customCoalescer.push(batch.inputs);
       });
 
       if (spectrumSub) spectrumSub.cancel();
       spectrumSub = subscribeSpectrum((batch) => {
-        set({ spectrumResults: batch.spectra });
+        spectrumCoalescer.push(batch.spectra);
       });
 
       if (canFramesSub) canFramesSub.cancel();
@@ -123,12 +131,9 @@ export function createEventSlice(set: any, get: any): EventSlice {
       return () => {
         unlistenFns.forEach((fn) => fn());
         unlistenFns = [];
-        if (_graphOutputsRafId !== null) {
-          cancelAnimationFrame(_graphOutputsRafId);
-          _graphOutputsRafId = null;
-        }
-        _latestGraphOutputs = null;
-        _latestGraphOutputsTick = 0;
+        graphCoalescer.cancel();
+        customCoalescer.cancel();
+        spectrumCoalescer.cancel();
         cleanupWaveformSub();
         if (graphOutputSub) {
           graphOutputSub.cancel();

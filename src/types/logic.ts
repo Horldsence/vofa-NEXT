@@ -12,6 +12,8 @@ export interface LogicSample {
 
 /// 逻辑采样批次 — 与 Rust LogicSampleBatch 对应
 export interface LogicSampleBatch {
+  /// 组级单调序号 — 分片并发推送时前端按 seq 重组
+  seq: number;
   samples: LogicSample[];
 }
 
@@ -31,6 +33,8 @@ export type DecodedEvent =
 
 /// 解码事件批次 — 与 Rust DecodedEventBatch 对应
 export interface DecodedEventBatch {
+  /// 组级单调序号 — 分片并发推送时前端按 seq 重组
+  seq: number;
   events: DecodedEvent[];
 }
 

@@ -16,12 +16,14 @@ export interface RawData {
 export interface RawDataChunk {
   /// 微秒时间戳
   timestamp_us: number;
-  /// 数据字节
-  bytes: number[];
+  /// 数据字节 (base64 编码 — 比 JSON 数字数组省 ~2.6x 体积, atob 一次解码)
+  bytes_b64: string;
 }
 
 /// 原始数据批次 — 与 Rust RawDataBatch 对应
 export interface RawDataBatch {
+  /// 组级单调序号 — 分片并发推送时按 seq 重组保证字节序
+  seq: number;
   chunks: RawDataChunk[];
   total_bytes: number;
   dropped_bytes: number;

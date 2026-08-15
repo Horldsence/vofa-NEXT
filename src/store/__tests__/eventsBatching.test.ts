@@ -122,6 +122,7 @@ describe('events.ts payload contract', () => {
 
     const customBatch: CustomInputBatch = { inputs: { cw1: { knob: 42 } } };
     act(() => customChannel.onmessage!(customBatch));
+    act(() => ticker.flush()); // customInputs 已改为 RAF 合批
     expect(useAppStore.getState().customInputs).toEqual({ cw1: { knob: 42 } });
 
     const spectrumBatch: SpectrumBatch = {
@@ -130,10 +131,12 @@ describe('events.ts payload contract', () => {
       },
     };
     act(() => spectrumChannel.onmessage!(spectrumBatch));
+    act(() => ticker.flush()); // spectrumResults 已改为 RAF 合批
     expect(useAppStore.getState().spectrumResults).toEqual(spectrumBatch.spectra);
 
     // CAN 批次进入 canFrameBuffer (RAF 节流), 帧形状原样保留
     const canBatch: CanFrameBatch = {
+      seq: 0,
       frames: [{ timestamp: 5, id: 0x123, extended: false, rtr: false, dlc: 1, data: [0xaa], direction: 'Rx' }],
     };
     act(() => canChannel.onmessage!(canBatch));

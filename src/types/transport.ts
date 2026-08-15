@@ -20,6 +20,8 @@ export interface TransportStats {
   tx_bytes: number;
   rx_frames: number;
   tx_frames: number;
+  /// 最近 100ms 窗口内被丢弃 (broadcast Lagged) 的消息数
+  rx_dropped: number;
 }
 
 export interface SerialConfig {

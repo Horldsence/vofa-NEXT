@@ -23,6 +23,8 @@ export interface CanFrame {
 
 /// CAN 帧批次 — 与 Rust CanFrameBatch 对应
 export interface CanFrameBatch {
+  /// 组级单调序号 — 分片并发推送时前端按 seq 重组
+  seq: number;
   frames: CanFrame[];
 }
 

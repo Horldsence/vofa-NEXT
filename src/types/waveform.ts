@@ -7,6 +7,8 @@ export interface WaveformData {
 
 /// 后端 WaveformWindow — 与 serial-buffer 中 WaveformWindow 结构对应
 export interface WaveformWindow {
+  /// 组级单调序号 — 分片并发推送时按 "最新 seq 胜出" 丢弃旧快照
+  seq: number;
   /// 相对最新时间戳的偏移 (毫秒, 负数=过去)
   timestamps: number[];
   /// 每通道的数据数组

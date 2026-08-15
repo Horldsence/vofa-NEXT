@@ -14,6 +14,7 @@ import type {
 } from '../../types';
 import type { NodeDef, GraphEdge } from '../utils/nodeDef';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
+import { makeLatestSink, subscribeSharded } from '../buffers/shardedSubscription';
 
 /// 关闭 Tauri Channel 的完整流程:
 /// 1. 调用后端 unsubscribe 命令, 从订阅者列表移除 (停止 send)
@@ -41,6 +42,18 @@ export async function closeTauriChannel<T>(
   }
   // 3. 清空 handler
   channel.onmessage = () => {};
+}
+
+/// 数据管道性能配置 (snake_case, 与后端 PipelineConfig 对应)
+/// 后端不持久化 — 前端在设置加载完成后重放, 更新即推送
+export interface PipelineConfig {
+  coalesce_max_msgs: number;
+  coalesce_max_bytes_kb: number;
+  max_feed_workers: number;
+  feed_parallel_unit: number;
+  min_worker_bytes_kb: number;
+  max_stream_shards: number;
+  parse_channel_cap: number;
 }
 
 export const api = {
@@ -87,26 +100,19 @@ export const api = {
   getDetectedChannels: () => invoke<number | null>('get_detected_channels'),
 
   // ===== 波形缓冲区 =====
-  /// 订阅波形数据 — 通过 Tauri Channel 推送 WaveformWindow
+  /// 订阅波形数据 — 统一分片流 (快照语义, 前端按 "最新 seq 胜出" 处理乱序)
   /// 返回一个取消订阅函数
   subscribeWaveform: (
     onEvent: (window: WaveformWindow) => void,
     options?: { intervalMs?: number; maxPoints?: number }
   ) => {
-    const channel = new Channel<WaveformWindow>();
-    channel.onmessage = onEvent;
-    const promise = invoke<void>('subscribe_waveform', {
-      onEvent: channel,
-      intervalMs: options?.intervalMs,
-      maxPoints: options?.maxPoints,
-    });
-    // 取消订阅: 先通知后端 task 退出, 再注销 JS 回调
-    return {
-      promise,
-      cancel: () => {
-        void closeTauriChannel(channel, 'unsubscribe_waveform', channel.id);
-      },
-    };
+    return subscribeSharded<WaveformWindow>(
+      'subscribe_waveform',
+      'unsubscribe_waveform',
+      {},
+      makeLatestSink(onEvent),
+      { intervalMs: options?.intervalMs, maxPoints: options?.maxPoints }
+    );
   },
 
   /// 同步查询: 获取最近 N 个点
@@ -221,5 +227,11 @@ export const api = {
   // ===== 调试 =====
   /// 打开当前 Webview 的开发者工具（检查元素）
   inspectElement: () => invoke<void>('inspect_element'),
+
+  // ===== 数据管道性能配置 =====
+  setPipelineConfig: (config: PipelineConfig) =>
+    invoke<void>('set_pipeline_config', { config }),
+
+  getPipelineConfig: () => invoke<PipelineConfig>('get_pipeline_config'),
 };
 
