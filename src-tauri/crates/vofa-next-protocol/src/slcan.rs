@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use vofa_next_core::{CanDirection, CanFrame, DataFrame};
+use vofa_next_core::{CanDirection, CanFrame};
 
-use crate::engine::ProtocolEngine;
+use crate::engine::{FeedOutput, ProtocolEngine};
 
 /// slcan (Lawicel ASCII) 协议引擎
 ///
@@ -109,36 +109,34 @@ impl SlcanEngine {
 }
 
 impl ProtocolEngine for SlcanEngine {
-    fn feed(&mut self, _data: &[u8]) -> Vec<DataFrame> {
-        // slcan 不产生 DataFrame, 只产生 CanFrame (通过 feed_can)
-        Vec::new()
-    }
-
-    fn feed_can(&mut self, data: &[u8]) -> Vec<CanFrame> {
+    fn feed(&mut self, data: &[u8]) -> FeedOutput {
+        // slcan 不产生 DataFrame, 只产生 CanFrame
         self.line_buf.extend_from_slice(data);
         let mut frames = Vec::new();
-        loop {
-            // 找到行结束符 (\r 或 \n)
-            let pos = self.line_buf.iter().position(|&b| b == b'\r' || b == b'\n');
-            if pos.is_none() {
-                break;
-            }
-            let pos = pos.unwrap();
-            let line: Vec<u8> = self.line_buf.drain(..=pos).collect();
-            // 去掉末尾的 \r 或 \n
-            let line = &line[..line.len().saturating_sub(1)];
-            if !line.is_empty() {
-                if let Some(frame) = self.parse_line(line) {
-                    frames.push(frame);
+        // 单趟扫描: 循环内只记录行边界, 结束后一次性 drain
+        // (原实现逐行 drain(..=pos).collect(), 大批次下 O(n²) memmove)
+        let mut line_start = 0usize;
+        for i in 0..self.line_buf.len() {
+            let b = self.line_buf[i];
+            if b == b'\r' || b == b'\n' {
+                let line = &self.line_buf[line_start..i];
+                if !line.is_empty() {
+                    if let Some(frame) = self.parse_line(line) {
+                        frames.push(frame);
+                    }
                 }
+                line_start = i + 1;
             }
+        }
+        if line_start > 0 {
+            self.line_buf.drain(..line_start);
         }
         // 缓冲区溢出保护: 超过 4096 字节时丢弃前半部分
         if self.line_buf.len() > 4096 {
             let drop = self.line_buf.len() - 2048;
             self.line_buf.drain(..drop);
         }
-        frames
+        FeedOutput::from_can_frames(frames)
     }
 
     fn encode_can(&mut self, frame: &CanFrame) -> Vec<u8> {
@@ -184,6 +182,25 @@ impl ProtocolEngine for SlcanEngine {
     fn name(&self) -> &str {
         "Slcan"
     }
+
+    fn split_aligned(&self, data: &[u8], workers: usize) -> Option<Vec<std::ops::Range<usize>>> {
+        // 边界 = 每个 \r / \n 之后的位置 (与 feed 的行扫描逻辑一致)
+        let boundaries: Vec<usize> = data
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b == b'\r' || b == b'\n')
+            .map(|(i, _)| i + 1)
+            .collect();
+        Some(crate::engine::split_at_boundaries(&boundaries, workers))
+    }
+
+    fn take_pending(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.line_buf)
+    }
+
+    fn new_worker(&self) -> Box<dyn ProtocolEngine> {
+        Box::new(SlcanEngine::new())
+    }
 }
 
 impl Default for SlcanEngine {
@@ -200,7 +217,7 @@ mod tests {
     #[test]
     fn test_parse_standard_frame() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"t123401020304\r");
+        let frames = engine.feed(b"t123401020304\r").can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x123);
@@ -215,7 +232,7 @@ mod tests {
     #[test]
     fn test_parse_extended_frame() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"T1234567880102030405060708\r");
+        let frames = engine.feed(b"T1234567880102030405060708\r").can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x12345678);
@@ -229,7 +246,7 @@ mod tests {
     #[test]
     fn test_parse_remote_frame() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"r1234\r");
+        let frames = engine.feed(b"r1234\r").can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x123);
@@ -239,7 +256,7 @@ mod tests {
         assert!(f.data.is_empty());
 
         // 扩展远程帧
-        let frames = engine.feed_can(b"R123456784\r");
+        let frames = engine.feed(b"R123456784\r").can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x12345678);
@@ -252,9 +269,9 @@ mod tests {
     #[test]
     fn test_parse_partial() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"t1234");
+        let frames = engine.feed(b"t1234").can_frames;
         assert!(frames.is_empty());
-        let frames = engine.feed_can(b"01020304\r");
+        let frames = engine.feed(b"01020304\r").can_frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].id, 0x123);
         assert_eq!(frames[0].data, vec![0x01, 0x02, 0x03, 0x04]);
@@ -265,11 +282,11 @@ mod tests {
     fn test_ignore_other_commands() {
         let mut engine = SlcanEngine::new();
         // 设置波特率 + 打开 + 版本 + 序列号 + 错误响应, 均不应产生帧
-        let frames = engine.feed_can(b"S6\rO\rV\rN1234\rz\r");
+        let frames = engine.feed(b"S6\rO\rV\rN1234\rz\r").can_frames;
         assert!(frames.is_empty());
 
         // 混合: 命令 + 数据帧
-        let frames = engine.feed_can(b"S6\rt123401020304\r");
+        let frames = engine.feed(b"S6\rt123401020304\r").can_frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].id, 0x123);
     }
@@ -278,7 +295,7 @@ mod tests {
     #[test]
     fn test_accept_newline_terminator() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"t123401020304\n");
+        let frames = engine.feed(b"t123401020304\n").can_frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].id, 0x123);
     }
@@ -350,7 +367,7 @@ mod tests {
     #[test]
     fn test_parse_multiple_frames() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"t123401020304\rt123401020304\r");
+        let frames = engine.feed(b"t123401020304\rt123401020304\r").can_frames;
         assert_eq!(frames.len(), 2);
         assert_eq!(frames[0].id, 0x123);
         assert_eq!(frames[1].id, 0x123);
@@ -360,7 +377,7 @@ mod tests {
     #[test]
     fn test_parse_zero_dlc() {
         let mut engine = SlcanEngine::new();
-        let frames = engine.feed_can(b"t1230\r");
+        let frames = engine.feed(b"t1230\r").can_frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].dlc, 0);
         assert!(frames[0].data.is_empty());
@@ -372,7 +389,7 @@ mod tests {
         let mut engine = SlcanEngine::new();
         // 喂入 8000 字节无 \r 的数据
         let junk = vec![b'x'; 8000];
-        let frames = engine.feed_can(&junk);
+        let frames = engine.feed(&junk).can_frames;
         assert!(frames.is_empty());
         // 缓冲区应被截断到 2048 字节
         assert!(engine.line_buf.len() <= 4096);
@@ -477,7 +494,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -501,7 +518,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -525,7 +542,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -550,7 +567,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -574,7 +591,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, 0x55);
@@ -613,11 +630,51 @@ mod tests {
         for f in &frames {
             buf.extend(engine.encode_can(f));
         }
-        let parsed = engine.feed_can(&buf);
+        let parsed = engine.feed(&buf).can_frames;
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].id, 0x100);
         assert_eq!(parsed[0].data, vec![0xAA, 0xBB]);
         assert_eq!(parsed[1].id, 0x7FF);
         assert!(parsed[1].rtr);
+    }
+
+    /// 顺序/并行等价性: 多行 (含非帧命令) + 半行尾
+    #[test]
+    fn test_split_aligned_equivalence() {
+        let mut data = Vec::new();
+        data.extend_from_slice(b"t123401020304\r");
+        data.extend_from_slice(b"S6\r"); // 非帧命令
+        data.extend_from_slice(b"T000004562AABB\n");
+        data.extend_from_slice(b"r1234\r");
+        data.extend_from_slice(b"t7893AABB"); // 半行尾 (无终止符)
+
+        // 顺序解析全量
+        let mut seq_engine = SlcanEngine::new();
+        let seq_frames = seq_engine.feed(&data).can_frames;
+
+        // 并行: split_aligned 切分 + 逐块 new_worker().feed + append 合并
+        let ranges = seq_engine
+            .split_aligned(&data, 3)
+            .expect("slcan 应支持并行切分");
+        let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+        let mut merged = crate::engine::FeedOutput::default();
+        let mut concat = Vec::new();
+        for r in &ranges {
+            let mut w = seq_engine.new_worker();
+            merged.append(w.feed(&data[r.clone()]));
+            concat.extend_from_slice(&data[r.clone()]);
+        }
+        concat.extend_from_slice(&data[tail_start..]);
+
+        // concat(块) + tail == 原 data; 半行尾留在 tail 中
+        assert_eq!(concat, data);
+        assert_eq!(&data[tail_start..], b"t7893AABB");
+
+        // 结果逐项相等 (忽略 timestamp)
+        let norm = |f: &CanFrame| (f.id, f.extended, f.rtr, f.dlc, f.data.clone(), f.direction);
+        let seq_norm: Vec<_> = seq_frames.iter().map(norm).collect();
+        let par_norm: Vec<_> = merged.can_frames.iter().map(norm).collect();
+        assert_eq!(seq_norm, par_norm);
+        assert_eq!(seq_frames.len(), 3);
     }
 }

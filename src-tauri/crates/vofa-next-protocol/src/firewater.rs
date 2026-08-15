@@ -1,6 +1,6 @@
 use vofa_next_core::DataFrame;
 
-use crate::engine::ProtocolEngine;
+use crate::engine::{FeedOutput, ProtocolEngine};
 
 /// FireWater 协议引擎
 ///
@@ -29,42 +29,52 @@ impl FireWaterEngine {
 }
 
 impl ProtocolEngine for FireWaterEngine {
-    fn feed(&mut self, data: &[u8]) -> Vec<DataFrame> {
+    fn feed(&mut self, data: &[u8]) -> FeedOutput {
         // 追加数据到缓冲区
         if let Ok(s) = std::str::from_utf8(data) {
             self.buf.push_str(s);
         } else {
             // 非 UTF-8 数据, 丢弃
-            return Vec::new();
+            return FeedOutput::default();
         }
 
         let mut frames = Vec::new();
+        let mut start = 0usize;
+        // 批内所有帧共享一个时间戳 (每次 feed 只读一次时钟, 避免每帧系统调用)
+        let ts = vofa_next_core::now_us();
 
-        while let Some(pos) = self.buf.find('\n') {
-            let line = self.buf[..pos].trim_matches('\r');
-            if !line.is_empty() {
-                let channels: Vec<f32> = line
-                    .split(',')
-                    .filter_map(|s| s.trim().parse::<f32>().ok())
-                    .collect();
-
-                if !channels.is_empty() {
-                    // 自动检测模式: 由首行字段数推断通道数
-                    if self.channels.is_none() && self.detected.is_none() {
-                        self.detected = Some(channels.len());
-                    }
-                    frames.push(DataFrame::new(channels));
-                }
+        // 单次遍历按行切分 (原实现每行 drain 一次, O(n²))
+        while let Some(rel) = self.buf.as_bytes()[start..].iter().position(|&b| b == b'\n') {
+            let pos = start + rel;
+            let line = self.buf[start..pos].trim_matches('\r');
+            start = pos + 1;
+            if line.is_empty() {
+                continue;
             }
-            self.buf.drain(..=pos);
+            let channels: Vec<f32> = line
+                .split(',')
+                .filter_map(|s| s.trim().parse::<f32>().ok())
+                .collect();
+
+            if !channels.is_empty() {
+                // 自动检测模式: 由首行字段数推断通道数
+                if self.channels.is_none() && self.detected.is_none() {
+                    self.detected = Some(channels.len());
+                }
+                frames.push(DataFrame::with_timestamp(ts, channels));
+            }
         }
 
+        // 一次性移除已处理前缀
+        if start > 0 {
+            self.buf.drain(..start);
+        }
         // 防止缓冲区无限增长 (无换行的超长行)
         if self.buf.len() > 8192 {
             self.buf.clear();
         }
 
-        frames
+        FeedOutput::from_frames(frames)
     }
 
     fn encode_channel(&mut self, _channel: usize, value: f32) -> Vec<u8> {
@@ -94,6 +104,25 @@ impl ProtocolEngine for FireWaterEngine {
     fn is_auto_mode(&self) -> bool {
         self.channels.is_none()
     }
+
+    fn split_aligned(&self, data: &[u8], workers: usize) -> Option<Vec<std::ops::Range<usize>>> {
+        // 边界 = 每个 \n 之后的位置 (ASCII 边界不会切断 UTF-8 多字节序列)
+        let boundaries: Vec<usize> = data
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b == b'\n')
+            .map(|(i, _)| i + 1)
+            .collect();
+        Some(crate::engine::split_at_boundaries(&boundaries, workers))
+    }
+
+    fn take_pending(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.buf).into_bytes()
+    }
+
+    fn new_worker(&self) -> Box<dyn ProtocolEngine> {
+        Box::new(FireWaterEngine::new(self.channels))
+    }
 }
 
 #[cfg(test)]
@@ -103,7 +132,7 @@ mod tests {
     #[test]
     fn test_parse_firewater() {
         let mut engine = FireWaterEngine::new(Some(3));
-        let frames = engine.feed(b"1.0,2.0,3.0\n");
+        let frames = engine.feed(b"1.0,2.0,3.0\n").frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].channels, vec![1.0, 2.0, 3.0]);
     }
@@ -111,7 +140,7 @@ mod tests {
     #[test]
     fn test_parse_multiple_lines() {
         let mut engine = FireWaterEngine::new(Some(2));
-        let frames = engine.feed(b"1.0,2.0\n3.0,4.0\n");
+        let frames = engine.feed(b"1.0,2.0\n3.0,4.0\n").frames;
         assert_eq!(frames.len(), 2);
         assert_eq!(frames[0].channels, vec![1.0, 2.0]);
         assert_eq!(frames[1].channels, vec![3.0, 4.0]);
@@ -123,7 +152,7 @@ mod tests {
         assert!(engine.is_auto_mode());
         assert_eq!(engine.detected_channels(), None);
 
-        let frames = engine.feed(b"1.0,2.0,3.0,4.0\n");
+        let frames = engine.feed(b"1.0,2.0,3.0,4.0\n").frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].channels, vec![1.0, 2.0, 3.0, 4.0]);
         assert_eq!(engine.detected_channels(), Some(4));
@@ -139,7 +168,7 @@ mod tests {
     #[test]
     fn test_auto_mode_multi_lines() {
         let mut engine = FireWaterEngine::new(None);
-        let frames = engine.feed(b"1.0,2.0\n3.0,4.0\n");
+        let frames = engine.feed(b"1.0,2.0\n3.0,4.0\n").frames;
         assert_eq!(frames.len(), 2);
         assert_eq!(engine.detected_channels(), Some(2));
     }
@@ -148,8 +177,43 @@ mod tests {
     fn test_partial_line_buffered() {
         let mut engine = FireWaterEngine::new(Some(2));
         let _ = engine.feed(b"1.0,2.");
-        let frames = engine.feed(b"0\n");
+        let frames = engine.feed(b"0\n").frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].channels, vec![1.0, 2.0]);
+    }
+
+    /// 顺序/并行等价性: 多行 + 跨行尾 (无 \n 的不完整行)
+    #[test]
+    fn test_split_aligned_equivalence() {
+        let data = b"1.0,2.0\n3.0,4.0\n5.0,6";
+
+        // 顺序解析全量
+        let mut seq_engine = FireWaterEngine::new(Some(2));
+        let seq_frames = seq_engine.feed(data).frames;
+
+        // 并行: split_aligned 切分 + 逐块 new_worker().feed + append 合并
+        let ranges = seq_engine
+            .split_aligned(data, 2)
+            .expect("firewater 应支持并行切分");
+        let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+        let mut merged = crate::engine::FeedOutput::default();
+        let mut concat = Vec::new();
+        for r in &ranges {
+            let mut w = seq_engine.new_worker();
+            merged.append(w.feed(&data[r.clone()]));
+            concat.extend_from_slice(&data[r.clone()]);
+        }
+        concat.extend_from_slice(&data[tail_start..]);
+
+        // concat(块) + tail == 原 data; 不完整行留在 tail 中
+        assert_eq!(concat, data);
+        assert_eq!(&data[tail_start..], b"5.0,6");
+
+        // 结果逐项相等 (忽略 timestamp)
+        let norm = |f: &DataFrame| f.channels.clone();
+        let seq_norm: Vec<_> = seq_frames.iter().map(norm).collect();
+        let par_norm: Vec<_> = merged.frames.iter().map(norm).collect();
+        assert_eq!(seq_norm, par_norm);
+        assert_eq!(seq_frames.len(), 2);
     }
 }

@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
-use vofa_next_core::{CanDirection, CanFrame, DataFrame};
+use vofa_next_core::{CanDirection, CanFrame};
 
-use crate::engine::ProtocolEngine;
+use crate::engine::{FeedOutput, ProtocolEngine};
 
 /// candleLight (GSUSB) 二进制帧大小 (字节)
 const CAND_FRAME_SIZE: usize = 24;
@@ -52,18 +52,15 @@ impl CandleEngine {
 }
 
 impl ProtocolEngine for CandleEngine {
-    fn feed(&mut self, _data: &[u8]) -> Vec<DataFrame> {
-        // candleLight 不产生 DataFrame, 只产生 CanFrame (通过 feed_can)
-        Vec::new()
-    }
-
-    fn feed_can(&mut self, data: &[u8]) -> Vec<CanFrame> {
+    fn feed(&mut self, data: &[u8]) -> FeedOutput {
+        // candleLight 不产生 DataFrame, 只产生 CanFrame
         self.buf.extend_from_slice(data);
         let mut frames = Vec::new();
-        while self.buf.len() >= CAND_FRAME_SIZE {
-            // 取前 24 字节作为一个完整帧
-            let pkt: [u8; CAND_FRAME_SIZE] = self.buf[..CAND_FRAME_SIZE].try_into().unwrap();
-            self.buf.drain(..CAND_FRAME_SIZE);
+        // 单趟按 24 字节边界解析, 结束后一次性 drain
+        // (原实现逐帧 drain(..CAND_FRAME_SIZE), 大批次下 O(n²) memmove)
+        let consumed = self.buf.len() / CAND_FRAME_SIZE * CAND_FRAME_SIZE;
+        for off in (0..consumed).step_by(CAND_FRAME_SIZE) {
+            let pkt: &[u8] = &self.buf[off..off + CAND_FRAME_SIZE];
             let cmd_id = pkt[0];
             // 跳过非帧命令 (如设置波特率响应 0x01 等)
             if cmd_id != CAND_CMD_RX && cmd_id != CAND_CMD_TX {
@@ -90,7 +87,10 @@ impl ProtocolEngine for CandleEngine {
                 direction,
             });
         }
-        frames
+        if consumed > 0 {
+            self.buf.drain(..consumed);
+        }
+        FeedOutput::from_can_frames(frames)
     }
 
     fn encode_can(&mut self, frame: &CanFrame) -> Vec<u8> {
@@ -125,6 +125,21 @@ impl ProtocolEngine for CandleEngine {
     fn name(&self) -> &str {
         "CandleLight"
     }
+
+    fn split_aligned(&self, data: &[u8], workers: usize) -> Option<Vec<std::ops::Range<usize>>> {
+        // 边界 = 24 字节倍数位置 (调用方保证 data 起点帧对齐: pending 前置拼接)
+        let n = data.len() / CAND_FRAME_SIZE;
+        let boundaries: Vec<usize> = (1..=n).map(|i| i * CAND_FRAME_SIZE).collect();
+        Some(crate::engine::split_at_boundaries(&boundaries, workers))
+    }
+
+    fn take_pending(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.buf)
+    }
+
+    fn new_worker(&self) -> Box<dyn ProtocolEngine> {
+        Box::new(CandleEngine::new())
+    }
 }
 
 impl Default for CandleEngine {
@@ -154,7 +169,7 @@ mod tests {
     fn test_parse_rx_frame() {
         let mut engine = CandleEngine::new();
         let pkt = make_rx_frame(CAND_CMD_RX, 0x123, 4, &[0x01, 0x02, 0x03, 0x04]);
-        let frames = engine.feed_can(&pkt);
+        let frames = engine.feed(&pkt).can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x123);
@@ -176,7 +191,7 @@ mod tests {
             8,
             &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08],
         );
-        let frames = engine.feed_can(&pkt);
+        let frames = engine.feed(&pkt).can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x12345678);
@@ -196,7 +211,7 @@ mod tests {
         let mut engine = CandleEngine::new();
         let can_id_raw = 0x123 | CAND_ID_RTR;
         let pkt = make_rx_frame(CAND_CMD_RX, can_id_raw, 4, &[]);
-        let frames = engine.feed_can(&pkt);
+        let frames = engine.feed(&pkt).can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.id, 0x123);
@@ -210,9 +225,9 @@ mod tests {
     fn test_parse_partial() {
         let mut engine = CandleEngine::new();
         let pkt = make_rx_frame(CAND_CMD_RX, 0x123, 4, &[0x01, 0x02, 0x03, 0x04]);
-        let frames = engine.feed_can(&pkt[..12]);
+        let frames = engine.feed(&pkt[..12]).can_frames;
         assert!(frames.is_empty());
-        let frames = engine.feed_can(&pkt[12..]);
+        let frames = engine.feed(&pkt[12..]).can_frames;
         assert_eq!(frames.len(), 1);
         assert_eq!(frames[0].id, 0x123);
         assert_eq!(frames[0].data, vec![0x01, 0x02, 0x03, 0x04]);
@@ -225,12 +240,12 @@ mod tests {
         // 设置波特率响应 (cmd_id = 0x01) — 应被跳过
         let mut pkt = vec![0u8; CAND_FRAME_SIZE];
         pkt[0] = 0x01;
-        let frames = engine.feed_can(&pkt);
+        let frames = engine.feed(&pkt).can_frames;
         assert!(frames.is_empty());
 
         // 后续接一个有效 RX 帧
         let valid_pkt = make_rx_frame(CAND_CMD_RX, 0x123, 4, &[0x01, 0x02, 0x03, 0x04]);
-        let frames = engine.feed_can(&valid_pkt);
+        let frames = engine.feed(&valid_pkt).can_frames;
         assert_eq!(frames.len(), 1);
     }
 
@@ -239,7 +254,7 @@ mod tests {
     fn test_parse_tx_frame() {
         let mut engine = CandleEngine::new();
         let pkt = make_rx_frame(CAND_CMD_TX, 0x123, 2, &[0xAA, 0xBB]);
-        let frames = engine.feed_can(&pkt);
+        let frames = engine.feed(&pkt).can_frames;
         assert_eq!(frames.len(), 1);
         let f = &frames[0];
         assert_eq!(f.direction, CanDirection::Tx);
@@ -296,7 +311,7 @@ mod tests {
         let mut data = Vec::new();
         data.extend_from_slice(&make_rx_frame(CAND_CMD_RX, 0x100, 1, &[0xAA]));
         data.extend_from_slice(&make_rx_frame(CAND_CMD_RX, 0x200, 1, &[0xBB]));
-        let frames = engine.feed_can(&data);
+        let frames = engine.feed(&data).can_frames;
         assert_eq!(frames.len(), 2);
         assert_eq!(frames[0].id, 0x100);
         assert_eq!(frames[1].id, 0x200);
@@ -430,7 +445,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -454,7 +469,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -480,7 +495,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -506,7 +521,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, original.id);
@@ -530,7 +545,7 @@ mod tests {
             direction: CanDirection::Tx,
         };
         let encoded = engine.encode_can(&original);
-        let parsed = engine.feed_can(&encoded);
+        let parsed = engine.feed(&encoded).can_frames;
         assert_eq!(parsed.len(), 1);
         let f = &parsed[0];
         assert_eq!(f.id, 0x78);
@@ -568,7 +583,7 @@ mod tests {
         for f in &frames {
             buf.extend(engine.encode_can(f));
         }
-        let parsed = engine.feed_can(&buf);
+        let parsed = engine.feed(&buf).can_frames;
         assert_eq!(parsed.len(), 2);
         assert_eq!(parsed[0].id, 0x100);
         assert_eq!(parsed[0].data, vec![0xAA, 0xBB]);
@@ -578,5 +593,45 @@ mod tests {
             parsed[1].data,
             vec![0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
         );
+    }
+
+    /// 顺序/并行等价性: 多帧 (含 TX 帧) + 非 24 倍数总长 (半截帧尾)
+    #[test]
+    fn test_split_aligned_equivalence() {
+        let mut data = Vec::new();
+        data.extend_from_slice(&make_rx_frame(CAND_CMD_RX, 0x100, 2, &[0xAA, 0xBB]));
+        data.extend_from_slice(&make_rx_frame(CAND_CMD_TX, 0x200, 1, &[0x11]));
+        data.extend_from_slice(&make_rx_frame(CAND_CMD_RX, 0x300, 4, &[1, 2, 3, 4]));
+        // 半截帧尾 (10 字节)
+        data.extend_from_slice(&make_rx_frame(CAND_CMD_RX, 0x400, 1, &[0x99])[..10]);
+
+        // 顺序解析全量
+        let mut seq_engine = CandleEngine::new();
+        let seq_frames = seq_engine.feed(&data).can_frames;
+
+        // 并行: split_aligned 切分 + 逐块 new_worker().feed + append 合并
+        let ranges = seq_engine
+            .split_aligned(&data, 3)
+            .expect("candleLight 应支持并行切分");
+        let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+        let mut merged = crate::engine::FeedOutput::default();
+        let mut concat = Vec::new();
+        for r in &ranges {
+            let mut w = seq_engine.new_worker();
+            merged.append(w.feed(&data[r.clone()]));
+            concat.extend_from_slice(&data[r.clone()]);
+        }
+        concat.extend_from_slice(&data[tail_start..]);
+
+        // concat(块) + tail == 原 data; 半截帧尾 (10 字节) 留在 tail 中
+        assert_eq!(concat, data);
+        assert_eq!(data.len() - tail_start, 10);
+
+        // 结果逐项相等 (忽略 timestamp)
+        let norm = |f: &CanFrame| (f.id, f.extended, f.rtr, f.dlc, f.data.clone(), f.direction);
+        let seq_norm: Vec<_> = seq_frames.iter().map(norm).collect();
+        let par_norm: Vec<_> = merged.can_frames.iter().map(norm).collect();
+        assert_eq!(seq_norm, par_norm);
+        assert_eq!(seq_frames.len(), 3);
     }
 }

@@ -1,6 +1,6 @@
-use vofa_next_core::{DataFrame, DecodedEvent, I2cEvent, LogicDecoderConfig, LogicSample};
+use vofa_next_core::{DecodedEvent, I2cEvent, LogicDecoderConfig, LogicSample};
 
-use crate::engine::ProtocolEngine;
+use crate::engine::{FeedOutput, ProtocolEngine};
 
 /// 逻辑分析仪解码引擎
 ///
@@ -298,50 +298,36 @@ impl LogicDecoderEngine {
 }
 
 impl ProtocolEngine for LogicDecoderEngine {
-    fn feed(&mut self, _data: &[u8]) -> Vec<DataFrame> {
-        Vec::new()
-    }
-
-    fn feed_logic(&mut self, data: &[u8]) -> Vec<LogicSample> {
+    fn feed(&mut self, data: &[u8]) -> FeedOutput {
+        // 字节 → 采样只做一次, 采样输出与协议解码共用 (原实现 feed_logic /
+        // feed_decoded 各自重复转换一遍)
         let now = Self::now_us();
-        let mut samples = Vec::with_capacity(data.len());
-        for (i, &b) in data.iter().enumerate() {
-            // 每字节一个采样, 时间戳按字节序递增 (假设采样率约等于波特率/10)
-            // 这里用 1µs/字节 的粗略间隔, 实际间隔由传输层决定
-            let ts = now.saturating_add(i as u64);
-            samples.push(LogicSample {
-                timestamp: ts,
-                channels: b as u32,
-                channel_count: 8,
-            });
-        }
-        // 同时追加到内部缓冲供 feed_decoded 使用
-        self.sample_buf.extend(samples.iter().cloned());
-        // 限制内部缓冲大小
-        if self.sample_buf.len() > 16384 {
-            let drop = self.sample_buf.len() - 8192;
-            self.sample_buf.drain(..drop);
-        }
-        samples
-    }
-
-    fn feed_decoded(&mut self, data: &[u8]) -> Vec<DecodedEvent> {
-        // 先把字节转为采样 (与 feed_logic 一致), 然后按配置解码
-        let now = Self::now_us();
-        let new_samples: Vec<LogicSample> = data
+        let samples: Vec<LogicSample> = data
             .iter()
             .enumerate()
             .map(|(i, &b)| LogicSample {
+                // 每字节一个采样, 时间戳按字节序递增 (假设采样率约等于波特率/10)
+                // 这里用 1µs/字节 的粗略间隔, 实际间隔由传输层决定
                 timestamp: now.saturating_add(i as u64),
                 channels: b as u32,
                 channel_count: 8,
             })
             .collect();
-
-        match &self.config {
+        // 追加到内部缓冲 (供滑动窗口/后续扩展使用), 限制大小
+        self.sample_buf.extend(samples.iter().cloned());
+        if self.sample_buf.len() > 16384 {
+            let drop = self.sample_buf.len() - 8192;
+            self.sample_buf.drain(..drop);
+        }
+        let decoded_events = match &self.config {
             LogicDecoderConfig::Uart { .. } => self.decode_uart(data),
-            LogicDecoderConfig::I2c { .. } => self.decode_i2c(&new_samples),
-            LogicDecoderConfig::Spi { .. } => self.decode_spi(&new_samples),
+            LogicDecoderConfig::I2c { .. } => self.decode_i2c(&samples),
+            LogicDecoderConfig::Spi { .. } => self.decode_spi(&samples),
+        };
+        FeedOutput {
+            logic_samples: samples,
+            decoded_events,
+            ..Default::default()
         }
     }
 
@@ -353,6 +339,12 @@ impl ProtocolEngine for LogicDecoderEngine {
     }
     fn name(&self) -> &str {
         "LogicDecoder"
+    }
+
+    // LogicDecoder 跨字节状态机, 不支持 split_aligned (默认 None)
+
+    fn new_worker(&self) -> Box<dyn ProtocolEngine> {
+        Box::new(LogicDecoderEngine::new(self.config.clone()))
     }
 }
 
@@ -371,7 +363,7 @@ mod tests {
             channel: 0,
         };
         let mut engine = LogicDecoderEngine::new(config);
-        let samples = engine.feed_logic(&[0b10101010, 0b11110000]);
+        let samples = engine.feed(&[0b10101010, 0b11110000]).logic_samples;
         assert_eq!(samples.len(), 2);
         assert_eq!(samples[0].channels, 0b10101010);
         assert_eq!(samples[0].channel_count, 8);
@@ -388,7 +380,7 @@ mod tests {
             channel: 0,
         };
         let mut engine = LogicDecoderEngine::new(config);
-        let events = engine.feed_decoded(&[0x41, 0x42, 0x43]);
+        let events = engine.feed(&[0x41, 0x42, 0x43]).decoded_events;
         assert_eq!(events.len(), 3);
         // 验证第一个事件是 UART 事件, 字节 = 0x41
         match &events[0] {
@@ -908,7 +900,7 @@ mod tests {
         let mut engine = LogicDecoderEngine::new(config);
         // 输入 0..=255 全部字节
         let input: Vec<u8> = (0..=255u8).collect();
-        let events = engine.feed_decoded(&input);
+        let events = engine.feed(&input).decoded_events;
         assert_eq!(events.len(), 256);
         for (i, e) in events.iter().enumerate() {
             match e {
@@ -935,7 +927,7 @@ mod tests {
             channel: 0,
         };
         let mut engine = LogicDecoderEngine::new(config);
-        let events = engine.feed_decoded(&[0x41, 0x42]);
+        let events = engine.feed(&[0x41, 0x42]).decoded_events;
         assert_eq!(events.len(), 2);
         for e in &events {
             match e {

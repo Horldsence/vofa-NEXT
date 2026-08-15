@@ -65,10 +65,89 @@ impl ParsedInput {
     }
 }
 
+/// 喂入结果 — 单次 feed 的全量输出, 各引擎只填自己支持的字段
+#[derive(Debug, Default)]
+pub struct FeedOutput {
+    /// 数据帧 (JustFloat / FireWater)
+    pub frames: Vec<DataFrame>,
+    /// CAN 帧 (Slcan / CandleLight)
+    pub can_frames: Vec<CanFrame>,
+    /// 逻辑采样 (LogicDecoder)
+    pub logic_samples: Vec<LogicSample>,
+    /// 协议解码事件 (LogicDecoder)
+    pub decoded_events: Vec<DecodedEvent>,
+}
+
+impl FeedOutput {
+    /// 仅含数据帧
+    pub fn from_frames(frames: Vec<DataFrame>) -> Self {
+        Self {
+            frames,
+            ..Default::default()
+        }
+    }
+    /// 仅含 CAN 帧
+    pub fn from_can_frames(can_frames: Vec<CanFrame>) -> Self {
+        Self {
+            can_frames,
+            ..Default::default()
+        }
+    }
+    /// 按序合并另一份输出 (并行 worker 结果按块序逐个 append)
+    pub fn append(&mut self, other: FeedOutput) {
+        self.frames.extend(other.frames);
+        self.can_frames.extend(other.can_frames);
+        self.logic_samples.extend(other.logic_samples);
+        self.decoded_events.extend(other.decoded_events);
+    }
+}
+
+/// 给定升序的帧结束边界 boundaries, 把 [0, *last) 均分为 workers 段,
+/// 每段尾部对齐到不超过均分点的最后一个边界; 空段自动合并 (返回块数 ≤ workers)
+///
+/// - boundaries 为空 → 返回空 Vec (无完整帧可切)
+/// - workers <= 1 → 返回整块 [0, *last)
+/// - 均分点 = last * i / workers, 每段结束 = 不超过均分点的最大边界 (最后一段恒为 *last)
+pub fn split_at_boundaries(
+    boundaries: &[usize],
+    workers: usize,
+) -> Vec<std::ops::Range<usize>> {
+    let Some(&last) = boundaries.last() else {
+        return Vec::new();
+    };
+    if workers <= 1 {
+        return vec![0..last];
+    }
+    let mut ranges = Vec::with_capacity(workers);
+    let mut start = 0usize;
+    for i in 1..workers {
+        let target = last * i / workers;
+        // 不超过均分点的最大边界
+        let end = match boundaries.binary_search(&target) {
+            Ok(idx) => boundaries[idx],
+            Err(idx) => {
+                if idx == 0 {
+                    continue; // 均分点之前无边界 → 空段, 与下一段合并
+                }
+                boundaries[idx - 1]
+            }
+        };
+        // 空段自动合并 (相邻段结束位置相同则跳过)
+        if end > start {
+            ranges.push(start..end);
+            start = end;
+        }
+    }
+    if start < last {
+        ranges.push(start..last);
+    }
+    ranges
+}
+
 /// 协议引擎 trait — 解析接收数据 / 编码发送数据
 pub trait ProtocolEngine: Send {
-    /// 喂入原始字节流, 返回解析出的数据帧列表
-    fn feed(&mut self, data: &[u8]) -> Vec<DataFrame>;
+    /// 喂入原始字节流, 单趟解析并返回该协议支持的全部输出
+    fn feed(&mut self, data: &[u8]) -> FeedOutput;
 
     /// 编码单通道值为字节流 (用于自动绑定模式发送)
     fn encode_channel(&mut self, channel: usize, value: f32) -> Vec<u8>;
@@ -90,34 +169,33 @@ pub trait ProtocolEngine: Send {
         false
     }
 
-    /// 解析 CAN 帧 (仅 Slcan/CandleLight 引擎重写)
-    fn feed_can(&mut self, _data: &[u8]) -> Vec<CanFrame> {
-        Vec::new()
-    }
-
     /// 编码 CAN 帧为传输字节 (仅 Slcan/CandleLight 引擎重写)
     fn encode_can(&mut self, _frame: &CanFrame) -> Vec<u8> {
         Vec::new()
     }
 
-    /// 解析逻辑分析仪采样 (仅 LogicDecoder 引擎重写)
-    fn feed_logic(&mut self, _data: &[u8]) -> Vec<LogicSample> {
+    /// 帧对齐切分: 把 data 的完整帧前缀均分为 workers 块 (每块以帧边界结尾, 升序 Range),
+    /// 尾部不完整帧 (最后一个 Range 结束位置之后) 由调用方保留拼接。
+    /// 返回 None = 协议跨帧有状态或无帧概念, 不支持并行解析 (LogicDecoder / RawData)。
+    fn split_aligned(&self, _data: &[u8], _workers: usize) -> Option<Vec<std::ops::Range<usize>>> {
+        None
+    }
+
+    /// 取出内部缓冲的未解析字节 (顺序 → 并行模式切换时调用)
+    fn take_pending(&mut self) -> Vec<u8> {
         Vec::new()
     }
 
-    /// 解析协议解码事件 (仅 LogicDecoder 引擎重写)
-    /// 输入原始字节流, 输出 UART/I2C/SPI 解码事件
-    fn feed_decoded(&mut self, _data: &[u8]) -> Vec<DecodedEvent> {
-        Vec::new()
-    }
+    /// 新建一个同配置、空状态的引擎 (并行 worker 用)
+    fn new_worker(&self) -> Box<dyn ProtocolEngine>;
 
     /// 解析用户输入字符串为协议帧 (用于输入协议分析 / 协议解码器面板)
     ///
     /// - `input`: 用户输入的原始字符串
     /// - `format`: 输入格式 (HEX 或 ASCII)
     ///
-    /// 默认实现: 将 input 按 format 转为字节, 然后调用 feed / feed_can / feed_logic /
-    /// feed_decoded, 收集所有可解析出的结果。各协议引擎可重写以提供更精确的解析。
+    /// 默认实现: 将 input 按 format 转为字节, 然后调用 feed 单次解析,
+    /// 收集所有可解析出的结果。各协议引擎可重写以提供更精确的解析。
     fn parse_input(&mut self, input: &str, format: InputFormat) -> ParsedInput {
         let resolved = match format {
             InputFormat::Auto => detect_format(input),
@@ -134,22 +212,19 @@ pub trait ProtocolEngine: Send {
         if bytes.is_empty() {
             return ParsedInput::error("输入为空");
         }
-        // 默认行为: 尝试 feed, 若无结果则返回 RawBytes
-        let frames = self.feed(&bytes);
-        if !frames.is_empty() {
-            return ParsedInput::Frames(frames);
+        // 默认行为: 单次 feed 全量解析, 按优先级返回; 若无结果则返回 RawBytes
+        let out = self.feed(&bytes);
+        if !out.frames.is_empty() {
+            return ParsedInput::Frames(out.frames);
         }
-        let can_frames = self.feed_can(&bytes);
-        if !can_frames.is_empty() {
-            return ParsedInput::CanFrames(can_frames);
+        if !out.can_frames.is_empty() {
+            return ParsedInput::CanFrames(out.can_frames);
         }
-        let logic = self.feed_logic(&bytes);
-        if !logic.is_empty() {
-            return ParsedInput::LogicSamples(logic);
+        if !out.logic_samples.is_empty() {
+            return ParsedInput::LogicSamples(out.logic_samples);
         }
-        let decoded = self.feed_decoded(&bytes);
-        if !decoded.is_empty() {
-            return ParsedInput::DecodedEvents(decoded);
+        if !out.decoded_events.is_empty() {
+            return ParsedInput::DecodedEvents(out.decoded_events);
         }
         ParsedInput::RawBytes(bytes)
     }
@@ -444,5 +519,41 @@ mod tests {
             ParsedInput::Error { .. } => {}
             other => panic!("expected Error, got {:?}", other),
         }
+    }
+
+    // ===== split_at_boundaries 测试 =====
+
+    #[test]
+    fn test_split_at_boundaries_even_split() {
+        // 均分对齐: 4 个边界分 2 段, 均分点 8 恰好落在边界上
+        let ranges = split_at_boundaries(&[4, 8, 12, 16], 2);
+        assert_eq!(ranges, vec![0..8, 8..16]);
+    }
+
+    #[test]
+    fn test_split_at_boundaries_aligns_down() {
+        // 均分点不对齐边界时向下对齐: last=15, workers=2, 均分点 7 → 段结束对齐到 5
+        let ranges = split_at_boundaries(&[5, 10, 15], 2);
+        assert_eq!(ranges, vec![0..5, 5..15]);
+    }
+
+    #[test]
+    fn test_split_at_boundaries_fewer_boundaries_than_workers() {
+        // 边界数少于 workers: 空段自动合并
+        let ranges = split_at_boundaries(&[4, 8], 4);
+        assert_eq!(ranges, vec![0..4, 4..8]);
+    }
+
+    #[test]
+    fn test_split_at_boundaries_empty() {
+        // 空 boundaries → 空 Vec (无完整帧)
+        assert!(split_at_boundaries(&[], 4).is_empty());
+    }
+
+    #[test]
+    fn test_split_at_boundaries_single_worker() {
+        // workers=1 → 整块
+        let ranges = split_at_boundaries(&[4, 8, 12], 1);
+        assert_eq!(ranges, vec![0..12]);
     }
 }

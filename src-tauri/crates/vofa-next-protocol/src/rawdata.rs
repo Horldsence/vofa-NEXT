@@ -1,6 +1,4 @@
-use vofa_next_core::DataFrame;
-
-use crate::engine::ProtocolEngine;
+use crate::engine::{FeedOutput, ProtocolEngine};
 
 /// RawData 协议引擎 — 不解析, 仅透传
 ///
@@ -14,9 +12,9 @@ impl RawDataEngine {
 }
 
 impl ProtocolEngine for RawDataEngine {
-    fn feed(&mut self, _data: &[u8]) -> Vec<DataFrame> {
+    fn feed(&mut self, _data: &[u8]) -> FeedOutput {
         // RawData 不产生结构化数据帧
-        Vec::new()
+        FeedOutput::default()
     }
 
     fn encode_channel(&mut self, _channel: usize, value: f32) -> Vec<u8> {
@@ -30,6 +28,10 @@ impl ProtocolEngine for RawDataEngine {
 
     fn name(&self) -> &str {
         "RawData"
+    }
+
+    fn new_worker(&self) -> Box<dyn ProtocolEngine> {
+        Box::new(RawDataEngine::new())
     }
 }
 

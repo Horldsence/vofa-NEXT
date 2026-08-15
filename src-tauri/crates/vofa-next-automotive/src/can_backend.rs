@@ -81,7 +81,7 @@ impl BridgeCanBackend {
                         }
                         let frames = {
                             let mut eng = engine_task.lock();
-                            eng.feed_can(&bytes)
+                            eng.feed(&bytes).can_frames
                         };
                         for frame in frames {
                             // 发送失败说明没有订阅者,忽略即可
