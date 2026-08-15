@@ -44,6 +44,7 @@ pub async fn open_transport(
         let can_load_stats = state.can_load_stats.clone();
         let logic_buffer = state.logic_buffer.clone();
         let decoded_buffer = state.decoded_buffer.clone();
+        let pipeline_config = state.pipeline_config.clone();
         tokio::spawn(async move {
             crate::state::data_loop(
                 app,
@@ -56,6 +57,7 @@ pub async fn open_transport(
                 can_load_stats,
                 logic_buffer,
                 decoded_buffer,
+                pipeline_config,
             )
             .await;
         });
@@ -174,9 +176,11 @@ pub async fn send_and_capture(state: State<'_, AppState>, data: Vec<u8>) -> Resu
     }
 
     // 2. 即时调用协议引擎解析 (同步, 不依赖 data_loop 管道)
+    //    单次 feed (原实现 feed + feed_can 两次调用, 对有状态引擎等于重复喂入)
     let mut proto = state.protocol.lock();
-    let frames = proto.feed(&data);
-    let can_count = proto.feed_can(&data).len();
+    let out = proto.feed(&data);
+    let frames = out.frames;
+    let can_count = out.can_frames.len();
 
     Ok(LoopbackResult {
         sent_hex: data

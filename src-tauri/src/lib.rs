@@ -92,6 +92,9 @@ pub fn run() {
             commands::set_protocol,
             commands::get_protocol,
             commands::get_detected_channels,
+            // 流水线参数
+            commands::set_pipeline_config,
+            commands::get_pipeline_config,
             // 波形缓冲区
             commands::subscribe_waveform,
             commands::get_recent_waveform,

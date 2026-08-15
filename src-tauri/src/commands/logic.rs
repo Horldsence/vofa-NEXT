@@ -5,48 +5,52 @@ use vofa_next_core::{DecodedEventBatch, LogicSampleBatch, Result};
 
 // ============ 逻辑分析仪命令 ============
 
-/// 订阅逻辑采样数据 — 通过 Tauri Channel 周期性推送
+/// 订阅逻辑采样数据 — 统一分片流 (增量 drain + 自动并发分片)
+///
+/// 首次调用不传 group_id 建组 (返回组 id, 首批回溯最近 max_samples 条),
+/// 后续传 group_id 加入新分片。取消: 每分片调 unsubscribe_logic_samples(channel_id)
 #[tauri::command]
 pub async fn subscribe_logic_samples(
     state: State<'_, AppState>,
     on_event: Channel<LogicSampleBatch>,
+    group_id: Option<String>,
     interval_ms: Option<u64>,
     max_samples: Option<usize>,
-) -> Result<()> {
-    let logic_buffer = state.logic_buffer.clone();
+) -> Result<String> {
     let interval = Duration::from_millis(interval_ms.unwrap_or(100));
     let max_n = max_samples.unwrap_or(500);
     let channel_id = on_event.id();
+    let buffer = state.logic_buffer.clone();
 
-    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::LogicStreamSource::new(buffer, max_n),
+    )?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.logic_tasks.lock().insert(channel_id, cancel_tx);
 
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
     tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        log::info!("逻辑采样订阅已启动, channel_id={}", channel_id);
-        loop {
-            tokio::select! {
-                _ = &mut cancel_rx => {
-                    log::info!("逻辑采样订阅被取消, channel_id={}", channel_id);
-                    break;
-                }
-                _ = ticker.tick() => {
-                    let samples = {
-                        let buf = logic_buffer.lock();
-                        buf.get_recent(max_n)
-                    };
-                    if samples.is_empty() {
-                        continue;
-                    }
-                    if on_event.send(LogicSampleBatch { samples }).is_err() {
-                        break;
-                    }
-                }
-            }
-        }
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("逻辑采样分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
     });
 
-    Ok(())
+    Ok(group_key)
 }
 
 /// 取消订阅逻辑采样
@@ -65,7 +69,7 @@ pub async fn get_recent_logic_samples(
     count: usize,
 ) -> Result<LogicSampleBatch> {
     let samples = state.logic_buffer.lock().get_recent(count);
-    Ok(LogicSampleBatch { samples })
+    Ok(LogicSampleBatch { seq: 0, samples })
 }
 
 /// 清空逻辑采样缓冲区
@@ -81,48 +85,52 @@ pub async fn get_logic_buffer_info(state: State<'_, AppState>) -> Result<usize> 
     Ok(state.logic_buffer.lock().len())
 }
 
-/// 订阅解码事件 — 通过 Tauri Channel 周期性推送
+/// 订阅解码事件 — 统一分片流 (增量 drain + 自动并发分片)
+///
+/// 首次调用不传 group_id 建组 (返回组 id, 首批回溯最近 max_events 条),
+/// 后续传 group_id 加入新分片。取消: 每分片调 unsubscribe_decoded_events(channel_id)
 #[tauri::command]
 pub async fn subscribe_decoded_events(
     state: State<'_, AppState>,
     on_event: Channel<DecodedEventBatch>,
+    group_id: Option<String>,
     interval_ms: Option<u64>,
     max_events: Option<usize>,
-) -> Result<()> {
-    let decoded_buffer = state.decoded_buffer.clone();
+) -> Result<String> {
     let interval = Duration::from_millis(interval_ms.unwrap_or(100));
     let max_n = max_events.unwrap_or(200);
     let channel_id = on_event.id();
+    let buffer = state.decoded_buffer.clone();
 
-    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::DecodedStreamSource::new(buffer, max_n),
+    )?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.decoded_tasks.lock().insert(channel_id, cancel_tx);
 
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
     tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        log::info!("解码事件订阅已启动, channel_id={}", channel_id);
-        loop {
-            tokio::select! {
-                _ = &mut cancel_rx => {
-                    log::info!("解码事件订阅被取消, channel_id={}", channel_id);
-                    break;
-                }
-                _ = ticker.tick() => {
-                    let events = {
-                        let buf = decoded_buffer.lock();
-                        buf.get_recent(max_n)
-                    };
-                    if events.is_empty() {
-                        continue;
-                    }
-                    if on_event.send(DecodedEventBatch { events }).is_err() {
-                        break;
-                    }
-                }
-            }
-        }
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("解码事件分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
     });
 
-    Ok(())
+    Ok(group_key)
 }
 
 /// 取消订阅解码事件
@@ -141,7 +149,7 @@ pub async fn get_recent_decoded_events(
     count: usize,
 ) -> Result<DecodedEventBatch> {
     let events = state.decoded_buffer.lock().get_recent(count);
-    Ok(DecodedEventBatch { events })
+    Ok(DecodedEventBatch { seq: 0, events })
 }
 
 /// 清空解码事件缓冲区

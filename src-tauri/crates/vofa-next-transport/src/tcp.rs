@@ -20,7 +20,7 @@ pub async fn spawn_client(
 
     let (read_half, write_half) = stream.into_split();
 
-    let (data_tx, _) = broadcast::channel(2048);
+    let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -29,7 +29,7 @@ pub async fn spawn_client(
     let cancel_read = cancel.clone();
     tokio::spawn(async move {
         let mut read_half = read_half;
-        let mut buf = [0u8; 2048];
+        let mut buf = [0u8; 65536];
         loop {
             tokio::select! {
                 result = read_half.read(&mut buf) => {
@@ -91,7 +91,7 @@ pub async fn spawn_server(
         .await
         .map_err(|e| Error::Transport(format!("TCP 监听失败: {}", e)))?;
 
-    let (data_tx, _) = broadcast::channel(2048);
+    let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -128,7 +128,7 @@ pub async fn spawn_server(
 
         // 读任务
         tokio::spawn(async move {
-            let mut buf = [0u8; 2048];
+            let mut buf = [0u8; 65536];
             loop {
                 tokio::select! {
                     result = read_half.read(&mut buf) => {

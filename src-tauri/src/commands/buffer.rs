@@ -4,60 +4,58 @@ use tauri::{ipc::Channel, State};
 use vofa_next_buffer::{RawDataBatch, WaveformWindow};
 use vofa_next_core::Result;
 
-/// 订阅波形数据 — 通过 Tauri Channel 推送窗口数据
+/// 订阅波形数据 — 统一分片流 (快照语义 + 自动并发分片)
+///
+/// 波形是唯一快照替换流: version 变化即推送最新窗口, 前端按 "最新 seq 胜出" 处理乱序。
+/// 首次调用不传 group_id 建组 (返回组 id), 后续传 group_id 加入新分片
+/// (落后 ≥ 200 帧未推送时自动激活)。
 ///
 /// interval_ms: 推送间隔 (毫秒), 默认 33ms (~30 FPS)
 /// max_points: 单次推送的最大点数, 默认 1000
 ///
-/// 取消方式: 前端调用 unsubscribe_waveform(channel_id) 触发 oneshot 取消信号,
-/// task 在 select! 中收到信号后优雅退出, 避免向已关闭的 channel send 产生警告。
+/// 取消方式: 前端对每个分片调用 unsubscribe_waveform(channel_id)
 #[tauri::command]
 pub async fn subscribe_waveform(
     state: State<'_, AppState>,
     on_event: Channel<WaveformWindow>,
+    group_id: Option<String>,
     interval_ms: Option<u64>,
     max_points: Option<usize>,
-) -> Result<()> {
-    let buffer = state.buffer.clone();
+) -> Result<String> {
     let interval = Duration::from_millis(interval_ms.unwrap_or(33));
     let max_pts = max_points.unwrap_or(1000);
     let channel_id = on_event.id();
+    let buffer = state.buffer.clone();
 
-    // 创建取消信号 channel, 存入全局 state 供 unsubscribe_waveform 使用
-    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::WaveformSource::new(buffer),
+    )?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.waveform_tasks.lock().insert(channel_id, cancel_tx);
 
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
     tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        log::info!(
-            "波形订阅已启动, channel_id={}, 间隔={}ms",
-            channel_id,
-            interval.as_millis()
-        );
-        loop {
-            tokio::select! {
-                // 收到取消信号 → 优雅退出
-                _ = &mut cancel_rx => {
-                    log::info!("波形订阅被主动取消, channel_id={}", channel_id);
-                    break;
-                }
-                _ = ticker.tick() => {
-                    let window = {
-                        let buf = buffer.lock();
-                        let pts = buf.point_count().min(max_pts);
-                        buf.get_recent(pts)
-                    };
-                    // Channel 已关闭则退出
-                    if on_event.send(window).is_err() {
-                        log::info!("波形订阅通道已关闭, channel_id={}", channel_id);
-                        break;
-                    }
-                }
-            }
-        }
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("波形分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_pts,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
     });
 
-    Ok(())
+    Ok(group_key)
 }
 
 /// 同步查询: 获取最近 N 个波形点
@@ -149,29 +147,57 @@ pub async fn unsubscribe_waveform(state: State<'_, AppState>, channel_id: u32) -
 
 // ============ 原始数据命令 ============
 
-/// 订阅原始数据 — 通过 Channel 周期性推送 RawDataBatch
+/// 订阅原始数据 — 统一分片流 (增量 drain + 自动并发分片)
 ///
-/// interval_ms: 推送间隔 (毫秒), 默认 16ms (~60 FPS)
-/// max_bytes: 单次推送的最大字节数, 默认 65536
+/// - 首次调用不传 `group_id`: 创建订阅组 (本通道为 shard 0), 返回组 id
+/// - 后续调用传入 `group_id`: 作为新 shard 加入 (最多 MAX_STREAM_SHARDS 个)
+///
+/// 分片按积压自动激活/休眠 (shard i 在积压 ≥ i×256KB 时参与分发);
+/// 实际批量随积压自适应放大 (64KB ~ 1MiB), 推送上限 64MB/s/分片。
+///
+/// 取消方式: 前端对每个分片调用 unsubscribe_rawdata(channel_id)
 #[tauri::command]
 pub async fn subscribe_rawdata(
     state: State<'_, AppState>,
     on_event: Channel<RawDataBatch>,
+    group_id: Option<String>,
     interval_ms: Option<u64>,
     max_bytes: Option<usize>,
-) -> Result<()> {
-    let collector = state.raw_data_collector.clone();
+) -> Result<String> {
     let interval = Duration::from_millis(interval_ms.unwrap_or(16));
     let max_n = max_bytes.unwrap_or(65536);
     let channel_id = on_event.id();
+    let collector = state.raw_data_collector.clone();
+
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::RawDataSource::new(collector),
+    )?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.raw_data_tasks.lock().insert(channel_id, cancel_tx);
 
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
     tokio::spawn(async move {
-        crate::state::rawdata_loop(collector, on_event, interval, max_n, cancel_rx).await;
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("原始数据分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
     });
-    Ok(())
+
+    Ok(group_key)
 }
 
 /// 取消订阅原始数据
@@ -183,42 +209,64 @@ pub async fn unsubscribe_rawdata(state: State<'_, AppState>, channel_id: u32) ->
     Ok(())
 }
 
-/// 订阅指定 FrameDecoder 节点的原始数据 — 通过 Channel 周期性推送该节点消费的原始帧字节
+/// 订阅指定 FrameDecoder 节点的原始数据 — 统一分片流
 ///
 /// 与 subscribe_rawdata (全局原始字节流) 不同, 本命令只推送指定 FrameDecoder 节点
-/// 在 feed_frame_decoders 中每帧消费的原始字节 (frame.raw_bytes), 供前端 RawData
+/// 在 feed_frame_decoders_cached 中每帧消费的原始字节 (frame.raw_bytes), 供前端 RawData
 /// 以独立通道 (旁路) 展示每个节点的原始帧内容, 不影响全局 f32 图快照。
 ///
-/// node_id: FrameDecoder widget id; 若节点不存在则返回 Ok(()) (no-op)
-/// interval_ms: 推送间隔 (毫秒), 默认 16ms (~60 FPS)
-/// max_bytes: 单次推送的最大字节数, 默认 65536
+/// node_id: FrameDecoder widget id; 若节点不存在则返回空字符串 (no-op, 不分片)
+/// interval_ms: 推送间隔 (毫秒), 默认 16ms
+/// max_bytes: 单次推送最小批量, 默认 65536 (随积压自适应放大)
 ///
-/// 取消方式: 前端调用 unsubscribe_rawdata_node(channel_id) 触发 oneshot 取消信号,
-/// task 在 select! 中收到信号后优雅退出。
+/// 取消方式: 前端对每个分片调用 unsubscribe_rawdata_node(channel_id)
 #[tauri::command]
 pub async fn subscribe_rawdata_node(
     state: State<'_, AppState>,
     node_id: String,
     on_event: Channel<RawDataBatch>,
+    group_id: Option<String>,
     interval_ms: Option<u64>,
     max_bytes: Option<usize>,
-) -> Result<()> {
-    // 节点不存在 → no-op, 不报错
+) -> Result<String> {
+    // 节点不存在 → no-op, 返回空组 id (前端不再加分片)
     let collector = match state.decoder_raw_collectors.lock().get(&node_id) {
         Some(c) => c.clone(),
-        None => return Ok(()),
+        None => return Ok(String::new()),
     };
     let interval = Duration::from_millis(interval_ms.unwrap_or(16));
     let max_n = max_bytes.unwrap_or(65536);
     let channel_id = on_event.id();
 
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::RawDataSource::new(collector),
+    )?;
+
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.raw_data_node_tasks.lock().insert(channel_id, cancel_tx);
 
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
     tokio::spawn(async move {
-        crate::state::rawdata_loop(collector, on_event, interval, max_n, cancel_rx).await;
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("节点原始数据分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
     });
-    Ok(())
+
+    Ok(group_key)
 }
 
 /// 取消订阅指定 FrameDecoder 节点的原始数据

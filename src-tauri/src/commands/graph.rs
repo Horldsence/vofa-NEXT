@@ -20,6 +20,9 @@ pub async fn update_tab_graph(
         .map_err(|e| vofa_next_core::Error::Config(format!("{}", e)))?;
     let mut graphs = state.graphs.lock();
     graphs.insert(tab_id, compiled);
+    state
+        .graphs_version
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 
@@ -27,6 +30,9 @@ pub async fn update_tab_graph(
 #[tauri::command]
 pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Result<()> {
     state.graphs.lock().remove(&tab_id);
+    state
+        .graphs_version
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 

@@ -6,10 +6,16 @@
 //! - [`graph_eval`][]: 节点图评估与派生值收集
 //! - [`decoder_feed`][]: FrameDecoder 状态同步与字节喂入
 //! - [`spectrum_sync`][]: 频谱分析器同步
+//! - [`dispatcher`][]: 自适应并发分发器 (AdaptiveRate + Channel 推送循环)
+//! - [`stream`][]: 统一分片流框架 (StreamSource + 订阅组 + 自动扩缩容)
+//! - [`feed_parallel`][]: feed (RX 解析) 段自动并行 (帧对齐切分 + worker 池)
 
 mod data_loop;
 pub mod decoder_feed;
+pub mod dispatcher;
+pub mod feed_parallel;
 pub mod graph_eval;
 pub mod spectrum_sync;
+pub mod stream;
 
 pub use data_loop::run as data_loop;

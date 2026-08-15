@@ -4835,6 +4835,7 @@ dependencies = [
 name = "vofa-next-buffer"
 version = "0.1.2"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "vofa-next-core",
@@ -4864,6 +4865,7 @@ name = "vofa-next-nodes"
 version = "0.1.2"
 dependencies = [
  "log",
+ "rustc-hash",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

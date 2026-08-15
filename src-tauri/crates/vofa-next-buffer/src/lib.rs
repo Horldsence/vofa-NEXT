@@ -112,6 +112,9 @@ impl<T: Clone + Default> RingBuffer<T> {
 /// 波形数据窗口 — 供前端查询
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaveformWindow {
+    /// 组级单调序号 — 分片并发推送时前端按 "最新 seq 胜出" 丢弃旧快照
+    #[serde(default)]
+    pub seq: u64,
     /// 时间戳数组 (相对最新的偏移, 单位: 毫秒)
     pub timestamps: Vec<i64>,
     /// 每通道的数据数组
@@ -130,26 +133,74 @@ pub struct WaveformWindow {
     pub buffer_capacity: usize,
 }
 
-/// 原始数据块
+/// 原始数据块 (线上格式) — 字节走 base64 而非 JSON 数字数组
+///
+/// JSON 数字数组膨胀约 3.5x (每个字节 1~4 字符 + 逗号), base64 仅 1.37x,
+/// 且解码在 JS 侧可用 atob 一次完成, 是 RAWDATA 高通量 (7MB/s+) 的关键。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawDataChunk {
     pub timestamp_us: u64,
-    pub bytes: Vec<u8>,
+    /// base64 编码的原始字节
+    pub bytes_b64: String,
 }
 
 /// 原始数据批次
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawDataBatch {
+    /// 全局单调序号 — 分片并发推送时由分发器在 drain 时分配,
+    /// 前端按 seq 重组, 保证字节序与到达顺序一致 (单分片时从 0 连续递增)
+    #[serde(default)]
+    pub seq: u64,
     pub chunks: Vec<RawDataChunk>,
     pub total_bytes: u64,
     pub dropped_bytes: u64,
 }
 
+/// 内部存储块 (未编码的原始字节)
+#[derive(Debug, Clone)]
+struct StoredChunk {
+    timestamp_us: u64,
+    bytes: Vec<u8>,
+}
+
+/// [`RawDataCollector::drain_raw`] 的返回 — 未编码的原始块 + 计数器快照
+///
+/// 编码延迟到 [`RawDrain::into_batch`] 在 collector 锁外进行。
+#[derive(Debug)]
+pub struct RawDrain {
+    /// (timestamp_us, bytes)
+    pub chunks: Vec<(u64, Vec<u8>)>,
+    pub total_bytes: u64,
+    pub dropped_bytes: u64,
+}
+
+impl RawDrain {
+    /// 编码为线上批次 (base64) — 在 collector 锁外调用
+    pub fn into_batch(self) -> RawDataBatch {
+        use base64::Engine;
+        RawDataBatch {
+            seq: 0, // 由分发器在发送前统一分配
+            chunks: self
+                .chunks
+                .into_iter()
+                .map(|(timestamp_us, bytes)| RawDataChunk {
+                    timestamp_us,
+                    bytes_b64: base64::engine::general_purpose::STANDARD.encode(bytes),
+                })
+                .collect(),
+            total_bytes: self.total_bytes,
+            dropped_bytes: self.dropped_bytes,
+        }
+    }
+}
+
 /// 原始数据收集器 — 固定容量, 超过时丢弃最旧块
 #[derive(Debug, Clone)]
 pub struct RawDataCollector {
-    chunks: VecDeque<RawDataChunk>,
+    chunks: VecDeque<StoredChunk>,
     capacity: usize,
+    /// 当前缓存字节数 (增量维护, 避免每次 O(n) 遍历)
+    stored: usize,
     total_bytes: u64,
     dropped_bytes: u64,
 }
@@ -169,6 +220,7 @@ impl RawDataCollector {
         Self {
             chunks: VecDeque::new(),
             capacity: cap,
+            stored: 0,
             total_bytes: 0,
             dropped_bytes: 0,
         }
@@ -177,20 +229,30 @@ impl RawDataCollector {
     /// 推入一块原始数据; 若超出容量则丢弃最旧块
     pub fn push_chunk(&mut self, timestamp_us: u64, bytes: &[u8]) {
         self.total_bytes += bytes.len() as u64;
-        self.chunks.push_back(RawDataChunk {
+        self.stored += bytes.len();
+        self.chunks.push_back(StoredChunk {
             timestamp_us,
             bytes: bytes.to_vec(),
         });
 
-        while self.stored_bytes() > self.capacity && !self.chunks.is_empty() {
+        while self.stored > self.capacity && !self.chunks.is_empty() {
             if let Some(front) = self.chunks.pop_front() {
+                self.stored -= front.bytes.len();
                 self.dropped_bytes += front.bytes.len() as u64;
             }
         }
     }
 
-    /// 取出不超过 max_bytes 的若干完整块
+    /// 取出不超过 max_bytes 的若干完整块 (字节在取出时编码为 base64)
     pub fn drain_batch(&mut self, max_bytes: usize) -> RawDataBatch {
+        self.drain_raw(max_bytes).into_batch()
+    }
+
+    /// 取出不超过 max_bytes 的若干完整块 — 不编码, 锁内仅移动 Vec
+    ///
+    /// 高通量路径专用: base64 编码耗时与数据量成正比, 在锁外进行
+    /// (见 RawDrain::into_batch), 避免阻塞 data_loop 的 push_chunk。
+    pub fn drain_raw(&mut self, max_bytes: usize) -> RawDrain {
         let mut drained = Vec::new();
         let mut acc = 0usize;
         while let Some(front) = self.chunks.front() {
@@ -200,10 +262,11 @@ impl RawDataCollector {
             }
             if let Some(chunk) = self.chunks.pop_front() {
                 acc = acc.saturating_add(chunk.bytes.len());
-                drained.push(chunk);
+                self.stored -= chunk.bytes.len();
+                drained.push((chunk.timestamp_us, chunk.bytes));
             }
         }
-        RawDataBatch {
+        RawDrain {
             chunks: drained,
             total_bytes: self.total_bytes,
             dropped_bytes: self.dropped_bytes,
@@ -213,6 +276,7 @@ impl RawDataCollector {
     /// 清空所有块并重置计数器
     pub fn clear(&mut self) {
         self.chunks.clear();
+        self.stored = 0;
         self.total_bytes = 0;
         self.dropped_bytes = 0;
     }
@@ -220,11 +284,17 @@ impl RawDataCollector {
     /// 设置容量 (保留最近块)
     pub fn set_capacity(&mut self, capacity: usize) {
         self.capacity = capacity.max(1);
-        while self.stored_bytes() > self.capacity && !self.chunks.is_empty() {
+        while self.stored > self.capacity && !self.chunks.is_empty() {
             if let Some(front) = self.chunks.pop_front() {
+                self.stored -= front.bytes.len();
                 self.dropped_bytes += front.bytes.len() as u64;
             }
         }
+    }
+
+    /// 当前缓存字节数 (供自适应批量/分片扩缩容做积压检测)
+    pub fn stored_bytes(&self) -> usize {
+        self.stored
     }
 
     /// 累计写入字节数 (含已丢弃)
@@ -236,16 +306,19 @@ impl RawDataCollector {
     pub fn dropped_bytes(&self) -> u64 {
         self.dropped_bytes
     }
-
-    fn stored_bytes(&self) -> usize {
-        self.chunks.iter().map(|c| c.bytes.len()).sum()
-    }
 }
 
 impl Default for RawDataCollector {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// 派生缓冲条目 (sink/widget 元数据 + 环形缓冲)
+struct DerivedEntry {
+    sink: String,
+    source: String,
+    rb: RingBuffer<f32>,
 }
 
 /// 多通道时间序列数据缓冲区
@@ -258,9 +331,13 @@ pub struct DataBuffer {
     max_points: usize,
     /// 当前通道数 (可动态变化)
     num_channels: usize,
-    /// 派生数据缓冲区: (sink_widget_id, source_widget_id) → 环形缓冲区
+    /// 派生数据缓冲 (稳定索引直写): 批首注册拿索引, 逐帧零哈希写入。
     /// 与 timestamps 同步 push, 保证时间戳完全对齐
-    derived_buffers: HashMap<(String, String), RingBuffer<f32>>,
+    derived_list: Vec<DerivedEntry>,
+    /// (sink, source) → derived_list 下标
+    derived_index: HashMap<(String, String), usize>,
+    /// 单调递增版本号 — push_frame/push_derived 时变化, 供订阅循环做变化检测
+    version: u64,
 }
 
 impl DataBuffer {
@@ -271,8 +348,15 @@ impl DataBuffer {
             timestamps: RingBuffer::new(max_points),
             max_points,
             num_channels: nc,
-            derived_buffers: HashMap::new(),
+            derived_list: Vec::new(),
+            derived_index: HashMap::new(),
+            version: 0,
         }
+    }
+
+    /// 当前版本号 (单调递增, 数据变化时递增)
+    pub const fn version(&self) -> u64 {
+        self.version
     }
 
     /// 推入一帧数据
@@ -291,6 +375,7 @@ impl DataBuffer {
             };
             self.channels[i].push(val);
         }
+        self.version = self.version.wrapping_add(1);
     }
 
     /// 推入派生数据 (与最近一次 push_frame 的时间戳对齐)
@@ -302,21 +387,55 @@ impl DataBuffer {
     /// **时间对齐**: 派生缓冲区与 timestamps 共享同一时间轴,
     /// 保证 derived[i] 与 channels[ch][i] 对应同一帧。
     pub fn push_derived(&mut self, sink_id: &str, source_id: &str, value: f32) {
+        let i = self.derived_index_of(sink_id, source_id);
+        self.push_derived_idx(i, value);
+    }
+
+    /// 派生缓冲索引: 命中返回下标; 未命中注册新条目 (环形缓冲容量 max_points)
+    ///
+    /// 供高通量路径在批首按 (sink_id, source_id) 注册一次, 之后逐帧用
+    /// [`push_derived_idx`] 零哈希直写。
+    pub fn derived_index_of(&mut self, sink_id: &str, source_id: &str) -> usize {
         let key = (sink_id.to_string(), source_id.to_string());
-        self.derived_buffers
-            .entry(key)
-            .or_insert_with(|| RingBuffer::new(self.max_points))
-            .push(value);
+        if let Some(&idx) = self.derived_index.get(&key) {
+            return idx;
+        }
+        let idx = self.derived_list.len();
+        self.derived_list.push(DerivedEntry {
+            sink: key.0.clone(),
+            source: key.1.clone(),
+            rb: RingBuffer::new(self.max_points),
+        });
+        self.derived_index.insert(key, idx);
+        idx
+    }
+
+    /// 按索引推入派生数据 (批内逐帧直写, 零哈希)
+    ///
+    /// 索引失效 (widget 删除导致调用方批内持有的下标越界) 时静默丢弃。
+    pub fn push_derived_idx(&mut self, idx: usize, value: f32) {
+        if let Some(e) = self.derived_list.get_mut(idx) {
+            e.rb.push(value);
+            self.version = self.version.wrapping_add(1);
+        }
     }
 
     /// 清空所有派生缓冲区 (断开连接/清数据时调用)
     pub fn clear_derived(&mut self) {
-        self.derived_buffers.clear();
+        self.derived_list.clear();
+        self.derived_index.clear();
     }
 
     /// 移除指定 sink 的派生缓冲区 (widget 删除时调用)
     pub fn remove_derived_sink(&mut self, sink_id: &str) {
-        self.derived_buffers.retain(|(s, _), _| s != sink_id);
+        self.derived_list.retain(|e| e.sink != sink_id);
+        // retain 后下标移位, 重建索引映射
+        self.derived_index = self
+            .derived_list
+            .iter()
+            .enumerate()
+            .map(|(i, e)| ((e.sink.clone(), e.source.clone()), i))
+            .collect();
     }
 
     /// 调整通道数 (仅增大, 保留已有数据)
@@ -340,7 +459,12 @@ impl DataBuffer {
     ) -> HashMap<String, HashMap<String, Vec<f32>>> {
         let window_len = end_idx - start_idx;
         let mut result: HashMap<String, HashMap<String, Vec<f32>>> = HashMap::new();
-        for ((sink, source), rb) in &self.derived_buffers {
+        for e in &self.derived_list {
+            // 跳过空条目 (批首注册可能尚无数据) — 保持旧语义: 只输出有过数据的键
+            let rb = &e.rb;
+            if rb.len() == 0 {
+                continue;
+            }
             let m = rb.len();
             // derived[0] 对应 timestamps[offset] (offset = total_ts - m)
             let offset = total_ts.saturating_sub(m);
@@ -359,9 +483,9 @@ impl DataBuffer {
                 }
             }
             result
-                .entry(sink.clone())
+                .entry(e.sink.clone())
                 .or_default()
-                .insert(source.clone(), v);
+                .insert(e.source.clone(), v);
         }
         result
     }
@@ -372,22 +496,26 @@ impl DataBuffer {
     /// 派生缓冲区不足 count 时, 开头填 NaN。
     fn slice_all_derived_recent(&self, count: usize) -> HashMap<String, HashMap<String, Vec<f32>>> {
         let mut result: HashMap<String, HashMap<String, Vec<f32>>> = HashMap::new();
-        for ((sink, source), rb) in &self.derived_buffers {
-            let data = rb.recent(count);
+        for e in &self.derived_list {
+            // 跳过空条目 (批首注册可能尚无数据) — 保持旧语义: 只输出有过数据的键
+            if e.rb.len() == 0 {
+                continue;
+            }
+            let data = e.rb.recent(count);
             if data.len() < count {
                 // 开头补 NaN (派生缓冲区创建较晚)
                 let pad = count - data.len();
                 let mut v = vec![f32::NAN; pad];
                 v.extend_from_slice(&data);
                 result
-                    .entry(sink.clone())
+                    .entry(e.sink.clone())
                     .or_default()
-                    .insert(source.clone(), v);
+                    .insert(e.source.clone(), v);
             } else {
                 result
-                    .entry(sink.clone())
+                    .entry(e.sink.clone())
                     .or_default()
-                    .insert(source.clone(), data);
+                    .insert(e.source.clone(), data);
             }
         }
         result
@@ -399,6 +527,7 @@ impl DataBuffer {
         let all_ts = self.timestamps.all();
         if all_ts.is_empty() {
             return WaveformWindow {
+                seq: 0,
                 timestamps: vec![],
                 channels: vec![],
                 channel_count: self.num_channels,
@@ -441,6 +570,7 @@ impl DataBuffer {
         let derived = self.slice_all_derived_window(start_idx, end_idx, all_ts.len());
 
         WaveformWindow {
+            seq: 0,
             timestamps: window_ts,
             channels: window_channels,
             channel_count: self.num_channels,
@@ -467,6 +597,7 @@ impl DataBuffer {
         let derived = self.slice_all_derived_recent(count);
 
         WaveformWindow {
+            seq: 0,
             timestamps: rel_ts,
             channels,
             channel_count: self.num_channels,
@@ -510,8 +641,8 @@ impl DataBuffer {
         for ch in &mut self.channels {
             ch.resize(new_max);
         }
-        for buf in self.derived_buffers.values_mut() {
-            buf.resize(new_max);
+        for e in &mut self.derived_list {
+            e.rb.resize(new_max);
         }
     }
 
@@ -521,7 +652,8 @@ impl DataBuffer {
             ch.clear();
         }
         self.timestamps.clear();
-        self.derived_buffers.clear();
+        self.derived_list.clear();
+        self.derived_index.clear();
     }
 
     /// 设置通道数 (清空已有数据)
@@ -536,6 +668,12 @@ impl DataBuffer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// base64 解码 (测试断言用)
+    fn decode_b64(s: &str) -> Vec<u8> {
+        use base64::Engine;
+        base64::engine::general_purpose::STANDARD.decode(s).unwrap()
+    }
 
     #[test]
     fn test_ringbuffer_push_and_recent() {
@@ -839,8 +977,8 @@ mod tests {
 
         let batch = col.drain_batch(10);
         assert_eq!(batch.chunks.len(), 2);
-        assert_eq!(batch.chunks[0].bytes, b"hello");
-        assert_eq!(batch.chunks[1].bytes, b"world");
+        assert_eq!(decode_b64(&batch.chunks[0].bytes_b64), b"hello");
+        assert_eq!(decode_b64(&batch.chunks[1].bytes_b64), b"world");
         assert_eq!(batch.total_bytes, 10);
         assert!(col.drain_batch(1024).chunks.is_empty());
     }
@@ -855,7 +993,7 @@ mod tests {
 
         let batch = col.drain_batch(1024);
         assert_eq!(batch.chunks.len(), 1);
-        assert_eq!(batch.chunks[0].bytes, b"xx");
+        assert_eq!(decode_b64(&batch.chunks[0].bytes_b64), b"xx");
         assert_eq!(batch.dropped_bytes, 10);
     }
 

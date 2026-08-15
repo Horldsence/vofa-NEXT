@@ -27,7 +27,7 @@ pub async fn spawn(
     // UdpSocket 的 send/recv 接受 &self, 用 Arc 共享
     let socket = Arc::new(socket);
 
-    let (data_tx, _) = broadcast::channel(2048);
+    let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -36,7 +36,7 @@ pub async fn spawn(
     let cancel_read = cancel.clone();
     let socket_read = socket.clone();
     tokio::spawn(async move {
-        let mut buf = [0u8; 2048];
+        let mut buf = [0u8; 65536];
         loop {
             tokio::select! {
                 result = socket_read.recv(&mut buf) => {

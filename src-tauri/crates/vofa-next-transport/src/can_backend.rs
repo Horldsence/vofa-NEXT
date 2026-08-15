@@ -1,6 +1,6 @@
 //! CAN 后端抽象 — 用于诊断层 (ISO-TP / UDS / OBD-II / J1939) 接入底层 CAN 帧流
 //!
-//! 这是 [`vofa-next-protocol`] 中 `ProtocolEngine::feed_can` 的对偶:
+//! 这是 [`vofa-next-protocol`] 中 `ProtocolEngine::feed` 的对偶:
 //! - `ProtocolEngine` 把"原始字节流 → CanFrame" 的解码做掉
 //! - `CanBackend` 把"CanFrame 收发" 暴露成统一接口给上层诊断引擎使用
 //!

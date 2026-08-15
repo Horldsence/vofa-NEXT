@@ -79,7 +79,7 @@ pub fn spawn(
         .try_clone()
         .map_err(|e| Error::Transport(format!("克隆串口失败: {}", e)))?;
 
-    let (data_tx, _) = broadcast::channel(2048);
+    let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -87,7 +87,7 @@ pub fn spawn(
     let data_tx_read = data_tx.clone();
     let cancel_read = cancel.clone();
     std::thread::spawn(move || {
-        let mut buf = [0u8; 2048];
+        let mut buf = [0u8; 65536];
         while !cancel_read.load(Ordering::Relaxed) {
             match port.read(&mut buf) {
                 Ok(0) => break,

@@ -23,7 +23,7 @@ pub async fn spawn(
     Arc<AtomicBool>,
     Arc<Notify>,
 )> {
-    let (data_tx, _) = broadcast::channel(2048);
+    let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
     let running = Arc::new(AtomicBool::new(false));
@@ -32,7 +32,13 @@ pub async fn spawn(
     let channels = config.channels.max(1);
     let sample_rate = config.sample_rate.max(1.0);
     let signal = config.signal;
-    let interval_us = (1_000_000.0 / sample_rate) as u64;
+
+    // 消息合批: 每条广播消息至少覆盖 500µs 的采样, 消息率上限 ~2000 条/s。
+    // 高采样率 (如 300k/s) 若每采样一条消息, 每秒 30 万条消息的调度和拷贝开销
+    // 会压垮 broadcast → data_loop 链路 (Lagged 丢数据); 合批后消息数不再是瓶颈。
+    let samples_per_msg = (f64::from(sample_rate) * 0.0005).ceil().max(1.0) as u64;
+    let msg_interval = Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
+    let sample_dt = 1.0 / sample_rate;
 
     // 测试数据生成任务
     let data_tx_gen = data_tx.clone();
@@ -42,24 +48,24 @@ pub async fn spawn(
     tokio::spawn(async move {
         let start = Instant::now();
         let mut sample_idx: u64 = 0;
-        let interval = Duration::from_micros(interval_us);
-        let mut tick = tokio::time::interval(interval);
+        let mut tick = tokio::time::interval(msg_interval);
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
         loop {
             if running_gen.load(Ordering::Relaxed) {
                 tokio::select! {
                     _ = tick.tick() => {
-                        let t = start.elapsed().as_secs_f32();
-                        // 相位必须取真实流逝时间, 不能用 sample_idx / sample_rate 推算:
-                        // 帧时间戳在解析侧按到达时间打 (DataFrame::new → now_us),
-                        // 一旦定时器抖动或 tick 被跳过 (MissedTickBehavior::Skip),
-                        // 按序号推算的相位就会滞后于时间戳, 且误差永久累积,
-                        // 导致示波器上的采样点偏离理想波形位置
-                        let data = generate_bytes(channels, signal, t, &protocol, sample_idx);
+                        // 相位以真实流逝时间为基准, 批内按采样间隔递增 (亚毫秒偏移,
+                        // 不会产生 MissedTickBehavior::Skip 那样的永久累积漂移)
+                        let base_t = start.elapsed().as_secs_f32();
+                        let mut data = Vec::new();
+                        for i in 0..samples_per_msg {
+                            let t = base_t + i as f32 * sample_dt;
+                            data.extend_from_slice(&generate_bytes(channels, signal, t, &protocol, sample_idx));
+                            sample_idx += 1;
+                        }
 
                         let _ = data_tx_gen.send(data);
-                        sample_idx += 1;
                     }
                     _ = notify_gen.notified() => {}
                     data = write_rx.recv() => {

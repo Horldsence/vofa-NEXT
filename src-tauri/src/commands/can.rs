@@ -19,31 +19,57 @@ pub async fn send_can_frame(state: State<'_, AppState>, frame: CanFrame) -> Resu
     manager.send(&data).await
 }
 
-/// 订阅 CAN 帧推送 — 通过 Channel 定期推送最近 N 帧
+/// 订阅 CAN 帧推送 — 统一分片流 (增量 drain + 自动并发分片)
 ///
-/// - interval_ms: 推送间隔 (默认 100ms)
-/// - max_frames: 单次推送最大帧数 (默认 500)
+/// - 首次调用不传 `group_id`: 创建订阅组 (本通道为 shard 0), 返回组 id,
+///   首个批次回溯最近 max_frames 条历史, 之后严格增量推送
+/// - 后续调用传入 `group_id`: 作为新 shard 加入 (最多 MAX_STREAM_SHARDS 个)
 ///
-/// 取消方式: 前端调用 unsubscribe_can_frames(channel_id)
+/// - interval_ms: 推送间隔 (默认 100ms, 有数据时自动提速到 16ms)
+/// - max_frames: 单次推送最小批量 (默认 500, 随积压自适应放大)
+///
+/// 取消方式: 前端对每个分片调用 unsubscribe_can_frames(channel_id)
 #[tauri::command]
 pub async fn subscribe_can_frames(
     state: State<'_, AppState>,
     on_event: Channel<CanFrameBatch>,
+    group_id: Option<String>,
     interval_ms: Option<u64>,
     max_frames: Option<usize>,
-) -> Result<()> {
-    let buffer = state.can_buffer.clone();
+) -> Result<String> {
     let interval = Duration::from_millis(interval_ms.unwrap_or(100));
     let max_n = max_frames.unwrap_or(500);
     let channel_id = on_event.id();
+    let buffer = state.can_buffer.clone();
+
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::CanStreamSource::new(buffer, max_n),
+    )?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.can_tasks.lock().insert(channel_id, cancel_tx);
 
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
     tokio::spawn(async move {
-        crate::state::can_frames_loop(buffer, on_event, interval, max_n, cancel_rx).await;
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("CAN 帧分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
     });
-    Ok(())
+    Ok(group_key)
 }
 
 /// 取消订阅 CAN 帧

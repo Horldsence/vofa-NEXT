@@ -71,10 +71,12 @@ too_many_lines = "allow"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
 log = "0.4"
 thiserror = "1"
 anyhow = "1"
+rustc-hash = "2"
 vofa-next-core = { path = "crates/vofa-next-core" }
 vofa-next-transport = { path = "crates/vofa-next-transport" }
 vofa-next-protocol = { path = "crates/vofa-next-protocol" }
