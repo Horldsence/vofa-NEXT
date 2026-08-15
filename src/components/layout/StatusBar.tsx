@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
@@ -11,16 +11,15 @@ import { useSettingsStore } from '../../store/settingsStore';
 
 /// 底部状态栏 — 显示连接状态、统计数据
 ///
-/// 空间不足时分级收缩 (tier, 由根节点 ResizeObserver 驱动):
-/// - tier 0 (>= 960px): 全量
-/// - tier 1 (< 960px): 隐藏 rx/tx frames
-/// - tier 2 (< 780px): 再隐藏 transport/protocol 文本标签
-/// - tier 3 (< 620px): rx/tx bytes 紧凑格式 (↓ 1.2MB / ↑ 0B), 隐藏 BufferUsageStats
+/// 空间不足时分级收缩 (tier), 由内容实际溢出驱动而非固定像素断点 —
+/// 窗口最小宽度 (minWidth 900) 之上的所有宽度、不同语言标签长度、
+/// 告警出现/消失都能自适应, 永远不会裁切内容:
+/// - tier 0: 全量
+/// - tier 1: 隐藏 rx/tx frames
+/// - tier 2: 再隐藏 transport/protocol 文本标签, 缓存指示收缩为纯文字百分比 (Wave 12%)
+/// - tier 3: rx/tx bytes 紧凑格式 (↓ 1.2MB / ↑ 0B), 缓存指示全部隐藏
 /// 任何 tier 保留: 连接状态、两个告警、刷新按钮
-// 断点阈值 (px) — 按当前内容实测宽度估计, 可按需调整
-const TIER1_MAX = 960;
-const TIER2_MAX = 780;
-const TIER3_MAX = 620;
+const TIER_MAX = 3;
 
 export const StatusBar = memo(function StatusBar() {
   const lang = useAppStore((s) => s.lang);
@@ -39,18 +38,38 @@ export const StatusBar = memo(function StatusBar() {
 
   // 本地 tier 状态 — 只影响渲染, 不改变上方标量订阅纪律
   const rootRef = useRef<HTMLDivElement>(null);
-  const [barWidth, setBarWidth] = useState(Number.POSITIVE_INFINITY);
+  const [tier, setTier] = useState(0);
+  const lastWidth = useRef(0);
+
+  // ResizeObserver 是唯一可靠的 tier 触发源 — 断开连接时没有数据事件,
+  // 状态栏不会重渲染, 因此必须在 RO 回调里直接驱动两个方向的调整:
+  // 变宽: 逐级尝试展开更多内容 (是否真放得下由下方 layout effect 校正)
+  // 变窄且已溢出: 逐级收缩
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      setBarWidth(entries[0].contentRect.width);
+      const w = entries[0].contentRect.width;
+      const grew = w > lastWidth.current;
+      lastWidth.current = w;
+      setTier((t) => {
+        if (grew) return Math.max(0, t - 1);
+        if (el.scrollWidth > el.clientWidth + 1) return Math.min(TIER_MAX, t + 1);
+        return t;
+      });
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const tier =
-    barWidth >= TIER1_MAX ? 0 : barWidth >= TIER2_MAX ? 1 : barWidth >= TIER3_MAX ? 2 : 3;
+
+  // 溢出校正: 每次渲染后(绘制前)检测实际溢出, 逐级收缩直到放下或到达 TIER_MAX.
+  // 同时覆盖内容自身变宽的场景 (统计数字增长、告警出现、语言切换)
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (el && el.scrollWidth > el.clientWidth + 1 && tier < TIER_MAX) {
+      setTier(tier + 1);
+    }
+  });
 
   const onContextMenu = useContextMenu([
     {
@@ -163,7 +182,7 @@ export const StatusBar = memo(function StatusBar() {
       <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <CanLoadAlarm />
       <PipelineDropAlarm />
-      {tier < 3 && <BufferUsageStats />}
+      {tier < 3 && <BufferUsageStats compact={tier >= 2} />}
       <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <button
         className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors duration-150 flex-shrink-0"

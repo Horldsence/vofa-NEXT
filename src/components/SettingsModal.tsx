@@ -300,7 +300,7 @@ export function SettingsModal() {
             <input
               ref={searchInputRef}
               type="text"
-              className="flex-1 bg-transparent border-none outline-none text-text-primary text-sm font-ui"
+              className="search-input flex-1 bg-transparent border-none outline-none text-text-primary text-sm font-ui"
               placeholder={t(lang, 'settingsSearch')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

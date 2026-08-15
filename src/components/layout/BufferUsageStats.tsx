@@ -18,6 +18,13 @@ function usageColor(usage: number): string {
   return 'bg-red';
 }
 
+/// 与 usageColor 同语义的文字色 (compact 百分比模式用)
+function usageTextColor(usage: number): string {
+  if (usage < 0.6) return 'text-green';
+  if (usage < 0.85) return 'text-yellow';
+  return 'text-red';
+}
+
 /// 格式化容量数字 (k/M)
 function formatCount(n: number): string {
   if (n < 1000) return `${n}`;
@@ -25,15 +32,27 @@ function formatCount(n: number): string {
   return `${(n / 1000000).toFixed(2)}M`;
 }
 
-/// 单个缓存使用量指示器 — 标签 + 进度条 + 数字
+/// 单个缓存使用量指示器 — 标签 + 进度条 + 数字; compact 模式仅显示纯文字百分比
 function BufferIndicator({
   label,
   stats,
+  compact = false,
 }: {
   label: string;
   stats: BufferStats;
+  compact?: boolean;
 }) {
   const pct = Math.min(100, Math.max(0, stats.usage * 100));
+  if (compact) {
+    return (
+      <span
+        className={`text-[10px] font-mono tabular-nums whitespace-nowrap ${usageTextColor(stats.usage)}`}
+        title={`${label}: ${stats.length}/${stats.capacity}`}
+      >
+        {label} {Math.round(pct)}%
+      </span>
+    );
+  }
   return (
     <div className="flex items-center gap-1.5" title={`${label}: ${stats.length}/${stats.capacity}`}>
       <span className="text-[11px] opacity-80">{label}</span>
@@ -51,7 +70,8 @@ function BufferIndicator({
 }
 
 /// 状态栏缓存使用量组件 — 订阅三个 buffer 的 stats, RAF 节流后更新
-export function BufferUsageStats() {
+/// compact: 状态栏收缩档, 仅显示纯文字百分比 (Wave 12%)
+export function BufferUsageStats({ compact = false }: { compact?: boolean }) {
   const [canStats, setCanStats] = useState<BufferStats>(empty);
   const [rawStats, setRawStats] = useState<BufferStats>(empty);
   const [logicStats, setLogicStats] = useState<BufferStats>(empty);
@@ -85,11 +105,11 @@ export function BufferUsageStats() {
 
   return (
     <div className="flex items-center gap-3">
-      <BufferIndicator label="Wave" stats={waveformStats} />
-      <BufferIndicator label="Raw" stats={rawStats} />
-      <BufferIndicator label="CAN" stats={canStats} />
-      <BufferIndicator label="Logic" stats={logicStats} />
-      <BufferIndicator label="Decoded" stats={decodedStats} />
+      <BufferIndicator label="Wave" stats={waveformStats} compact={compact} />
+      <BufferIndicator label="Raw" stats={rawStats} compact={compact} />
+      <BufferIndicator label="CAN" stats={canStats} compact={compact} />
+      <BufferIndicator label="Logic" stats={logicStats} compact={compact} />
+      <BufferIndicator label="Decoded" stats={decodedStats} compact={compact} />
     </div>
   );
 }

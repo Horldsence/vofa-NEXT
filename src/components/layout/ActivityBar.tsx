@@ -75,14 +75,19 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
   ];
 
   return (
-    <div className="w-12 h-full bg-bg-activity flex flex-col items-center py-1 gap-0.5 flex-shrink-0" onContextMenu={onContextMenu}>
+    // 根节点用 w-full 而非 w-12: 外层 module-card 有 1px 边框, 内容盒仅 46px;
+    // 若这里固定 48px 会向两侧溢出 1px, 导致激活高亮块相对外围框左右间隙不等距 (5px / 3px)。
+    // w-full 使按钮在可见区域内居中, 两侧均为 4px。
+    <div className="w-full h-full bg-bg-activity flex flex-col items-center py-1 gap-1 flex-shrink-0" onContextMenu={onContextMenu}>
       {items.map((item) => (
         <div
           key={item.view}
           data-tour={item.view}
           className={clsx(
-            "w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 relative transition-colors duration-150 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active",
-            activeView === item.view && "text-text-inverse bg-accent/10 before:content-[''] before:absolute before:left-0 before:top-0 before:bottom-0 before:w-0.5 before:bg-accent"
+            "w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer transition-colors duration-150 active:bg-accent-active",
+            activeView === item.view
+              ? "text-text-bright bg-bg-active"
+              : "text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover"
           )}
           title={t(lang, item.key)}
           onClick={() => transitionStore(() => onSelect(item.view))}
@@ -93,21 +98,21 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
       <div className="flex-1" />
       <div
         data-tour="help"
-        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
+        className="w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'helpCenterOpen')}
         onClick={openHelp}
       >
         <HelpCircle size={22} />
       </div>
       <div
-        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
+        className="w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'about')}
         onClick={openAbout}
       >
         <Info size={22} />
       </div>
       <div
-        className="w-12 h-12 flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
+        className="w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer text-text-inverse/60 hover:text-text-inverse hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'settings')}
         onClick={() => openSettings()}
       >

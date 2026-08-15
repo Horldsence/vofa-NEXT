@@ -82,8 +82,8 @@ export function PortPicker() {
   }, [ports, filter]);
 
   return (
-    <div className="mb-2.5">
-      <div className="flex gap-2 items-center mb-1.5 px-0.5">
+    <div className="mb-2">
+      <div className="flex gap-2 items-center mb-2 px-0.5">
         <span className="block text-[11px] font-medium uppercase tracking-wider text-text-secondary m-0 flex-1">
           {t(lang, 'portName')}
         </span>
@@ -95,11 +95,11 @@ export function PortPicker() {
           <RefreshCw size={13} />
         </button>
       </div>
-      <div className="flex items-center gap-1.5 h-7 bg-bg-input border border-border rounded-lg px-2.5 mb-1.5 text-text-secondary focus-within:border-accent transition-colors">
+      <div className="flex items-center gap-1.5 h-7 bg-bg-input border border-border rounded-md px-2 mb-2 text-text-secondary focus-within:border-accent transition-colors">
         <Search size={12} className="flex-shrink-0" />
         <input
           type="text"
-          className="bg-transparent border-none h-full flex-1 focus:outline-none text-text-primary text-xs"
+          className="search-input bg-transparent border-none h-full flex-1 focus:outline-none text-text-primary text-xs"
           placeholder={lang === 'zh' ? '筛选端口...' : 'Filter ports...'}
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
@@ -142,7 +142,7 @@ export function PortPicker() {
             return (
               <div
                 key={group.key}
-                className={`group px-2.5 py-2 rounded-lg cursor-pointer flex items-start gap-2.5 border transition-all duration-150 ${
+                className={`group px-2 py-2 rounded-md cursor-pointer flex items-start gap-2 border transition-all duration-150 ${
                   selected
                     ? 'bg-bg-active border-accent/50 shadow-[0_1px_4px_rgba(0,0,0,0.3)]'
                     : 'border-transparent hover:bg-bg-hover hover:border-border'
@@ -151,7 +151,7 @@ export function PortPicker() {
               >
                 {/* 端口图标 */}
                 <div
-                  className={`w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 border transition-colors ${
+                  className={`w-7 h-7 rounded-sm flex items-center justify-center flex-shrink-0 border transition-colors ${
                     selected
                       ? 'bg-accent/15 border-accent/30 text-accent'
                       : 'bg-bg-input border-border text-text-secondary group-hover:text-text-primary'
@@ -185,7 +185,7 @@ export function PortPicker() {
                           <button
                             key={v}
                             type="button"
-                            className={`px-1.5 h-4.5 text-[9px] font-mono font-medium rounded cursor-pointer transition-colors ${
+                            className={`px-1.5 h-4.5 text-[9px] font-mono font-medium rounded-sm cursor-pointer transition-colors ${
                               isActive
                                 ? 'bg-accent/20 text-accent'
                                 : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'

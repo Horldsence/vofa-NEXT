@@ -258,8 +258,51 @@ export const LIGHT_THEME: ThemeDefinition = {
   },
 };
 
+/// 莫奈主题 — 低饱和灰调深色 (雾霾蓝/灰绿/灰紫/陶土, 配合分层卡片设计)
+export const MONET_THEME: ThemeDefinition = {
+  id: 'monet',
+  name: 'Monet',
+  isBuiltIn: true,
+  tokens: {
+    bgActivity: '#26292f',
+    bgSidebar: '#282c31',
+    bgEditor: '#20242a',
+    bgPanelHeader: '#2c3138',
+    bgInput: '#31363e',
+    bgHover: '#2f343c',
+    bgActive: '#3d4a5c',
+    bgButton: '#5b7fa6',
+    bgButtonHover: '#6b8fb6',
+    bgStatusbar: '#25292e',
+    bgDanger: '#59302c',
+    bgDangerHover: '#6a3833',
+    bgTooltip: '#2c3138',
+    bgScrollbar: '#3c424b',
+    bgScrollbarHover: '#4a515c',
+    bgNodeHeader: 'rgba(255, 255, 255, 0.05)',
+    border: '#343a42',
+    borderNodeHeader: 'rgba(255, 255, 255, 0.08)',
+    textPrimary: '#d4d8dc',
+    textSecondary: '#8f969e',
+    textBright: '#ffffff',
+    textDisabled: '#5d646d',
+    textInverse: '#ffffff',
+    accent: '#7aa2c9',
+    green: '#8fa98a',
+    red: '#c97e6f',
+    yellow: '#c9b083',
+    blue: '#82a8cc',
+    purple: '#a58fb5',
+    orange: '#c08b6d',
+    waveformGrid: '#363c45',
+    waveformText: '#a8afb8',
+    waveformTick: '#4a515b',
+    waveformCursor: '#d9c27a',
+  },
+};
+
 /// 内置主题列表
-export const BUILT_IN_THEMES: ThemeDefinition[] = [DARK_THEME, LIGHT_THEME];
+export const BUILT_IN_THEMES: ThemeDefinition[] = [DARK_THEME, LIGHT_THEME, MONET_THEME];
 
 export function isBuiltInThemeId(id: string): boolean {
   return BUILT_IN_THEMES.some((t) => t.id === id);

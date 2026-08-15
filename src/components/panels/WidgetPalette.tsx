@@ -209,7 +209,7 @@ export function WidgetPalette() {
   /// 统一卡片样式 — 分类色图标块 + 标签, 悬停抬升 + 彩色描边
   const cardClass = (cat: WidgetCategory) =>
     clsx(
-      'group bg-bg-input border border-border-subtle rounded-lg p-2.5 flex flex-col items-center gap-2',
+      'group bg-bg-input border border-border-subtle rounded-md p-2 flex flex-col items-center gap-2',
       'cursor-grab transition-all duration-150 select-none active:cursor-grabbing active:scale-[0.98]',
       'hover:bg-bg-hover hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.35)]',
       categoryHoverClass[cat],
@@ -217,12 +217,12 @@ export function WidgetPalette() {
 
   const tileClass = (cat: WidgetCategory) =>
     clsx(
-      'w-9 h-9 rounded-md flex items-center justify-center [&_svg]:w-4 [&_svg]:h-4 transition-colors',
+      'w-9 h-9 rounded-sm flex items-center justify-center [&_svg]:w-4 [&_svg]:h-4 transition-colors',
       categoryTileClass[cat],
     );
 
   return (
-    <div className="flex flex-col h-full overflow-hidden gap-2.5">
+    <div className="flex flex-col h-full overflow-hidden gap-2">
       {/* 分类 Tab — 图标 + 文字分段控件, 滑动指示器与 Dock Tab 一致 */}
       <div
         ref={tabBarRef}
@@ -236,7 +236,7 @@ export function WidgetPalette() {
               key={cat.id}
               data-tab-key={cat.id}
               className={clsx(
-                'relative flex-1 flex items-center justify-center gap-1 h-7 px-1 text-xs font-medium rounded-md cursor-pointer transition-colors duration-150 select-none whitespace-nowrap',
+                'relative flex-1 flex items-center justify-center gap-1 h-7 px-1 text-xs font-medium rounded-sm cursor-pointer transition-colors duration-150 select-none whitespace-nowrap',
                 active
                   ? 'text-text-bright'
                   : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',

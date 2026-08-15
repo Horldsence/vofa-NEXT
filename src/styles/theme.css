@@ -104,9 +104,11 @@
   --font-size-3xl: 24px;
 
   /* ---------- 圆角 ---------- */
-  /* 全局现代化圆角: bare `rounded` -> 8px, 覆盖 Tailwind 默认比例 */
+  /* 同心圆角体系: 外层半径 = 内层半径 + 间距
+     卡片/模态 12 (--radius-default) › 控件 8 (rounded / rounded-md) › 嵌套小件 6 (--radius-sm)
+     例: 活动栏 pill 8 + mx-1 (4) = 卡片 12; 分段控件容器 8 = 按钮 6 + p-0.5 (2) */
   --radius: 8px;
-  --radius-default: 10px;
+  --radius-default: 12px;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;

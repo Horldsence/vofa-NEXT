@@ -585,7 +585,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
             <button
               key={opt.value}
               disabled={isNum}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${grouping === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
+              className={`px-2 py-0.5 rounded-sm text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${grouping === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
               onClick={() => setGrouping(opt.value)}
             >
               {t(lang, opt.label)}
@@ -597,7 +597,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
             <button
               key={opt.value}
               disabled={isNum}
-              className={`px-2 py-0.5 rounded text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${repr === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
+              className={`px-2 py-0.5 rounded-sm text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${repr === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
               onClick={() => setRepr(opt.value)}
             >
               {t(lang, opt.label)}

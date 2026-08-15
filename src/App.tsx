@@ -43,6 +43,7 @@ function App() {
 
   const settingsLoaded = useSettingsStore((s) => s.loaded);
   const showOnboarding = useSettingsStore((s) => s.settings.general.showOnboarding);
+  const statusBarVisible = useSettingsStore((s) => s.settings.appearance.statusBarVisible);
   const hasOpenedOnboarding = useOnboardingStore((s) => s.hasOpenedThisSession);
   const openOnboarding = useOnboardingStore((s) => s.openWizard);
   const isWizardOpen = useOnboardingStore((s) => s.isWizardOpen);
@@ -190,13 +191,13 @@ function App() {
   const mainHandle = sidebarVisible ? (
     <PanelResizeHandle
       key="main-handle"
-      className="w-1 rounded-full bg-transparent hover:bg-accent/50 transition-colors"
+      className="w-2 rounded-full bg-transparent hover:bg-accent/50 transition-colors"
     />
   ) : null;
 
   return (
-    <div className="relative flex h-full flex-col bg-bg-activity p-1" onContextMenu={onAppContextMenu}>
-      <div className="flex flex-1 min-h-0 gap-1">
+    <div className="relative flex h-full flex-col bg-bg-activity p-2" onContextMenu={onAppContextMenu}>
+      <div className="flex flex-1 min-h-0 gap-2">
         <div className="module-card w-12 flex-shrink-0">
           <ActivityBar
             activeView={sidebarVisible ? sidebarView : null}
@@ -204,7 +205,7 @@ function App() {
           />
         </div>
         <div className="flex-1 min-w-0">
-          <PanelGroup key={sidebarDock} direction="horizontal" autoSaveId="sp-main" className="gap-1">
+          <PanelGroup key={sidebarDock} direction="horizontal" autoSaveId="sp-main">
             {(sidebarDock === 'left'
               ? [sidebarNode, mainHandle, centerNode]
               : [centerNode, mainHandle, sidebarNode]
@@ -212,9 +213,11 @@ function App() {
           </PanelGroup>
         </div>
       </div>
-      <div className="module-card flex-shrink-0 mt-1">
-        <StatusBar />
-      </div>
+      {statusBarVisible && (
+        <div className="module-card flex-shrink-0 mt-2">
+          <StatusBar />
+        </div>
+      )}
 
       {/* 侧边栏拖拽时: 窗口左右边缘的停靠投放区 — dockDrag 控制器按指针命中测试 */}
       {draggingSidebar && (
