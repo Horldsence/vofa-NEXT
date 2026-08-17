@@ -58,6 +58,7 @@ export function PortPicker() {
           port.name.toLowerCase().includes(q) ||
           (port.product ?? '').toLowerCase().includes(q) ||
           (port.manufacturer ?? '').toLowerCase().includes(q) ||
+          (port.description ?? '').toLowerCase().includes(q) ||
           vidPid.includes(q)
         );
       });
@@ -200,6 +201,11 @@ export function PortPicker() {
                           </button>
                         );
                       })}
+                    </div>
+                  )}
+                  {meta.description && meta.description !== meta.product && (
+                    <div className="text-xs text-text-primary leading-snug break-words">
+                      {meta.description}
                     </div>
                   )}
                   {(meta.product || meta.manufacturer) && (

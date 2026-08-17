@@ -54,6 +54,7 @@ pub struct PortInfo {
     pub serial_number: Option<String>,
     pub manufacturer: Option<String>,
     pub product: Option<String>,
+    pub description: Option<String>,
 }
 
 /// 传输统计

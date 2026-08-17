@@ -7,5 +7,8 @@ pub mod tcp;
 pub mod test_data;
 pub mod udp;
 
+#[cfg(windows)]
+mod windows_ports;
+
 pub use can_backend::CanBackend;
 pub use manager::TransportManager;

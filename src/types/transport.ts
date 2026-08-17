@@ -13,6 +13,7 @@ export interface PortInfo {
   serial_number: string | null;
   manufacturer: string | null;
   product: string | null;
+  description: string | null;
 }
 
 export interface TransportStats {

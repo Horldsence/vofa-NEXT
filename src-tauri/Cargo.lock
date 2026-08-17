@@ -4898,6 +4898,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "vofa-next-core",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

@@ -5,9 +5,18 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use vofa_next_core::{Error, PortInfo, Result, SerialConfig};
 
+#[cfg(windows)]
+use crate::windows_ports::port_descriptions;
+
+#[cfg(not(windows))]
+fn port_descriptions() -> std::collections::HashMap<String, String> {
+    std::collections::HashMap::new()
+}
+
 /// 列出所有可用串口
 pub fn list_ports() -> Result<Vec<PortInfo>> {
     let ports = serialport::available_ports().map_err(|e| Error::Transport(e.to_string()))?;
+    let descriptions = port_descriptions();
     Ok(ports
         .into_iter()
         .map(|p| {
@@ -26,6 +35,7 @@ pub fn list_ports() -> Result<Vec<PortInfo>> {
                 }
                 SerialPortType::Unknown => ("Unknown".to_string(), None, None, None, None, None),
             };
+            let description = descriptions.get(&p.port_name).cloned();
             PortInfo {
                 name: p.port_name,
                 port_type,
@@ -34,6 +44,7 @@ pub fn list_ports() -> Result<Vec<PortInfo>> {
                 serial_number,
                 manufacturer,
                 product,
+                description,
             }
         })
         .collect())

@@ -15,3 +15,6 @@ serialport = "4"
 async-trait = "0.1"
 parking_lot = "0.12"
 nusb = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Registry"] }
