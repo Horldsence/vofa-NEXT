@@ -1,4 +1,4 @@
-import type { DataFrame, RawDataBatch, WaveformWindow } from '../../types';
+import type { DataFrame, RawDataBatch, RawDataDirection, WaveformWindow } from '../../types';
 import { createFrameBatcher } from '../utils/frameBatcher';
 
 export const RAWDATA_BYTES_PER_ROW = 16;
@@ -17,6 +17,7 @@ function decodeBase64(b64: string): Uint8Array {
 export interface RawDataLineView {
   offset: number;
   timestamp: number;
+  direction: RawDataDirection;
   bytes: Uint8Array;
 }
 
@@ -91,7 +92,7 @@ class WaveformWindowCache {
 /// 全局波形窗口缓存
 export const waveformWindow = new WaveformWindowCache();
 
-/// 分片元数据 — 用于把字节偏移映射到时间戳
+/// 分片元数据 — 用于把字节偏移映射到时间戳与方向
 interface ChunkEntry {
   /// 该分片第一个字节在全局字节流中的偏移
   offset: number;
@@ -99,6 +100,8 @@ interface ChunkEntry {
   length: number;
   /// 微秒时间戳
   timestamp_us: number;
+  /// 数据方向
+  direction: RawDataDirection;
 }
 
 /// 原始数据缓冲区 — 基于 Uint8Array 的环形缓冲区
@@ -156,6 +159,7 @@ export class RawDataBuffer {
         offset: startOffset,
         length: n,
         timestamp_us: chunk.timestamp_us,
+        direction: chunk.direction ?? 'rx',
       });
     }
     // 限制分片索引数量, 避免无限增长
@@ -205,6 +209,7 @@ export class RawDataBuffer {
     return {
       offset: lineStart,
       timestamp: this.getTimeForOffset(lineStart),
+      direction: this.getDirectionForOffset(lineStart),
       bytes,
     };
   }
@@ -284,13 +289,14 @@ export class RawDataBuffer {
   getNewlineLine(rowIndex: number): RawDataLineView {
     if (this.lineIndexDirty) this.rebuildLineIndex();
     if (rowIndex < 0 || rowIndex >= this.lineStarts.length) {
-      return { offset: this.totalWritten, timestamp: this.getTimeForOffset(this.totalWritten), bytes: new Uint8Array(0) };
+      return { offset: this.totalWritten, timestamp: this.getTimeForOffset(this.totalWritten), direction: 'rx', bytes: new Uint8Array(0) };
     }
     const start = this.lineStarts[rowIndex];
     const end = rowIndex + 1 < this.lineStarts.length ? this.lineStarts[rowIndex + 1] : this.totalWritten;
     return {
       offset: start,
       timestamp: this.getTimeForOffset(start),
+      direction: this.getDirectionForOffset(start),
       bytes: this.readRange(start, end),
     };
   }
@@ -319,6 +325,32 @@ export class RawDataBuffer {
       else break;
     }
     return Math.floor(candidate.timestamp_us / 1000);
+  }
+
+  /** 查找给定字节偏移对应的数据方向 */
+  private getDirectionForOffset(offset: number): RawDataDirection {
+    if (this.chunks.length === 0) return 'rx';
+    let lo = 0;
+    let hi = this.chunks.length - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const chunk = this.chunks[mid];
+      if (offset >= chunk.offset && offset < chunk.offset + chunk.length) {
+        return chunk.direction;
+      }
+      if (offset < chunk.offset) {
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    // 未精确命中则返回最近的前一个分片方向
+    let candidate = this.chunks[0];
+    for (const chunk of this.chunks) {
+      if (chunk.offset <= offset) candidate = chunk;
+      else break;
+    }
+    return candidate.direction;
   }
 
   /// 累计字节数 (含已丢弃)

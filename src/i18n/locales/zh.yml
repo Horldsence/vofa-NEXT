@@ -166,6 +166,10 @@ sendPanelMode: 发送面板
 sendPanelBottom: 底部
 sendPanelSeparate: 右侧
 rawDataEmpty: 暂无原始数据
+rawDataDirectionAll: 全部
+rawDataDirectionRx: 接收
+rawDataDirectionTx: 发送
+rawDataSearchPlaceholder: 搜索...
 displayOptions: 显示选项
 
 # 节点编辑器

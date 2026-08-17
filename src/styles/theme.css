@@ -30,35 +30,36 @@
 /* ============ Tailwind v4 Theme (Dark-first, Light 预留) ============ */
 @theme {
   /* ---------- 背景色 (原始色板 — ThemeEditor 可定制, 勿删) ---------- */
-  --color-bg-activity: #23272f;
-  --color-bg-sidebar: #22262d;
-  --color-bg-editor: #1a1d24;
-  --color-bg-panel-header: #262b34;
-  --color-bg-input: #2d323d;
-  --color-bg-hover: #2c313c;
+  --color-bg-activity: #1c2028;
+  --color-bg-sidebar: #1b1f26;
+  --color-bg-editor: #14171f;
+  --color-bg-window: #0d1016;
+  --color-bg-panel-header: #21262f;
+  --color-bg-input: #262b36;
+  --color-bg-hover: #272c37;
   --color-bg-active: #34435c;
   --color-bg-button: #3b6fd0;
   --color-bg-button-hover: #4a7ee0;
-  --color-bg-statusbar: #21252d;
+  --color-bg-statusbar: #1a1e25;
   --color-bg-danger: #5a2626;
   --color-bg-danger-hover: #6e2d2d;
-  --color-bg-tooltip: #262b34;
-  --color-bg-scrollbar: #3a404c;
-  --color-bg-scrollbar-hover: #4a5160;
-  --color-bg-node-header: rgba(255, 255, 255, 0.05);
+  --color-bg-tooltip: #21262f;
+  --color-bg-scrollbar: #333a46;
+  --color-bg-scrollbar-hover: #434b5a;
+  --color-bg-node-header: rgba(255, 255, 255, 0.06);
   --color-bg-overlay: rgba(0, 0, 0, 0.55);
   --color-bg-subtle: rgba(128, 128, 128, 0.08);
   --color-bg-scrim: rgba(0, 0, 0, 0.25);
 
   /* ---------- 边框色 ---------- */
   --color-border: #2e333e;
-  --color-border-node-header: rgba(255, 255, 255, 0.08);
+  --color-border-node-header: rgba(255, 255, 255, 0.10);
 
   /* ---------- 文字色 ---------- */
-  --color-text-primary: #d7dce4;
-  --color-text-secondary: #8a919e;
+  --color-text-primary: #e2e6ed;
+  --color-text-secondary: #9aa1ad;
   --color-text-bright: #ffffff;
-  --color-text-disabled: #5b626e;
+  --color-text-disabled: #666d79;
   --color-text-inverse: #ffffff;
 
   /* ---------- 强调与语义色 ---------- */
@@ -69,8 +70,8 @@
   --color-blue: #6cb2ff;
   --color-purple: #c586c0;
   --color-orange: #ce9178;
-  --color-waveform-grid: #383d48;
-  --color-waveform-text: #aab0bc;
+  --color-waveform-grid: #303540;
+  --color-waveform-text: #b4bac6;
   --color-waveform-tick: #4a505c;
   --color-waveform-cursor: #ffd700;
 
@@ -172,7 +173,7 @@ body {
   font-family: var(--font-ui);
   font-size: 13px;
   color: var(--color-text-primary);
-  background: var(--color-bg-editor);
+  background: var(--color-bg-window);
   user-select: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

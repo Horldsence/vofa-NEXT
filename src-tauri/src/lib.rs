@@ -137,6 +137,8 @@ pub fn run() {
             commands::unsubscribe_rawdata,
             commands::subscribe_rawdata_node,
             commands::unsubscribe_rawdata_node,
+            commands::subscribe_rawdata_filtered,
+            commands::subscribe_rawdata_node_filtered,
             commands::clear_raw_data_collector,
             // CAN 帧
             commands::send_can_frame,

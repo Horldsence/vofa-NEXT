@@ -2,10 +2,19 @@ use crate::notify;
 use crate::state::AppState;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+use vofa_next_buffer::RawDataDirection;
 use vofa_next_core::{
     ConnectionState, PortInfo, Result, TransportConfig, TransportStats, WidgetBinding,
 };
 use vofa_next_transport::TransportManager;
+
+fn now_us() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_micros() as u64)
+        .unwrap_or(0)
+}
 
 /// 列出所有可用串口
 #[tauri::command]
@@ -81,14 +90,27 @@ pub async fn close_transport(app: AppHandle, state: State<'_, AppState>) -> Resu
 #[tauri::command]
 pub async fn send_raw(state: State<'_, AppState>, data: Vec<u8>) -> Result<()> {
     let manager = state.transport.lock().await;
-    manager.send(&data).await
+    manager.send(&data).await?;
+    drop(manager);
+    state
+        .raw_data_collector
+        .lock()
+        .push_chunk(now_us(), RawDataDirection::Tx, &data);
+    Ok(())
 }
 
 /// 发送字符串
 #[tauri::command]
 pub async fn send_string(state: State<'_, AppState>, text: String) -> Result<()> {
+    let data = text.into_bytes();
     let manager = state.transport.lock().await;
-    manager.send(text.as_bytes()).await
+    manager.send(&data).await?;
+    drop(manager);
+    state
+        .raw_data_collector
+        .lock()
+        .push_chunk(now_us(), RawDataDirection::Tx, &data);
+    Ok(())
 }
 
 /// 发送控件值 (根据绑定模式自动编码)
@@ -108,7 +130,13 @@ pub async fn send_widget_value(
 
     // protocol lock 在此已释放
     let manager = state.transport.lock().await;
-    manager.send(&data).await
+    manager.send(&data).await?;
+    drop(manager);
+    state
+        .raw_data_collector
+        .lock()
+        .push_chunk(now_us(), RawDataDirection::Tx, &data);
+    Ok(())
 }
 
 /// 获取连接状态

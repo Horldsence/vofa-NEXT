@@ -1,5 +1,8 @@
 import { RAWDATA_BYTES_PER_ROW } from '../../../lib/buffers/dataBuffer';
+import type { RawDataDirection } from '../../../types';
 
+export type { RawDataDirection };
+export type DirectionFilter = 'all' | RawDataDirection;
 export type AppendMode = 'none' | 'nl' | 'tab' | 'nl_tab';
 export type SendPanelMode = 'bottom' | 'separate';
 export type HexColorMode = 'none' | 'printable' | 'range';
@@ -50,6 +53,16 @@ export function hexColorClass(b: number, mode: HexColorMode): string {
   if (isPrintable(b)) return 'text-blue';
   if (b < 0x20) return 'text-yellow';
   return 'text-text-secondary';
+}
+
+/// 方向对应颜色类
+export function directionColorClass(direction: RawDataDirection): string {
+  return direction === 'tx' ? 'text-blue' : 'text-green';
+}
+
+/// 方向对应图标字符
+export function directionSymbol(direction: RawDataDirection): string {
+  return direction === 'tx' ? '↑' : '↓';
 }
 
 /// 表头：00 01 02 ... 0F

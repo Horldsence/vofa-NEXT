@@ -370,6 +370,95 @@ pub struct CanFilter {
     pub extended: bool,
 }
 
+/// CAN 帧过滤条件 — 用于后端订阅过滤
+///
+/// 所有字段为 None 时匹配全部帧; 任一字段为 Some 时要求对应条件匹配。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CanFrameFilter {
+    /// 精确 ID 匹配
+    pub id: Option<u32>,
+    /// ID 掩码匹配 (id & mask == self.id & mask)
+    pub id_mask: Option<u32>,
+    /// ID 范围下限 (含)
+    pub id_min: Option<u32>,
+    /// ID 范围上限 (含)
+    pub id_max: Option<u32>,
+    /// 仅扩展帧 / 仅标准帧
+    pub extended: Option<bool>,
+    /// 仅远程帧 / 仅数据帧
+    pub rtr: Option<bool>,
+    /// 收/发方向
+    pub direction: Option<CanDirection>,
+    /// 数据内容子串匹配 (hex 字符串解析后的字节序列)
+    pub data_pattern: Option<Vec<u8>>,
+}
+
+impl CanFrameFilter {
+    /// 判断指定帧是否匹配本过滤条件
+    pub fn matches(&self, frame: &CanFrame) -> bool {
+        if let Some(id) = self.id {
+            if frame.id != id {
+                return false;
+            }
+        }
+        if let Some(mask) = self.id_mask {
+            if (frame.id & mask) != (self.id.unwrap_or(0) & mask) {
+                return false;
+            }
+        }
+        if let Some(min) = self.id_min {
+            if frame.id < min {
+                return false;
+            }
+        }
+        if let Some(max) = self.id_max {
+            if frame.id > max {
+                return false;
+            }
+        }
+        if let Some(ext) = self.extended {
+            if frame.extended != ext {
+                return false;
+            }
+        }
+        if let Some(rtr) = self.rtr {
+            if frame.rtr != rtr {
+                return false;
+            }
+        }
+        if let Some(dir) = self.direction {
+            if frame.direction != dir {
+                return false;
+            }
+        }
+        if let Some(pattern) = &self.data_pattern {
+            if pattern.is_empty() {
+                return true;
+            }
+            if pattern.len() == 1 {
+                return frame.data.contains(&pattern[0]);
+            }
+            return frame
+                .data
+                .windows(pattern.len())
+                .any(|w| w == pattern.as_slice());
+        }
+        true
+    }
+
+    /// 是否为空过滤 (匹配全部)
+    pub fn is_empty(&self) -> bool {
+        self.id.is_none()
+            && self.id_mask.is_none()
+            && self.id_min.is_none()
+            && self.id_max.is_none()
+            && self.extended.is_none()
+            && self.rtr.is_none()
+            && self.direction.is_none()
+            && self.data_pattern.is_none()
+    }
+}
+
 /// CAN 批次 — 通过 Channel 推送到前端
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanFrameBatch {

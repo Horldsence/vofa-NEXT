@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
-use vofa_next_buffer::{DataBuffer, RawDataCollector};
+use vofa_next_buffer::{DataBuffer, RawDataCollector, RawDataDirection};
 use vofa_next_core::{
     CanBuffer, CanLoadStats, ConnectionState, DataFrame, DecodedBuffer, LogicBuffer,
     PipelineConfig, TransportStats,
@@ -448,7 +448,7 @@ pub async fn run(
                 // 原始字节收集前移到此: 一次 memcpy, 不排 parse_task 的队,
                 // 即使解析积压 RAWDATA 流也不丢 (通过 Channel 周期推送)
                 let t0 = Instant::now();
-                raw_data_collector.lock().push_chunk(now_us(), &data);
+                raw_data_collector.lock().push_chunk(now_us(), RawDataDirection::Rx, &data);
                 metrics
                     .push_chunk_ns
                     .fetch_add(t0.elapsed().as_nanos() as u64, Ordering::Relaxed);

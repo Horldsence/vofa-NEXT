@@ -1,6 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { RawDataBatch } from '../../types';
+import type { RawDataBatch, RawDataDirection } from '../../types';
 import { makeOrderedSink, subscribeSharded } from './shardedSubscription';
+
+export type DirectionFilter = 'all' | RawDataDirection;
+
+export interface RawDataFilterOptions {
+  directionFilter: DirectionFilter;
+  searchTerm: string;
+}
 
 /// 订阅原始数据 — 统一分片流 (增量 drain + 自动并发分片)
 ///
@@ -31,6 +38,46 @@ export function subscribeRawDataNode(
     'subscribe_rawdata_node',
     'unsubscribe_rawdata_node',
     { nodeId },
+    makeOrderedSink(onEvent),
+    { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
+  );
+}
+
+/// 订阅带方向与搜索过滤的原始数据 — 统一分片流
+///
+/// 后端只推送方向匹配且包含搜索模式的 chunk, 前端无需再遍历过滤。
+export function subscribeRawDataFiltered(
+  filter: RawDataFilterOptions,
+  onEvent: (batch: RawDataBatch) => void,
+  options?: { intervalMs?: number; maxBytes?: number }
+): { cancel: () => void } {
+  return subscribeSharded<RawDataBatch>(
+    'subscribe_rawdata_filtered',
+    'unsubscribe_rawdata',
+    {
+      direction: filter.directionFilter,
+      search: filter.searchTerm,
+    },
+    makeOrderedSink(onEvent),
+    { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
+  );
+}
+
+/// 订阅带方向与搜索过滤的节点原始数据 — 统一分片流
+export function subscribeRawDataNodeFiltered(
+  nodeId: string,
+  filter: RawDataFilterOptions,
+  onEvent: (batch: RawDataBatch) => void,
+  options?: { intervalMs?: number; maxBytes?: number }
+): { cancel: () => void } {
+  return subscribeSharded<RawDataBatch>(
+    'subscribe_rawdata_node_filtered',
+    'unsubscribe_rawdata_node',
+    {
+      nodeId,
+      direction: filter.directionFilter,
+      search: filter.searchTerm,
+    },
     makeOrderedSink(onEvent),
     { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
   );

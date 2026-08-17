@@ -1,27 +1,15 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import {
-  Send,
-  Plus,
-  Trash2,
-  AlertTriangle,
-  GripVertical,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react';
-import type {
-  WidgetConfig,
-  BlockType,
-  CommandBlock,
-} from '../../../types';
+import type { WidgetConfig, BlockType, CommandBlock } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { api } from '../../../lib/tauri/tauri';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
 import { computeChecksum, type ChecksumKind } from '../../../lib/utils/checksum';
-import { parseHex, packField, bytesToHex, bytesToAscii } from '../../../lib/utils/commandParser';
+import { parseHex, packField, bytesToHex } from '../../../lib/utils/commandParser';
 import { t } from '../../../i18n';
 import { nanoid } from 'nanoid';
-import { BLOCK_TYPE_CONFIG, concatChunks, blockSummary } from './commandSenderShared';
-import { CommandBlockEditor } from './CommandSenderBlockEditor';
+import { concatChunks } from './commandSenderShared';
+import { CommandSenderBlockList } from './CommandSenderBlockList';
+import { CommandSenderSidebar } from './CommandSenderSidebar';
 
 interface CommandSenderProps {
   widget: Extract<WidgetConfig, { kind: 'Command' }>;
@@ -29,15 +17,6 @@ interface CommandSenderProps {
 }
 
 /// 命令发送控件 — 数据块拼接方式
-///
-/// 数据流:
-///   1. blocks 列表按顺序逐块编码 → 拼接为 payload
-///   2. var_ref 块从 useGraphInputs 读取连入值 (端口名自定义)
-///   3. checksum 块对前面所有块的累计字节计算校验
-///   4. 追加 \n (可选)
-///   5. store.sendData(byteArray) → 后端 send_raw → transport
-///
-/// 节点端口: 从 blocks 中 var_ref 块的 portName 动态推导 (见 WidgetNode.getWidgetPorts)
 export function CommandSender({ widget }: CommandSenderProps) {
   const params = widget.params;
   const { id, blocks } = params;
@@ -46,7 +25,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const sendAndCapture = useAppStore((s) => s.sendAndCapture);
   const lang = useAppStore((s) => s.lang);
 
-  // 从 var_ref 块推导输入端口名, 读取连入值
   const portNames = useMemo(
     () => blocks.filter((b) => b.type === 'var_ref' && b.portName).map((b) => b.portName!),
     [blocks]
@@ -59,7 +37,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const sendCountRef = useRef(0);
-  // dragId 同步 ref: 避免 setDragId 异步导致 handleDrop 闭包中 dragId 过时
   const dragIdRef = useRef<string | null>(null);
 
   const toggleExpand = (blockId: string) => {
@@ -71,7 +48,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
     });
   };
 
-  /// 计算最终字节流 (blocks 拼接 + 可选 \n)
   const computed = useMemo<{ bytes: Uint8Array | null; error: string | null; perBlock: Uint8Array[][] }>(() => {
     try {
       const chunks: Uint8Array[] = [];
@@ -116,14 +92,11 @@ export function CommandSender({ widget }: CommandSenderProps) {
     }
   }, [blocks, graphInputs, params.appendNewline]);
 
-  /// 实际发送 (回环仅决定走 sendAndCapture+图注入 还是 sendData, 与发送模式无关)
-  /// 返回是否真正发出了数据 (空 payload / 编译错误时不发)
   const doSend = useCallback(async (): Promise<boolean> => {
     if (!computed.bytes || computed.bytes.length === 0 || computed.error) return false;
     try {
       if (params.loopbackEnabled) {
         const bytes = Array.from(computed.bytes);
-        // 本地解析对照 (loopbackHistory, 与串口开关无关) + 沿回环边注入连线的 FrameDecoder
         await sendAndCapture(bytes);
         await api.injectLoopbackBytes(id, bytes);
       } else {
@@ -138,22 +111,18 @@ export function CommandSender({ widget }: CommandSenderProps) {
     }
   }, [computed, params.loopbackEnabled, sendAndCapture, sendData, id]);
 
-  /// doSend 最新引用, 供定时器 / onChange 副作用调用 (避免 interval 随每次值变化重建)
   const doSendRef = useRef(doSend);
   useEffect(() => { doSendRef.current = doSend; }, [doSend]);
 
-  // 发送模式与回环无关 — 兼容旧配置 (无 sendMode 字段时按 manual)
   const sendMode = params.sendMode ?? 'manual';
   const timerMs = params.timerMs ?? 100;
 
-  // timer 模式: 按间隔自动发送
   useEffect(() => {
     if (sendMode !== 'timer') return;
     const id = setInterval(() => { void doSendRef.current(); }, timerMs);
     return () => clearInterval(id);
   }, [sendMode, timerMs]);
 
-  // onChange 模式: 最终字节流变化时自动发送 (切换模式/挂载时只记录基线, 不立即发送)
   const lastAutoSentHexRef = useRef<string | null>(null);
   useEffect(() => {
     if (sendMode !== 'onChange' || !computed.bytes || computed.error) {
@@ -171,7 +140,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
     }
   }, [sendMode, computed]);
 
-  /// 手动发送按钮 — 任何发送模式下均可手动点发
   const handleSend = async () => {
     setError(null);
     if (!computed.bytes || computed.bytes.length === 0) {
@@ -185,7 +153,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
     updateWidget(id, { kind: 'Command', params: { ...params, ...changes } });
   };
 
-  /// 添加块
   const addBlock = (type: BlockType) => {
     const defaults: Record<BlockType, Partial<CommandBlock>> = {
       const_hex: { label: '', hex: '00' },
@@ -198,14 +165,12 @@ export function CommandSender({ widget }: CommandSenderProps) {
     setExpandedIds((prev) => new Set(prev).add(newBlock.id));
   };
 
-  /// 更新块
   const updateBlock = (blockId: string, changes: Partial<CommandBlock>) => {
     updateParams({
       blocks: blocks.map((b) => (b.id === blockId ? { ...b, ...changes } : b)),
     });
   };
 
-  /// 删除块
   const removeBlock = (blockId: string) => {
     updateParams({ blocks: blocks.filter((b) => b.id !== blockId) });
     setExpandedIds((prev) => {
@@ -215,9 +180,6 @@ export function CommandSender({ widget }: CommandSenderProps) {
     });
   };
 
-  /// 拖拽排序 — 通过 dataTransfer 传递 dragId, 避免闭包过时
-  /// setDragImage: 让整个块卡片作为拖动图像 (而非仅手柄), 视觉反馈更清晰
-  /// dragIdRef: 同步存储 dragId, 确保 handleDrop 能读到最新值
   const handleDragStart = (blockId: string) => (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', blockId);
@@ -228,12 +190,13 @@ export function CommandSender({ widget }: CommandSenderProps) {
     dragIdRef.current = blockId;
     setDragId(blockId);
   };
+
   const handleDragOver = (blockId: string) => (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     if (dragIdRef.current && dragIdRef.current !== blockId) setOverId(blockId);
   };
-  /// 执行数组重排 (从 fromId 移动到 toId 之前)
+
   const reorderBlocks = (fromId: string, toId: string) => {
     if (fromId === toId) return;
     const fromIdx = blocks.findIndex((b) => b.id === fromId);
@@ -244,6 +207,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
     next.splice(toIdx, 0, moved);
     updateParams({ blocks: next });
   };
+
   const handleDrop = (targetId: string) => (e: React.DragEvent) => {
     e.preventDefault();
     const draggedId = e.dataTransfer.getData('text/plain') || dragIdRef.current;
@@ -253,6 +217,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
     setDragId(null);
     setOverId(null);
   };
+
   const handleDragEnd = () => {
     dragIdRef.current = null;
     setDragId(null);
@@ -261,248 +226,33 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
   return (
     <div className="bg-bg-sidebar border border-border rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
-      {/* 主区: 块列表 (可拖拽排序) */}
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2 p-3 overflow-y-auto bg-bg-sidebar">
-        <div className="flex items-center justify-between pb-1.5 border-b border-border flex-shrink-0">
-          <span className="text-base font-semibold text-text-bright">{params.label}</span>
-          <span className="text-[10px] text-text-secondary">{blocks.length} blocks</span>
-        </div>
-
-        {/* 块列表 — 不用 flex-1/min-h-0, 让其按内容自然撑高, 由主区 overflow-y-auto 滚动
-            onDragOver/onDrop fallback: 块卡片之间 gap 区域也能触发 drop, 用 overId 作为目标 */}
-        <div
-          className="flex flex-col gap-1.5"
-          onDragOver={(e) => {
-            // gap 区域也允许 drop (overId 由块卡片的 dragover 设置)
-            if (dragIdRef.current) e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-          }}
-          onDrop={(e) => {
-            e.preventDefault();
-            const draggedId = e.dataTransfer.getData('text/plain') || dragIdRef.current;
-            // drop 到 gap: 用最近的 overId 作为目标
-            const targetId = overId;
-            if (!draggedId || !targetId) return;
-            reorderBlocks(draggedId, targetId);
-            dragIdRef.current = null;
-            setDragId(null);
-            setOverId(null);
-          }}
-        >
-          {blocks.length === 0 && (
-            <div className="text-xs text-text-secondary opacity-60 italic py-4 text-center">
-              {t(lang, 'cmdBlocksEmpty')}
-            </div>
-          )}
-          {blocks.map((block, idx) => {
-            const cfg = BLOCK_TYPE_CONFIG[block.type];
-            const isExpanded = expandedIds.has(block.id);
-            const isDragging = dragId === block.id;
-            const isOver = overId === block.id;
-            const blockBytes = computed.perBlock[idx]?.[0];
-            return (
-              <div
-                key={block.id}
-                data-block-id={block.id}
-                className={`border rounded-sm transition-all ${cfg.blockClass} ${isDragging ? 'opacity-40' : ''} ${isOver ? 'border-t-2 border-t-blue' : ''}`}
-                onDragOver={handleDragOver(block.id)}
-                onDrop={handleDrop(block.id)}
-              >
-                {/* 块头: 点击展开/折叠, 拖拽手柄单独 draggable */}
-                <div
-                  className="flex items-center gap-1.5 px-1.5 py-1 cursor-pointer select-none"
-                  onClick={() => toggleExpand(block.id)}
-                >
-                  <div
-                    className="inline-flex items-center justify-center p-0.5 cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary flex-shrink-0"
-                    title={t(lang, 'cmdDragToReorder')}
-                    draggable
-                    onDragStart={handleDragStart(block.id)}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <GripVertical size={12} className="pointer-events-none" />
-                  </div>
-                  <span
-                    className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wide flex-shrink-0 border ${cfg.badgeClass}`}
-                  >
-                    {cfg.icon}
-                    {t(lang, cfg.labelKey)}
-                  </span>
-                  {block.label && (
-                    <span className="text-xs text-text-primary truncate flex-shrink-0">{block.label}</span>
-                  )}
-                  <span className="text-[10px] text-text-secondary font-mono truncate flex-1 min-w-0">
-                    {blockSummary(block)}
-                  </span>
-                  {blockBytes && (
-                    <span className="text-[9px] text-text-secondary font-mono opacity-70 flex-shrink-0">
-                      [{blockBytes.length}B]
-                    </span>
-                  )}
-                  <span className="text-text-secondary flex-shrink-0 p-0.5 pointer-events-none">
-                    {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  </span>
-                  <button
-                    className="text-text-secondary hover:text-red flex-shrink-0 p-0.5"
-                    onClick={(e) => { e.stopPropagation(); removeBlock(block.id); }}
-                    title={t(lang, 'removeWidget')}
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
-
-                {/* 块编辑区 (展开时) */}
-                {isExpanded && (
-                  <CommandBlockEditor
-                    block={block}
-                    updateBlock={updateBlock}
-                    lang={lang}
-                    graphInputs={graphInputs}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* 添加块按钮 */}
-        <div className="flex flex-wrap gap-1 pt-1 border-t border-border flex-shrink-0">
-          {(Object.keys(BLOCK_TYPE_CONFIG) as BlockType[]).map((bt) => {
-            const cfg = BLOCK_TYPE_CONFIG[bt];
-            return (
-              <button
-                key={bt}
-                className="inline-flex items-center gap-1 bg-transparent border border-dashed border-border text-text-secondary px-2 py-1 text-[11px] rounded-sm cursor-pointer transition-all hover:text-text-primary hover:border-accent"
-                onClick={() => addBlock(bt)}
-                title={t(lang, cfg.addLabelKey)}
-              >
-                <Plus size={11} />
-                <span className={`inline-flex items-center gap-0.5 ${cfg.iconClass}`}>
-                  {cfg.icon}
-                </span>
-                <span>{t(lang, cfg.addLabelKey)}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* 侧栏: 预览 + 发送 + 全局设置 (固定宽, 纵向滚动) */}
-      <div className="w-[300px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
-        {/* 预览 */}
-        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, 'cmdPreview')}</div>
-        <div className="bg-bg-editor border border-border rounded px-2 py-1.5 flex flex-col gap-1">
-          <div className="flex items-center justify-between text-[10px] text-text-secondary uppercase tracking-wide">
-            <span>HEX</span>
-            {computed.bytes && (
-              <span className="font-mono text-blue">{computed.bytes.length}B</span>
-            )}
-          </div>
-          {computed.error ? (
-            <div className="flex items-center gap-1 bg-red/10 border border-red/30 text-red px-1.5 py-1 rounded-sm text-xs">
-              <AlertTriangle size={11} />
-              <span>{computed.error}</span>
-            </div>
-          ) : computed.bytes && computed.bytes.length > 0 ? (
-            <>
-              <div className="font-mono text-sm text-green break-all leading-relaxed">
-                {bytesToHex(computed.bytes)}
-              </div>
-              <div className="font-mono text-xs text-text-secondary break-all leading-relaxed opacity-85">
-                {bytesToAscii(computed.bytes)}
-              </div>
-            </>
-          ) : (
-            <div className="text-xs text-text-secondary opacity-60 italic py-1">{t(lang, 'cmdPreviewEmpty')}</div>
-          )}
-        </div>
-
-        {/* 发送 */}
-        <button
-          className="justify-center px-4 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-          onClick={handleSend}
-          disabled={!computed.bytes || computed.bytes.length === 0 || !!computed.error}
-        >
-          <Send size={12} />
-          <span>{t(lang, 'cmdSend')}</span>
-        </button>
-
-        {error && (
-          <div className="flex items-center gap-1 bg-red/10 border border-red/30 text-red px-1.5 py-1 rounded-sm text-xs">
-            <AlertTriangle size={11} />
-            <span>{error}</span>
-          </div>
-        )}
-        {lastSent && (
-          <div className="flex items-center gap-1 px-1.5 py-1 bg-bg-editor rounded-sm text-[10px]" title={lastSent}>
-            <span className="text-text-secondary flex-shrink-0">{t(lang, 'cmdLastSent')}:</span>
-            <span className="font-mono text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{lastSent}</span>
-          </div>
-        )}
-
-        {/* 全局设置 (始终展开) */}
-        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-1">{t(lang, 'cmdSettings')}</div>
-        <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-            <label className="text-xs text-text-secondary">{t(lang, 'cmdLabel')}</label>
-            <input
-              type="text"
-              value={params.label}
-              onChange={(e) => updateParams({ label: e.target.value })}
-              className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
-            />
-          </div>
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-            <label className="text-xs text-text-secondary">{t(lang, 'cmdAppendNewline')}</label>
-            <button
-              className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${params.appendNewline ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
-              onClick={() => updateParams({ appendNewline: !params.appendNewline })}
-            >
-              {params.appendNewline ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
-            </button>
-          </div>
-          {/* 发送模式 — 与回环无关, 任何模式下手动按钮都可点发 */}
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-            <label className="text-xs text-text-secondary">{t(lang, 'cmdSendMode')}</label>
-            <select
-              value={sendMode}
-              onChange={(e) => updateParams({ sendMode: e.target.value as 'manual' | 'onChange' | 'timer' })}
-              className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
-            >
-              <option value="manual">{t(lang, 'cmdSendModeManual')}</option>
-              <option value="onChange">{t(lang, 'cmdSendModeOnChange')}</option>
-              <option value="timer">{t(lang, 'cmdSendModeTimer')}</option>
-            </select>
-          </div>
-          {sendMode === 'timer' && (
-            <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-              <label className="text-xs text-text-secondary">{t(lang, 'cmdSendModeInterval')}</label>
-              <input
-                type="number"
-                min={10}
-                max={10000}
-                value={timerMs}
-                onChange={(e) => updateParams({ timerMs: parseInt(e.target.value) || 100 })}
-                className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
-              />
-            </div>
-          )}
-          </div>
-
-        {/* 回环模式设置 (仅决定发送路径, 与发送模式无关) */}
-        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-2">{t(lang, 'cmdLoopback')}</div>
-        <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
-          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
-            <label className="text-xs text-text-secondary">{t(lang, 'cmdLoopback')}</label>
-            <button
-              className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${params.loopbackEnabled ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
-              onClick={() => updateParams({ loopbackEnabled: !params.loopbackEnabled })}
-            >
-              {params.loopbackEnabled ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
-            </button>
-          </div>
-        </div>
-      </div>
+      <CommandSenderBlockList
+        blocks={blocks}
+        expandedIds={expandedIds}
+        dragId={dragId}
+        overId={overId}
+        computed={computed}
+        graphInputs={graphInputs}
+        onToggleExpand={toggleExpand}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
+        onRemoveBlock={removeBlock}
+        onUpdateBlock={updateBlock}
+        onAddBlock={addBlock}
+        onReorderBlocks={reorderBlocks}
+        lang={lang}
+      />
+      <CommandSenderSidebar
+        params={params}
+        computed={computed}
+        error={error}
+        lastSent={lastSent}
+        onSend={handleSend}
+        onUpdateParams={updateParams}
+        lang={lang}
+      />
     </div>
   );
 }

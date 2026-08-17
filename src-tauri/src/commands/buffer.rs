@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use vofa_next_buffer::{RawDataBatch, WaveformWindow};
+use vofa_next_buffer::{DirectionFilter, RawDataBatch, WaveformWindow};
 use vofa_next_core::Result;
 
 /// 订阅波形数据 — 统一分片流 (快照语义 + 自动并发分片)
@@ -276,6 +276,123 @@ pub async fn unsubscribe_rawdata_node(state: State<'_, AppState>, channel_id: u3
         let _ = tx.send(());
     }
     Ok(())
+}
+
+/// 解析方向过滤字符串
+fn parse_direction_filter(s: &str) -> DirectionFilter {
+    match s.to_lowercase().as_str() {
+        "rx" => DirectionFilter::Rx,
+        "tx" => DirectionFilter::Tx,
+        _ => DirectionFilter::All,
+    }
+}
+
+/// 订阅带方向与搜索过滤的原始数据 — 统一分片流
+///
+/// 与 subscribe_rawdata 的区别: 后端只推送方向匹配且包含搜索模式的 chunk,
+/// 前端无需再遍历过滤, 适合 20MB/s 以上高码率场景。
+///
+/// direction: "all" | "rx" | "tx"
+/// search: 搜索字符串; 空串表示不过滤; 纯 hex 字符按 hex 解析, 其他按 ascii 解析
+#[tauri::command]
+pub async fn subscribe_rawdata_filtered(
+    state: State<'_, AppState>,
+    on_event: Channel<RawDataBatch>,
+    direction: String,
+    search: String,
+    group_id: Option<String>,
+    interval_ms: Option<u64>,
+    max_bytes: Option<usize>,
+) -> Result<String> {
+    let interval = Duration::from_millis(interval_ms.unwrap_or(16));
+    let max_n = max_bytes.unwrap_or(65536);
+    let channel_id = on_event.id();
+    let collector = state.raw_data_collector.clone();
+    let direction = parse_direction_filter(&direction);
+    let search = if search.trim().is_empty() { None } else { Some(search) };
+
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::FilteredRawDataSource::new(collector, direction, search.as_deref()),
+    )?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.raw_data_tasks.lock().insert(channel_id, cancel_tx);
+
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
+    tokio::spawn(async move {
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("过滤原始数据分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
+    });
+
+    Ok(group_key)
+}
+
+/// 订阅带方向与搜索过滤的 FrameDecoder 节点原始数据 — 统一分片流
+#[tauri::command]
+pub async fn subscribe_rawdata_node_filtered(
+    state: State<'_, AppState>,
+    node_id: String,
+    on_event: Channel<RawDataBatch>,
+    direction: String,
+    search: String,
+    group_id: Option<String>,
+    interval_ms: Option<u64>,
+    max_bytes: Option<usize>,
+) -> Result<String> {
+    let collector = match state.decoder_raw_collectors.lock().get(&node_id) {
+        Some(c) => c.clone(),
+        None => return Ok(String::new()),
+    };
+    let interval = Duration::from_millis(interval_ms.unwrap_or(16));
+    let max_n = max_bytes.unwrap_or(65536);
+    let channel_id = on_event.id();
+    let direction = parse_direction_filter(&direction);
+    let search = if search.trim().is_empty() { None } else { Some(search) };
+
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::stream::FilteredRawDataSource::new(collector, direction, search.as_deref()),
+    )?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.raw_data_node_tasks.lock().insert(channel_id, cancel_tx);
+
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
+    tokio::spawn(async move {
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("过滤节点原始数据分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
+    });
+
+    Ok(group_key)
 }
 
 /// 清空原始数据收集器 (全局 + 各 FrameDecoder 节点旁路收集器)

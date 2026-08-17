@@ -12,10 +12,14 @@ export interface RawData {
   data: number[];
 }
 
+export type RawDataDirection = 'rx' | 'tx';
+
 /// 原始数据分片 — 与 Rust RawDataChunk 对应
 export interface RawDataChunk {
   /// 微秒时间戳
   timestamp_us: number;
+  /// 数据方向 — rx 接收 / tx 发送
+  direction?: RawDataDirection;
   /// 数据字节 (base64 编码 — 比 JSON 数字数组省 ~2.6x 体积, atob 一次解码)
   bytes_b64: string;
 }

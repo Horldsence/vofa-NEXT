@@ -14,6 +14,7 @@ const ACRYLIC_TOKEN_ALPHA: Partial<Record<ThemeToken, number>> = {
   bgActivity: 0.6,
   bgSidebar: 0.65,
   bgEditor: 0.55,
+  bgWindow: 0.5,
   bgPanelHeader: 0.65,
   bgInput: 0.6,
   bgHover: 0.6,

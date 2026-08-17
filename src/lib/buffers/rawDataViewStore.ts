@@ -5,6 +5,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 export interface RawDataViewPrefs {
   grouping: 'grid' | 'line';
   repr: 'hex' | 'ascii';
+  directionFilter: 'all' | 'rx' | 'tx';
   showTimestamp: boolean;
   showOffset: boolean;
   autoScroll: boolean;
@@ -17,6 +18,7 @@ export interface RawDataViewPrefs {
 export const DEFAULT_RAW_DATA_PREFS: RawDataViewPrefs = {
   grouping: 'grid',
   repr: 'hex',
+  directionFilter: 'all',
   showTimestamp: true,
   showOffset: true,
   autoScroll: true,

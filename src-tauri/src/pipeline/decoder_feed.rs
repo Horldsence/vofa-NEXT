@@ -1,6 +1,7 @@
 use crate::state::GraphEvalState;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
+use vofa_next_buffer::RawDataDirection;
 use vofa_next_nodes::FrameParser;
 
 /// FrameDecoder 解析配置 (不含 loopback — 它只决定"谁来喂", 不影响解析行为/重建判定)
@@ -89,7 +90,7 @@ pub fn feed_one_decoder(
                 let mut col = collector.lock();
                 for frame in &parsed {
                     if !frame.raw_bytes.is_empty() {
-                        col.push_chunk(ts_us, &frame.raw_bytes);
+                        col.push_chunk(ts_us, RawDataDirection::Rx, &frame.raw_bytes);
                     }
                 }
             }

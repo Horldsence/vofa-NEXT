@@ -166,6 +166,10 @@ sendPanelMode: Send Panel
 sendPanelBottom: Bottom
 sendPanelSeparate: Side
 rawDataEmpty: No raw data yet
+rawDataDirectionAll: All
+rawDataDirectionRx: RX
+rawDataDirectionTx: TX
+rawDataSearchPlaceholder: Search...
 displayOptions: Display
 
 # Node Editor

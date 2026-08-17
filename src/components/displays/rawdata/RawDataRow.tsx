@@ -1,9 +1,10 @@
 import { useState, memo } from 'react';
 import { type RawDataBuffer, RAWDATA_BYTES_PER_ROW } from '../../../lib/buffers/dataBuffer';
-import { ROW_HEIGHT, GROUP_SIZE, formatTime, byteToHex, byteToAscii, isPrintable, hexColorClass, type HexColorMode, type RawDataGrouping, type RawDataRepr } from './rawDataViewHelpers';
+import { ROW_HEIGHT, GROUP_SIZE, formatTime, byteToHex, byteToAscii, isPrintable, hexColorClass, directionColorClass, directionSymbol, type HexColorMode, type RawDataGrouping, type RawDataRepr } from './rawDataViewHelpers';
 
 export interface RowProps {
-  index: number;
+  originalIndex: number;
+  filteredIndex: number;
   grouping: RawDataGrouping;
   repr: RawDataRepr;
   buffer: RawDataBuffer;
@@ -12,14 +13,15 @@ export interface RowProps {
   hexColorMode: HexColorMode;
   isSelected: boolean;
   version: number;
-  onMouseDown: (e: React.MouseEvent, index: number) => void;
+  onMouseDown: (e: React.MouseEvent, filteredIndex: number) => void;
 }
 
 /// 原始数据行 — 从指定 buffer 按索引读取, memo 化避免无关重渲染
 /// grouping × repr 四组合: grid+hex / grid+ascii / line+hex / line+ascii
 /// version 用于在底层数据变化时强制刷新可见行
 export const Row = memo(function Row({
-  index,
+  originalIndex,
+  filteredIndex,
   grouping,
   repr,
   buffer,
@@ -30,7 +32,7 @@ export const Row = memo(function Row({
   onMouseDown,
 }: RowProps) {
   const isLine = grouping === 'line';
-  const line = isLine ? buffer.getNewlineLine(index) : buffer.getLine(index);
+  const line = isLine ? buffer.getNewlineLine(originalIndex) : buffer.getLine(originalIndex);
   const [hovered, setHovered] = useState<number | null>(null);
 
   const hexWidth = 22;
@@ -76,9 +78,15 @@ export const Row = memo(function Row({
     <div
       className={`flex items-center gap-2 px-2 select-text ${isSelected ? 'bg-accent/20' : 'hover:bg-bg-hover'}`}
       style={{ height: ROW_HEIGHT }}
-      onMouseDown={(e) => onMouseDown(e, index)}
+      onMouseDown={(e) => onMouseDown(e, filteredIndex)}
       onMouseLeave={() => setHovered(null)}
     >
+      <span
+        className={`text-xs font-mono min-w-[14px] text-center ${directionColorClass(line.direction)}`}
+        title={line.direction === 'tx' ? 'TX' : 'RX'}
+      >
+        {directionSymbol(line.direction)}
+      </span>
       {showTimestamp && (
         <span className="text-accent text-xs font-mono min-w-[92px] text-right">
           {formatTime(line.timestamp)}
