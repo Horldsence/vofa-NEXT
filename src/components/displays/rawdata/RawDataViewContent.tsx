@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { RawDataBuffer } from '../../../lib/buffers/dataBuffer';
+import type { RawDataLineSource } from '../../../lib/buffers/dataBuffer';
 import type { Lang } from '../../../i18n';
 import type { RawDataGrouping, RawDataRepr, HexColorMode } from './rawDataViewHelpers';
 import { ROW_HEIGHT, HeaderBytes } from './rawDataViewHelpers';
@@ -9,7 +9,7 @@ interface Props {
   modeCount: number;
   grouping: RawDataGrouping;
   repr: RawDataRepr;
-  buffer: RawDataBuffer;
+  buffer: RawDataLineSource;
   showTimestamp: boolean;
   showOffset: boolean;
   hexColorMode: HexColorMode;

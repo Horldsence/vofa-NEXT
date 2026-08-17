@@ -1,5 +1,5 @@
 import { useState, memo } from 'react';
-import { type RawDataBuffer, RAWDATA_BYTES_PER_ROW } from '../../../lib/buffers/dataBuffer';
+import { type RawDataLineSource, RAWDATA_BYTES_PER_ROW } from '../../../lib/buffers/dataBuffer';
 import { ROW_HEIGHT, GROUP_SIZE, formatTime, byteToHex, byteToAscii, isPrintable, hexColorClass, directionColorClass, directionSymbol, type HexColorMode, type RawDataGrouping, type RawDataRepr } from './rawDataViewHelpers';
 
 export interface RowProps {
@@ -7,7 +7,7 @@ export interface RowProps {
   filteredIndex: number;
   grouping: RawDataGrouping;
   repr: RawDataRepr;
-  buffer: RawDataBuffer;
+  buffer: RawDataLineSource;
   showTimestamp: boolean;
   showOffset: boolean;
   hexColorMode: HexColorMode;

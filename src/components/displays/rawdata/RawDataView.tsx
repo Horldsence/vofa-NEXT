@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
 import { rawDataBuffer, RawDataBuffer } from '../../../lib/buffers/dataBuffer';
 import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
-import { subscribeRawDataFiltered, subscribeRawDataNodeFiltered, type RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
+import { FilteredRawDataBuffer, parseSearchPattern } from '../../../lib/buffers/filteredRawDataBuffer';
+import type { RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
+import { perfEvent } from '../../../lib/utils/perfLog';
 import { useSelection } from '../../../lib/hooks/useSelection';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { rawDataPortId } from '../../../lib/utils/nodeDef';
@@ -98,43 +100,54 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     [directionFilter, searchTerm]
   );
 
-  // 未过滤的节点 buffer
+  // 节点 buffer (过滤与否都需要: 过滤包装以它为数据源)
   const [nodeBuffer, setNodeBuffer] = useState<RawDataBuffer | null>(null);
   useEffect(() => {
-    if (!nodeBufferKey || isFiltered) {
+    if (!nodeBufferKey) {
       setNodeBuffer(null);
       return;
     }
     const acquired = acquireRawDataNode(nodeBufferKey);
     setNodeBuffer(acquired);
     return () => releaseRawDataNode(nodeBufferKey);
-  }, [nodeBufferKey, isFiltered]);
+  }, [nodeBufferKey]);
 
-  // 过滤模式下的独立 buffer
-  const [filteredBuffer, setFilteredBuffer] = useState<RawDataBuffer | null>(null);
+  // 过滤模式: 本地增量过滤视图 (复用源 buffer 既有数据, 零额外 IPC)
+  const [filteredBuffer, setFilteredBuffer] = useState<FilteredRawDataBuffer | null>(null);
   useEffect(() => {
     if (!isFiltered || isNum) {
       setFilteredBuffer(null);
       return;
     }
-    const buf = new RawDataBuffer();
-    setFilteredBuffer(buf);
-    if (nodeBufferKey) {
-      const sub = subscribeRawDataNodeFiltered(
-        nodeBufferKey,
-        filterOptions,
-        (batch) => buf.pushBatch(batch),
-        { intervalMs: 100, maxBytes: 65536 }
-      );
-      return () => sub.cancel();
-    }
-    const sub = subscribeRawDataFiltered(
-      filterOptions,
-      (batch) => buf.pushBatch(batch),
-      { intervalMs: 100, maxBytes: 65536 }
+    const t0 = performance.now();
+    perfEvent(`rawdata filter ON dir=${filterOptions.directionFilter} search="${filterOptions.searchTerm}"`);
+    const buf = new FilteredRawDataBuffer(
+      nodeBuffer ?? rawDataBuffer,
+      filterOptions.directionFilter,
+      parseSearchPattern(filterOptions.searchTerm)
     );
-    return () => sub.cancel();
-  }, [isFiltered, isNum, nodeBufferKey, filterOptions]);
+    setFilteredBuffer(buf);
+    return () => {
+      buf.dispose();
+      perfEvent(`rawdata filter OFF, 存活 ${(performance.now() - t0).toFixed(0)}ms`);
+    };
+  }, [isFiltered, isNum, nodeBuffer, filterOptions]);
+
+  // 调试: 长任务监控 — 主线程单次任务 >100ms 即记录 (卡死定位)
+  useEffect(() => {
+    if (typeof PerformanceObserver === 'undefined') return;
+    try {
+      const obs = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          console.debug(`[perf] longtask ${e.duration.toFixed(0)}ms`);
+        }
+      });
+      obs.observe({ entryTypes: ['longtask'] });
+      return () => obs.disconnect();
+    } catch {
+      return;
+    }
+  }, []);
 
   const buffer = filteredBuffer ?? nodeBuffer ?? rawDataBuffer;
 
