@@ -1,5 +1,6 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { closeTauriChannel } from '../tauri/tauri';
+import { tickMetric, perfEvent } from '../utils/perfLog';
 
 /// 分片池大小 — 与后端 pipeline::stream::MAX_STREAM_SHARDS 一致
 export const STREAM_SHARDS = 4;
@@ -17,6 +18,7 @@ export function makeOrderedSink<T extends SeqBatch>(deliver: (batch: T) => void)
   return (batch: T) => {
     if (batch.seq < next) return; // 过期/重复批次
     pending.set(batch.seq, batch);
+    tickMetric('orderedSink:pending', 0, pending.size);
     // 防 gap 卡死: 某分片异常退出导致 seq 缺失时, 积压超阈值跳到最小可用序号
     if (pending.size > 64) {
       next = Math.min(...pending.keys());
@@ -63,10 +65,17 @@ export function subscribeSharded<T extends SeqBatch>(
   const channels: Channel<T>[] = [];
   let cancelled = false;
 
+  // 调试: 统计该订阅的消息速率 (payload 字节由各订阅包装补充)
+  const countedSink = (batch: T) => {
+    tickMetric(cmd);
+    sink(batch);
+  };
+  perfEvent(`subscribe ${cmd}`);
+
   void (async () => {
     try {
       const first = new Channel<T>();
-      first.onmessage = sink;
+      first.onmessage = countedSink;
       channels.push(first);
       const groupId = await invoke<string>(cmd, {
         ...extraArgs,
@@ -77,7 +86,7 @@ export function subscribeSharded<T extends SeqBatch>(
       for (let i = 1; i < STREAM_SHARDS; i++) {
         if (cancelled) break;
         const ch = new Channel<T>();
-        ch.onmessage = sink;
+        ch.onmessage = countedSink;
         channels.push(ch);
         await invoke<string>(cmd, {
           ...extraArgs,
@@ -85,6 +94,10 @@ export function subscribeSharded<T extends SeqBatch>(
           groupId,
           ...options,
         });
+        // 取消后仍在建的 channel: 立即关闭, 避免后端任务泄漏
+        if (cancelled) {
+          void closeTauriChannel(ch, unsubscribeCmd, ch.id);
+        }
       }
     } catch (e) {
       console.error(`订阅失败 (${cmd}):`, e);
@@ -94,6 +107,7 @@ export function subscribeSharded<T extends SeqBatch>(
   return {
     cancel: () => {
       cancelled = true;
+      perfEvent(`cancel ${cmd} (${channels.length} channels)`);
       for (const ch of channels) {
         void closeTauriChannel(ch, unsubscribeCmd, ch.id);
       }

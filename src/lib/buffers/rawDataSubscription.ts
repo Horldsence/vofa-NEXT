@@ -1,12 +1,23 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { RawDataBatch, RawDataDirection } from '../../types';
 import { makeOrderedSink, subscribeSharded } from './shardedSubscription';
+import { tickMetric } from '../utils/perfLog';
 
 export type DirectionFilter = 'all' | RawDataDirection;
 
 export interface RawDataFilterOptions {
   directionFilter: DirectionFilter;
   searchTerm: string;
+}
+
+/// 统计 base64 载荷字节速率 (解码前)
+function countBytes(key: string, onEvent: (batch: RawDataBatch) => void) {
+  return (batch: RawDataBatch) => {
+    let bytes = 0;
+    for (const c of batch.chunks) bytes += c.bytes_b64.length;
+    tickMetric(key, bytes);
+    onEvent(batch);
+  };
 }
 
 /// 订阅原始数据 — 统一分片流 (增量 drain + 自动并发分片)
@@ -22,7 +33,7 @@ export function subscribeRawData(
     'subscribe_rawdata',
     'unsubscribe_rawdata',
     {},
-    makeOrderedSink(onEvent),
+    makeOrderedSink(countBytes('rawdata:global', onEvent)),
     { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
   );
 }
@@ -58,7 +69,7 @@ export function subscribeRawDataFiltered(
       direction: filter.directionFilter,
       search: filter.searchTerm,
     },
-    makeOrderedSink(onEvent),
+    makeOrderedSink(countBytes('rawdata:filtered', onEvent)),
     { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
   );
 }
