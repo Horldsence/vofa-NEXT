@@ -376,6 +376,8 @@ settingDebugDesc: 开启后在右键菜单中显示检查元素等调试功能
 settingTheme: 主题
 settingThemeDesc: 应用配色方案
 settingThemeEdit: 编辑主题
+colorTheme: 颜色主题
+cssTheme: CSS样式主题
 
 # 主题编辑器
 themeEditor: 主题编辑器
@@ -393,6 +395,23 @@ themeActivePreview: 当前为激活主题, 修改会实时预览。
 themeClickToPreview: 点击下方“激活”按钮预览此主题。
 themeActivate: 激活主题
 themeEdit: 编辑主题
+cssThemeList: CSS 主题列表
+cssThemeDelete: 删除
+cssThemeBuiltInReadOnly: 内置CSS主题只读，无法删除。
+cssThemeInfo: 主题信息
+cssThemeName: 名称
+cssThemeUrl: CSS 地址
+cssThemeType: 类型
+cssThemeBuiltIn: 内置
+cssThemeCustom: 自定义
+cssThemeAddCustom: 添加自定义主题
+cssThemeLoad: 加载
+cssThemeHelp: CSS 主题说明
+cssThemeHelpDesc1: CSS 主题通过加载外部 CSS 文件来覆盖应用样式。
+cssThemeHelpDesc2: 在 CSS 文件中使用 CSS 变量来自定义外观：
+cssThemeActive: 当前为激活主题
+cssThemeClickToActivate: 点击下方"激活"按钮应用此主题
+cssThemeActivate: 应用主题
 settingUiFontFamily: UI 字体
 settingUiFontFamilyDesc: 界面文字使用的字体族
 settingUiFontSize: UI 字号
@@ -409,6 +428,8 @@ settingAcrylicBackground: 亚克力背景
 settingAcrylicBackgroundDesc: 使用系统毛玻璃效果作为窗口背景，面板将变为半透明
 settingAcrylicOpacity: 毛玻璃透明度
 settingAcrylicOpacityDesc: 调整亚克力背景下面板的透明度，0.6 为默认观感，越小越透明
+settingReducedMotion: 减少动画效果
+settingReducedMotionDesc: 禁用界面中的动画和过渡效果，提升性能
 
 # 设置项 - Editor
 settingWaveformFps: 波形刷新率

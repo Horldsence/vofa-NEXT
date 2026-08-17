@@ -1,0 +1,25 @@
+/**
+ * Default CSS Theme
+ *
+ * This is the base/default CSS theme. It inherits all styles from the
+ * application's built-in theme.css. This file serves as a reference
+ * for creating custom CSS themes.
+ *
+ * Custom CSS themes can override any CSS variable defined in theme.css:
+ *
+ * :root {
+ *   --color-accent: #your-accent-color;
+ *   --color-bg-sidebar: #your-sidebar-color;
+ *   --font-ui: 'Your Font', sans-serif;
+ *   --radius-default: 12px;
+ *   --transition-fast: 100ms;
+ *   etc.
+ * }
+ *
+ * CSS variable reference: See src/styles/css-variables.ts
+ */
+
+:root {
+  /* Default theme uses the built-in CSS variable values */
+  /* No overrides needed - this file serves as a placeholder */
+}

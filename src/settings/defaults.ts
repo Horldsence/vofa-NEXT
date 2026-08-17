@@ -4,7 +4,7 @@
 //! 通过 tauri-plugin-store 持久化到 app config dir 的 settings.json
 
 import type { Lang } from '../i18n';
-import type { ThemeDefinition } from './theme';
+import type { CssStyleTheme, ThemeDefinition } from './theme';
 
 /// 应用设置根 schema
 export interface AppSettings {
@@ -19,6 +19,12 @@ export interface AppSettings {
   appearance: {
     theme: string;
     customThemes: ThemeDefinition[];
+    /** 当前激活的CSS样式主题ID */
+    cssTheme: string;
+    /** 用户自定义CSS样式主题列表 */
+    customCssThemes: CssStyleTheme[];
+    /** 减少动画效果 */
+    reducedMotion: boolean;
     uiFontFamily: string;
     uiFontSize: number;
     monoFontFamily: string;
@@ -88,6 +94,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appearance: {
     theme: 'dark',
     customThemes: [],
+    cssTheme: 'default',
+    customCssThemes: [],
+    reducedMotion: false,
     uiFontFamily: "'JetBrains Mono', 'Maple Mono CN', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
     uiFontSize: 13,
     monoFontFamily: "'JetBrains Mono', 'Maple Mono CN', 'Cascadia Code', 'Fira Code', 'SF Mono', Menlo, 'PingFang SC', 'Microsoft YaHei', monospace",

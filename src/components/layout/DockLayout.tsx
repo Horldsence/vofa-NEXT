@@ -156,7 +156,7 @@ export const DockLayout = memo(function DockLayout() {
         ))}
 
       {/* 投放预览 */}
-      {preview && <div className="snap-drop-zone" style={previewStyle(preview)} />}
+      {preview && <div className="snap-drop-zone visible" style={previewStyle(preview)} />}
     </div>
   );
 });

@@ -1,7 +1,8 @@
 //! 主题编辑器弹窗
 //!
+//! - Tab切换: 颜色主题 / CSS样式主题
 //! - 左侧主题列表 (内置 + 自定义)
-//! - 右侧颜色 token 网格
+//! - 右侧颜色 token 网格 或 CSS主题管理
 //! - 支持新建/复制/重命名/删除自定义主题
 
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -15,11 +16,15 @@ import {
   Palette,
   Download,
   Upload,
+  FileCode,
+  Link,
+  Trash,
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { t } from '../i18n';
 import {
   BUILT_IN_THEMES,
+  BUILT_IN_CSS_THEMES,
   DARK_THEME,
   LIGHT_THEME,
   TOKEN_GROUPS,
@@ -31,7 +36,9 @@ import {
   getTokenGroup,
   type ThemeDefinition,
   type ThemeToken,
+  type CssStyleTheme,
 } from '../settings/theme';
+import { loadCssTheme } from '../settings/css-theme-loader';
 
 interface ThemeEditorProps {
   isOpen: boolean;
@@ -40,6 +47,11 @@ interface ThemeEditorProps {
   onThemesChange: (themes: ThemeDefinition[]) => void;
   activeThemeId: string;
   onActiveThemeChange: (id: string) => void;
+  /** CSS样式主题 */
+  cssThemes: CssStyleTheme[];
+  onCssThemesChange: (themes: CssStyleTheme[]) => void;
+  activeCssThemeId: string;
+  onActiveCssThemeChange: (id: string) => void;
 }
 
 const GROUP_LABELS: Record<(typeof TOKEN_GROUPS)[keyof typeof TOKEN_GROUPS], string> = {
@@ -117,6 +129,10 @@ export function ThemeEditor({
   onThemesChange,
   activeThemeId,
   onActiveThemeChange,
+  cssThemes,
+  onCssThemesChange,
+  activeCssThemeId,
+  onActiveCssThemeChange,
 }: ThemeEditorProps) {
   const lang = useAppStore((s) => s.lang);
   const [selectedThemeId, setSelectedThemeId] = useState(activeThemeId);
@@ -124,11 +140,69 @@ export function ThemeEditor({
   const [renaming, setRenaming] = useState(false);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Tab切换: 'color' | 'css'
+  const [activeTab, setActiveTab] = useState<'color' | 'css'>('color');
+  // CSS主题相关状态
+  const [selectedCssThemeId, setSelectedCssThemeId] = useState(activeCssThemeId);
+  const [cssUrlInput, setCssUrlInput] = useState('');
+  const [cssNameInput, setCssNameInput] = useState('');
 
   // 打开时同步选中当前激活主题
   useEffect(() => {
     if (isOpen) setSelectedThemeId(activeThemeId);
   }, [isOpen, activeThemeId]);
+
+  // 打开时同步CSS主题选中状态
+  useEffect(() => {
+    if (isOpen) setSelectedCssThemeId(activeCssThemeId);
+  }, [isOpen, activeCssThemeId]);
+
+  // CSS主题相关
+  const allCssThemes = useMemo(
+    () => [...BUILT_IN_CSS_THEMES, ...cssThemes],
+    [cssThemes]
+  );
+
+  const selectedCssTheme = useMemo(
+    () => allCssThemes.find((t) => t.id === selectedCssThemeId) ?? BUILT_IN_CSS_THEMES[0],
+    [allCssThemes, selectedCssThemeId]
+  );
+
+  const isBuiltInCssTheme = selectedCssTheme?.isBuiltIn ?? true;
+
+  const handleAddCssTheme = () => {
+    const name = cssNameInput.trim() || 'Custom CSS Theme';
+    const url = cssUrlInput.trim();
+    if (!url) return;
+    const newTheme: CssStyleTheme = {
+      id: `custom-${Date.now()}`,
+      name,
+      url,
+      isBuiltIn: false,
+    };
+    onCssThemesChange([...cssThemes, newTheme]);
+    setSelectedCssThemeId(newTheme.id);
+    onActiveCssThemeChange(newTheme.id);
+    loadCssTheme(newTheme);
+    setCssUrlInput('');
+    setCssNameInput('');
+  };
+
+  const handleDeleteCssTheme = () => {
+    if (isBuiltInCssTheme) return;
+    const newThemes = cssThemes.filter((t) => t.id !== selectedCssThemeId);
+    onCssThemesChange(newThemes);
+    if (selectedCssThemeId === activeCssThemeId) {
+      onActiveCssThemeChange(BUILT_IN_CSS_THEMES[0].id);
+      loadCssTheme(BUILT_IN_CSS_THEMES[0]);
+    }
+    setSelectedCssThemeId(BUILT_IN_CSS_THEMES[0].id);
+  };
+
+  const handleActivateCssTheme = (theme: CssStyleTheme) => {
+    onActiveCssThemeChange(theme.id);
+    loadCssTheme(theme);
+  };
 
   // ESC 关闭
   useEffect(() => {
@@ -290,6 +364,29 @@ export function ThemeEditor({
             <Palette size={16} />
             <span>{t(lang, 'themeEditor')}</span>
           </div>
+          {/* Tab切换 */}
+          <div className="flex items-center gap-1 ml-4 px-1 py-0.5 bg-bg-input rounded-lg">
+            <button
+              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                activeTab === 'color'
+                  ? 'bg-bg-active text-text-primary'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+              onClick={() => setActiveTab('color')}
+            >
+              {t(lang, 'colorTheme')}
+            </button>
+            <button
+              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                activeTab === 'css'
+                  ? 'bg-bg-active text-text-primary'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+              onClick={() => setActiveTab('css')}
+            >
+              {t(lang, 'cssTheme')}
+            </button>
+          </div>
           <div className="flex-1" />
           <button
             className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer bg-transparent border-none"
@@ -302,196 +399,363 @@ export function ThemeEditor({
 
         {/* 主体 */}
         <div className="flex-1 flex min-h-0">
-          {/* 左侧主题列表 */}
-          <div className="w-56 bg-bg-sidebar border-r border-border flex flex-col flex-shrink-0">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-              <span className="text-xs font-semibold text-text-secondary uppercase tracking-[0.5px]">
-                {t(lang, 'themeList')}
-              </span>
-              <button
-                className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer bg-transparent border-none"
-                onClick={handleAddTheme}
-                title={t(lang, 'themeAdd')}
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto py-1">
-              {allThemes.map((theme) => {
-                const active = theme.id === selectedThemeId;
-                return (
-                  <div
-                    key={theme.id}
-                    className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
-                      active ? 'bg-bg-active text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
-                    }`}
-                    onClick={() => setSelectedThemeId(theme.id)}
-                  >
-                    <div
-                      className="w-3 h-3 rounded-full border border-border flex-shrink-0"
-                      style={{ background: theme.tokens.bgEditor }}
-                    />
-                    <span className="flex-1 truncate">{theme.name}</span>
-                    {theme.id === activeThemeId && (
-                      <Check size={12} className="text-accent flex-shrink-0" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* 右侧编辑器 */}
-          <div className="flex-1 flex flex-col min-w-0 bg-bg-editor">
-            {/* 工具栏 */}
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
-              {renaming && !isBuiltIn ? (
-                <input
-                  ref={renameInputRef}
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') commitRename();
-                    if (e.key === 'Escape') setRenaming(false);
-                  }}
-                  className="px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-semibold focus:outline-none focus:border-accent"
-                />
-              ) : (
-                <button
-                  className="text-sm font-semibold text-text-primary hover:bg-bg-hover px-2 py-1 rounded cursor-pointer bg-transparent border-none"
-                  onClick={startRename}
-                  disabled={isBuiltIn}
-                  title={isBuiltIn ? undefined : t(lang, 'themeRename')}
-                >
-                  {selectedTheme.name}
-                </button>
-              )}
-              <div className="flex-1" />
-              {!isBuiltIn && (
-                <>
+          {activeTab === 'color' ? (
+            <>
+              {/* 左侧颜色主题列表 */}
+              <div className="w-56 bg-bg-sidebar border-r border-border flex flex-col flex-shrink-0">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <span className="text-xs font-semibold text-text-secondary uppercase tracking-[0.5px]">
+                    {t(lang, 'themeList')}
+                  </span>
                   <button
-                    className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                    onClick={handleDuplicate}
-                    title={t(lang, 'themeDuplicate')}
+                    className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors cursor-pointer bg-transparent border-none"
+                    onClick={handleAddTheme}
+                    title={t(lang, 'themeAdd')}
                   >
-                    <Copy size={12} />
-                    <span>{t(lang, 'themeDuplicate')}</span>
+                    <Plus size={14} />
                   </button>
-                  <button
-                    className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-danger-hover hover:text-text-inverse rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                    onClick={handleDelete}
-                    title={t(lang, 'themeDelete')}
-                  >
-                    <Trash2 size={12} />
-                    <span>{t(lang, 'themeDelete')}</span>
-                  </button>
-                </>
-              )}
-              <div className="w-px h-4 bg-border mx-1" />
-              <button
-                className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                onClick={handleImportClick}
-                title={t(lang, 'themeImport')}
-              >
-                <Upload size={12} />
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={handleImportFile}
-              />
-              <button
-                className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                onClick={handleExport}
-                title={t(lang, 'themeExport')}
-              >
-                <Download size={12} />
-              </button>
-              {!isBuiltIn && (
-                <button
-                  className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
-                  onClick={handleReset}
-                  title={t(lang, 'themeReset')}
-                >
-                  <RotateCcw size={12} />
-                  <span>{t(lang, 'themeReset')}</span>
-                </button>
-              )}
-            </div>
-
-            {/* 只读提示 */}
-            {isBuiltIn && (
-              <div className="px-4 py-2 bg-bg-active text-text-primary text-xs flex-shrink-0">
-                {t(lang, 'themeBuiltInReadOnly')}
-              </div>
-            )}
-
-            {/* Token 网格 */}
-            <div className="flex-1 overflow-y-auto px-4 py-3">
-              {GROUP_ORDER.map((group) => {
-                const tokens = groupedTokens[group];
-                if (!tokens?.length) return null;
-                return (
-                  <div key={group} className="mb-5">
-                    <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary pb-2 mb-2 border-b border-border">
-                      {GROUP_LABELS[group]}
-                    </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                      {tokens.map((token) => (
-                        <ColorField
-                          key={token}
-                          token={token}
-                          value={selectedTheme.tokens[token]}
-                          onChange={(v) => handleTokenChange(token, v)}
-                          disabled={isBuiltIn}
+                </div>
+                <div className="flex-1 overflow-y-auto py-1">
+                  {allThemes.map((theme) => {
+                    const active = theme.id === selectedThemeId;
+                    return (
+                      <div
+                        key={theme.id}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                          active ? 'bg-bg-active text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+                        }`}
+                        onClick={() => setSelectedThemeId(theme.id)}
+                      >
+                        <div
+                          className="w-3 h-3 rounded-full border border-border flex-shrink-0"
+                          style={{ background: theme.tokens.bgEditor }}
                         />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 底部操作 */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-panel-header flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-8 h-8 rounded border border-border"
-                  style={{
-                    background: `linear-gradient(135deg, ${selectedTheme.tokens.bgEditor} 50%, ${selectedTheme.tokens.bgSidebar} 50%)`,
-                  }}
-                />
-                <div className="text-xs text-text-secondary">
-                  {selectedThemeId === activeThemeId
-                    ? t(lang, 'themeActivePreview')
-                    : t(lang, 'themeClickToPreview')}
+                        <span className="flex-1 truncate">{theme.name}</span>
+                        {theme.id === activeThemeId && (
+                          <Check size={12} className="text-accent flex-shrink-0" />
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                {selectedThemeId !== activeThemeId && !isBuiltIn && (
+
+              {/* 右侧颜色编辑器 */}
+              <div className="flex-1 flex flex-col min-w-0 bg-bg-editor">
+                {/* 工具栏 */}
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
+                  {renaming && !isBuiltIn ? (
+                    <input
+                      ref={renameInputRef}
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onBlur={commitRename}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') commitRename();
+                        if (e.key === 'Escape') setRenaming(false);
+                      }}
+                      className="px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-semibold focus:outline-none focus:border-accent"
+                    />
+                  ) : (
+                    <button
+                      className="text-sm font-semibold text-text-primary hover:bg-bg-hover px-2 py-1 rounded cursor-pointer bg-transparent border-none"
+                      onClick={startRename}
+                      disabled={isBuiltIn}
+                      title={isBuiltIn ? undefined : t(lang, 'themeRename')}
+                    >
+                      {selectedTheme.name}
+                    </button>
+                  )}
+                  <div className="flex-1" />
+                  {!isBuiltIn && (
+                    <>
+                      <button
+                        className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                        onClick={handleDuplicate}
+                        title={t(lang, 'themeDuplicate')}
+                      >
+                        <Copy size={12} />
+                        <span>{t(lang, 'themeDuplicate')}</span>
+                      </button>
+                      <button
+                        className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-danger-hover hover:text-text-inverse rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                        onClick={handleDelete}
+                        title={t(lang, 'themeDelete')}
+                      >
+                        <Trash2 size={12} />
+                        <span>{t(lang, 'themeDelete')}</span>
+                      </button>
+                    </>
+                  )}
+                  <div className="w-px h-4 bg-border mx-1" />
                   <button
-                    className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded text-sm cursor-pointer hover:bg-bg-button-hover"
-                    onClick={() => {
-                      onActiveThemeChange(selectedTheme.id);
-                      applyTheme(selectedTheme);
-                    }}
+                    className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                    onClick={handleImportClick}
+                    title={t(lang, 'themeImport')}
                   >
-                    {t(lang, 'themeActivate')}
+                    <Upload size={12} />
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={handleImportFile}
+                  />
+                  <button
+                    className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                    onClick={handleExport}
+                    title={t(lang, 'themeExport')}
+                  >
+                    <Download size={12} />
+                  </button>
+                  {!isBuiltIn && (
+                    <button
+                      className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                      onClick={handleReset}
+                      title={t(lang, 'themeReset')}
+                    >
+                      <RotateCcw size={12} />
+                      <span>{t(lang, 'themeReset')}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 只读提示 */}
+                {isBuiltIn && (
+                  <div className="px-4 py-2 bg-bg-active text-text-primary text-xs flex-shrink-0">
+                    {t(lang, 'themeBuiltInReadOnly')}
+                  </div>
                 )}
-                <button
-                  className="px-3 py-1.5 bg-transparent text-text-primary border border-border rounded text-sm cursor-pointer hover:bg-bg-hover"
-                  onClick={onClose}
-                >
-                  {t(lang, 'themeEditorClose')}
-                </button>
+
+                {/* Token 网格 */}
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  {GROUP_ORDER.map((group) => {
+                    const tokens = groupedTokens[group];
+                    if (!tokens?.length) return null;
+                    return (
+                      <div key={group} className="mb-5">
+                        <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary pb-2 mb-2 border-b border-border">
+                          {GROUP_LABELS[group]}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                          {tokens.map((token) => (
+                            <ColorField
+                              key={token}
+                              token={token}
+                              value={selectedTheme.tokens[token]}
+                              onChange={(v) => handleTokenChange(token, v)}
+                              disabled={isBuiltIn}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* 底部操作 */}
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-panel-header flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded border border-border"
+                      style={{
+                        background: `linear-gradient(135deg, ${selectedTheme.tokens.bgEditor} 50%, ${selectedTheme.tokens.bgSidebar} 50%)`,
+                      }}
+                    />
+                    <div className="text-xs text-text-secondary">
+                      {selectedThemeId === activeThemeId
+                        ? t(lang, 'themeActivePreview')
+                        : t(lang, 'themeClickToPreview')}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedThemeId !== activeThemeId && !isBuiltIn && (
+                      <button
+                        className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded text-sm cursor-pointer hover:bg-bg-button-hover"
+                        onClick={() => {
+                          onActiveThemeChange(selectedTheme.id);
+                          applyTheme(selectedTheme);
+                        }}
+                      >
+                        {t(lang, 'themeActivate')}
+                      </button>
+                    )}
+                    <button
+                      className="px-3 py-1.5 bg-transparent text-text-primary border border-border rounded text-sm cursor-pointer hover:bg-bg-hover"
+                      onClick={onClose}
+                    >
+                      {t(lang, 'themeEditorClose')}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            </>
+          ) : (
+            <>
+              {/* 左侧CSS主题列表 */}
+              <div className="w-56 bg-bg-sidebar border-r border-border flex flex-col flex-shrink-0">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <span className="text-xs font-semibold text-text-secondary uppercase tracking-[0.5px]">
+                    {t(lang, 'cssThemeList')}
+                  </span>
+                </div>
+                <div className="flex-1 overflow-y-auto py-1">
+                  {allCssThemes.map((theme) => {
+                    const active = theme.id === selectedCssThemeId;
+                    return (
+                      <div
+                        key={theme.id}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
+                          active ? 'bg-bg-active text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+                        }`}
+                        onClick={() => setSelectedCssThemeId(theme.id)}
+                      >
+                        <FileCode size={14} className="flex-shrink-0" />
+                        <span className="flex-1 truncate">{theme.name}</span>
+                        {theme.id === activeCssThemeId && (
+                          <Check size={12} className="text-accent flex-shrink-0" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 右侧CSS主题管理 */}
+              <div className="flex-1 flex flex-col min-w-0 bg-bg-editor">
+                {/* 工具栏 */}
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border flex-shrink-0">
+                  <span className="text-sm font-semibold text-text-primary">
+                    {selectedCssTheme?.name}
+                  </span>
+                  <div className="flex-1" />
+                  {!isBuiltInCssTheme && (
+                    <button
+                      className="px-2 py-1 text-xs text-text-secondary hover:bg-bg-danger-hover hover:text-text-inverse rounded inline-flex items-center gap-1 cursor-pointer bg-transparent border-none"
+                      onClick={handleDeleteCssTheme}
+                      title={t(lang, 'cssThemeDelete')}
+                    >
+                      <Trash size={12} />
+                      <span>{t(lang, 'cssThemeDelete')}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 只读提示 */}
+                {isBuiltInCssTheme && (
+                  <div className="px-4 py-2 bg-bg-active text-text-primary text-xs flex-shrink-0">
+                    {t(lang, 'cssThemeBuiltInReadOnly')}
+                  </div>
+                )}
+
+                {/* CSS主题信息 */}
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  <div className="mb-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary pb-2 mb-2 border-b border-border">
+                      {t(lang, 'cssThemeInfo')}
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex items-start gap-2">
+                        <span className="text-text-secondary min-w-[60px]">{t(lang, 'cssThemeName')}:</span>
+                        <span className="text-text-primary">{selectedCssTheme?.name}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-text-secondary min-w-[60px]">{t(lang, 'cssThemeUrl')}:</span>
+                        <span className="text-text-primary font-mono text-xs break-all">{selectedCssTheme?.url}</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-text-secondary min-w-[60px]">{t(lang, 'cssThemeType')}:</span>
+                        <span className="text-text-primary">{selectedCssTheme?.isBuiltIn ? t(lang, 'cssThemeBuiltIn') : t(lang, 'cssThemeCustom')}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 添加自定义CSS主题 */}
+                  {!isBuiltInCssTheme && (
+                    <div className="mb-4">
+                      <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary pb-2 mb-2 border-b border-border">
+                        {t(lang, 'cssThemeAddCustom')}
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <label className="block text-xs text-text-secondary mb-1">{t(lang, 'cssThemeName')}</label>
+                          <input
+                            type="text"
+                            value={cssNameInput}
+                            onChange={(e) => setCssNameInput(e.target.value)}
+                            placeholder="My Custom Theme"
+                            className="w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-text-secondary mb-1">{t(lang, 'cssThemeUrl')}</label>
+                          <input
+                            type="text"
+                            value={cssUrlInput}
+                            onChange={(e) => setCssUrlInput(e.target.value)}
+                            placeholder="https://example.com/theme.css"
+                            className="w-full h-7 px-2 bg-bg-input text-text-primary border border-border rounded text-sm font-mono focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <button
+                          className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded text-sm cursor-pointer hover:bg-bg-button-hover inline-flex items-center gap-1"
+                          onClick={handleAddCssTheme}
+                          disabled={!cssUrlInput.trim()}
+                        >
+                          <Link size={12} />
+                          {t(lang, 'cssThemeLoad')}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CSS主题使用说明 */}
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.5px] text-text-secondary pb-2 mb-2 border-b border-border">
+                      {t(lang, 'cssThemeHelp')}
+                    </div>
+                    <div className="text-xs text-text-secondary space-y-2">
+                      <p>{t(lang, 'cssThemeHelpDesc1')}</p>
+                      <p>{t(lang, 'cssThemeHelpDesc2')}</p>
+                      <pre className="bg-bg-input p-2 rounded text-text-primary font-mono text-[11px] overflow-x-auto">
+{`:root {
+  --color-accent: #ff6b6b;
+  --color-bg-sidebar: #1a1a2e;
+  --radius-default: 16px;
+}`}</pre>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 底部操作 */}
+                <div className="flex items-center justify-between px-4 py-3 border-t border-border bg-bg-panel-header flex-shrink-0">
+                  <div className="text-xs text-text-secondary">
+                    {selectedCssThemeId === activeCssThemeId
+                      ? t(lang, 'cssThemeActive')
+                      : t(lang, 'cssThemeClickToActivate')}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedCssThemeId !== activeCssThemeId && (
+                      <button
+                        className="px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded text-sm cursor-pointer hover:bg-bg-button-hover"
+                        onClick={() => selectedCssTheme && handleActivateCssTheme(selectedCssTheme)}
+                      >
+                        {t(lang, 'cssThemeActivate')}
+                      </button>
+                    )}
+                    <button
+                      className="px-3 py-1.5 bg-transparent text-text-primary border border-border rounded text-sm cursor-pointer hover:bg-bg-hover"
+                      onClick={onClose}
+                    >
+                      {t(lang, 'themeEditorClose')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -55,7 +55,7 @@ export function CodeEditor({ value, onChange, readOnly = false, height = '100%' 
         EditorView.theme({
           '&': { height, fontSize: '12px' },
           '.cm-content': { fontFamily: 'var(--font-mono)' },
-          '.cm-gutters': { backgroundColor: '#1e1e1e' },
+          '.cm-gutters': { backgroundColor: 'var(--color-bg-editor)' },
         }),
       ],
     });

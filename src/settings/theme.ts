@@ -60,6 +60,40 @@ export interface ThemeDefinition {
   tokens: Record<ThemeToken, string>;
 }
 
+/// CSS样式主题定义 (独立于颜色token的完整CSS样式包)
+export interface CssStyleTheme {
+  id: string;
+  name: string;
+  /** CSS文件URL，内置主题使用相对路径如 '/themes/default.css' */
+  url: string;
+  /** 是否为内置主题 */
+  isBuiltIn: boolean;
+}
+
+/// 内置CSS样式主题
+export const BUILT_IN_CSS_THEMES: CssStyleTheme[] = [
+  {
+    id: 'default',
+    name: 'Default',
+    url: '/themes/default.css',
+    isBuiltIn: true,
+  },
+  {
+    id: 'monet',
+    name: 'Monet',
+    url: '/themes/monet.css',
+    isBuiltIn: true,
+  },
+];
+
+export function isBuiltInCssThemeId(id: string): boolean {
+  return BUILT_IN_CSS_THEMES.some((t) => t.id === id);
+}
+
+export function getBuiltInCssTheme(id: string): CssStyleTheme | undefined {
+  return BUILT_IN_CSS_THEMES.find((t) => t.id === id);
+}
+
 /// token 分组 (用于编辑器归类)
 export const TOKEN_GROUPS = {
   background: 'background',

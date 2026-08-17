@@ -6,7 +6,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { AppSettings } from './defaults';
-import { applyTheme, getCssVariableName, resolveActiveTheme, type ThemeToken } from './theme';
+import { applyTheme, getCssVariableName, resolveActiveTheme, getBuiltInCssTheme, type ThemeToken } from './theme';
+import { loadCssTheme } from './css-theme-loader';
 
 /// 亚克力模式下各背景 token 的基准透明度 (未列出的 token 保持不透明)
 /// 基准对应 acrylicOpacity = 0.6, 实际透明度 = 基准值 / 0.6 * acrylicOpacity
@@ -48,6 +49,22 @@ export function applyAppearance(appearance: AppSettings['appearance']): void {
   document.body.style.fontFamily = appearance.uiFontFamily;
   // 应用主题颜色
   applyTheme(resolveActiveTheme(appearance));
+
+  // 加载CSS样式主题
+  const cssThemeId = appearance.cssTheme;
+  const builtInCssTheme = getBuiltInCssTheme(cssThemeId);
+  const customCssTheme = appearance.customCssThemes.find((t) => t.id === cssThemeId);
+  const cssTheme = builtInCssTheme ?? customCssTheme;
+  if (cssTheme) {
+    loadCssTheme(cssTheme);
+  } else {
+    // 默认加载内置default主题
+    const defaultTheme = getBuiltInCssTheme('default');
+    if (defaultTheme) {
+      loadCssTheme(defaultTheme);
+    }
+  }
+
   // 亚克力背景: 背景 token 半透明化 + 原生窗口毛玻璃
   const acrylic = appearance.acrylicBackground === true;
   if (acrylic) {
@@ -64,5 +81,13 @@ export function applyAppearance(appearance: AppSettings['appearance']): void {
   }
   // 纯浏览器 dev 环境无 Tauri 后端, 调用失败时静默忽略
   invoke('set_window_acrylic', { enabled: acrylic }).catch(() => {});
+
+  // 低动画模式
+  if (appearance.reducedMotion) {
+    root.classList.add('reduced-motion');
+  } else {
+    root.classList.remove('reduced-motion');
+  }
+
   // 控件栏/状态栏可见性由 App.tsx 读取 settings 控制, 这里不直接操作
 }

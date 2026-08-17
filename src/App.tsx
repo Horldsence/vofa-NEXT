@@ -235,7 +235,7 @@ function App() {
           ))}
           {dockEdgeHover && (
             <div
-              className="snap-drop-zone"
+              className="snap-drop-zone visible"
               style={{
                 top: 6,
                 left: dockEdgeHover === 'left' ? 6 : '82%',

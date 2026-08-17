@@ -1,6 +1,16 @@
 /* 组件层样式 — 依赖 theme.css 中的 @theme 令牌, 通过 @reference 引用以便 @apply 可用 */
 @reference "./theme.css";
 
+/* ============ 低动画模式 (用户设置) ============ */
+/* 通过设置开启，替代 prefers-reduced-motion 系统偏好 */
+.reduced-motion *,
+.reduced-motion *::before,
+.reduced-motion *::after {
+  transition: none !important;
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+}
+
 /* ============ 滚动条样式 ============ */
 ::-webkit-scrollbar {
   width: 10px;
@@ -154,8 +164,8 @@ body.dragging-dock * {
 }
 
 @keyframes notif-progress-shrink {
-  from { width: 100%; }
-  to { width: 0%; }
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
 }
 
 .animate-led-pulse {
@@ -163,6 +173,8 @@ body.dragging-dock * {
 }
 
 /* ============ Tab 滑动指示器 (SlidingPill) ============ */
+/* 注意: left/top/width/height 过渡会触发布局重算，但 Tab 切换频率低，性能影响可接受 */
+/* 未来可通过组件改造使用 transform 优化 */
 .tab-sliding-pill {
   position: absolute;
   border-radius: var(--radius-sm);
@@ -175,16 +187,12 @@ body.dragging-dock * {
     height var(--transition-base) cubic-bezier(0.2, 0, 0, 1),
     background-color var(--transition-base) var(--ease-in-out);
   pointer-events: none;
+  /* 提示浏览器提前优化位置变化 */
+  will-change: left, top, width, height;
 }
 
 .tab-sliding-pill--panel {
   background: var(--color-bg-active);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tab-sliding-pill {
-    transition: none;
-  }
 }
 
 /* ============ 大模块圆角卡片 ============ */
@@ -202,12 +210,15 @@ body.dragging-dock * {
   background: rgba(76, 141, 255, 0.16);
   border: 1.5px dashed var(--color-accent);
   pointer-events: none;
-  transition:
-    top 0.15s ease-out,
-    left 0.15s ease-out,
-    width 0.15s ease-out,
-    height 0.15s ease-out;
+  /* 定位由 left/top/width/height 控制，这里只对 opacity 动画表示出现/消失 */
+  transition: opacity var(--transition-fast) var(--ease-out-cubic);
+  opacity: 0;
   z-index: 30;
+}
+
+/* 通过 JS 添加此类来显示 */
+.snap-drop-zone.visible {
+  opacity: 1;
 }
 
 /* ============ Context Menu 右键菜单 ============ */
@@ -544,7 +555,10 @@ body.dragging-dock * {
   height: 2px;
   background: var(--color-text-secondary);
   opacity: 0.4;
+  /* 使用 transform: scaleX() 替代 width 动画，避免触发布局重算 */
+  transform-origin: left center;
   animation: notif-progress-shrink 8s linear forwards;
+  will-change: transform;
 }
 
 .notif-progress.paused {
@@ -688,7 +702,10 @@ body.dragging-dock * {
   border: 1.5px solid var(--color-accent);
   border-radius: 50%;
   cursor: crosshair;
-  transition: all 0.15s;
+  /* 明确指定过渡属性，避免不必要的动画性能损耗 */
+  transition: background-color var(--transition-fast) var(--ease-out-cubic),
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    transform var(--transition-fast) var(--ease-out-cubic);
 }
 
 .node-editor-rf .react-flow__handle:hover {
@@ -756,10 +773,12 @@ body.dragging-dock * {
 
 .animate-rawdata-enter {
   animation: rawdata-enter 150ms ease-out;
+  will-change: transform, opacity;
 }
 
 .animate-rawdata-row {
   animation: rawdata-row-enter 120ms ease-out;
+  will-change: transform, opacity;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -782,8 +801,19 @@ body.dragging-dock * {
   .slider-input::-webkit-slider-thumb,
   .slider-input::-moz-range-thumb,
   .settings-toggle-slider,
-  .settings-toggle-slider::before {
+  .settings-toggle-slider::before,
+  .tab-sliding-pill,
+  .snap-drop-zone,
+  .prompt-card-btn,
+  .prompt-card-btn-ghost,
+  .node-editor-rf .react-flow__handle {
     transition: none;
+  }
+  .animate-rawdata-enter,
+  .animate-rawdata-row,
+  .animate-led-pulse,
+  .notif-progress {
+    animation: none;
   }
 }
 
@@ -871,11 +901,4 @@ body.dragging-dock * {
 .prompt-card-btn-ghost:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .prompt-card-btn,
-  .prompt-card-btn-ghost {
-    transition: none;
-  }
 }

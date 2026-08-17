@@ -96,6 +96,14 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
   },
   {
     category: 'appearance',
+    field: 'reducedMotion',
+    labelKey: 'settingReducedMotion',
+    descKey: 'settingReducedMotionDesc',
+    control: { kind: 'toggle' },
+    keywords: ['animation', 'motion', '动画', '动效'],
+  },
+  {
+    category: 'appearance',
     field: 'uiFontFamily',
     labelKey: 'settingUiFontFamily',
     descKey: 'settingUiFontFamilyDesc',

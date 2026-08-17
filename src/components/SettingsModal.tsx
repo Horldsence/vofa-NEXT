@@ -492,6 +492,22 @@ export function SettingsModal() {
             id
           )
         }
+        cssThemes={settings.appearance.customCssThemes}
+        onCssThemesChange={(themes) =>
+          (update as (c: keyof AppSettings, f: string, v: unknown) => void)(
+            'appearance',
+            'customCssThemes',
+            themes
+          )
+        }
+        activeCssThemeId={String(settings.appearance.cssTheme)}
+        onActiveCssThemeChange={(id) =>
+          (update as (c: keyof AppSettings, f: string, v: unknown) => void)(
+            'appearance',
+            'cssTheme',
+            id
+          )
+        }
       />
       <BackupModal isOpen={backupModalOpen} onClose={() => setBackupModalOpen(false)} />
     </div>

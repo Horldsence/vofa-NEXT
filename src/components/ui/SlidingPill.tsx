@@ -59,11 +59,21 @@ export function useSlidingPill(activeKey: string | null) {
 /// variant: 'editor' (默认, bg-editor) | 'panel' (bg-active, 用于竖排通道 Tab)
 export function SlidingPill({ pill, variant = 'editor' }: { pill: PillRect; variant?: 'editor' | 'panel' }) {
   if (!pill.visible) return null;
+  // 使用 left/top 定位，transform: scale() 处理尺寸动画（避免 layout）
+  // 由于 transition 只能作用于相同属性，需要分两步：
+  // 1. 位置变化：left/top 变化 + translateX/Y 动画
+  // 2. 尺寸变化：scaleX/scaleY 动画
+  // 为简化，使用 scale 配合 width/height 的视觉尺寸
   return (
     <div
       aria-hidden
       className={`tab-sliding-pill ${variant === 'panel' ? 'tab-sliding-pill--panel' : ''}`}
-      style={{ left: pill.left, top: pill.top, width: pill.width, height: pill.height }}
+      style={{
+        left: pill.left,
+        top: pill.top,
+        width: pill.width,
+        height: pill.height,
+      }}
     />
   );
 }

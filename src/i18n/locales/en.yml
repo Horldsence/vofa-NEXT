@@ -376,6 +376,8 @@ settingDebugDesc: Show debug features such as Inspect Element in context menus
 settingTheme: Theme
 settingThemeDesc: Application color scheme
 settingThemeEdit: Edit Theme
+colorTheme: Color Theme
+cssTheme: CSS Style Theme
 
 # Theme editor
 themeEditor: Theme Editor
@@ -393,6 +395,23 @@ themeActivePreview: This is the active theme. Edits preview live.
 themeClickToPreview: Click Activate below to preview this theme.
 themeActivate: Activate Theme
 themeEdit: Edit Theme
+cssThemeList: CSS Themes
+cssThemeDelete: Delete
+cssThemeBuiltInReadOnly: Built-in CSS themes are read-only and cannot be deleted.
+cssThemeInfo: Theme Info
+cssThemeName: Name
+cssThemeUrl: CSS URL
+cssThemeType: Type
+cssThemeBuiltIn: Built-in
+cssThemeCustom: Custom
+cssThemeAddCustom: Add Custom Theme
+cssThemeLoad: Load
+cssThemeHelp: CSS Theme Guide
+cssThemeHelpDesc1: CSS themes override application styles by loading external CSS files.
+cssThemeHelpDesc2: "Use CSS variables in your CSS file to customize the appearance:"
+cssThemeActive: This is the active theme
+cssThemeClickToActivate: Click Activate below to apply this theme
+cssThemeActivate: Apply Theme
 settingUiFontFamily: UI Font Family
 settingUiFontFamilyDesc: Font family used for interface text
 settingUiFontSize: UI Font Size
@@ -409,6 +428,8 @@ settingAcrylicBackground: Acrylic Background
 settingAcrylicBackgroundDesc: Use the system frosted-glass effect as the window background; panels become translucent
 settingAcrylicOpacity: Acrylic Opacity
 settingAcrylicOpacityDesc: Adjust panel translucency over the acrylic background; 0.6 is the default look, lower means more transparent
+settingReducedMotion: Reduce Motion
+settingReducedMotionDesc: Disable animations and transitions in the interface to improve performance
 
 # Setting items - Editor
 settingWaveformFps: Waveform FPS

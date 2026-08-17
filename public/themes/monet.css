@@ -1,0 +1,79 @@
+/**
+ * Monet CSS Theme
+ *
+ * A low-saturation gray-toned dark theme inspired by the Monet color palette.
+ * This theme provides a cohesive, muted aesthetic with foggy blue/gray-green
+ * /gray-purple/terracotta accents.
+ *
+ * Override the default CSS variables to apply this visual style.
+ */
+
+:root {
+  /* === Background Colors === */
+  --color-bg-activity: #21262c;
+  --color-bg-sidebar: #21262b;
+  --color-bg-editor: #191d22;
+  --color-bg-window: #111519;
+  --color-bg-panel-header: #252b31;
+  --color-bg-input: #2a3037;
+  --color-bg-hover: #2b3138;
+  --color-bg-active: #3d4a5c;
+  --color-bg-button: #5b7fa6;
+  --color-bg-button-hover: #6b8fb6;
+  --color-bg-statusbar: #1d2126;
+  --color-bg-danger: #59302c;
+  --color-bg-danger-hover: #6a3833;
+  --color-bg-tooltip: #252b31;
+  --color-bg-scrollbar: #353b44;
+  --color-bg-scrollbar-hover: #434a55;
+  --color-bg-node-header: rgba(255, 255, 255, 0.06);
+
+  /* === Border Colors === */
+  --color-border: #343a42;
+  --color-border-node-header: rgba(255, 255, 255, 0.10);
+
+  /* === Text Colors === */
+  --color-text-primary: #dfe3e7;
+  --color-text-secondary: #9aa2ab;
+  --color-text-bright: #ffffff;
+  --color-text-disabled: #666e77;
+  --color-text-inverse: #ffffff;
+
+  /* === Accent Colors === */
+  --color-accent: #7aa2c9;
+  --color-accent-hover: #6b8fb6;
+  --color-accent-active: #3d4a5c;
+  --color-green: #8fa98a;
+  --color-red: #c97e6f;
+  --color-yellow: #c9b083;
+  --color-blue: #82a8cc;
+  --color-purple: #a58fb5;
+  --color-orange: #c08b6d;
+
+  /* === Waveform Colors === */
+  --color-waveform-grid: #2e343d;
+  --color-waveform-text: #b2b9c2;
+  --color-waveform-tick: #4a515b;
+  --color-waveform-cursor: #d9c27a;
+
+  /* === Semantic Tokens === */
+  --color-bg-surface: var(--color-bg-editor);
+  --color-bg-elevated: var(--color-bg-sidebar);
+  --color-bg-inset: var(--color-bg-input);
+  --color-text-muted: var(--color-text-disabled);
+  --color-border-subtle: var(--color-border);
+  --color-danger: var(--color-red);
+  --color-warning: var(--color-yellow);
+  --color-success: var(--color-green);
+  --color-info: var(--color-blue);
+  --color-danger-surface: var(--color-bg-danger);
+
+  /* === Radius Overrides === */
+  --radius-default: 10px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+
+  /* === Transition Overrides === */
+  --transition-fast: 150ms;
+  --transition-base: 250ms;
+}

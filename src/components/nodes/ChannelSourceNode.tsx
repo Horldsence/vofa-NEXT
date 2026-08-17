@@ -26,12 +26,10 @@ export function ChannelSourceNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className="nowheel border border-border rounded-md min-w-[140px] text-[11px] [&.selected]:border-accent"
-      style={{ backgroundColor: 'color-mix(in srgb, var(--color-accent) 25%, var(--color-bg-sidebar))' }}
+      className="nowheel border border-border rounded-md min-w-[140px] text-[11px] bg-accent/25 [&.selected]:border-accent"
     >
       <div
-        className="flex items-center gap-1.5 px-2 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px]"
-        style={{ color: 'var(--accent)' }}
+        className="flex items-center gap-1.5 px-2 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] text-accent"
       >
         <RadioIcon size={12} />
         <span>{label}</span>
