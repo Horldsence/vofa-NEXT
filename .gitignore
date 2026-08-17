@@ -14,9 +14,12 @@ dist-ssr
 .pnpm-store
 
 # Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+.vscode
 .idea
+
+# Agent / plan state
+.codewhale
+.sisyphus
 .DS_Store
 *.suo
 *.ntvs*
