@@ -201,14 +201,14 @@ pub fn on_menu_event(app: &tauri::AppHandle, id: &str) {
     match id {
         ids::GITHUB => {
             if let Err(e) =
-                tauri_plugin_opener::open_url("https://github.com/pengheng/vofa-next", None::<&str>)
+                tauri_plugin_opener::open_url("https://github.com/Horldsence/vofa-NEXT", None::<&str>)
             {
                 log::warn!("打开 GitHub 失败: {}", e);
             }
         }
         ids::DOCS => {
             if let Err(e) = tauri_plugin_opener::open_url(
-                "https://github.com/pengheng/vofa-next#readme",
+                "https://github.com/Horldsence/vofa-NEXT#readme",
                 None::<&str>,
             ) {
                 log::warn!("打开文档失败: {}", e);

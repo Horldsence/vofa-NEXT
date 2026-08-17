@@ -14,8 +14,8 @@ interface AboutModalProps {
 
 const APP_AUTHOR = 'peng';
 const APP_LICENSE = 'MIT';
-const APP_GITHUB = 'https://github.com/pengheng/vofa-next';
-const APP_DOCS = 'https://github.com/pengheng/vofa-next#readme';
+const APP_GITHUB = 'https://github.com/Horldsence/vofa-NEXT';
+const APP_DOCS = 'https://github.com/Horldsence/vofa-NEXT#readme';
 
 export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   const lang = useAppStore((s) => s.lang);

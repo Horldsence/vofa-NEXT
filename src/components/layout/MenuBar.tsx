@@ -7,8 +7,8 @@ import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { t, type Lang } from '../../i18n';
 
-const APP_GITHUB = 'https://github.com/pengheng/vofa-next';
-const APP_DOCS = 'https://github.com/pengheng/vofa-next#readme';
+const APP_GITHUB = 'https://github.com/Horldsence/vofa-NEXT';
+const APP_DOCS = 'https://github.com/Horldsence/vofa-NEXT#readme';
 
 /// Windows 平台检测 — 仅 Windows 挂载自定义菜单栏。
 ///
