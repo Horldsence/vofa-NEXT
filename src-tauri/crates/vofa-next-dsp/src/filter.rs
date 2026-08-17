@@ -166,7 +166,13 @@ const PI_F32: f32 = std::f32::consts::PI;
 const DEFAULT_Q: f32 = std::f32::consts::FRAC_1_SQRT_2;
 
 /// 计算归一化角频率 w0 = 2*pi*fc/fs
+///
+/// 采样率无效 (≤0 / NaN / Inf) 时返回 π/2 (RBJ 有效区间中部, cos=0/sin=1),
+/// 避免除零产生 NaN/Inf 系数。
 fn w0(cutoff: f32, sample_rate: f32) -> f32 {
+    if !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return PI_F32 * 0.5;
+    }
     2.0 * PI_F32 * cutoff / sample_rate
 }
 
@@ -195,6 +201,7 @@ fn alpha(w0: f32, q: f32) -> f32 {
 
 /// 低通 biquad 系数 (fc=截止频率, fs=采样率)
 pub fn lowpass_biquad(cutoff: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
+    let cutoff = clamp_to_nyquist(cutoff, sample_rate);
     let w = w0(cutoff, sample_rate);
     let a = alpha(w, DEFAULT_Q);
     let cos_w = w.cos();
@@ -209,6 +216,7 @@ pub fn lowpass_biquad(cutoff: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
 
 /// 高通 biquad 系数
 pub fn highpass_biquad(cutoff: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
+    let cutoff = clamp_to_nyquist(cutoff, sample_rate);
     let w = w0(cutoff, sample_rate);
     let a = alpha(w, DEFAULT_Q);
     let cos_w = w.cos();
@@ -225,6 +233,10 @@ pub fn highpass_biquad(cutoff: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
 /// low, high: 通带 [low, high]
 /// 中心频率 fc = sqrt(low * high), 带宽 BW = high - low
 pub fn bandpass_biquad(low: f32, high: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
+    let low = clamp_to_nyquist(low, sample_rate);
+    let high = clamp_to_nyquist(high, sample_rate);
+    // 几何中心 fc = sqrt(low*high) 要求 low < high, 用户可能填反
+    let (low, high) = if low > high { (high, low) } else { (low, high) };
     let fc = (low * high).sqrt();
     let bw = high - low;
     let w = w0(fc, sample_rate);
@@ -243,6 +255,10 @@ pub fn bandpass_biquad(low: f32, high: f32, sample_rate: f32) -> ([f32; 3], [f32
 
 /// 带阻 (陷波) biquad 系数
 pub fn bandstop_biquad(low: f32, high: f32, sample_rate: f32) -> ([f32; 3], [f32; 3]) {
+    let low = clamp_to_nyquist(low, sample_rate);
+    let high = clamp_to_nyquist(high, sample_rate);
+    // 几何中心 fc = sqrt(low*high) 要求 low < high, 用户可能填反
+    let (low, high) = if low > high { (high, low) } else { (low, high) };
     let fc = (low * high).sqrt();
     let bw = high - low;
     let w = w0(fc, sample_rate);
@@ -428,5 +444,61 @@ mod tests {
         });
         // 应为 IIR 类型
         assert!(matches!(f.kind(), FilterKind::IIR { .. }));
+    }
+
+    #[test]
+    fn test_nyquist_guard_coefficients_finite() {
+        // 越界 / 非法输入不应产生 NaN/Inf 或 a0 <= 0 (不稳定) 的系数
+        let cases: [(f32, f32); 7] = [
+            (1000.0, 1000.0), // cutoff == fs
+            (2000.0, 1000.0), // cutoff == 2*fs
+            (0.0, 1000.0),    // 零截止
+            (-5.0, 1000.0),   // 负截止
+            (f32::NAN, 1000.0),
+            (100.0, 0.0),     // 零采样率
+            (100.0, -10.0),   // 负采样率
+        ];
+        for &(cutoff, fs) in &cases {
+            for (name, (b, a)) in [
+                ("lowpass", lowpass_biquad(cutoff, fs)),
+                ("highpass", highpass_biquad(cutoff, fs)),
+            ] {
+                assert!(a[0] > 0.0, "{name} a0 应为正 (cutoff={cutoff}, fs={fs})");
+                assert!(
+                    b.iter().chain(a.iter()).all(|v| v.is_finite()),
+                    "{name} 系数应为有限数 (cutoff={cutoff}, fs={fs})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_nyquist_guard_stays_stable() {
+        // 截止频率远超 Nyquist 时, 长期输入不应发散
+        let mut f = DigitalFilter::from_preset(FilterPreset::Lowpass {
+            cutoff: 5000.0,
+            sample_rate: 1000.0,
+        });
+        for i in 0..10_000 {
+            let x = (i as f32 * 0.1).sin();
+            let y = f.process(x);
+            assert!(y.is_finite(), "输出应为有限数 (i={i})");
+            assert!(y.abs() < 1e6, "输出不应发散 (i={i}, y={y})");
+        }
+    }
+
+    #[test]
+    fn test_band_low_high_swapped() {
+        // low > high 时应交换, 系数有限且稳定
+        for (name, (b, a)) in [
+            ("bandpass", bandpass_biquad(200.0, 100.0, 1000.0)),
+            ("bandstop", bandstop_biquad(200.0, 100.0, 1000.0)),
+        ] {
+            assert!(a[0] > 0.0, "{name} a0 应为正");
+            assert!(
+                b.iter().chain(a.iter()).all(|v| v.is_finite()),
+                "{name} 系数应为有限数"
+            );
+        }
     }
 }

@@ -73,8 +73,11 @@ export interface FilterConfig {
   precision: number;
 }
 
-/// 频谱分析配置
-export interface SpectrumConfig {
+/// 信号域类型 — 用于节点图端口的时域/频域静态标注
+export type DomainType = 'time' | 'freq';
+
+/// FFT 求解配置 (频域求解器 — 输入时域信号 in0, 输出频谱)
+export interface FFTConfig {
   id: string;
   label: string;
   /// FFT 窗口大小 (2 的幂, 256/512/1024/2048)
@@ -85,6 +88,21 @@ export interface SpectrumConfig {
   output: SpectrumOutput;
   /// 采样率 (Hz)
   sampleRate: number;
+}
+
+/// 频谱展示配置 (纯展示 — 从专用频谱数据通道读取某个 FFT 求解器的结果)
+export interface SpectrumConfig {
+  id: string;
+  label: string;
+  /// 数据源 FFT widget id (null = 未选择, 显示等待提示)
+  sourceId: string | null;
+}
+
+/// 逆 FFT 求解配置 (频域→时域: 输入频域 spectrum, 输出时域 out0)
+/// 上游 FFT 源由「频域→频域」连线在编译期解析, 无需额外配置。
+export interface IFFTConfig {
+  id: string;
+  label: string;
 }
 
 /// 频谱计算结果 — 与 Rust SpectrumResult 对应
@@ -185,6 +203,7 @@ const PI_F32 = Math.PI;
 const DEFAULT_Q = 0.70710678; // 1/sqrt(2), Butterworth 响应
 
 function w0(cutoff: number, sampleRate: number): number {
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return PI_F32 * 0.5;
   return 2.0 * PI_F32 * cutoff / sampleRate;
 }
 
@@ -192,9 +211,21 @@ function alpha(w0: number, q: number): number {
   return Math.sin(w0) / (2.0 * q);
 }
 
+/// 将滤波器频率参数限制在 (0, Nyquist) 开区间内 (与 Rust clamp_to_nyquist 一致)。
+/// RBJ biquad 系数公式仅在 0 < w0 < π (即 freq < sampleRate/2) 时有效。
+function clampToNyquist(freq: number, sampleRate: number): number {
+  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
+    return Number.isFinite(freq) && freq > 0 ? freq : 1;
+  }
+  const nyquist = sampleRate * 0.5;
+  if (!Number.isFinite(freq)) return nyquist * 0.1;
+  return Math.min(Math.max(freq, nyquist * 0.001), nyquist * 0.999);
+}
+
 /// 低通 biquad 系数 (fc=截止频率, fs=采样率)
 export function lowpassBiquad(cutoff: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const w = w0(cutoff, sampleRate);
+  const c = clampToNyquist(cutoff, sampleRate);
+  const w = w0(c, sampleRate);
   const a = alpha(w, DEFAULT_Q);
   const cosW = Math.cos(w);
   const b0 = (1.0 - cosW) / 2.0;
@@ -208,7 +239,8 @@ export function lowpassBiquad(cutoff: number, sampleRate: number): { b: [number,
 
 /// 高通 biquad 系数
 export function highpassBiquad(cutoff: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const w = w0(cutoff, sampleRate);
+  const c = clampToNyquist(cutoff, sampleRate);
+  const w = w0(c, sampleRate);
   const a = alpha(w, DEFAULT_Q);
   const cosW = Math.cos(w);
   const b0 = (1.0 + cosW) / 2.0;
@@ -223,8 +255,11 @@ export function highpassBiquad(cutoff: number, sampleRate: number): { b: [number
 /// 带通 biquad 系数 (常量 0 dB 峰值)
 /// low, high: 通带 [low, high]
 export function bandpassBiquad(low: number, high: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const fc = Math.sqrt(low * high);
-  const bw = high - low;
+  const lo = clampToNyquist(low, sampleRate);
+  const hi = clampToNyquist(high, sampleRate);
+  const [l, h] = lo > hi ? [hi, lo] : [lo, hi];
+  const fc = Math.sqrt(l * h);
+  const bw = h - l;
   const w = w0(fc, sampleRate);
   const q = bw > 0 ? fc / bw : DEFAULT_Q;
   const a = alpha(w, q);
@@ -240,8 +275,11 @@ export function bandpassBiquad(low: number, high: number, sampleRate: number): {
 
 /// 带阻 (陷波) biquad 系数
 export function bandstopBiquad(low: number, high: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const fc = Math.sqrt(low * high);
-  const bw = high - low;
+  const lo = clampToNyquist(low, sampleRate);
+  const hi = clampToNyquist(high, sampleRate);
+  const [l, h] = lo > hi ? [hi, lo] : [lo, hi];
+  const fc = Math.sqrt(l * h);
+  const bw = h - l;
   const w = w0(fc, sampleRate);
   const q = bw > 0 ? fc / bw : DEFAULT_Q;
   const a = alpha(w, q);

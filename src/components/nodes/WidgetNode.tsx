@@ -5,7 +5,8 @@ import { useDockStore } from '../../store/dockStore';
 import { t } from '../../i18n';
 import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
-import type { WidgetConfig } from '../../types';
+import type { WidgetConfig, DomainType } from '../../types';
+import type { Lang } from '../../i18n';
 import { UNARY_MATH_OPS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
 import { widgetToTab } from '../../lib/utils/widgetTab';
@@ -23,11 +24,20 @@ import { NumberDisplay } from '../displays/widgets/NumberDisplay';
 import { CustomWidget, evalCustomWidgetDef } from '../displays/widgets/CustomWidget';
 import { MathWidget } from '../displays/widgets/MathWidget';
 import { FilterWidget } from '../displays/widgets/FilterWidget';
+import { FFTWidget } from '../displays/widgets/FFTWidget';
+import { IFFTWidget } from '../displays/widgets/IFFTWidget';
+
+/// 端口定义 — domain 标注该端口承载的是时域还是频域信号
+export interface WidgetPort {
+  id: string;
+  label: string;
+  domain: DomainType;
+}
 
 /// 获取模块的端口定义
-function getWidgetPorts(widget: WidgetConfig): {
-  inputs: { id: string; label: string }[];
-  outputs: { id: string; label: string }[];
+export function getWidgetPorts(widget: WidgetConfig): {
+  inputs: WidgetPort[];
+  outputs: WidgetPort[];
 } {
   switch (widget.kind) {
     case 'Knob':
@@ -36,26 +46,27 @@ function getWidgetPorts(widget: WidgetConfig): {
     case 'Radio':
     case 'Checkbox':
       // 输入控件: 只有输出端口
-      return { inputs: [], outputs: [{ id: 'value', label: 'value' }] };
+      return { inputs: [], outputs: [{ id: 'value', label: 'value', domain: 'time' }] };
     case 'Label':
     case 'Gauge':
     case 'LED':
     case 'NumberDisplay':
       // 显示控件: 只有单个输入端口
-      return { inputs: [{ id: 'value', label: 'value' }], outputs: [] };
+      return { inputs: [{ id: 'value', label: 'value', domain: 'time' }], outputs: [] };
     case 'PieChart':
       return {
-        inputs: widget.params.segments.map((seg, i) => ({ id: `seg${i}`, label: seg })),
+        inputs: widget.params.segments.map((seg, i) => ({ id: `seg${i}`, label: seg, domain: 'time' as DomainType })),
         outputs: [],
       };
     case 'Image':
-      return { inputs: [{ id: 'data', label: 'data' }], outputs: [] };
+      return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
     case 'Waveform':
       // 波形图: 多个通道输入端口
       return {
         inputs: Array.from({ length: widget.params.channels }, (_, i) => ({
           id: `CH${i}`,
           label: `CH${i}`,
+          domain: 'time' as DomainType,
         })),
         outputs: [],
       };
@@ -67,29 +78,40 @@ function getWidgetPorts(widget: WidgetConfig): {
         inputs: Array.from({ length: inputCount }, (_, i) => ({
           id: `in${i}`,
           label: `in${i}`,
+          domain: 'time' as DomainType,
         })),
-        outputs: [{ id: 'result', label: 'result' }],
+        outputs: [{ id: 'result', label: 'result', domain: 'time' }],
       };
     }
     case 'Filter':
-      // 滤波器: 单输入 in0 + 单输出 result
+      // 滤波器: 单输入 in0 (时域) + 单输出 result (时域)
       return {
-        inputs: [{ id: 'in0', label: 'in0' }],
-        outputs: [{ id: 'result', label: 'result' }],
+        inputs: [{ id: 'in0', label: 'in0', domain: 'time' }],
+        outputs: [{ id: 'result', label: 'result', domain: 'time' }],
+      };
+    case 'FFT':
+      // FFT 频域求解器: 单输入 in0 (时域) + 单输出 spectrum (频域)
+      return {
+        inputs: [{ id: 'in0', label: 'in0', domain: 'time' }],
+        outputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }],
+      };
+    case 'IFFT':
+      // 逆 FFT 求解器: 单输入 spectrum (频域) + 单输出 out0 (时域)
+      return {
+        inputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }],
+        outputs: [{ id: 'out0', label: 'out0', domain: 'time' }],
       };
     case 'Spectrum':
-      // 频谱分析: 单输入 in0, 无输出 (块运算, 后端独立 ticker 触发 FFT)
-      return {
-        inputs: [{ id: 'in0', label: 'in0' }],
-        outputs: [],
-      };
+      // 频谱展示 (纯展示): 单输入 spectrum (频域) — 数据源由连线决定
+      // (FFT 求解器的 spectrum 输出 → 本端口), 不再用下拉选择
+      return { inputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }], outputs: [] };
     case 'Model3D':
       // 3D 模型: 三通道输入 x/y/z, 无输出 (前端 Three.js 直接渲染)
       return {
         inputs: [
-          { id: 'x', label: 'x' },
-          { id: 'y', label: 'y' },
-          { id: 'z', label: 'z' },
+          { id: 'x', label: 'x', domain: 'time' },
+          { id: 'y', label: 'y', domain: 'time' },
+          { id: 'z', label: 'z', domain: 'time' },
         ],
         outputs: [],
       };
@@ -99,9 +121,9 @@ function getWidgetPorts(widget: WidgetConfig): {
       const blocks = widget.params.blocks ?? [];
       const inputs = blocks
         .filter((b) => b.type === 'var_ref' && b.portName)
-        .map((b) => ({ id: b.portName!, label: b.portName! }));
+        .map((b) => ({ id: b.portName!, label: b.portName!, domain: 'time' as DomainType }));
       const outputs = widget.params.loopbackEnabled
-        ? [{ id: 'loopbackOut', label: 'loopbackOut' }]
+        ? [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'time' as DomainType }]
         : [];
       return { inputs, outputs };
     }
@@ -111,44 +133,52 @@ function getWidgetPorts(widget: WidgetConfig): {
       // 回环模式: 追加 loopbackIn 字节输入口, 只接收回环边注入的字节
       const blocks = widget.params.blocks ?? [];
       const inputs = widget.params.loopbackEnabled
-        ? [{ id: 'loopbackIn', label: 'loopbackIn' }]
+        ? [{ id: 'loopbackIn', label: 'loopbackIn', domain: 'time' as DomainType }]
         : [];
-      const outputs: { id: string; label: string }[] = [];
+      const outputs: WidgetPort[] = [];
       for (const b of blocks) {
         if (b.type === 'length') {
           const name = b.portName ?? 'length';
-          outputs.push({ id: name, label: name });
+          outputs.push({ id: name, label: name, domain: 'time' });
         } else if (b.type === 'id') {
           const name = b.portName ?? 'id_value';
-          outputs.push({ id: name, label: name });
+          outputs.push({ id: name, label: name, domain: 'time' });
         } else if (b.type === 'field' || b.type === 'bitfield') {
-          outputs.push({ id: b.portName, label: b.portName });
+          outputs.push({ id: b.portName, label: b.portName, domain: 'time' });
         }
       }
-      if (widget.params.enableValid) outputs.push({ id: 'valid', label: 'valid' });
-      if (widget.params.enableFrameCount) outputs.push({ id: 'frame_count', label: 'frame_count' });
-      if (widget.params.enableLastTimestamp) outputs.push({ id: 'last_timestamp', label: 'last_timestamp' });
-      if (widget.params.enableFps) outputs.push({ id: 'fps', label: 'fps' });
+      if (widget.params.enableValid) outputs.push({ id: 'valid', label: 'valid', domain: 'time' });
+      if (widget.params.enableFrameCount) outputs.push({ id: 'frame_count', label: 'frame_count', domain: 'time' });
+      if (widget.params.enableLastTimestamp) outputs.push({ id: 'last_timestamp', label: 'last_timestamp', domain: 'time' });
+      if (widget.params.enableFps) outputs.push({ id: 'fps', label: 'fps', domain: 'time' });
       // raw 输出口: 整帧原始字节 (无 f32 语义) — 连到 RawData 时显示该解码器消费的完整帧字节;
       // 普通 field 口连 RawData 则显示该字段的数值流
-      outputs.push({ id: 'raw', label: 'raw' });
+      outputs.push({ id: 'raw', label: 'raw', domain: 'time' });
       return { inputs, outputs };
     }
     case 'Custom': {
-      // Custom: 从用户代码中解析端口定义
+      // Custom: 从用户代码中解析端口定义 (默认视为时域)
       const { def } = evalCustomWidgetDef(widget.params.code);
       return {
-        inputs: def?.inputs ?? [{ id: 'value', label: 'value' }],
-        outputs: def?.outputs ?? [],
+        inputs: (def?.inputs ?? [{ id: 'value', label: 'value' }]).map((p) => ({
+          id: p.id,
+          label: p.label,
+          domain: 'time' as DomainType,
+        })),
+        outputs: (def?.outputs ?? []).map((p) => ({
+          id: p.id,
+          label: p.label,
+          domain: 'time' as DomainType,
+        })),
       };
     }
     case 'RawData':
       // 关联端口 (ASSOCIATIVE): 端口在此仅为回退值 — 实际端口由 WidgetNode 动态派生,
       // 每个已连接的 source 节点 = 一个通道端口。边只是用户意图标记: 控件视图展示
       // 选中通道的原始数据, 字节不路由进 f32 图 — 后端通过旁路通道捕获各解码器字节。
-      return { inputs: [{ id: 'data', label: 'data' }], outputs: [] };
+      return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
     default:
-      return { inputs: [{ id: 'in', label: 'in' }], outputs: [] };
+      return { inputs: [{ id: 'in', label: 'in', domain: 'time' }], outputs: [] };
   }
 }
 
@@ -158,9 +188,9 @@ function getWidgetPorts(widget: WidgetConfig): {
 function deriveRawDataPorts(
   edges: Edge[],
   nodeId: string
-): { inputs: { id: string; label: string }[]; outputs: { id: string; label: string }[] } {
+): { inputs: WidgetPort[]; outputs: WidgetPort[] } {
   const seen = new Set<string>();
-  const inputs: { id: string; label: string }[] = [];
+  const inputs: WidgetPort[] = [];
   for (const e of edges) {
     // 目标是本节点即视为通道连接; 同一 (source, sourceHandle) 去重为一个端口
     if (e.target !== nodeId) continue;
@@ -168,12 +198,22 @@ function deriveRawDataPorts(
     const key = rawDataPortId(e.source, e.sourceHandle);
     if (seen.has(key)) continue;
     seen.add(key);
-    inputs.push({ id: key, label: handle });
+    inputs.push({ id: key, label: handle, domain: 'time' });
   }
   if (inputs.length === 0) {
-    return { inputs: [{ id: 'data', label: 'data' }], outputs: [] };
+    return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
   }
   return { inputs, outputs: [] };
+}
+
+/// 端口域颜色 — 频域紫色, 时域蓝色 (仅作圆点/手柄描边, 不占文字宽度, 避免遮挡)
+function domainColor(domain: DomainType): string {
+  return domain === 'freq' ? '#ba68c8' : '#75beff';
+}
+
+/// 端口域标注文案 (悬停提示)
+function domainLabel(lang: Lang, domain: DomainType): string {
+  return domain === 'freq' ? t(lang, 'domainFreq') : t(lang, 'domainTime');
 }
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
@@ -231,7 +271,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   // 按控件类别着色 (与 WidgetPalette 分组颜色一致)
   const categoryColor = WIDGET_CATEGORY_COLORS[getWidgetCategory(widget.kind)];
   // 支持代码编辑的控件 — 节点头部显示编辑入口 (替代内嵌卡片的悬浮 ⚙)
-  const editable = ['Gauge', 'LED', 'NumberDisplay', 'Custom', 'Math', 'Filter'].includes(widget.kind);
+  const editable = ['Gauge', 'LED', 'NumberDisplay', 'Custom', 'Math', 'Filter', 'FFT', 'IFFT'].includes(widget.kind);
   // 已连接的端口集合 — 用于 Handle 实色填充
   const connectedHandles = new Set<string>();
   for (const e of rfEdges) {
@@ -286,6 +326,22 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
         return (
           <FilterWidget
             widget={widget as Extract<WidgetConfig, { kind: 'Filter' }>}
+            onRemove={onRemove}
+            onEdit={handleEditCustom}
+          />
+        );
+      case 'FFT':
+        return (
+          <FFTWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'FFT' }>}
+            onRemove={onRemove}
+            onEdit={handleEditCustom}
+          />
+        );
+      case 'IFFT':
+        return (
+          <IFFTWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'IFFT' }>}
             onRemove={onRemove}
             onEdit={handleEditCustom}
           />
@@ -360,29 +416,57 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       {/* 输入端口 (左侧) — Handle 覆盖 position:relative 让多端口纵向分布 */}
       <div className="absolute top-1/2 left-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
         {effectivePorts.inputs.map((port) => (
-          <div key={port.id} className="flex items-center gap-1 h-[14px] relative pl-0.5">
+          <div
+            key={port.id}
+            className="flex items-center gap-1 h-[14px] relative pl-0.5"
+            title={`${port.label} · ${domainLabel(lang, port.domain)}`}
+          >
             <Handle
               type="target"
               position={Position.Left}
               id={port.id}
-              style={{ position: 'relative', left: 'auto', top: 'auto', transform: 'none' }}
-              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
+              style={{
+                position: 'relative',
+                left: 'auto',
+                top: 'auto',
+                transform: 'none',
+                borderColor: domainColor(port.domain),
+              }}
+              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
             />
             <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
+            <span
+              className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none"
+              style={{ backgroundColor: domainColor(port.domain) }}
+            />
           </div>
         ))}
       </div>
       {/* 输出端口 (右侧) — 标签在 Handle 左侧, 允许向左延伸适应过长端口名 */}
       <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-end gap-0.5 py-1 z-10">
         {effectivePorts.outputs.map((port) => (
-          <div key={port.id} className="flex items-center gap-1 h-[14px] relative pr-0.5">
+          <div
+            key={port.id}
+            className="flex items-center gap-1 h-[14px] relative pr-0.5"
+            title={`${port.label} · ${domainLabel(lang, port.domain)}`}
+          >
+            <span
+              className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none"
+              style={{ backgroundColor: domainColor(port.domain) }}
+            />
             <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
             <Handle
               type="source"
               position={Position.Right}
               id={port.id}
-              style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none' }}
-              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] border-accent rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
+              style={{
+                position: 'relative',
+                right: 'auto',
+                top: 'auto',
+                transform: 'none',
+                borderColor: domainColor(port.domain),
+              }}
+              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
             />
           </div>
         ))}

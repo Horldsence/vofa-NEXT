@@ -1,7 +1,7 @@
 // ============ 控件配置 ============
 
 import type {
-  MathConfig, FilterConfig, SpectrumConfig, Model3DConfig, WidgetBinding,
+  MathConfig, FilterConfig, FFTConfig, IFFTConfig, SpectrumConfig, Model3DConfig, WidgetBinding,
 } from './common';
 import type { CommandConfig, FrameDecoderConfig, TableViewConfig } from './frameDecoder';
 
@@ -150,6 +150,8 @@ export type WidgetConfig =
   | { kind: 'Custom'; params: CustomConfig }
   | { kind: 'Math'; params: MathConfig }
   | { kind: 'Filter'; params: FilterConfig }
+  | { kind: 'FFT'; params: FFTConfig }
+  | { kind: 'IFFT'; params: IFFTConfig }
   | { kind: 'Spectrum'; params: SpectrumConfig }
   | { kind: 'Model3D'; params: Model3DConfig }
   | { kind: 'Command'; params: CommandConfig }
@@ -181,6 +183,8 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
       return 'display';
     case 'Math':
     case 'Filter':
+    case 'FFT':
+    case 'IFFT':
       return 'math';
     case 'Custom':
       return 'custom';

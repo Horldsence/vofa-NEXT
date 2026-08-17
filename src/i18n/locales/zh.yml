@@ -338,6 +338,8 @@ templateMath: 数学
 templateMathDesc: 演示 sin / 求和等算术节点，配 TestData 无需硬件即可运行
 templateFilter: 滤波器
 templateFilterDesc: 低通滤波演示，对比原始与滤波后波形
+templateFft: 频谱分析
+templateFftDesc: FFT 求解器 → 频谱仪 → IFFT 重建回时域，演示时域/频域端口连线（TestData 无需硬件）
 templateCan: CAN
 templateCanDesc: Slcan 传输 + CAN 帧视图，连接 CAN 分析仪即可收发
 templateSerial: 串口
@@ -574,11 +576,14 @@ filterHigh: 上限
 filterSampleRate: 采样率
 fft: 频域求解
 fftSettings: 频域设置
+ifft: 逆频域求解
+ifftSource: 频域源
+ifftNoSource: 未连接
 spectrum: 频谱
 spectrumSettings: 频谱设置
 spectrumSource: 数据源
-spectrumNoSource: 未选择数据源
-spectrumNoSourceHint: 请在右侧选择一个 FFT 求解器
+spectrumNoSource: 未连接数据源
+spectrumNoSourceHint: 请在节点图中将 FFT 求解器的 spectrum 输出连到本控件的 spectrum 端口
 spectrumWindowSize: 窗口大小
 spectrumWindowType: 窗函数
 spectrumOutputMode: 输出模式
@@ -593,6 +598,8 @@ windowHamming: 汉明
 windowBlackman: 布莱克曼
 domainTime: 时域
 domainFreq: 频域
+domainMismatchTitle: 域不匹配
+domainMismatchMsg: 时域与频域端口不能直连 (时域→频域 / 频域→时域均被阻止)
 
 # 3D 模型控件
 model3d: 3D 模型

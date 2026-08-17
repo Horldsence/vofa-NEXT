@@ -6,7 +6,7 @@ use tauri::ipc::Channel;
 use tokio::sync::oneshot;
 use vofa_next_buffer::{DataBuffer, RawDataCollector};
 use vofa_next_core::{CanBuffer, CanLoadStats, DecodedBuffer, LogicBuffer, PipelineConfig, ProtocolConfig};
-use vofa_next_dsp::{DigitalFilter, SpectrumAnalyzer, SpectrumResult};
+use vofa_next_dsp::{DigitalFilter, IfftState, SpectrumAnalyzer, SpectrumResult};
 use vofa_next_nodes::{CompiledGraph, FrameParser};
 use vofa_next_protocol::ProtocolEngine;
 use vofa_next_transport::TransportManager;
@@ -93,6 +93,9 @@ pub struct GraphEvalState {
     pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
     /// 频谱订阅者 (30 FPS 推送 SpectrumBatch)
     pub spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
+    /// Ifft 节点重建时域缓冲 (跨帧持久化, 环形播放)
+    /// key: Ifft widget id, value: IfftState (含合成缓冲 + 播放位置)
+    pub ifft_states: Arc<Mutex<HashMap<String, IfftState>>>,
 }
 
 /// 应用全局状态
@@ -137,6 +140,8 @@ pub struct AppState {
     pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
     /// 频谱订阅者 (30 FPS 推送)
     pub spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
+    /// Ifft 节点重建时域缓冲 (跨帧持久化)
+    pub ifft_states: Arc<Mutex<HashMap<String, IfftState>>>,
     /// 波形订阅任务的取消句柄 — key: channel_id, value: oneshot sender
     /// 前端调用 unsubscribe_waveform 时, 通过 channel_id 取出 sender 发送取消信号,
     /// 让 tokio::spawn 的 task 优雅退出, 避免向已关闭的 channel send 产生警告。
@@ -199,6 +204,7 @@ impl AppState {
             spectrum_analyzers: Arc::new(Mutex::new(HashMap::new())),
             spectrum_snapshot: Arc::new(Mutex::new(HashMap::new())),
             spectrum_subscribers: Arc::new(Mutex::new(Vec::new())),
+            ifft_states: Arc::new(Mutex::new(HashMap::new())),
             waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
             raw_data_collector: Arc::new(Mutex::new(RawDataCollector::new())),
             raw_data_tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -232,6 +238,7 @@ impl AppState {
             spectrum_analyzers: self.spectrum_analyzers.clone(),
             spectrum_snapshot: self.spectrum_snapshot.clone(),
             spectrum_subscribers: self.spectrum_subscribers.clone(),
+            ifft_states: self.ifft_states.clone(),
         }
     }
 }

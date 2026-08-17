@@ -29,7 +29,9 @@ pub mod math_op;
 
 pub use frame_decoder::{ChecksumAlgorithm, FrameParser, ParsedFrame};
 pub use math_op::MathOp;
-pub use vofa_next_dsp::{DigitalFilter, FilterKind, FilterPreset, SpectrumOutput, WindowType};
+pub use vofa_next_dsp::{
+    DigitalFilter, FilterKind, FilterPreset, IfftState, SpectrumOutput, WindowType,
+};
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -85,6 +87,12 @@ pub enum NodeKind {
         /// 采样率 (Hz), 用于计算频率轴
         sample_rate: f32,
     },
+    /// 逆 FFT 节点 (频域→时域, 块运算, 融入 eval_order 输出时域流)
+    /// 输入端口 "spectrum" (频域), 输出端口 "out0" (时域)
+    /// 编译期从输入边解析出上游 FFT (SpectrumSink) 节点 id,
+    /// 后端 spectrum_ticker 据此读取该 FFT 的频谱并合成时域缓冲,
+    /// 本节点逐帧环形播放输出 (见 CompiledOp::Ifft)。
+    Ifft,
     /// 帧解码节点 (SOURCE 类型, 输出来自字节流解析)
     ///
     /// 设计动机: 类似 CommandSender 但反向 — 字节流 → 按块定义解析 → 输出端口。
@@ -536,6 +544,8 @@ enum CompiledOp {
         last_timestamp: Option<usize>,
         fps: Option<usize>,
     },
+    /// Ifft: 读 ifft_states[node_id] 的下一个重建采样 → out 槽位 (环形播放, 时域)
+    Ifft { node_id: String, out: usize },
 }
 
 /// 编译期槽位评估表 — CompiledGraph::compile 时构建, 逐帧评估纯数组读写
@@ -664,6 +674,13 @@ impl CompiledEval {
                         fps,
                     });
                 }
+                NodeKind::Ifft => {
+                    let out = alloc_slot(&mut slot_names, &mut slot_index, node_id, "out0");
+                    ops.push(CompiledOp::Ifft {
+                        node_id: node_id.clone(),
+                        out,
+                    });
+                }
                 NodeKind::SpectrumSink { .. } | NodeKind::Sink => {
                     // Sink 类节点不应出现在 eval_order 中, 防御性跳过
                     continue;
@@ -715,6 +732,7 @@ impl CompiledEval {
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
+        ifft_states: &mut HashMap<String, IfftState>,
         slots: &mut [f32],
         written: &mut [bool],
     ) {
@@ -768,6 +786,11 @@ impl CompiledEval {
                     }
                     let filter = filter_states.get_mut(node_id).unwrap();
                     slots[*out] = filter.process(input_val);
+                    written[*out] = true;
+                }
+                CompiledOp::Ifft { node_id, out } => {
+                    // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
+                    slots[*out] = ifft_states.get_mut(node_id).map(IfftState::next).unwrap_or(0.0);
                     written[*out] = true;
                 }
                 CompiledOp::FrameDecoder {
@@ -1028,6 +1051,7 @@ impl CompiledGraph {
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
+        ifft_states: &mut HashMap<String, IfftState>,
     ) -> ValuesMap {
         let mut out = ValuesMap::default();
         self.evaluate_into(
@@ -1036,6 +1060,7 @@ impl CompiledGraph {
             custom_outputs,
             filter_states,
             decoder_states,
+            ifft_states,
             &mut out,
         );
         out
@@ -1057,6 +1082,7 @@ impl CompiledGraph {
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
+        ifft_states: &mut HashMap<String, IfftState>,
         out: &mut ValuesMap,
     ) {
         for node_id in &self.eval_order {
@@ -1176,6 +1202,12 @@ impl CompiledGraph {
                         }
                     }
                 }
+                NodeKind::Ifft => {
+                    // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
+                    let v = ifft_states.get_mut(node_id).map(IfftState::next).unwrap_or(0.0);
+                    let m = node_out_entry(out, node_id);
+                    set_port(m, "out0", v);
+                }
                 NodeKind::SpectrumSink { .. } | NodeKind::Sink => {
                     // Sink 类节点不应出现在 eval_order 中, 防御性跳过
                     continue;
@@ -1272,6 +1304,27 @@ impl CompiledGraph {
             .filter(|(_, n)| matches!(n.kind, NodeKind::Filter { .. }))
             .map(|(id, _)| id.clone())
             .collect()
+    }
+
+    /// 获取所有 Ifft 节点 id (供状态清理 + spectrum_ticker 合成时域缓冲)
+    pub fn ifft_node_ids(&self) -> Vec<String> {
+        self.nodes
+            .iter()
+            .filter(|(_, n)| matches!(n.kind, NodeKind::Ifft))
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// 解析 Ifft 节点的上游 FFT (SpectrumSink) 节点 id
+    ///
+    /// 输入端口固定为 "spectrum" (频域), 编译期从 input_index 反查边:
+    /// (source 节点的 "spectrum" 输出) → source 节点 id。
+    /// 无上游边返回 None。
+    pub fn ifft_source(&self, node_id: &str) -> Option<String> {
+        self.input_index
+            .get(node_id)
+            .and_then(|ports| ports.get("spectrum"))
+            .map(|(src, _)| src.clone())
     }
 
     /// 获取所有 FrameDecoder 节点 id
@@ -1487,6 +1540,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         let cs_id = "__channel_source__-t1";
         assert_eq!(out.get(cs_id).and_then(|m| m.get("ch0")), Some(&10.0));
@@ -1508,6 +1562,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out.get("knob1").and_then(|m| m.get("value")), Some(&42.0));
     }
@@ -1533,6 +1588,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         // m1.result = 10 + 20 = 30
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&30.0));
@@ -1563,6 +1619,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         // m1 = 3 + 4 = 7, m2 = 7 * 7 = 49
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&7.0));
@@ -1591,6 +1648,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out.get("c1").and_then(|m| m.get("out")), Some(&99.0));
 
@@ -1637,6 +1695,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&5.0));
     }
@@ -1662,6 +1721,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out.get("f1").and_then(|m| m.get("result")), Some(&7.5));
         // filter_states 应包含 f1
@@ -1689,6 +1749,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out1.get("f1").and_then(|m| m.get("result")), Some(&0.0));
 
@@ -1699,6 +1760,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&1.0));
 
@@ -1709,6 +1771,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out3.get("f1").and_then(|m| m.get("result")), Some(&2.0));
     }
@@ -1734,6 +1797,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert!(filter_states.contains_key("f1"));
 
@@ -1751,6 +1815,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&6.0));
     }
@@ -1784,6 +1849,7 @@ mod tests {
                 &custom_outputs,
                 &mut filter_states,
                 &HashMap::new(),
+                &mut HashMap::new(),
             );
             last_y = out
                 .get("f1")
@@ -1860,6 +1926,7 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
 
         // collect_spectrum_inputs 应返回 s1 → 42.0
@@ -1917,11 +1984,91 @@ mod tests {
             &custom_outputs,
             &mut filter_states,
             &HashMap::new(),
+            &mut HashMap::new(),
         );
         // s1 不应在 evaluate 输出中
         assert!(!out.contains_key("s1"));
         // 但 ChannelSource 应在
         assert!(out.contains_key("__channel_source__-t1"));
+    }
+
+    // ============ Ifft 节点测试 ============
+
+    #[test]
+    fn test_ifft_node_in_eval_order_and_source() {
+        // Ifft 应在 eval_order 中 (有输出 out0), 且编译期解析出上游 FFT 源 id
+        let nodes = vec![
+            make_channel_source("t1", 1),
+            make_spectrum_sink(
+                "fft1",
+                "t1",
+                256,
+                WindowType::Hann,
+                SpectrumOutput::Magnitude,
+                1000.0,
+            ),
+            NodeDef {
+                id: "ifft1".to_string(),
+                tab_id: "t1".to_string(),
+                kind: NodeKind::Ifft,
+            },
+        ];
+        let edges = vec![
+            edge("e1", "__channel_source__-t1", "ch0", "fft1", "in0"),
+            edge("e2", "fft1", "spectrum", "ifft1", "spectrum"),
+        ];
+        let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+        assert!(g.eval_order.contains(&"ifft1".to_string()));
+        assert!(g.ifft_node_ids().contains(&"ifft1".to_string()));
+        assert_eq!(g.ifft_source("ifft1").as_deref(), Some("fft1"));
+        // 无上游边时返回 None
+        let g2 = CompiledGraph::compile(
+            "t1".into(),
+            vec![NodeDef {
+                id: "ifft2".to_string(),
+                tab_id: "t1".to_string(),
+                kind: NodeKind::Ifft,
+            }],
+            vec![],
+        )
+        .unwrap();
+        assert!(g2.ifft_source("ifft2").is_none());
+    }
+
+    #[test]
+    fn test_ifft_node_reads_playback_buffer() {
+        // Ifft 节点输出应从 ifft_states 环形读取重建缓冲
+        let nodes = vec![NodeDef {
+            id: "ifft1".to_string(),
+            tab_id: "t1".to_string(),
+            kind: NodeKind::Ifft,
+        }];
+        let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+
+        let mut ifft_states: HashMap<String, IfftState> = HashMap::new();
+        let mut st = IfftState::default();
+        // DC 振幅谱: bin0=1, 其余 0 → 重建为常数 1 (n=8)
+        let n = 8;
+        let magnitudes: Vec<f32> = {
+            let mut v = vec![0.0f32; n / 2 + 1];
+            v[0] = 1.0;
+            v
+        };
+        st.synth(&magnitudes, n);
+        ifft_states.insert("ifft1".to_string(), st);
+
+        // 环形播放应持续输出 1.0
+        for _ in 0..(n * 3) {
+            let out = g.evaluate(
+                &DataFrame::new(vec![]),
+                &HashMap::new(),
+                &HashMap::new(),
+                &mut HashMap::new(),
+                &HashMap::new(),
+                &mut ifft_states,
+            );
+            assert_eq!(out.get("ifft1").and_then(|m| m.get("out0")), Some(&1.0));
+        }
     }
 
     // ============ CompiledEval 槽位评估等价性测试 ============
@@ -1998,6 +2145,7 @@ mod tests {
                 &custom_outputs,
                 &mut fs_a,
                 &decoder_states,
+                &mut HashMap::new(),
                 &mut out_a,
             );
             // 新路径: compiled.run + materialize (每帧清零 slots/written)
@@ -2009,6 +2157,7 @@ mod tests {
                 &custom_outputs,
                 &mut fs_b,
                 &decoder_states,
+                &mut HashMap::new(),
                 &mut slots,
                 &mut written,
             );
@@ -2025,6 +2174,7 @@ mod tests {
             &custom_outputs,
             &mut fs_a,
             &decoder_states,
+            &mut HashMap::new(),
             &mut out_a,
         );
         let d1 = out_a.get("d1").expect("d1 应输出默认端口");

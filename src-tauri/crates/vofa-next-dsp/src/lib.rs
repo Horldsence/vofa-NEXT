@@ -7,9 +7,11 @@
 //! - [`filter`][]: 数字滤波器 (FIR / IIR biquad, 含低通/高通/带通/带阻预设)
 
 pub mod filter;
+pub mod ifft;
 pub mod spectrum;
 pub mod window;
 
 pub use filter::{DigitalFilter, FilterKind, FilterPreset};
+pub use ifft::{IfftState, IfftSynth};
 pub use spectrum::{SpectrumAnalyzer, SpectrumOutput, SpectrumResult, WindowType};
 pub use window::apply_window;

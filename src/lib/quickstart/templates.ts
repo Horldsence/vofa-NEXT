@@ -4,7 +4,7 @@
 //!   - 替换: 清空工作区后按分区应用 (不含设置)
 //!   - 合并: 作为新控件标签页追加 (见 applyTemplate.ts 的 ID 重映射)
 //!
-//! 内置模板: 数学 / 滤波器 / CAN / 串口 / 综合演示 (TestData, 无硬件可跑)。
+//! 内置模板: 数学 / 滤波器 / 频谱分析 / CAN / 串口 / 综合演示 (TestData, 无硬件可跑)。
 
 import { type Node, type Edge } from '@xyflow/react';
 import { createWidget } from '../utils/createWidget';
@@ -302,9 +302,42 @@ function demoTemplate(): AppSnapshot {
   });
 }
 
+function fftTemplate(): AppSnapshot {
+  // 频域流水线: ch0 → FFT 求解器 → 频谱仪 (连线即数据源) → IFFT 重建回时域 → 波形对比
+  const fft = widget('FFT', 'fft-main', 'FFT', {
+    windowSize: 512,
+    windowType: 'Hann',
+    output: 'Magnitude',
+    sampleRate: 1000,
+  });
+  const spec = widget('Spectrum', 'spec-main', 'Spectrum');
+  const ifft = widget('IFFT', 'ifft-main', 'IFFT');
+  const wf = widget('Waveform', 'wf-ifft', 'Original vs IFFT', { channels: 4, dynamicSeries: true });
+  return buildSnapshot({
+    name: 'FFT',
+    protocol: { kind: 'JustFloat', channels: 4 },
+    transport: { kind: 'TestData', params: { channels: 4, sample_rate: 1000, signal: 'MultiTone' } },
+    widgetNodes: [
+      wnode('fft-main', fft, 300, 60),
+      wnode('spec-main', spec, 600, 60),
+      wnode('wf-ifft', wf, 300, 280),
+      wnode('ifft-main', ifft, 600, 280),
+    ],
+    edges: [
+      edge('e1', SOURCE_ID, 'ch0', 'fft-main', 'in0'),
+      edge('e2', 'fft-main', 'spectrum', 'spec-main', 'spectrum'),
+      edge('e3', 'fft-main', 'spectrum', 'ifft-main', 'spectrum'),
+      edge('e4', SOURCE_ID, 'ch0', 'wf-ifft', 'CH0'),
+      edge('e5', 'ifft-main', 'out0', 'wf-ifft', 'CH1'),
+    ],
+    activeDataTabId: 'spec-main',
+  });
+}
+
 export const QUICK_START_TEMPLATES: QuickStartTemplate[] = [
   { id: 'math', nameKey: 'templateMath', descKey: 'templateMathDesc', build: mathTemplate },
   { id: 'filter', nameKey: 'templateFilter', descKey: 'templateFilterDesc', build: filterTemplate },
+  { id: 'fft', nameKey: 'templateFft', descKey: 'templateFftDesc', build: fftTemplate },
   { id: 'can', nameKey: 'templateCan', descKey: 'templateCanDesc', build: canTemplate },
   { id: 'serial', nameKey: 'templateSerial', descKey: 'templateSerialDesc', build: serialTemplate },
   { id: 'demo', nameKey: 'templateDemo', descKey: 'templateDemoDesc', build: demoTemplate },

@@ -128,6 +128,12 @@ export function WidgetPalette() {
     { key: 'Bandstop', kind: 'Filter', preset: 'Bandstop', icon: <Ban />, label: t(lang, 'filterBandstop'), title: `${t(lang, 'filter')}: ${t(lang, 'filterBandstop')}` },
   ];
 
+  /// 频域求解子项 — FFT (时域→频域) / IFFT (频域→时域)
+  const fftItems: PaletteEntry[] = [
+    { key: 'FFT', kind: 'FFT', icon: <Activity />, label: t(lang, 'fft'), title: t(lang, 'fft') },
+    { key: 'IFFT', kind: 'IFFT', icon: <Activity />, label: t(lang, 'ifft'), title: t(lang, 'ifft') },
+  ];
+
   const customItems: PaletteEntry[] = [
     {
       key: 'Custom',
@@ -150,6 +156,7 @@ export function WidgetPalette() {
           : [
               { header: t(lang, 'catMath'), entries: mathItems },
               { header: t(lang, 'filter'), entries: filterItems },
+              { header: t(lang, 'fft'), entries: fftItems },
             ];
 
   /// 当前类别说明 (单行, 截断时悬停显示全文)

@@ -9,6 +9,11 @@ fn sync_spectrum_analyzers(state: &GraphEvalState) {
     crate::pipeline::spectrum_sync::sync_spectrum_analyzers(state);
 }
 
+/// 同步 Ifft 节点重建缓冲 — 委托到 pipeline::spectrum_sync
+fn sync_ifft_buffers(state: &GraphEvalState) {
+    crate::pipeline::spectrum_sync::sync_ifft_buffers(state);
+}
+
 /// 图输出推送循环 — 自适应速率推送 output_snapshot 到所有订阅者
 ///
 /// 订阅者通过 invoke('subscribe_graph_outputs', on_event: Channel) 加入
@@ -114,6 +119,8 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
         tokio::time::sleep(rate.current()).await;
         // 1. 同步 analyzers 与 graphs
         sync_spectrum_analyzers(&state);
+        // 1b. 同步 Ifft 节点重建缓冲与 graphs / 最新频谱
+        sync_ifft_buffers(&state);
 
         // 2. 对每个 analyzer 计算 FFT
         let mut analyzers = state.spectrum_analyzers.lock();

@@ -23,6 +23,7 @@ pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) 
     let graphs = eval_state.graphs.lock();
     let mut filter_states = eval_state.filter_states.lock();
     let decoder_states = eval_state.decoder_states.lock();
+    let mut ifft_states = eval_state.ifft_states.lock();
 
     let mut combined: vofa_next_nodes::ValuesMap = Default::default();
     for (_, graph) in graphs.iter() {
@@ -32,6 +33,7 @@ pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) 
             &custom_outputs,
             &mut filter_states,
             &decoder_states,
+            &mut ifft_states,
         );
         for (k, v) in out {
             combined.insert(k, v);
@@ -93,6 +95,7 @@ pub fn process_frames_batch(
     let graphs_version = eval_state.graphs_version.load(Ordering::Relaxed);
     let mut filter_states = eval_state.filter_states.lock();
     let decoder_states = eval_state.decoder_states.lock();
+    let mut ifft_states = eval_state.ifft_states.lock();
     // analyzer 锁整批持有 (与 spectrum_ticker 同为 graphs → analyzers 顺序, 无死锁)
     let mut analyzers = eval_state.spectrum_analyzers.lock();
 
@@ -149,6 +152,7 @@ pub fn process_frames_batch(
                 &custom_outputs,
                 &mut filter_states,
                 &decoder_states,
+                &mut ifft_states,
                 slots,
                 written,
             );

@@ -1,10 +1,9 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { Settings2 } from 'lucide-react';
-import type { WidgetConfig, WindowType, SpectrumOutput } from '../../../types';
+import type { WidgetConfig, SpectrumOutput } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { t } from '../../../i18n';
 import { getThemeColor } from '../waveform/wavechartFormatters';
-import { chipClass } from '../../ui/chip';
 
 interface SpectrumChartProps {
   widget: Extract<WidgetConfig, { kind: 'Spectrum' }>;
@@ -12,47 +11,40 @@ interface SpectrumChartProps {
   onEdit?: () => void;
 }
 
-/// 窗口大小选项 (2 的幂)
-const WINDOW_SIZE_OPTIONS = [256, 512, 1024, 2048, 4096];
-
-/// 窗函数选项
-const WINDOW_TYPE_OPTIONS: { value: WindowType; labelKey: string }[] = [
-  { value: 'Rect', labelKey: 'windowRect' },
-  { value: 'Hann', labelKey: 'windowHann' },
-  { value: 'Hamming', labelKey: 'windowHamming' },
-  { value: 'Blackman', labelKey: 'windowBlackman' },
-];
-
-/// 输出模式选项
-const OUTPUT_OPTIONS: { value: SpectrumOutput; labelKey: string }[] = [
-  { value: 'Magnitude', labelKey: 'spectrumMagnitude' },
-  { value: 'Power', labelKey: 'spectrumPower' },
-  { value: 'PSD', labelKey: 'spectrumPSD' },
-  { value: 'Decibel', labelKey: 'spectrumDecibel' },
-];
-
-/// 频谱分析控件 — 显示后端 FFT 计算结果
+/// 频谱展示控件 — 纯展示, 不做任何求解
 ///
-/// 数据流 (后端块运算, 30 FPS 推送):
-///   1. 后端 CompiledGraph 不评估 SpectrumSink (不在 eval_order)
-///   2. evaluate_all_graphs_with 每帧后调用 collect_spectrum_inputs,
-///      从 output_snapshot 取输入值推入对应 SpectrumAnalyzer 的滑动窗口
-///   3. spectrum_ticker 每 33ms:
-///      - sync_spectrum_analyzers 同步 analyzers 与 graphs (增删 + 配置变更重建)
-///      - 对每个 analyzer 调用 compute() (窗口未填满返回 None)
-///      - 推送 SpectrumBatch 到所有订阅者
-///   4. 本组件从 store.spectrumResults[id] 读取最新结果并绘制
+/// 数据流:
+///   1. 节点图中把某个 FFT 求解器的 spectrum 输出连到本控件的 spectrum 输入端口
+///      (连线即数据源; 旧布局无连线时回退到 params.sourceId 兼容)
+///   2. 后端 FFT 求解器把结果推入专用频谱数据通道 (spectrumResults[sourceId])
+///   3. 本组件仅从 store.spectrumResults[sourceId] 读取最新结果并绘制
+///
+/// 与旧实现的区别: 本控件不再拥有 windowSize/windowType/output/sampleRate
+/// 等求解参数 — 这些已上移到 FFT 求解器, 本控件只负责展示。
 export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
-  const { windowSize, windowType, output, sampleRate, id } = widget.params;
-  // 只订阅本 widget 的频谱结果, 避免全局 spectrumResults 更新时所有 SpectrumChart 重渲染
-  const result = useAppStore((s) => s.spectrumResults[id]);
-  const updateWidget = useAppStore((s) => s.updateWidget);
+  const { id } = widget.params;
+  // 所有 FFT 求解器 (数据源候选)
+  const widgets = useAppStore((s) => s.widgets);
+  const fftWidgets = widgets.filter((w): w is Extract<WidgetConfig, { kind: 'FFT' }> => w.kind === 'FFT');
+  const rfEdges = useAppStore((s) => s.rfEdges);
+  // 数据源 = 连到本控件 spectrum 输入端口的 FFT 求解器 (节点 id 即 widget id)
+  const connectedSourceId =
+    rfEdges.find((e) => e.target === id && e.targetHandle === 'spectrum')?.source ?? widget.params.sourceId;
+  const sourceWidget = fftWidgets.find((w) => w.params.id === connectedSourceId) ?? null;
+  const sourceId = sourceWidget ? connectedSourceId : null;
+  // 只订阅本控件数据源 (sourceId) 的频谱结果, 避免全局 spectrumResults 更新时所有 SpectrumChart 重渲染
+  const result = useAppStore((s) => (sourceId ? s.spectrumResults[sourceId] : undefined));
   const lang = useAppStore((s) => s.lang);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 跟踪容器尺寸, 触发 canvas 重绘 (响应式)
   const [size, setSize] = useState({ w: 0, h: 0 });
   // 十字光标位置 (相对 canvas 的 CSS 像素坐标), null = 隐藏
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+
+  // 展示所需的上下文来自数据源 FFT 求解器 (无数据源时用默认值)
+  const output: SpectrumOutput = sourceWidget?.params.output ?? 'Magnitude';
+  const sampleRate = sourceWidget?.params.sampleRate ?? 1000;
+  const windowSize = sourceWidget?.params.windowSize ?? 0;
 
   // ResizeObserver: 容器尺寸变化时更新 size, 触发重绘
   useEffect(() => {
@@ -106,6 +98,17 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
       ctx.moveTo(0, y);
       ctx.lineTo(w, y);
       ctx.stroke();
+    }
+
+    // 未选择数据源: 引导用户选择
+    if (!sourceId) {
+      ctx.fillStyle = '#888888';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(t(lang, 'spectrumNoSource'), w / 2, h / 2 - 8);
+      ctx.fillStyle = '#666666';
+      ctx.fillText(t(lang, 'spectrumNoSourceHint'), w / 2, h / 2 + 10);
+      return;
     }
 
     if (!result || result.values.length === 0) {
@@ -223,37 +226,7 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
       ctx.fillText(label, lx, ly);
       ctx.restore();
     }
-  }, [result, sampleRate, output, lang, size, cursor]);
-
-  const handleWindowSizeChange = (sz: number) => {
-    updateWidget(id, {
-      kind: 'Spectrum',
-      params: { ...widget.params, windowSize: sz },
-    });
-  };
-
-  const handleWindowTypeChange = (wt: WindowType) => {
-    updateWidget(id, {
-      kind: 'Spectrum',
-      params: { ...widget.params, windowType: wt },
-    });
-  };
-
-  const handleOutputChange = (o: SpectrumOutput) => {
-    updateWidget(id, {
-      kind: 'Spectrum',
-      params: { ...widget.params, output: o },
-    });
-  };
-
-  const handleSampleRateChange = (value: string) => {
-    const num = parseFloat(value);
-    if (!Number.isFinite(num) || num <= 0) return;
-    updateWidget(id, {
-      kind: 'Spectrum',
-      params: { ...widget.params, sampleRate: num },
-    });
-  };
+  }, [result, sourceId, sampleRate, output, lang, size, cursor]);
 
   return (
     <div className="group bg-bg-sidebar flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
@@ -272,7 +245,7 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
         />
         {/* 状态标签覆盖左上角 */}
         <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-accent/15 text-accent border border-accent/40 rounded-sm text-[10px] font-semibold pointer-events-none">
-          {windowSize} · {output}
+          {sourceWidget ? `${sourceWidget.params.label} · ${windowSize} · ${output}` : t(lang, 'spectrumNoSource')}
         </div>
         {onEdit && (
           <button
@@ -288,66 +261,40 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
       <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-2.5">
         <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold px-1">{t(lang, 'spectrumSettings')}</div>
         <div className="flex flex-col gap-1.5 px-1">
-            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'spectrumWindowSize')}</label>
-              <div className="flex flex-wrap gap-0.5 col-span-2">
-                {WINDOW_SIZE_OPTIONS.map((sz) => (
-                  <button
-                    key={sz}
-                    className={chipClass(windowSize === sz)}
-                    onClick={() => handleWindowSizeChange(sz)}
-                  >
-                    {sz}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'spectrumWindowType')}</label>
-              <div className="flex flex-wrap gap-0.5 col-span-2">
-                {WINDOW_TYPE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={chipClass(windowType === opt.value)}
-                    onClick={() => handleWindowTypeChange(opt.value)}
-                  >
-                    {t(lang, opt.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'spectrumOutputMode')}</label>
-              <div className="flex flex-wrap gap-0.5 col-span-2">
-                {OUTPUT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={chipClass(output === opt.value)}
-                    onClick={() => handleOutputChange(opt.value)}
-                  >
-                    {t(lang, opt.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-[80px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'filterSampleRate')}</label>
-              <input
-                type="number"
-                value={sampleRate}
-                onChange={(e) => handleSampleRateChange(e.target.value)}
-                min={1}
-                step={1}
-                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
-              />
-              <span className="text-text-secondary text-[10px]">Hz</span>
-            </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-1.5 text-[10px]">
+            <label className="text-text-secondary">{t(lang, 'spectrumSource')}</label>
+            <span className="font-mono text-text-primary truncate" title={sourceWidget?.params.label}>
+              {sourceWidget ? sourceWidget.params.label : t(lang, 'spectrumNoSource')}
+            </span>
           </div>
+          {!sourceWidget && (
+            <div className="text-[10px] text-text-secondary px-1">{t(lang, 'spectrumNoSourceHint')}</div>
+          )}
+          {sourceWidget && (
+            <div className="flex flex-col gap-1 text-[10px] text-text-secondary px-1">
+              <div className="flex justify-between">
+                <span>{t(lang, 'spectrumWindowSize')}</span>
+                <span className="font-mono text-text-primary">{sourceWidget.params.windowSize}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{t(lang, 'spectrumWindowType')}</span>
+                <span className="font-mono text-text-primary">{sourceWidget.params.windowType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{t(lang, 'spectrumOutputMode')}</span>
+                <span className="font-mono text-text-primary">{sourceWidget.params.output}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>{t(lang, 'filterSampleRate')}</span>
+                <span className="font-mono text-text-primary">{sourceWidget.params.sampleRate} Hz</span>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 });
-
 
 /// 格式化频率 (Hz / kHz)
 function formatFreq(hz: number): string {

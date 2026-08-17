@@ -338,6 +338,8 @@ templateMath: Math
 templateMathDesc: Demonstrates sin / sum arithmetic nodes, runs with TestData (no hardware needed)
 templateFilter: Filter
 templateFilterDesc: Lowpass filtering demo, compare raw vs filtered waveform
+templateFft: Spectrum
+templateFftDesc: FFT solver → spectrum view → IFFT back to time domain; shows time/freq port wiring (TestData, no hardware needed)
 templateCan: CAN
 templateCanDesc: Slcan transport + CAN frame view, connect a CAN analyzer to send/receive
 templateSerial: Serial
@@ -574,11 +576,14 @@ filterHigh: High
 filterSampleRate: Sample Rate
 fft: FFT
 fftSettings: FFT Settings
+ifft: IFFT
+ifftSource: Source
+ifftNoSource: Not connected
 spectrum: Spectrum
 spectrumSettings: Spectrum Settings
 spectrumSource: Source
-spectrumNoSource: No source
-spectrumNoSourceHint: Select an FFT solver on the right
+spectrumNoSource: No source connected
+spectrumNoSourceHint: Connect an FFT solver's spectrum output to this widget's spectrum port in the node graph
 spectrumWindowSize: Window Size
 spectrumWindowType: Window Function
 spectrumOutputMode: Output Mode
@@ -593,6 +598,8 @@ windowHamming: Hamming
 windowBlackman: Blackman
 domainTime: Time
 domainFreq: Freq
+domainMismatchTitle: Domain mismatch
+domainMismatchMsg: Time-domain and frequency-domain ports cannot be connected directly
 
 # 3D Model widget
 model3d: 3D Model

@@ -144,16 +144,33 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           precision: 3,
         },
       };
+    case 'FFT':
+      return {
+        kind: 'FFT',
+        params: {
+          id,
+          label: 'FFT',
+          windowSize: 512,
+          windowType: 'Hann' as WindowType,
+          output: 'Magnitude' as SpectrumOutput,
+          sampleRate: 1000,
+        },
+      };
+    case 'IFFT':
+      return {
+        kind: 'IFFT',
+        params: {
+          id,
+          label: 'IFFT',
+        },
+      };
     case 'Spectrum':
       return {
         kind: 'Spectrum',
         params: {
           id,
           label: 'Spectrum',
-          windowSize: 512,
-          windowType: 'Hann' as WindowType,
-          output: 'Magnitude' as SpectrumOutput,
-          sampleRate: 1000,
+          sourceId: null,
         },
       };
     case 'Model3D':

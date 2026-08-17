@@ -22,6 +22,7 @@ export type NodeKind =
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
   | { kind: 'Filter'; params: { kind: { IIR: { b: [number, number, number]; a: [number, number, number] } } } }
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
+  | { kind: 'Ifft' }
   | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean; loopback: boolean } }
   | { kind: 'Sink' };
 
@@ -38,7 +39,9 @@ export interface NodeDef {
 /// - Math → Math { op, input_count }
 /// - Custom → Custom { inputs, outputs } (从代码解析)
 /// - Filter → Filter { kind: IIR { b, a } } (前端从 preset 计算 biquad 系数)
-/// - Spectrum → SpectrumSink { window_size, window_type, output, sample_rate }
+/// - FFT → SpectrumSink { window_size, window_type, output, sample_rate } (频域求解器)
+/// - IFFT → Ifft (逆 FFT 求解器, 频域→时域)
+/// - Spectrum → Sink (纯展示, 从频谱数据通道读取 FFT 结果)
 /// - Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Model3D/Command → Sink
 ///   (Command 的 value 输入端口由前端 useGraphInputs 读取, 用于模板插值)
 export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
@@ -82,7 +85,8 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
       };
     }
 
-    case 'Spectrum': {
+    case 'FFT': {
+      // FFT 求解器 → 后端 SpectrumSink (消费时域样本, 输出频谱到专用频谱数据通道)
       return {
         kind: 'SpectrumSink',
         params: {
@@ -94,6 +98,12 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
       };
     }
 
+    case 'IFFT':
+      // 逆 FFT 求解器 → 后端 Ifft 节点 (输入频域 spectrum, 输出时域 out0)
+      return { kind: 'Ifft' };
+
+    case 'Spectrum':
+      // 频谱展示 (纯展示) → 无后端计算, 仅从频谱数据通道读取 FFT 求解器结果
     case 'Waveform':
     case 'PieChart':
     case 'Image':

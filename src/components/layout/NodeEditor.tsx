@@ -15,13 +15,14 @@ import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../../store/appStore';
 import { createWidget } from '../../lib/utils/createWidget';
 import { t } from '../../i18n';
+import { notify } from '../../lib/tauri/notifications';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
-import type { WidgetConfig, MathOp, FilterPresetKind } from '../../types';
+import type { WidgetConfig, MathOp, FilterPresetKind, DomainType } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
-import { WidgetNode } from '../nodes/WidgetNode';
+import { WidgetNode, getWidgetPorts } from '../nodes/WidgetNode';
 import { Maximize, LayoutGrid } from 'lucide-react';
 
 interface NodeEditorProps {
@@ -142,16 +143,54 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     return () => dockDrag.registerCanvasHandler(el, null);
   }, [createFromDrop]);
 
-  // 回环节点连线校验: loopbackOut (字节发送口) 只能连 loopbackIn (字节输入口), 反之亦然;
-  // 普通数值口之间维持现状 (不做类型限制)
-  const isValidConnection = useCallback(
-    (conn: { sourceHandle?: string | null; targetHandle?: string | null }) => {
-      const fromLoopback = conn.sourceHandle === 'loopbackOut';
-      const toLoopback = conn.targetHandle === 'loopbackIn';
-      // 一端是回环口时, 另一端必须也是对应回环口; 两端都不是则放行
-      return fromLoopback === toLoopback;
+  // 端口域解析: 通道源输出 ch0..chN 视为时域; 控件端口按 getWidgetPorts 的 domain 标注
+  const resolveDomain = useCallback(
+    (nodeId: string | null, handleId: string | null | undefined, kind: 'source' | 'target'): DomainType | null => {
+      if (!nodeId || !handleId) return null;
+      const node = useAppStore.getState().rfNodes.find((n: Node) => n.id === nodeId);
+      if (!node) return null;
+      if (node.type === 'channelSource') {
+        return /^ch\d+$/.test(handleId) ? 'time' : null;
+      }
+      const widget = node.data?.widget as WidgetConfig | undefined;
+      if (!widget) return null;
+      // RawData 输入端口是动态派生的 (src:<source>:<handle>), 静态端口表查不到 — 一律按时域,
+      // 否则频域输出可绕过域校验连进 RawData
+      if (widget.kind === 'RawData') return 'time';
+      const ports = getWidgetPorts(widget);
+      const list = kind === 'source' ? ports.outputs : ports.inputs;
+      return list.find((p) => p.id === handleId)?.domain ?? null;
     },
     []
+  );
+
+  // 连线校验:
+  //   1. 回环口: loopbackOut (字节发送) 只能连 loopbackIn (字节接收), 反之亦然
+  //   2. 域匹配: 时域/频域端口必须同域, 跨域 (时域→频域 / 频域→时域) 阻止并提示
+  const isValidConnection = useCallback(
+    (conn: {
+      source?: string | null;
+      target?: string | null;
+      sourceHandle?: string | null;
+      targetHandle?: string | null;
+    }) => {
+      const fromLoopback = conn.sourceHandle === 'loopbackOut';
+      const toLoopback = conn.targetHandle === 'loopbackIn';
+      // 一端是回环口时, 另一端必须也是对应回环口
+      if (fromLoopback || toLoopback) {
+        return fromLoopback === toLoopback;
+      }
+      const sd = resolveDomain(conn.source ?? null, conn.sourceHandle, 'source');
+      const td = resolveDomain(conn.target ?? null, conn.targetHandle, 'target');
+      if (sd && td && sd !== td) {
+        notify.warn(t(lang, 'domainMismatchTitle'), t(lang, 'domainMismatchMsg'), {
+          source: 'domain-mismatch',
+        });
+        return false;
+      }
+      return true;
+    },
+    [resolveDomain, lang]
   );
 
   return (

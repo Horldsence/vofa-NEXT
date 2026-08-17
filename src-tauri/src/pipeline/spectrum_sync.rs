@@ -71,3 +71,46 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
         }
     }
 }
+
+/// 同步 Ifft 节点重建缓冲与 graphs 中的 Ifft 节点
+///
+/// - 遍历所有 graph 的 Ifft 节点, 编译期解析其上游 FFT (SpectrumSink) 源 id
+/// - 删除 graphs 中已不存在的 Ifft 节点状态
+/// - 对每个有源 FFT 的 Ifft 节点, 读取最新频谱 (spectrum_snapshot[source_id]),
+///   用 IfftSynth 合成时域缓冲并复位播放位置
+///
+/// 由 spectrum_ticker 每 tick 调用, 保证 Ifft 重建缓冲与图拓扑/最新频谱一致。
+pub fn sync_ifft_buffers(state: &GraphEvalState) {
+    let graphs = state.graphs.lock();
+    let snapshot = state.spectrum_snapshot.lock();
+    let mut ifft_states = state.ifft_states.lock();
+
+    // 收集当前 Ifft 节点: id → 源 FFT (SpectrumSink) id + window_size
+    let mut current: HashMap<String, Option<(String, usize)>> = HashMap::new();
+    for (_, graph) in graphs.iter() {
+        for node_id in graph.ifft_node_ids() {
+            let cfg = graph
+                .ifft_source(&node_id)
+                .and_then(|sid| graph.spectrum_sink_config(&sid).map(|(n, _, _, _)| (sid, n)));
+            current.insert(node_id, cfg);
+        }
+    }
+
+    // 删除已不存在的 Ifft 节点状态
+    ifft_states.retain(|id, _| current.contains_key(id));
+
+    for (node_id, cfg) in &current {
+        let entry = ifft_states.entry(node_id.clone()).or_default();
+        match cfg {
+            Some((sid, n)) => {
+                if let Some(result) = snapshot.get(sid) {
+                    entry.synth(&result.values, *n);
+                }
+            }
+            None => {
+                // 无上游 FFT 源: 清空缓冲, 输出 0
+                entry.clear();
+            }
+        }
+    }
+}

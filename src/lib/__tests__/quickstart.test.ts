@@ -24,9 +24,9 @@ import { createChannelSourceNode } from '../../store/appStoreHelpers';
 import type { WidgetConfig } from '../../types';
 
 describe('快速开始模板', () => {
-  it('包含数学 / 滤波器 / CAN / 串口 / 演示', () => {
+  it('包含数学 / 滤波器 / 频谱分析 / CAN / 串口 / 演示', () => {
     const ids = QUICK_START_TEMPLATES.map((t) => t.id);
-    expect(ids).toEqual(expect.arrayContaining(['math', 'filter', 'can', 'serial', 'demo']));
+    expect(ids).toEqual(expect.arrayContaining(['math', 'filter', 'fft', 'can', 'serial', 'demo']));
   });
 
   it('每个模板生成的快照结构完整且自洽', () => {
