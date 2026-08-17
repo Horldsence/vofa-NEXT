@@ -12,8 +12,8 @@ interface AboutModalProps {
   onClose: () => void;
 }
 
-const APP_AUTHOR = 'peng';
-const APP_LICENSE = 'MIT';
+const APP_AUTHOR = 'Horldsence';
+const APP_LICENSE = 'GPLv2';
 const APP_GITHUB = 'https://github.com/Horldsence/vofa-NEXT';
 const APP_DOCS = 'https://github.com/Horldsence/vofa-NEXT#readme';
 
@@ -59,7 +59,7 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
         </button>
 
         <div className="flex items-center justify-center mb-1">
-          <img src="/tauri.svg" alt="logo" width={72} height={72} />
+          <img src="/icon.png" alt="logo" width={72} height={72} />
         </div>
 
         <h2 className="text-xl font-semibold text-text-bright m-0">{appName}</h2>
