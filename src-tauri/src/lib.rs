@@ -143,6 +143,7 @@ pub fn run() {
             // CAN 帧
             commands::send_can_frame,
             commands::subscribe_can_frames,
+            commands::subscribe_can_frames_filtered,
             commands::unsubscribe_can_frames,
             commands::get_recent_can_frames,
             commands::clear_can_buffer,
@@ -150,11 +151,13 @@ pub fn run() {
             commands::list_candle_devices,
             // 逻辑分析仪
             commands::subscribe_logic_samples,
+            commands::subscribe_logic_samples_filtered,
             commands::unsubscribe_logic_samples,
             commands::get_recent_logic_samples,
             commands::clear_logic_buffer,
             commands::get_logic_buffer_info,
             commands::subscribe_decoded_events,
+            commands::subscribe_decoded_events_filtered,
             commands::unsubscribe_decoded_events,
             commands::get_recent_decoded_events,
             commands::clear_decoded_buffer,

@@ -46,11 +46,84 @@ pub enum DecodedEvent {
     },
 }
 
+/// 逻辑采样过滤条件 — 用于后端订阅过滤
+///
+/// 所有字段为 None 时匹配全部采样; 设置掩码后按
+/// `(channels & mask) == (value & mask)` 匹配 (value 缺省为 0)。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct LogicSampleFilter {
+    /// 通道位图掩码 — 只关心这些通道
+    pub channel_mask: Option<u32>,
+    /// 期望通道值 (与掩码组合使用)
+    pub channel_value: Option<u32>,
+}
+
+impl LogicSampleFilter {
+    /// 判断指定采样是否匹配本过滤条件
+    pub fn matches(&self, sample: &LogicSample) -> bool {
+        if let Some(mask) = self.channel_mask {
+            let value = self.channel_value.unwrap_or(0);
+            if (sample.channels & mask) != (value & mask) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// 解码事件过滤条件 — 用于后端订阅过滤
+///
+/// 所有字段为 None 时匹配全部事件; kind 为协议名 ("uart"/"i2c"/"spi"),
+/// byte_pattern 对事件载荷字节 (UART byte / I2C addr+data / SPI mosi+miso) 做子串匹配。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DecodedEventFilter {
+    /// 协议类型过滤 (大小写不敏感): "uart" | "i2c" | "spi"
+    pub kind: Option<String>,
+    /// 载荷字节子串匹配
+    pub byte_pattern: Option<Vec<u8>>,
+}
+
+impl DecodedEventFilter {
+    /// 判断指定事件是否匹配本过滤条件
+    pub fn matches(&self, event: &DecodedEvent) -> bool {
+        if let Some(kind) = &self.kind {
+            let event_kind = match event {
+                DecodedEvent::Uart { .. } => "uart",
+                DecodedEvent::I2c { .. } => "i2c",
+                DecodedEvent::Spi { .. } => "spi",
+            };
+            if !kind.eq_ignore_ascii_case(event_kind) {
+                return false;
+            }
+        }
+        if let Some(pattern) = &self.byte_pattern {
+            if pattern.is_empty() {
+                return true;
+            }
+            // 收集事件载荷字节, 做子串匹配
+            let payload: Vec<u8> = match event {
+                DecodedEvent::Uart { byte, .. } => vec![*byte],
+                DecodedEvent::I2c { event, .. } => match event {
+                    I2cEvent::Address { addr, .. } => vec![*addr],
+                    I2cEvent::Data { byte, .. } => vec![*byte],
+                    I2cEvent::Start | I2cEvent::Stop => Vec::new(),
+                },
+                DecodedEvent::Spi { mosi, miso, .. } => vec![*mosi, *miso],
+            };
+            if payload.len() < pattern.len()
+                || !payload.windows(pattern.len()).any(|w| w == pattern.as_slice())
+            {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 /// 解码器配置
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", content = "params")]
-pub enum LogicDecoderConfig {
-    Uart {
+pub enum LogicDecoderConfig {    Uart {
         baud_rate: u32,
         data_bits: u8,
         parity: Parity,

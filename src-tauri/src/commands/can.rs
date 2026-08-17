@@ -1,7 +1,7 @@
 use crate::state::AppState;
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use vofa_next_core::{CanFrame, CanFrameBatch, CandleDeviceInfo, Result};
+use vofa_next_core::{CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo, Result};
 
 // ============ CAN 帧相关 ============
 
@@ -79,6 +79,55 @@ pub async fn unsubscribe_can_frames(state: State<'_, AppState>, channel_id: u32)
         let _ = tx.send(());
     }
     Ok(())
+}
+
+/// 订阅带过滤条件的 CAN 帧推送 — 统一分片流
+///
+/// 与 subscribe_can_frames 的区别: 后端只推送匹配 filter 的帧,
+/// 订阅游标从缓冲区最旧可读位置开始, 可先拉取全部历史匹配帧, 之后严格增量。
+/// 取消方式相同: unsubscribe_can_frames(channel_id)
+#[tauri::command]
+pub async fn subscribe_can_frames_filtered(
+    state: State<'_, AppState>,
+    on_event: Channel<CanFrameBatch>,
+    filter: CanFrameFilter,
+    group_id: Option<String>,
+    interval_ms: Option<u64>,
+    max_frames: Option<usize>,
+) -> Result<String> {
+    let interval = Duration::from_millis(interval_ms.unwrap_or(100));
+    let max_n = max_frames.unwrap_or(500);
+    let channel_id = on_event.id();
+    let buffer = state.can_buffer.clone();
+
+    let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
+        &state.stream_groups,
+        group_id,
+        channel_id,
+        state.pipeline_config.read().max_stream_shards,
+        || crate::pipeline::filtered_sources::FilteredCanStreamSource::new(buffer, filter),
+    )?;
+
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    state.can_tasks.lock().insert(channel_id, cancel_tx);
+
+    let groups = state.stream_groups.clone();
+    let exit_key = group_key.clone();
+    tokio::spawn(async move {
+        crate::pipeline::stream::sharded_stream_loop(
+            format!("过滤 CAN 帧分片{}", shard_idx),
+            source,
+            on_event,
+            shard_idx,
+            seq,
+            interval,
+            max_n,
+            cancel_rx,
+        )
+        .await;
+        crate::pipeline::stream::leave_group(&groups, &exit_key);
+    });
+    Ok(group_key)
 }
 
 /// 同步查询: 获取最近 N 个 CAN 帧

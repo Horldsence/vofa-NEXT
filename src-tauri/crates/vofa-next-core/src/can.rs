@@ -447,7 +447,7 @@ impl CanFrameFilter {
     }
 
     /// 是否为空过滤 (匹配全部)
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.id.is_none()
             && self.id_mask.is_none()
             && self.id_min.is_none()

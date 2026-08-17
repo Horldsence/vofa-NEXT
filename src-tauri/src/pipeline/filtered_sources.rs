@@ -47,7 +47,7 @@ impl StreamSource for FilteredRawDataSource {
     type Batch = RawDataBatch;
 
     fn backlog(&mut self) -> usize {
-        self.collector.lock().stored_bytes()
+        self.collector.lock().remaining_bytes_from(self.read_index)
     }
 
     fn drain(&mut self, max: usize) -> Option<Self::Batch> {
@@ -90,14 +90,12 @@ pub struct FilteredCanStreamSource {
 }
 
 impl FilteredCanStreamSource {
-    pub fn new(buffer: Arc<Mutex<CanBuffer>>, max_items: usize, filter: CanFrameFilter) -> Self {
-        let cursor = {
-            let buf = buffer.lock();
-            buf.version().saturating_sub(max_items as u64)
-        };
+    /// 游标从 0 开始 — drain_from 自动对齐到缓冲区最旧可读位置,
+    /// 即可先拉取全部历史匹配帧, 之后严格增量。
+    pub fn new(buffer: Arc<Mutex<CanBuffer>>, filter: CanFrameFilter) -> Self {
         Self {
             buffer,
-            cursor,
+            cursor: 0,
             filter,
         }
     }
@@ -139,14 +137,11 @@ pub struct FilteredLogicStreamSource {
 }
 
 impl FilteredLogicStreamSource {
-    pub fn new(buffer: Arc<Mutex<LogicBuffer>>, max_items: usize, filter: LogicSampleFilter) -> Self {
-        let cursor = {
-            let buf = buffer.lock();
-            buf.version().saturating_sub(max_items as u64)
-        };
+    /// 游标从 0 开始 — 自动对齐最旧可读位置, 先拉历史匹配采样, 之后增量
+    pub fn new(buffer: Arc<Mutex<LogicBuffer>>, filter: LogicSampleFilter) -> Self {
         Self {
             buffer,
-            cursor,
+            cursor: 0,
             filter,
         }
     }
@@ -188,14 +183,11 @@ pub struct FilteredDecodedStreamSource {
 }
 
 impl FilteredDecodedStreamSource {
-    pub fn new(buffer: Arc<Mutex<DecodedBuffer>>, max_items: usize, filter: DecodedEventFilter) -> Self {
-        let cursor = {
-            let buf = buffer.lock();
-            buf.version().saturating_sub(max_items as u64)
-        };
+    /// 游标从 0 开始 — 自动对齐最旧可读位置, 先拉历史匹配事件, 之后增量
+    pub fn new(buffer: Arc<Mutex<DecodedBuffer>>, filter: DecodedEventFilter) -> Self {
         Self {
             buffer,
-            cursor,
+            cursor: 0,
             filter,
         }
     }

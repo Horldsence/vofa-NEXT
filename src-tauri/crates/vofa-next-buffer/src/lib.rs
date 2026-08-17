@@ -378,6 +378,16 @@ impl RawDataCollector {
         self.stored
     }
 
+    /// 从指定绝对索引到最新的未读字节数 (游标式订阅的真实积压)
+    ///
+    /// 与 stored_bytes 的区别: stored_bytes 是全量存储 (环形满时恒定),
+    /// 本方法才是该游标还未消费的量, 分片扩缩容应以此为准。
+    pub fn remaining_bytes_from(&self, index: usize) -> usize {
+        let start = index.max(self.base_index);
+        let rel = start.saturating_sub(self.base_index);
+        self.chunks.iter().skip(rel).map(|c| c.bytes.len()).sum()
+    }
+
     /// 累计写入字节数 (含已丢弃)
     pub fn total_bytes(&self) -> u64 {
         self.total_bytes

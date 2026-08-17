@@ -169,6 +169,16 @@ pub async fn subscribe_rawdata(
     let channel_id = on_event.id();
     let collector = state.raw_data_collector.clone();
 
+    if group_id.is_none() {
+        let c = state.raw_data_collector.lock();
+        log::info!(
+            "subscribe_rawdata: 新订阅组, 起始积压={}B ({} chunks, base_index={})",
+            c.stored_bytes(),
+            c.chunk_count(),
+            c.base_index()
+        );
+    }
+
     let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
         &state.stream_groups,
         group_id,
@@ -311,12 +321,23 @@ pub async fn subscribe_rawdata_filtered(
     let direction = parse_direction_filter(&direction);
     let search = if search.trim().is_empty() { None } else { Some(search) };
 
+    if group_id.is_none() {
+        let c = state.raw_data_collector.lock();
+        log::info!(
+            "subscribe_rawdata_filtered: direction={:?}, search={:?}, 起始积压={}B ({} chunks)",
+            direction,
+            search,
+            c.stored_bytes(),
+            c.chunk_count()
+        );
+    }
+
     let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
         &state.stream_groups,
         group_id,
         channel_id,
         state.pipeline_config.read().max_stream_shards,
-        || crate::pipeline::stream::FilteredRawDataSource::new(collector, direction, search.as_deref()),
+        || crate::pipeline::filtered_sources::FilteredRawDataSource::new(collector, direction, search.as_deref()),
     )?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -369,7 +390,7 @@ pub async fn subscribe_rawdata_node_filtered(
         group_id,
         channel_id,
         state.pipeline_config.read().max_stream_shards,
-        || crate::pipeline::stream::FilteredRawDataSource::new(collector, direction, search.as_deref()),
+        || crate::pipeline::filtered_sources::FilteredRawDataSource::new(collector, direction, search.as_deref()),
     )?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();

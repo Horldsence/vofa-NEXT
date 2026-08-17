@@ -14,6 +14,7 @@ mod data_loop;
 pub mod decoder_feed;
 pub mod dispatcher;
 pub mod feed_parallel;
+pub mod filtered_sources;
 pub mod graph_eval;
 pub mod spectrum_sync;
 pub mod stream;

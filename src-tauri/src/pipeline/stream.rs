@@ -20,7 +20,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
-use vofa_next_buffer::{DataBuffer, DirectionFilter, RawDataBatch, RawDataCollector, RawDrain, SearchPattern, WaveformWindow};
+use vofa_next_buffer::{DataBuffer, RawDataBatch, RawDataCollector, RawDrain, WaveformWindow};
 use vofa_next_core::{
     CanBuffer, CanFrameBatch, DecodedBuffer, DecodedEventBatch, Error, LogicBuffer,
     LogicSampleBatch, Result,
@@ -198,79 +198,12 @@ impl StreamSource for RawDataSource {
     type Batch = RawDataBatch;
 
     fn backlog(&mut self) -> usize {
-        self.collector.lock().stored_bytes()
+        self.collector.lock().remaining_bytes_from(self.read_index)
     }
 
     fn drain(&mut self, max: usize) -> Option<Self::Batch> {
         let (chunks, next_index) = {
             self.collector.lock().read_from(self.read_index, max)
-        };
-        self.read_index = next_index;
-        if chunks.is_empty() {
-            None
-        } else {
-            Some(
-                RawDrain {
-                    chunks,
-                    total_bytes: 0,
-                    dropped_bytes: 0,
-                }
-                .into_batch(),
-            )
-        }
-    }
-
-    fn set_seq(batch: &mut Self::Batch, seq: u64) {
-        batch.seq = seq;
-    }
-
-    const ACTIVATION_UNIT: usize = 256 * 1024;
-    const MAX_DRAIN: usize = 1024 * 1024;
-}
-
-/// 带方向与搜索过滤的原始字节流 — 游标增量读取
-///
-/// 与 RawDataSource 类似, 但只返回方向匹配且包含搜索模式的 chunk。
-/// 切换过滤条件时新建本 source, 游标从 collector.base_index 开始,
-/// 可自动拉取全部历史匹配数据。
-pub struct FilteredRawDataSource {
-    collector: Arc<Mutex<RawDataCollector>>,
-    read_index: usize,
-    direction: DirectionFilter,
-    pattern: Option<SearchPattern>,
-}
-
-impl FilteredRawDataSource {
-    pub fn new(
-        collector: Arc<Mutex<RawDataCollector>>,
-        direction: DirectionFilter,
-        search: Option<&str>,
-    ) -> Self {
-        let read_index = collector.lock().base_index();
-        Self {
-            collector,
-            read_index,
-            direction,
-            pattern: search.and_then(SearchPattern::parse),
-        }
-    }
-}
-
-impl StreamSource for FilteredRawDataSource {
-    type Batch = RawDataBatch;
-
-    fn backlog(&mut self) -> usize {
-        self.collector.lock().stored_bytes()
-    }
-
-    fn drain(&mut self, max: usize) -> Option<Self::Batch> {
-        let (chunks, next_index) = {
-            self.collector.lock().read_filtered_from(
-                self.read_index,
-                max,
-                self.direction,
-                self.pattern.as_ref(),
-            )
         };
         self.read_index = next_index;
         if chunks.is_empty() {
