@@ -100,7 +100,7 @@ class LogicSampleBuffer {
 }
 
 /// 解码事件环形缓冲区
-class DecodedEventBuffer {
+export class DecodedEventBuffer {
   private events: DecodedEvent[] = [];
   private _capacity: number;
   private listeners = new Set<() => void>();

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
-import { decodedEventBuffer } from '../../../lib/buffers/logicBuffer';
-import { clearDecodedBuffer } from '../../../lib/buffers/logicSubscription';
+import { decodedEventBuffer, DecodedEventBuffer } from '../../../lib/buffers/logicBuffer';
+import { clearDecodedBuffer, subscribeDecodedEventsFiltered, type DecodedEventFilterOptions } from '../../../lib/buffers/logicSubscription';
 import { t } from '../../../i18n';
 import { ToolbarIconButton } from '../../ui/ToolbarIconButton';
 import { Trash2, ArrowDown } from 'lucide-react';
@@ -42,14 +42,39 @@ export function DecodedEventList() {
   const listRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
 
-  // 订阅 decodedEventBuffer
+  // 过滤条件 (后端过滤): 协议类型
+  const filterOptions = useMemo<DecodedEventFilterOptions | null>(
+    () => (filterType === 'all' ? null : { kind: filterType }),
+    [filterType]
+  );
+
+  // 过滤模式: 本地 buffer + 后端过滤订阅 (切换条件时重建, 后端重推匹配历史)
+  const [filteredBuffer, setFilteredBuffer] = useState<DecodedEventBuffer | null>(null);
   useEffect(() => {
-    const unsub = decodedEventBuffer.subscribe(() => {
-      setEvents(decodedEventBuffer.getRecent(500));
+    if (!filterOptions) {
+      setFilteredBuffer(null);
+      return;
+    }
+    const buf = new DecodedEventBuffer();
+    setFilteredBuffer(buf);
+    const sub = subscribeDecodedEventsFiltered(
+      filterOptions,
+      (batch) => buf.push(batch.events),
+      { intervalMs: 100, maxEvents: 500 }
+    );
+    return () => sub.cancel();
+  }, [filterOptions]);
+
+  const buffer = filteredBuffer ?? decodedEventBuffer;
+
+  // 订阅 buffer (过滤模式下后端已筛选, 无需前端再过滤)
+  useEffect(() => {
+    const unsub = buffer.subscribe(() => {
+      setEvents(buffer.getRecent(500));
     });
-    setEvents(decodedEventBuffer.getRecent(500));
+    setEvents(buffer.getRecent(500));
     return unsub;
-  }, []);
+  }, [buffer]);
 
   // 自动滚动到底部
   useEffect(() => {
@@ -67,14 +92,9 @@ export function DecodedEventList() {
   const handleClear = () => {
     void clearDecodedBuffer();
     decodedEventBuffer.clear();
+    filteredBuffer?.clear();
     setEvents([]);
   };
-
-  // 按协议类型过滤
-  const filtered = useMemo(() => {
-    if (filterType === 'all') return events;
-    return events.filter((e) => filterType in e);
-  }, [events, filterType]);
 
   const renderEvent = (e: DecodedEvent, i: number) => {
     if ('Uart' in e) {
@@ -170,12 +190,12 @@ export function DecodedEventList() {
         ref={listRef}
         onScroll={handleScroll}
       >
-        {filtered.length === 0 ? (
+        {events.length === 0 ? (
           <div className="flex items-center justify-center h-48 text-text-secondary text-xs">
             {t(lang, 'noDecodedEvents')}
           </div>
         ) : (
-          filtered.map(renderEvent)
+          events.map(renderEvent)
         )}
       </div>
     </div>

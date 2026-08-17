@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useMemo, useCallback, memo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../../store/appStore';
-import { canFrameBuffer } from '../../../lib/buffers/canBuffer';
-import { clearCanBuffer } from '../../../lib/buffers/canSubscription';
+import { canFrameBuffer, CanFrameBuffer } from '../../../lib/buffers/canBuffer';
+import { clearCanBuffer, subscribeCanFramesFiltered, type CanFrameFilterOptions } from '../../../lib/buffers/canSubscription';
 import { useSelection } from '../../../lib/hooks/useSelection';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { t } from '../../../i18n';
@@ -131,45 +131,64 @@ export function CanFrameList() {
   const userScrolledRef = useRef(false);
   const isAutoScrollingRef = useRef(false);
 
+  // 过滤条件 (后端过滤): 方向 + ID (HEX, 解析失败则忽略 ID 条件)
+  const isFiltered = filterDir !== 'all' || filterId.trim() !== '';
+  const filterOptions = useMemo<CanFrameFilterOptions | null>(() => {
+    if (!isFiltered) return null;
+    const opts: CanFrameFilterOptions = {};
+    if (filterDir !== 'all') opts.direction = filterDir;
+    const idText = filterId.trim().toLowerCase().replace(/^0x/, '');
+    if (idText) {
+      const idNum = parseInt(idText, 16);
+      if (!isNaN(idNum)) opts.id = idNum;
+    }
+    return opts;
+  }, [isFiltered, filterDir, filterId]);
+
+  // 过滤模式: 本地 buffer + 后端过滤订阅 (切换条件时重建, 后端重推匹配历史)
+  const [filteredBuffer, setFilteredBuffer] = useState<CanFrameBuffer | null>(null);
+  useEffect(() => {
+    if (!filterOptions) {
+      setFilteredBuffer(null);
+      return;
+    }
+    const buf = new CanFrameBuffer();
+    setFilteredBuffer(buf);
+    const sub = subscribeCanFramesFiltered(
+      filterOptions,
+      (batch) => buf.push(batch.frames),
+      { intervalMs: 100, maxFrames: 500 }
+    );
+    return () => sub.cancel();
+  }, [filterOptions]);
+
+  const buffer = filteredBuffer ?? canFrameBuffer;
+
   // 订阅 buffer 变化, 用 version 触发重渲染
   useEffect(() => {
-    const unsub = canFrameBuffer.subscribe(() => setVersion((v) => v + 1));
+    const unsub = buffer.subscribe(() => setVersion((v) => v + 1));
     setVersion((v) => v + 1);
     return unsub;
-  }, []);
+  }, [buffer]);
 
-  // 过滤 (在 version 变化时重新计算, 用 getUnsafeRef 避免中间拷贝)
-  const filtered = useMemo(() => {
-    const all = canFrameBuffer.getUnsafeRef();
-    if (filterDir !== 'all' || filterId.trim()) {
-      return all.filter((f) => {
-        if (filterDir !== 'all' && f.direction !== filterDir) return false;
-        if (filterId.trim()) {
-          const idLower = filterId.trim().toLowerCase().replace(/^0x/, '');
-          const idNum = parseInt(idLower, 16);
-          if (!isNaN(idNum) && f.id !== idNum) return false;
-        }
-        return true;
-      });
-    }
-    // 无过滤条件: 复用内部引用 (filtered 作为虚拟滚动数据源)
-    return all;
-  }, [filterDir, filterId, version]);
+  // 当前数据源: 过滤模式下后端已筛选, 直接取内部引用 (无需前端再过滤)
+  const frames = buffer.getUnsafeRef();
+  void version; // version 仅用于触发重渲染
 
   // Rx/Tx 计数: 从内部引用遍历, 避免两次 getAll 拷贝
   const rxTxCounts = useMemo(() => {
-    const all = canFrameBuffer.getUnsafeRef();
+    const all = buffer.getUnsafeRef();
     let rx = 0, tx = 0;
     for (let i = 0; i < all.length; i++) {
       if (all[i].direction === 'Rx') rx++;
       else tx++;
     }
     return { rxCount: rx, txCount: tx, total: all.length };
-  }, [version]);
+  }, [buffer, version]);
   const { rxCount, txCount } = rxTxCounts;
 
   const virtualizer = useVirtualizer({
-    count: filtered.length,
+    count: frames.length,
     getScrollElement: () => parentRef.current,
     // 固定行高: estimateSize 返回常量, 跳过 measureElement 的 DOM 测量开销,
     // 行高波动时由浏览器处理, 保证 60fps 滚动
@@ -179,18 +198,18 @@ export function CanFrameList() {
     getItemKey: (index) => index,
   });
 
-  const selection = useSelection(filtered.length);
+  const selection = useSelection(frames.length);
 
   // 自动滚动到底部
   useEffect(() => {
-    if (!autoScroll || userScrolledRef.current || filtered.length === 0) return;
+    if (!autoScroll || userScrolledRef.current || frames.length === 0) return;
     isAutoScrollingRef.current = true;
-    virtualizer.scrollToIndex(filtered.length - 1, { align: 'end' });
+    virtualizer.scrollToIndex(frames.length - 1, { align: 'end' });
     const t = setTimeout(() => {
       isAutoScrollingRef.current = false;
     }, 50);
     return () => clearTimeout(t);
-  }, [filtered.length, autoScroll, version, virtualizer]);
+  }, [frames.length, autoScroll, version, virtualizer]);
 
   // 检测用户手动滚动
   const handleScroll = useCallback(() => {
@@ -203,6 +222,7 @@ export function CanFrameList() {
   const handleClear = () => {
     void clearCanBuffer();
     canFrameBuffer.clear();
+    filteredBuffer?.clear();
     selection.clear();
     userScrolledRef.current = false;
     setVersion((v) => v + 1);
@@ -211,14 +231,14 @@ export function CanFrameList() {
   const copySelected = useCallback(async () => {
     const indices = selection.selectedSorted;
     if (indices.length === 0) return;
-    const frames = indices.map((i) => filtered[i]).filter(Boolean) as CanFrame[];
-    const text = framesToCsv(frames);
+    const selected = indices.map((i) => frames[i]).filter(Boolean) as CanFrame[];
+    const text = framesToCsv(selected);
     const ok = await writeTextToClipboard(text);
     if (ok) {
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 1200);
     }
-  }, [selection.selectedSorted, filtered]);
+  }, [selection.selectedSorted, frames]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -320,7 +340,7 @@ export function CanFrameList() {
         <ToolbarIconButton
           icon={<Download />}
           title="Export CSV"
-          onClick={() => exportFramesToCsv(filtered)}
+          onClick={() => exportFramesToCsv(frames.slice())}
         />
         <ToolbarIconButton
           icon={<Trash2 />}
@@ -351,7 +371,7 @@ export function CanFrameList() {
         onKeyDown={handleKeyDown}
         tabIndex={0}
       >
-        {filtered.length === 0 ? (
+        {frames.length === 0 ? (
           <div className="flex items-center justify-center h-48 text-text-secondary text-xs">
             {t(lang, 'noCanFrames')}
           </div>
@@ -367,7 +387,7 @@ export function CanFrameList() {
               }}
             >
               {virtualItems.map((virtualRow) => {
-                const frame = filtered[virtualRow.index];
+                const frame = frames[virtualRow.index];
                 if (!frame) return null;
                 return (
                   <Row
