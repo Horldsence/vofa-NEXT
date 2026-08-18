@@ -6,10 +6,7 @@
 /// - boundaries 为空 → 返回空 Vec (无完整帧可切)
 /// - workers <= 1 → 返回整块 [0, *last)
 /// - 均分点 = last * i / workers, 每段结束 = 不超过均分点的最大边界 (最后一段恒为 *last)
-pub fn split_at_boundaries(
-    boundaries: &[usize],
-    workers: usize,
-) -> Vec<std::ops::Range<usize>> {
+pub fn split_at_boundaries(boundaries: &[usize], workers: usize) -> Vec<std::ops::Range<usize>> {
     let Some(&last) = boundaries.last() else {
         return Vec::new();
     };

@@ -11,7 +11,10 @@ pub mod ifft;
 pub mod spectrum;
 pub mod window;
 
-pub use filter::{DigitalFilter, FilterKind, FilterPreset};
+pub use filter::{
+    bandpass_biquad, bandstop_biquad, highpass_biquad, lowpass_biquad, DigitalFilter, FilterKind,
+    FilterPreset,
+};
 pub use ifft::{IfftState, IfftSynth};
 pub use spectrum::{SpectrumAnalyzer, SpectrumOutput, SpectrumResult, WindowType};
 pub use window::apply_window;

@@ -8,6 +8,7 @@
 pub mod can_backend;
 pub mod engine;
 pub mod error;
+pub mod isotp;
 
 pub use can_backend::{BackendKind, BridgeCanBackend};
 pub use engine::DiagnosticEngine;

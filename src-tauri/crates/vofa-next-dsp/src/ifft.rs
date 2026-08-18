@@ -85,9 +85,7 @@ impl IfftState {
 
     /// 用最新振幅谱重建缓冲并复位播放位置
     pub fn synth(&mut self, magnitudes: &[f32], n: usize) {
-        let synth = self
-            .synth
-            .get_or_insert_with(|| IfftSynth::new(n));
+        let synth = self.synth.get_or_insert_with(|| IfftSynth::new(n));
         self.buffer = synth.synthesize(magnitudes);
         self.pos = 0;
     }
@@ -103,8 +101,8 @@ impl IfftState {
 mod tests {
     use super::*;
     use crate::spectrum::SpectrumAnalyzer;
-    use crate::window::WindowType;
     use crate::spectrum::SpectrumOutput;
+    use crate::window::WindowType;
     use std::f32::consts::PI;
 
     #[test]
@@ -129,7 +127,12 @@ mod tests {
 
         for i in 0..n {
             let diff = (recon[i] - signal[i]).abs();
-            assert!(diff < 1e-3, "i={i} recon={} sig={} diff={diff}", recon[i], signal[i]);
+            assert!(
+                diff < 1e-3,
+                "i={i} recon={} sig={} diff={diff}",
+                recon[i],
+                signal[i]
+            );
         }
     }
 

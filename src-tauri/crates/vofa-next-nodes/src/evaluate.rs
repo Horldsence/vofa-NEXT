@@ -92,7 +92,10 @@ impl CompiledGraph {
                     let frame = source_frames.get(source_id);
                     let m = node_out_entry(out, node_id);
                     for i in 0..*channels {
-                        let v = frame.and_then(|f| f.channels.get(i)).copied().unwrap_or(0.0);
+                        let v = frame
+                            .and_then(|f| f.channels.get(i))
+                            .copied()
+                            .unwrap_or(0.0);
                         set_port(m, &format!("ch{}", i), v);
                     }
                 }
@@ -201,7 +204,10 @@ impl CompiledGraph {
                 }
                 NodeKind::Ifft => {
                     // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
-                    let v = ifft_states.get_mut(node_id).map(IfftState::next).unwrap_or(0.0);
+                    let v = ifft_states
+                        .get_mut(node_id)
+                        .map(IfftState::next)
+                        .unwrap_or(0.0);
                     let m = node_out_entry(out, node_id);
                     set_port(m, "out0", v);
                 }
@@ -218,12 +224,7 @@ impl CompiledGraph {
 
     /// 解析某节点某输入端口的上游输出值
     /// (在 evaluate 过程中, 上游必然已计算完成)
-    fn resolve_input(
-        &self,
-        node_id: &str,
-        port_id: &str,
-        computed: &ValuesMap,
-    ) -> f32 {
+    fn resolve_input(&self, node_id: &str, port_id: &str, computed: &ValuesMap) -> f32 {
         if let Some((src_node, src_port)) = self
             .input_index
             .get(node_id)
@@ -265,10 +266,7 @@ impl CompiledGraph {
     /// 返回: HashMap<sink_widget_id, input_value>
     /// 调用方 (data_loop) 在每帧 evaluate 后调用本方法,
     /// 将值 push 到对应的 SpectrumAnalyzer 的滑动窗口。
-    pub fn collect_spectrum_inputs(
-        &self,
-        computed: &ValuesMap,
-    ) -> HashMap<String, f32> {
+    pub fn collect_spectrum_inputs(&self, computed: &ValuesMap) -> HashMap<String, f32> {
         let mut result = HashMap::new();
         for (node_id, node) in &self.nodes {
             if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
@@ -393,5 +391,4 @@ impl CompiledGraph {
             None
         }
     }
-
 }

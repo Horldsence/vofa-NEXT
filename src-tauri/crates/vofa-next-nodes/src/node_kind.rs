@@ -174,9 +174,7 @@ pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain
         {
             PortDomain::Bytes
         }
-        NodeKind::Sink | NodeKind::Custom { .. }
-            if is_output && handle == LOOPBACK_OUT_HANDLE =>
-        {
+        NodeKind::Sink | NodeKind::Custom { .. } if is_output && handle == LOOPBACK_OUT_HANDLE => {
             PortDomain::Bytes
         }
         _ => PortDomain::F32,

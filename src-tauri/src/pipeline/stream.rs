@@ -81,7 +81,8 @@ pub async fn sharded_stream_loop<S: StreamSource>(
             let backlog = src.backlog();
             // 自动扩缩容: 积压不足时高分片休眠 (状态变化时输出日志)
             // 快照流 (SNAPSHOT=true) 永远只有 shard 0 工作
-            let active = shard_idx == 0 || (!S::SNAPSHOT && backlog >= shard_idx * S::ACTIVATION_UNIT);
+            let active =
+                shard_idx == 0 || (!S::SNAPSHOT && backlog >= shard_idx * S::ACTIVATION_UNIT);
             if active != was_active {
                 log::debug!(
                     "{} {} (积压 {}, 阈值 {})",
@@ -202,9 +203,7 @@ impl StreamSource for RawDataSource {
     }
 
     fn drain(&mut self, max: usize) -> Option<Self::Batch> {
-        let (chunks, next_index) = {
-            self.collector.lock().read_from(self.read_index, max)
-        };
+        let (chunks, next_index) = { self.collector.lock().read_from(self.read_index, max) };
         self.read_index = next_index;
         if chunks.is_empty() {
             None
@@ -259,7 +258,10 @@ impl StreamSource for CanStreamSource {
         if items.is_empty() {
             None
         } else {
-            Some(CanFrameBatch { seq: 0, frames: items })
+            Some(CanFrameBatch {
+                seq: 0,
+                frames: items,
+            })
         }
     }
 
@@ -302,7 +304,10 @@ impl StreamSource for LogicStreamSource {
         if items.is_empty() {
             None
         } else {
-            Some(LogicSampleBatch { seq: 0, samples: items })
+            Some(LogicSampleBatch {
+                seq: 0,
+                samples: items,
+            })
         }
     }
 
@@ -345,7 +350,10 @@ impl StreamSource for DecodedStreamSource {
         if items.is_empty() {
             None
         } else {
-            Some(DecodedEventBatch { seq: 0, events: items })
+            Some(DecodedEventBatch {
+                seq: 0,
+                events: items,
+            })
         }
     }
 

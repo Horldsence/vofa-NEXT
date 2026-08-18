@@ -298,8 +298,12 @@ impl FrameParser {
                     }
                 }
                 ParseState::ParseFields => {
-                    match self.try_parse_frame_from(&self.buf[base..], 0, self.frame_start, timestamp_us)
-                    {
+                    match self.try_parse_frame_from(
+                        &self.buf[base..],
+                        0,
+                        self.frame_start,
+                        timestamp_us,
+                    ) {
                         Some(mut result) => {
                             let consumed = result.consumed_bytes;
                             // 捕获本帧消耗的原始字节 (header 至末尾), 供旁路 RawData 通道使用

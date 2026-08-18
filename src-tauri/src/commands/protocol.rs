@@ -31,7 +31,10 @@ pub async fn set_protocol(
                 manager.close(id);
                 crate::events::emit_transport_state(&app, id, ConnectionState::Disconnected);
             }
-            log::info!("协议切换: 自动断开 TestData 连接 ({} 个), 请重新连接", test_nodes.len());
+            log::info!(
+                "协议切换: 自动断开 TestData 连接 ({} 个), 请重新连接",
+                test_nodes.len()
+            );
         }
     }
 
@@ -44,9 +47,9 @@ pub async fn set_protocol(
         .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", node_id)))?;
     {
         let mut s = st.lock();
-        s.engine = std::sync::Arc::new(parking_lot::Mutex::new(
-            vofa_next_protocol::create_engine(&config),
-        ));
+        s.engine = std::sync::Arc::new(parking_lot::Mutex::new(vofa_next_protocol::create_engine(
+            &config,
+        )));
         s.config = config;
         s.parallel_supported = None;
         s.in_parallel = false;

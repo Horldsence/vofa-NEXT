@@ -20,7 +20,14 @@ fn test_collect_spectrum_inputs() {
     // collect_spectrum_inputs 应返回 SpectrumSink 的输入值
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_spectrum_sink("s1", "t1", 256, WindowType::Hann, SpectrumOutput::Magnitude, 1000.0),
+        make_spectrum_sink(
+            "s1",
+            "t1",
+            256,
+            WindowType::Hann,
+            SpectrumOutput::Magnitude,
+            1000.0,
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "s1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
@@ -44,7 +51,14 @@ fn test_spectrum_sink_no_output_in_evaluate() {
     // evaluate 不应包含 SpectrumSink 的输出
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_spectrum_sink("s1", "t1", 256, WindowType::Hann, SpectrumOutput::Magnitude, 1000.0),
+        make_spectrum_sink(
+            "s1",
+            "t1",
+            256,
+            WindowType::Hann,
+            SpectrumOutput::Magnitude,
+            1000.0,
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "s1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
@@ -148,7 +162,7 @@ fn test_compiled_eval_equivalence() {
     input_values.insert("knob1".to_string(), 7.0_f32);
     let custom_outputs = HashMap::new();
     let decoder_states = HashMap::new(); // d1 无 parser
-    // 两条路径各自独立的 filter_states (跨帧状态)
+                                         // 两条路径各自独立的 filter_states (跨帧状态)
     let mut fs_a = HashMap::new();
     let mut fs_b = HashMap::new();
 

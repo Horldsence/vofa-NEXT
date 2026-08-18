@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use windows_sys::core::GUID;
 use windows_sys::Win32::Devices::DeviceAndDriverInstallation::{
     SetupDiDestroyDeviceInfoList, SetupDiEnumDeviceInfo, SetupDiGetClassDevsW,
-    SetupDiGetDeviceRegistryPropertyW, SetupDiOpenDevRegKey, DICS_FLAG_GLOBAL, DIREG_DEV,
-    DIGCF_PRESENT, SPDRP_DEVICEDESC, SP_DEVINFO_DATA,
+    SetupDiGetDeviceRegistryPropertyW, SetupDiOpenDevRegKey, DICS_FLAG_GLOBAL, DIGCF_PRESENT,
+    DIREG_DEV, SPDRP_DEVICEDESC, SP_DEVINFO_DATA,
 };
 use windows_sys::Win32::Foundation::{BOOL, ERROR_SUCCESS, HWND, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::System::Registry::{RegCloseKey, RegQueryValueExW, HKEY, KEY_READ};
@@ -39,12 +39,7 @@ pub fn port_descriptions() -> HashMap<String, String> {
 
     for guid in [&GUID_DEVCLASS_PORTS, &GUID_DEVCLASS_MODEM] {
         unsafe {
-            let info_set = SetupDiGetClassDevsW(
-                guid,
-                std::ptr::null(),
-                0 as HWND,
-                DIGCF_PRESENT,
-            );
+            let info_set = SetupDiGetClassDevsW(guid, std::ptr::null(), 0 as HWND, DIGCF_PRESENT);
             if info_set == INVALID_HANDLE_VALUE {
                 continue;
             }

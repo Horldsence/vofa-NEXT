@@ -28,8 +28,11 @@ pub async fn send_can_frame(
             let routes = plane.byte_plan.lock().routes_for(&node_id).to_vec();
             let nodes = plane.global_nodes.lock();
             routes.iter().find_map(|r| {
-                matches!(nodes.get(&r.target).map(|n| &n.kind), Some(vofa_next_nodes::NodeKind::Protocol { .. }))
-                    .then(|| r.target.clone())
+                matches!(
+                    nodes.get(&r.target).map(|n| &n.kind),
+                    Some(vofa_next_nodes::NodeKind::Protocol { .. })
+                )
+                .then(|| r.target.clone())
             })
         }
     };
@@ -42,7 +45,9 @@ pub async fn send_can_frame(
             .lock()
             .get(&proto_id)
             .cloned()
-            .ok_or_else(|| vofa_next_core::Error::Config(format!("协议节点不存在: {}", proto_id)))?;
+            .ok_or_else(|| {
+                vofa_next_core::Error::Config(format!("协议节点不存在: {}", proto_id))
+            })?;
         let engine = st.lock().engine.clone();
         let bytes = engine.lock().encode_can(&frame);
         bytes

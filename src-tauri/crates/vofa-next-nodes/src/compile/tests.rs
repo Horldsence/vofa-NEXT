@@ -57,7 +57,14 @@ fn test_spectrum_sink_not_in_eval_order() {
     // SpectrumSink 不应在 eval_order 中 (无输出, 块运算)
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_spectrum_sink("s1", "t1", 256, WindowType::Hann, SpectrumOutput::Magnitude, 1000.0),
+        make_spectrum_sink(
+            "s1",
+            "t1",
+            256,
+            WindowType::Hann,
+            SpectrumOutput::Magnitude,
+            1000.0,
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "s1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
@@ -70,7 +77,14 @@ fn test_spectrum_sink_not_in_eval_order() {
 fn test_spectrum_sink_config() {
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_spectrum_sink("s1", "t1", 512, WindowType::Blackman, SpectrumOutput::PSD, 2000.0),
+        make_spectrum_sink(
+            "s1",
+            "t1",
+            512,
+            WindowType::Blackman,
+            SpectrumOutput::PSD,
+            2000.0,
+        ),
     ];
     let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
     let cfg = g.spectrum_sink_config("s1").expect("应能获取配置");
@@ -88,7 +102,14 @@ fn test_ifft_node_in_eval_order_and_source() {
     // Ifft 应在 eval_order 中 (有输出 out0), 且编译期解析出上游 FFT 源 id
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_spectrum_sink("fft1", "t1", 256, WindowType::Hann, SpectrumOutput::Magnitude, 1000.0),
+        make_spectrum_sink(
+            "fft1",
+            "t1",
+            256,
+            WindowType::Hann,
+            SpectrumOutput::Magnitude,
+            1000.0,
+        ),
         NodeDef {
             id: "ifft1".to_string(),
             tab_id: "t1".to_string(),
@@ -201,7 +222,7 @@ fn test_same_id_protocol_and_protocol_source_coexist() {
         make_math("m1", "t1", MathOp::Add, 1),
     ];
     let edges = vec![
-        edge("e1", "tp", "rx", "pt", "in"),   // 字节边: Transport.rx → Protocol.in
+        edge("e1", "tp", "rx", "pt", "in"), // 字节边: Transport.rx → Protocol.in
         edge("e2", "pt", "ch0", "m1", "in0"), // 数值边: ProtocolSource.ch0 → Math
     ];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();

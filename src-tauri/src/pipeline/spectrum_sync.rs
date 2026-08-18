@@ -89,9 +89,11 @@ pub fn sync_ifft_buffers(state: &GraphEvalState) {
     let mut current: HashMap<String, Option<(String, usize)>> = HashMap::new();
     for (_, graph) in graphs.iter() {
         for node_id in graph.ifft_node_ids() {
-            let cfg = graph
-                .ifft_source(&node_id)
-                .and_then(|sid| graph.spectrum_sink_config(&sid).map(|(n, _, _, _)| (sid, n)));
+            let cfg = graph.ifft_source(&node_id).and_then(|sid| {
+                graph
+                    .spectrum_sink_config(&sid)
+                    .map(|(n, _, _, _)| (sid, n))
+            });
             current.insert(node_id, cfg);
         }
     }

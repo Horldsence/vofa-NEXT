@@ -6,7 +6,9 @@ pub mod logic_decoder;
 pub mod rawdata;
 pub mod slcan;
 
-pub use candle::CandleEngine;
+pub use candle::{
+    CandleEngine, CAND_CMD_RX, CAND_CMD_TX, CAND_FRAME_SIZE, CAND_ID_EFF, CAND_ID_MASK, CAND_ID_RTR,
+};
 pub use engine::{split_at_boundaries, FeedOutput, InputFormat, ParsedInput, ProtocolEngine};
 pub use firewater::FireWaterEngine;
 pub use justfloat::JustFloatEngine;

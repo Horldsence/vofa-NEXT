@@ -200,9 +200,10 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
 pub fn on_menu_event(app: &tauri::AppHandle, id: &str) {
     match id {
         ids::GITHUB => {
-            if let Err(e) =
-                tauri_plugin_opener::open_url("https://github.com/Horldsence/vofa-NEXT", None::<&str>)
-            {
+            if let Err(e) = tauri_plugin_opener::open_url(
+                "https://github.com/Horldsence/vofa-NEXT",
+                None::<&str>,
+            ) {
                 log::warn!("打开 GitHub 失败: {}", e);
             }
         }

@@ -203,7 +203,10 @@ impl CompiledEval {
                 }
                 CompiledOp::Ifft { node_id, out } => {
                     // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
-                    slots[*out] = ifft_states.get_mut(node_id).map(IfftState::next).unwrap_or(0.0);
+                    slots[*out] = ifft_states
+                        .get_mut(node_id)
+                        .map(IfftState::next)
+                        .unwrap_or(0.0);
                     written[*out] = true;
                 }
                 CompiledOp::FrameDecoder {
@@ -275,10 +278,12 @@ impl CompiledEval {
         slots: &'a [f32],
         written: &'a [bool],
     ) -> impl Iterator<Item = (&'a str, f32)> + 'a {
-        self.spectrum_slots.iter().filter_map(move |(sink, slot)| match slot {
-            Some(s) if written[*s] => Some((sink.as_str(), slots[*s])),
-            _ => None,
-        })
+        self.spectrum_slots
+            .iter()
+            .filter_map(move |(sink, slot)| match slot {
+                Some(s) if written[*s] => Some((sink.as_str(), slots[*s])),
+                _ => None,
+            })
     }
 }
 

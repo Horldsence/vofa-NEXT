@@ -69,7 +69,10 @@ impl CompiledGraph {
         let mut node_map: HashMap<String, NodeDef> = HashMap::new();
         let mut byte_nodes: HashMap<String, NodeDef> = HashMap::new();
         for n in nodes {
-            if matches!(n.kind, NodeKind::Transport { .. } | NodeKind::Protocol { .. }) {
+            if matches!(
+                n.kind,
+                NodeKind::Transport { .. } | NodeKind::Protocol { .. }
+            ) {
                 byte_nodes.insert(n.id.clone(), n);
             } else {
                 node_map.insert(n.id.clone(), n);
@@ -108,7 +111,12 @@ impl CompiledGraph {
                 _ => {
                     return Err(CompileError::DomainMismatch(format!(
                         "{}: {}.{} ({:?}) → {}.{} ({:?})",
-                        e.id, e.source, e.source_handle, src_domain, e.target, e.target_handle,
+                        e.id,
+                        e.source,
+                        e.source_handle,
+                        src_domain,
+                        e.target,
+                        e.target_handle,
                         tgt_domain
                     )));
                 }
@@ -123,13 +131,10 @@ impl CompiledGraph {
         // 嵌套结构, 支持 &str 零分配查询 (仅 f32 边参与求值)
         let mut input_index: HashMap<String, HashMap<String, (String, String)>> = HashMap::new();
         for e in &f32_edges {
-            input_index
-                .entry(e.target.clone())
-                .or_default()
-                .insert(
-                    e.target_handle.clone(),
-                    (e.source.clone(), e.source_handle.clone()),
-                );
+            input_index.entry(e.target.clone()).or_default().insert(
+                e.target_handle.clone(),
+                (e.source.clone(), e.source_handle.clone()),
+            );
         }
 
         // 编译期端口名缓存 (evaluate 热路径避免 format! 分配)
@@ -363,15 +368,15 @@ impl CompiledEval {
                     let mut ports = Vec::new();
                     for b in blocks {
                         if let Some(port) = b.output_port_name() {
-                            let slot =
-                                alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
+                            let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
                             ports.push((port.to_string(), slot));
                         }
                     }
                     let valid = enable_valid
                         .then(|| alloc_slot(&mut slot_names, &mut slot_index, node_id, "valid"));
-                    let frame_count = enable_frame_count
-                        .then(|| alloc_slot(&mut slot_names, &mut slot_index, node_id, "frame_count"));
+                    let frame_count = enable_frame_count.then(|| {
+                        alloc_slot(&mut slot_names, &mut slot_index, node_id, "frame_count")
+                    });
                     let last_timestamp = enable_last_timestamp.then(|| {
                         alloc_slot(&mut slot_names, &mut slot_index, node_id, "last_timestamp")
                     });

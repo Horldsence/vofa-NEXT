@@ -57,7 +57,12 @@ impl BytePlan {
         // 字节平面节点集: Transport/Protocol 节点 ∪ 字节边端点 (图中存在的)
         let mut byte_nodes: Vec<String> = nodes
             .values()
-            .filter(|n| matches!(n.kind, NodeKind::Transport { .. } | NodeKind::Protocol { .. }))
+            .filter(|n| {
+                matches!(
+                    n.kind,
+                    NodeKind::Transport { .. } | NodeKind::Protocol { .. }
+                )
+            })
             .map(|n| n.id.clone())
             .collect();
         for e in byte_edges {
@@ -168,18 +173,11 @@ mod tests {
     #[test]
     fn test_byte_plan_topo_order() {
         // transport.rx → protocol.in, protocol.out → decoder.in
-        let nodes: HashMap<String, NodeDef> = [
-            transport("tp"),
-            protocol("pt"),
-            decoder("dec"),
-        ]
-        .into_iter()
-        .map(|n| (n.id.clone(), n))
-        .collect();
-        let edges = vec![
-            edge("tp", "rx", "pt", "in"),
-            edge("pt", "out", "dec", "in"),
-        ];
+        let nodes: HashMap<String, NodeDef> = [transport("tp"), protocol("pt"), decoder("dec")]
+            .into_iter()
+            .map(|n| (n.id.clone(), n))
+            .collect();
+        let edges = vec![edge("tp", "rx", "pt", "in"), edge("pt", "out", "dec", "in")];
         let plan = BytePlan::build(&nodes, &edges).expect("应编译成功");
         let pos = |id: &str| plan.order.iter().position(|n| n == id).unwrap();
         assert!(pos("tp") < pos("pt"), "transport 应先于 protocol");
@@ -201,10 +199,7 @@ mod tests {
             .into_iter()
             .map(|n| (n.id.clone(), n))
             .collect();
-        let edges = vec![
-            edge("pa", "out", "pb", "in"),
-            edge("pb", "out", "pa", "in"),
-        ];
+        let edges = vec![edge("pa", "out", "pb", "in"), edge("pb", "out", "pa", "in")];
         let result = BytePlan::build(&nodes, &edges);
         assert!(matches!(result, Err(CompileError::ByteCycle)));
     }

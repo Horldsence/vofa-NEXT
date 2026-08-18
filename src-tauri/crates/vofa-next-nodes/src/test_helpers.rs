@@ -9,7 +9,12 @@ use crate::eval::SourceFramesMap;
 use crate::node_kind::{NodeDef, NodeKind};
 use crate::{FilterKind, MathOp};
 
-pub(crate) fn make_protocol_source(id: &str, tab_id: &str, node_id: &str, channels: usize) -> NodeDef {
+pub(crate) fn make_protocol_source(
+    id: &str,
+    tab_id: &str,
+    node_id: &str,
+    channels: usize,
+) -> NodeDef {
     NodeDef {
         id: id.to_string(),
         tab_id: tab_id.to_string(),
@@ -80,7 +85,12 @@ pub(crate) fn make_sink(id: &str, tab_id: &str) -> NodeDef {
     }
 }
 
-pub(crate) fn make_custom(id: &str, tab_id: &str, inputs: Vec<&str>, outputs: Vec<&str>) -> NodeDef {
+pub(crate) fn make_custom(
+    id: &str,
+    tab_id: &str,
+    inputs: Vec<&str>,
+    outputs: Vec<&str>,
+) -> NodeDef {
     NodeDef {
         id: id.to_string(),
         tab_id: tab_id.to_string(),

@@ -113,7 +113,10 @@ impl StreamSource for FilteredCanStreamSource {
         let buf = self.buffer.lock();
         let (items, new_cursor, _dropped) = buf.drain_from(self.cursor, max);
         self.cursor = new_cursor;
-        let frames: Vec<_> = items.into_iter().filter(|f| self.filter.matches(f)).collect();
+        let frames: Vec<_> = items
+            .into_iter()
+            .filter(|f| self.filter.matches(f))
+            .collect();
         if frames.is_empty() {
             None
         } else {
@@ -159,7 +162,10 @@ impl StreamSource for FilteredLogicStreamSource {
         let buf = self.buffer.lock();
         let (items, new_cursor, _dropped) = buf.drain_from(self.cursor, max);
         self.cursor = new_cursor;
-        let samples: Vec<_> = items.into_iter().filter(|s| self.filter.matches(s)).collect();
+        let samples: Vec<_> = items
+            .into_iter()
+            .filter(|s| self.filter.matches(s))
+            .collect();
         if samples.is_empty() {
             None
         } else {
@@ -205,7 +211,10 @@ impl StreamSource for FilteredDecodedStreamSource {
         let buf = self.buffer.lock();
         let (items, new_cursor, _dropped) = buf.drain_from(self.cursor, max);
         self.cursor = new_cursor;
-        let events: Vec<_> = items.into_iter().filter(|e| self.filter.matches(e)).collect();
+        let events: Vec<_> = items
+            .into_iter()
+            .filter(|e| self.filter.matches(e))
+            .collect();
         if events.is_empty() {
             None
         } else {

@@ -11,8 +11,7 @@
 
 use tauri::AppHandle;
 use vofa_next_nodes::{
-    NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE,
-    TRANSPORT_TX_HANDLE,
+    NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE, TRANSPORT_TX_HANDLE,
 };
 
 use super::DataPlaneState;
@@ -47,7 +46,17 @@ pub async fn route_bytes(
     dec_cache: &mut DecoderFeedCache,
 ) -> RouteSummary {
     let mut summary = RouteSummary::default();
-    route_inner(plane, app, source_id, data, depth_hint, dec_cache, &mut summary, 0).await;
+    route_inner(
+        plane,
+        app,
+        source_id,
+        data,
+        depth_hint,
+        dec_cache,
+        &mut summary,
+        0,
+    )
+    .await;
     summary
 }
 
@@ -77,8 +86,17 @@ async fn route_inner(
         let Some(kind) = kind else { continue };
         match (&kind, route.target_handle.as_str()) {
             (NodeKind::Protocol { .. }, PROTOCOL_IN_HANDLE) => {
-                feed_protocol(plane, app, &route.target, data, depth_hint, dec_cache, summary, depth)
-                    .await;
+                feed_protocol(
+                    plane,
+                    app,
+                    &route.target,
+                    data,
+                    depth_hint,
+                    dec_cache,
+                    summary,
+                    depth,
+                )
+                .await;
             }
             (NodeKind::FrameDecoder { .. }, FRAME_DECODER_IN_HANDLE | LOOPBACK_IN_HANDLE) => {
                 let ts = vofa_next_core::now_us();
@@ -100,7 +118,11 @@ async fn route_inner(
                             log::debug!("字节路由发送失败 ({}): {}", route.target, e);
                         }
                     }
-                    Err(_) => log::warn!("传输注册表锁忙, 丢弃发往 {} 的 {} 字节", route.target, data.len()),
+                    Err(_) => log::warn!(
+                        "传输注册表锁忙, 丢弃发往 {} 的 {} 字节",
+                        route.target,
+                        data.len()
+                    ),
                 }
             }
             _ => {
@@ -234,7 +256,14 @@ async fn feed_protocol(
         }
         if !bytes.is_empty() {
             Box::pin(route_inner(
-                plane, app, proto_id, &bytes, 0, dec_cache, summary, depth + 1,
+                plane,
+                app,
+                proto_id,
+                &bytes,
+                0,
+                dec_cache,
+                summary,
+                depth + 1,
             ))
             .await;
         }
@@ -343,9 +372,15 @@ mod tests {
             vec![edge("tp", "rx", "pt", "in")],
         );
         let mut cache = DecoderFeedCache::new();
-        let summary =
-            route_bytes(&plane, None, "tp", &firewater_bytes(&[1.0, 2.0, 3.0]), 0, &mut cache)
-                .await;
+        let summary = route_bytes(
+            &plane,
+            None,
+            "tp",
+            &firewater_bytes(&[1.0, 2.0, 3.0]),
+            0,
+            &mut cache,
+        )
+        .await;
         assert_eq!(summary.frames, 1);
         let sf = plane.source_frames.lock();
         let f = sf.get("pt").expect("pt 应有最新帧");
@@ -384,8 +419,15 @@ mod tests {
             vec![edge("tp", "rx", "pa", "in"), edge("pa", "out", "pb", "in")],
         );
         let mut cache = DecoderFeedCache::new();
-        let summary =
-            route_bytes(&plane, None, "tp", &firewater_bytes(&[4.0, 5.0]), 0, &mut cache).await;
+        let summary = route_bytes(
+            &plane,
+            None,
+            "tp",
+            &firewater_bytes(&[4.0, 5.0]),
+            0,
+            &mut cache,
+        )
+        .await;
         assert_eq!(summary.frames, 2, "pa/pb 各解析出一帧");
         let sf = plane.source_frames.lock();
         assert_eq!(sf.get("pa").unwrap().channels, vec![4.0, 5.0]);
@@ -407,12 +449,9 @@ mod tests {
             ],
         );
         // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
-        let graph = vofa_next_nodes::CompiledGraph::compile(
-            "t1".into(),
-            vec![u8_decoder("dec")],
-            vec![],
-        )
-        .unwrap();
+        let graph =
+            vofa_next_nodes::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
+                .unwrap();
         plane.eval.graphs.lock().insert("t1".into(), graph);
         plane
             .eval
@@ -420,8 +459,15 @@ mod tests {
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let mut cache = DecoderFeedCache::new();
-        let summary =
-            route_bytes(&plane, None, "cmd", &firewater_bytes(&[7.0, 8.0]), 0, &mut cache).await;
+        let summary = route_bytes(
+            &plane,
+            None,
+            "cmd",
+            &firewater_bytes(&[7.0, 8.0]),
+            0,
+            &mut cache,
+        )
+        .await;
         assert_eq!(summary.frames, 1, "FireWater 解析出一帧");
         assert!(summary.decoders_fed, "FrameDecoder 应被喂入");
         // 协议分支

@@ -44,7 +44,10 @@ impl ProtocolEngine for FireWaterEngine {
         let ts = vofa_next_core::now_us();
 
         // 单次遍历按行切分 (原实现每行 drain 一次, O(n²))
-        while let Some(rel) = self.buf.as_bytes()[start..].iter().position(|&b| b == b'\n') {
+        while let Some(rel) = self.buf.as_bytes()[start..]
+            .iter()
+            .position(|&b| b == b'\n')
+        {
             let pos = start + rel;
             let line = self.buf[start..pos].trim_matches('\r');
             start = pos + 1;

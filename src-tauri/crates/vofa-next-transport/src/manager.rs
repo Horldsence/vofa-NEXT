@@ -196,7 +196,10 @@ mod tests {
         open_node(&mut mgr, "a").await;
         assert!(mgr.is_open("a"));
         assert_eq!(mgr.state("a"), Some(ConnectionState::Connected));
-        assert!(matches!(mgr.config("a"), Some(TransportConfig::TestData(_))));
+        assert!(matches!(
+            mgr.config("a"),
+            Some(TransportConfig::TestData(_))
+        ));
 
         mgr.close("a");
         assert!(!mgr.is_open("a"));
@@ -288,7 +291,8 @@ mod tests {
             .unwrap();
         assert!(!data.is_empty());
 
-        let b_result = tokio::time::timeout(std::time::Duration::from_millis(300), rx_b.recv()).await;
+        let b_result =
+            tokio::time::timeout(std::time::Duration::from_millis(300), rx_b.recv()).await;
         assert!(b_result.is_err(), "b 未启动, 不应有数据");
 
         // 关闭 a 后其后台任务退出, 通道最终关闭

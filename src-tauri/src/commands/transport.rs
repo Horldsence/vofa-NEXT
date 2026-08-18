@@ -123,7 +123,9 @@ pub async fn get_connection_state(
     node_id: String,
 ) -> Result<ConnectionState> {
     let manager = state.transport.lock().await;
-    Ok(manager.state(&node_id).unwrap_or(ConnectionState::Disconnected))
+    Ok(manager
+        .state(&node_id)
+        .unwrap_or(ConnectionState::Disconnected))
 }
 
 /// 获取传输统计 (未知节点返回全零)

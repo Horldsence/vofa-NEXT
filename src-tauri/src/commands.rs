@@ -11,6 +11,7 @@ mod graph;
 mod logic;
 mod pipeline;
 mod protocol;
+mod rawdata;
 mod transport;
 mod window;
 
@@ -23,5 +24,6 @@ pub use graph::*;
 pub use logic::*;
 pub use pipeline::*;
 pub use protocol::*;
+pub use rawdata::*;
 pub use transport::*;
 pub use window::*;
