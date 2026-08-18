@@ -31,8 +31,10 @@ import {
   Send,
   ScanText,
   Info,
+  Cable,
+  Binary,
 } from 'lucide-react';
-import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind } from '../../types';
+import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind, TransportConfig } from '../../types';
 import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../types';
 import { dockDrag } from '../../lib/dockDrag';
 
@@ -47,11 +49,14 @@ import { dockDrag } from '../../lib/dockDrag';
 /// 面板项统一模型 — 各分类项归一成同构条目, 渲染走同一套卡片
 interface PaletteEntry {
   key: string;
-  kind: WidgetConfig['kind'];
+  kind?: WidgetConfig['kind'];
   icon: React.ReactNode;
   label: string;
   op?: MathOp;
   preset?: FilterPresetKind;
+  /// 全局节点条目: 数据接口 / 协议引擎 (拖入或点击创建全局节点, 不属于任何单一 tab)
+  globalNode?: 'transport' | 'protocol';
+  transportKind?: TransportConfig['kind'];
   onAdd?: () => void;
   title: string;
 }
@@ -59,6 +64,8 @@ interface PaletteEntry {
 export function WidgetPalette() {
   const lang = useAppStore((s) => s.lang);
   const addWidget = useAppStore((s) => s.addWidget);
+  const addTransportNode = useAppStore((s) => s.addTransportNode);
+  const addProtocolNode = useAppStore((s) => s.addProtocolNode);
   const activeControlTabId = useAppStore((s) => s.activeControlTabId);
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
   const [activeCategory, setActiveCategory] = useState<WidgetCategory>('input');
@@ -145,10 +152,45 @@ export function WidgetPalette() {
     },
   ];
 
-  /// 当前分类的分节内容 — math 类别拆成「算术 / 滤波器」两节, 其余单节
+  /// 数据接口子项 — 每种传输类型一个全局节点入口
+  const transportItems: PaletteEntry[] = (
+    [
+      ['Serial', 'serial'],
+      ['Udp', 'udp'],
+      ['TcpClient', 'tcpClient'],
+      ['TcpServer', 'tcpServer'],
+      ['TestData', 'testData'],
+      ['Slcan', 'slcan'],
+      ['CandleLight', 'candleLight'],
+    ] as [TransportConfig['kind'], Parameters<typeof t>[1]][]
+  ).map(([kind, key]) => ({
+    key: `transport-${kind}`,
+    globalNode: 'transport' as const,
+    transportKind: kind,
+    icon: <Cable size={14} />,
+    label: t(lang, key),
+    title: `${t(lang, 'dataInterface')}: ${t(lang, key)}`,
+  }));
+
+  /// 协议引擎子项 — 全局节点入口
+  const protocolItems: PaletteEntry[] = [
+    {
+      key: 'protocol',
+      globalNode: 'protocol' as const,
+      icon: <Binary size={14} />,
+      label: t(lang, 'protocolEngine'),
+      title: t(lang, 'protocolEngine'),
+    },
+  ];
+
+  /// 当前分类的分节内容 — math 类别拆成「算术 / 滤波器」两节, input 类别追加「数据接口 / 协议」两节
   const sections: { header?: string; entries: PaletteEntry[] }[] =
     activeCategory === 'input'
-      ? [{ entries: inputItems }]
+      ? [
+          { entries: inputItems },
+          { header: t(lang, 'dataInterface'), entries: transportItems },
+          { header: t(lang, 'protocolEngine'), entries: protocolItems },
+        ]
       : activeCategory === 'display'
         ? [{ entries: displayItems }]
         : activeCategory === 'custom'
@@ -169,16 +211,24 @@ export function WidgetPalette() {
           ? t(lang, 'catMathHelp')
           : t(lang, 'catCustomHelp');
 
-  const handleClickAdd = (
-    kind: WidgetConfig['kind'],
-    op?: MathOp,
-    onAdd?: () => void,
-    preset?: FilterPresetKind
-  ) => {
-    if (onAdd) {
-      onAdd();
+  const handleClickAdd = (item: PaletteEntry) => {
+    if (item.onAdd) {
+      item.onAdd();
       return;
     }
+    // 全局节点: 数据接口 / 协议引擎
+    if (item.globalNode === 'transport') {
+      addTransportNode(item.transportKind ?? 'Serial', { x: 60, y: 60 + Math.random() * 60 });
+      return;
+    }
+    if (item.globalNode === 'protocol') {
+      addProtocolNode(undefined, { x: 300, y: 60 + Math.random() * 60 });
+      return;
+    }
+    if (!item.kind) return;
+    const kind = item.kind;
+    const op = item.op;
+    const preset = item.preset;
     const widget = createWidget(kind);
     // 算术控件: 应用所选 op
     if (kind === 'Math' && op) {
@@ -281,13 +331,19 @@ export function WidgetPalette() {
                   if ((e.target as HTMLElement).closest('button, input')) return;
                   dockDrag.begin(e, {
                     kind: 'widget',
-                    widget: { kind: item.kind, op: item.op, preset: item.preset },
+                    widget: {
+                      kind: item.kind,
+                      op: item.op,
+                      preset: item.preset,
+                      globalNode: item.globalNode,
+                      transportKind: item.transportKind,
+                    },
                     label: item.label,
                   });
                 }}
                 onClick={() => {
                   if (dockDrag.consumeClick()) return;
-                  handleClickAdd(item.kind, item.op, item.onAdd, item.preset);
+                  handleClickAdd(item);
                 }}
                 title={item.title}
               >

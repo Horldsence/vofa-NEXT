@@ -15,7 +15,7 @@ const selectClass = 'form-select';
 export function SerialForm({ params, onChange, lang }: SerialFormProps) {
   return (
     <>
-      <PortPicker />
+      <PortPicker selectedPortName={params.port_name} onSelect={(name) => onChange('port_name', name)} />
       <div className="mb-2.5">
         <label className="block text-xs text-text-secondary mb-1">{t(lang, 'baudRate')}</label>
         <select

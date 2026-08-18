@@ -3,12 +3,12 @@ use std::time::Duration;
 use tauri::{ipc::Channel, AppHandle, Manager, State};
 use vofa_next_core::{CanLoadSnapshot, Result};
 
-/// 从当前 TransportConfig 提取 CAN 波特率 (bps)
+/// 从指定 Transport 节点的 TransportConfig 提取 CAN 波特率 (bps)
 ///
 /// 仅 Slcan / CandleLight 配置携带 CAN 波特率; 其他传输方式返回 None。
-async fn extract_can_bitrate_from_transport(state: &AppState) -> Option<u32> {
+async fn extract_can_bitrate_from_transport(state: &AppState, node_id: &str) -> Option<u32> {
     let manager = state.transport.lock().await;
-    match manager.config() {
+    match manager.config(node_id) {
         Some(vofa_next_core::TransportConfig::Slcan(s)) => Some(s.can_bitrate.bps()),
         Some(vofa_next_core::TransportConfig::CandleLight(c)) => Some(c.can_bitrate.bps()),
         _ => None,
@@ -18,28 +18,30 @@ async fn extract_can_bitrate_from_transport(state: &AppState) -> Option<u32> {
 /// 计算有效 CAN 波特率 (bps)
 ///
 /// - 若 `override_bps` 为 Some(n) 且 n > 0, 使用 n (手动覆盖)
-/// - 否则尝试从当前 TransportConfig 读取
+/// - 否则尝试从指定 Transport 节点的配置读取
 /// - 都没有则返回 500_000 (默认值, 避免前端传 0 导致除零)
-async fn resolve_can_bitrate(state: &AppState, override_bps: Option<u32>) -> u32 {
+async fn resolve_can_bitrate(state: &AppState, node_id: &str, override_bps: Option<u32>) -> u32 {
     if let Some(bps) = override_bps {
         if bps > 0 {
             return bps;
         }
     }
-    extract_can_bitrate_from_transport(state)
+    extract_can_bitrate_from_transport(state, node_id)
         .await
         .unwrap_or(500_000)
 }
 
 /// 获取 CAN 负载统计快照
 ///
+/// `node_id`: 用于自动解析波特率的 Transport 节点 id
 /// `bitrate_bps`: 可选手动覆盖波特率; None/0 = 自动从 TransportConfig 读取
 #[tauri::command]
 pub async fn get_can_load_stats(
     state: State<'_, AppState>,
+    node_id: String,
     bitrate_bps: Option<u32>,
 ) -> Result<CanLoadSnapshot> {
-    let bitrate = resolve_can_bitrate(&state, bitrate_bps).await;
+    let bitrate = resolve_can_bitrate(&state, &node_id, bitrate_bps).await;
     let stats = state.can_load_stats.lock();
     Ok(stats.snapshot(bitrate))
 }
@@ -62,6 +64,7 @@ pub async fn clear_can_load_stats(state: State<'_, AppState>) -> Result<()> {
 
 /// 订阅 CAN 负载统计推送 — 周期性推送 CanLoadSnapshot (含 history 时序数据)
 ///
+/// - `node_id`: 用于自动解析波特率的 Transport 节点 id
 /// - `interval_ms`: 推送间隔 (默认 500ms)
 /// - `bitrate_bps`: 可选手动覆盖波特率; None/0 = 自动从 TransportConfig 读取
 /// - 每次推送前会调用 `sample_history(bitrate, now_us)` 记录一个采样点
@@ -73,6 +76,7 @@ pub async fn clear_can_load_stats(state: State<'_, AppState>) -> Result<()> {
 #[tauri::command]
 pub async fn subscribe_can_load(
     state: State<'_, AppState>,
+    node_id: String,
     on_event: Channel<CanLoadSnapshot>,
     interval_ms: Option<u64>,
     bitrate_bps: Option<u32>,
@@ -81,7 +85,7 @@ pub async fn subscribe_can_load(
     let interval = Duration::from_millis(interval_ms.unwrap_or(500));
     let channel_id = on_event.id();
 
-    let bitrate = resolve_can_bitrate(&state, bitrate_bps).await;
+    let bitrate = resolve_can_bitrate(&state, &node_id, bitrate_bps).await;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
     state.can_load_tasks.lock().insert(channel_id, cancel_tx);
@@ -128,13 +132,16 @@ pub async fn unsubscribe_can_load(state: State<'_, AppState>, channel_id: u32) -
     Ok(())
 }
 
-/// 获取当前 CAN 波特率 (从 TransportConfig 提取, 用于前端 UI 默认值)
+/// 获取指定 Transport 节点的当前 CAN 波特率 (从 TransportConfig 提取, 用于前端 UI 默认值)
 ///
 /// 返回 (bps, source) — source 描述来源 ("slcan" / "candle" / "default")
 #[tauri::command]
-pub async fn get_current_can_bitrate(state: State<'_, AppState>) -> Result<(u32, String)> {
+pub async fn get_current_can_bitrate(
+    state: State<'_, AppState>,
+    node_id: String,
+) -> Result<(u32, String)> {
     let manager = state.transport.lock().await;
-    if let Some(cfg) = manager.config() {
+    if let Some(cfg) = manager.config(&node_id) {
         match cfg {
             vofa_next_core::TransportConfig::Slcan(s) => {
                 return Ok((s.can_bitrate.bps(), "slcan".to_string()));
@@ -163,11 +170,12 @@ pub async fn get_current_can_bitrate(state: State<'_, AppState>) -> Result<(u32,
 pub async fn export_can_load_csv(
     state: State<'_, AppState>,
     app: AppHandle,
+    node_id: String,
     bitrate_bps: Option<u32>,
 ) -> Result<String> {
     use std::io::Write;
 
-    let bitrate = resolve_can_bitrate(&state, bitrate_bps).await;
+    let bitrate = resolve_can_bitrate(&state, &node_id, bitrate_bps).await;
     let snap = state.can_load_stats.lock().snapshot(bitrate);
 
     // 生成时间戳 (本地时间, 不依赖 chrono)

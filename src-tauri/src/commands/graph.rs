@@ -1,14 +1,45 @@
 use crate::state::{AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch};
-use tauri::{ipc::Channel, State};
+use tauri::{ipc::Channel, AppHandle, State};
 use vofa_next_buffer::graph::Edge;
-use vofa_next_core::Result;
-use vofa_next_nodes::NodeDef;
+use vofa_next_core::{Error, Result};
+use vofa_next_nodes::{BytePlan, NodeDef};
 
 // ============ 节点图 (后端化重构) ============
 
+/// 用候选全局节点表 + 全部 tab 的字节边重建全局 BytePlan
+///
+/// 简单合并策略: 全局节点表按 id 覆盖合并 (任何 tab 提交后重建全局平面);
+/// 孤儿节点 (图删除后残留) 的运行时资源由 `DataPlaneState::reconcile` 清理。
+fn rebuild_byte_plan(
+    state: &AppState,
+    candidate: &std::collections::HashMap<String, NodeDef>,
+    new_tab: Option<(&str, &vofa_next_nodes::CompiledGraph)>,
+) -> Result<BytePlan> {
+    let mut byte_edges: Vec<Edge> = Vec::new();
+    {
+        let graphs = state.graphs.lock();
+        for (tab_id, g) in graphs.iter() {
+            if new_tab.is_some_and(|(id, _)| id == tab_id) {
+                continue; // 本 tab 用新图的边
+            }
+            byte_edges.extend_from_slice(g.byte_edges());
+        }
+    }
+    if let Some((_, g)) = new_tab {
+        byte_edges.extend_from_slice(g.byte_edges());
+    }
+    BytePlan::build(candidate, &byte_edges)
+        .map_err(|e| Error::Config(format!("全局字节平面编译失败: {}", e)))
+}
+
 /// 更新指定 tab 的节点图 (整体替换 nodes + edges)
 ///
-/// 编译失败 (循环等) 返回错误, 旧图保留
+/// 两层编译:
+/// 1. 本 tab 数值图 CompiledGraph::compile (f32 槽位 + 本 tab BytePlan)
+/// 2. 全局字节平面: 该 tab 节点按 id 覆盖合并进全局节点表, 所有 tab 的
+///    字节边合并重算全局 BytePlan 存入 DataPlaneState, 并同步 protocol_states
+///
+/// 任一层编译失败 (循环/端口域不匹配等) 返回错误, 旧图与旧平面保留
 #[tauri::command]
 pub async fn update_tab_graph(
     state: State<'_, AppState>,
@@ -16,13 +47,37 @@ pub async fn update_tab_graph(
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
 ) -> Result<()> {
-    let compiled = vofa_next_nodes::CompiledGraph::compile(tab_id.clone(), nodes, edges)
-        .map_err(|e| vofa_next_core::Error::Config(format!("{}", e)))?;
-    let mut graphs = state.graphs.lock();
-    graphs.insert(tab_id, compiled);
+    // 1. 本 tab 数值图编译
+    let compiled = vofa_next_nodes::CompiledGraph::compile(tab_id.clone(), nodes.clone(), edges)
+        .map_err(|e| Error::Config(format!("{}", e)))?;
+
+    // 2. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
+    // ProtocolSource 是 tab 数值平面的帧源引用, 不参与字节平面, 不进全局表
+    // (避免与全局 Protocol 定义同 id 冲突)
+    let mut candidate = state.data_plane.global_nodes.lock().clone();
+    candidate.retain(|_, n| n.tab_id != tab_id);
+    for n in &nodes {
+        if matches!(n.kind, vofa_next_nodes::NodeKind::ProtocolSource { .. }) {
+            continue;
+        }
+        candidate.insert(n.id.clone(), n.clone());
+    }
+
+    // 3. 全局字节平面重建 (失败则不提交任何状态)
+    let plan = rebuild_byte_plan(&state, &candidate, Some((&tab_id, &compiled)))?;
+
+    // 4. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号
+    state.graphs.lock().insert(tab_id, compiled);
+    *state.data_plane.global_nodes.lock() = candidate;
+    *state.data_plane.byte_plan.lock() = plan;
     state
         .graphs_version
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    // 5. 同步 Protocol 节点运行时状态 + FrameDecoder 状态清理 + 孤儿资源清理
+    state.data_plane.sync_protocol_states();
+    state.data_plane.reconcile().await;
+    crate::pipeline::decoder_feed::sync_decoders_now(&state.eval_state());
     Ok(())
 }
 
@@ -30,9 +85,20 @@ pub async fn update_tab_graph(
 #[tauri::command]
 pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Result<()> {
     state.graphs.lock().remove(&tab_id);
+
+    // 全局节点表移除该 tab 节点 + 重建全局字节平面
+    let mut candidate = state.data_plane.global_nodes.lock().clone();
+    candidate.retain(|_, n| n.tab_id != tab_id);
+    let plan = rebuild_byte_plan(&state, &candidate, None)?;
+    *state.data_plane.global_nodes.lock() = candidate;
+    *state.data_plane.byte_plan.lock() = plan;
     state
         .graphs_version
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    state.data_plane.sync_protocol_states();
+    state.data_plane.reconcile().await;
+    crate::pipeline::decoder_feed::sync_decoders_now(&state.eval_state());
     Ok(())
 }
 
@@ -40,7 +106,7 @@ pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Res
 ///
 /// 该值会在下一帧 evaluate 时作为 Input 节点的输出
 ///
-/// 立即空帧 evaluate 一次: 输入控件的值变化必须即时反映到图输出,
+/// 立即快照评估一次: 输入控件的值变化必须即时反映到图输出,
 /// 不能依赖 transport 数据流 — 断开/无帧时下游 (CommandSender onChange 发送、
 /// Gauge 等显示控件) 也要能感知变化。
 #[tauri::command]
@@ -50,17 +116,14 @@ pub async fn set_input_value(
     value: f32,
 ) -> Result<()> {
     state.input_values.lock().insert(widget_id, value);
-    crate::pipeline::graph_eval::evaluate_all_graphs_with(
-        &state.eval_state(),
-        &vofa_next_core::DataFrame::new(vec![]),
-    );
+    crate::pipeline::data_plane::frame_dispatch::refresh_snapshot(&state.data_plane);
     Ok(())
 }
 
 /// 提交 Custom widget 的输出 (前端 iframe 调用 ctx.send 后回传)
 ///
 /// 后端在下一帧 evaluate 时使用这些值作为 Custom 节点的输出
-/// (同 set_input_value: 立即 evaluate, 不依赖 transport 数据流)
+/// (同 set_input_value: 立即快照评估, 不依赖 transport 数据流)
 #[tauri::command]
 pub async fn submit_custom_output(
     state: State<'_, AppState>,
@@ -68,63 +131,48 @@ pub async fn submit_custom_output(
     outputs: std::collections::HashMap<String, f32>,
 ) -> Result<()> {
     state.custom_outputs.lock().insert(widget_id, outputs);
-    crate::pipeline::graph_eval::evaluate_all_graphs_with(
-        &state.eval_state(),
-        &vofa_next_core::DataFrame::new(vec![]),
-    );
+    crate::pipeline::data_plane::frame_dispatch::refresh_snapshot(&state.data_plane);
     Ok(())
 }
 
-/// 回环字节注入 — CommandSender 回环模式的发送路径
+/// 字节注入 — CommandSender 回环模式 / 协议调试的发送路径
+/// (取代旧 inject_loopback_bytes: loopback 字符串特判 → 全局 BytePlan 路由)
 ///
-/// 将字节沿回环边 (target_handle == loopbackIn) 路由到连线的 FrameDecoder:
-/// 1. 在所有 tab 图中查找 loopback_targets_for(source_widget_id)
-/// 2. 对每个目标解码器 feed_one_decoder (ensure parser + feed + 旁路收集)
-/// 3. 空帧 evaluate 一次, 刷新 output_snapshot (60 FPS ticker 推送前端)
+/// 将字节沿全局 BytePlan 中 `source_node_id` 的下游字节边路由:
+/// - FrameDecoder.in: 喂入解析 (与实时 RX 同等对待: 更新 last_frame + 旁路收集)
+/// - Protocol.in: 喂入协议引擎 (产帧进 source_frames + 触发数值平面)
+/// - Transport.tx: 经传输注册表发送 (回注落地)
 ///
-/// 与串口开关无关 — 不触碰 transport, 无连接时 data_loop 不跑也能工作。
+/// 与串口开关无关 — 无连接时也能工作 (路由不依赖 transport 状态)。
 ///
-/// 返回: 实际注入的解码器数量 (0 = 未连线, 前端可忽略)
+/// 返回: 路由命中的下游数量 (0 = 未连线, 前端可忽略)
 #[tauri::command]
-pub async fn inject_loopback_bytes(
+pub async fn inject_bytes(
+    app: AppHandle,
     state: State<'_, AppState>,
-    source_widget_id: String,
+    source_node_id: String,
     data: Vec<u8>,
 ) -> Result<usize> {
-    let ts_us = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros() as u64)
-        .unwrap_or(0);
+    let plane = state.data_plane.clone();
+    let target_count = plane.byte_plan.lock().routes_for(&source_node_id).len();
 
-    // 1. 收集 (decoder_id, parse_config) — 先取快照再逐个 feed, 避免长时持锁
-    let targets: Vec<(String, crate::pipeline::decoder_feed::DecoderParseConfig)> = {
-        let graphs = state.graphs.lock();
-        let mut v = Vec::new();
-        for (_, graph) in graphs.iter() {
-            for dec_id in graph.loopback_targets_for(&source_widget_id) {
-                if let Some(cfg) = graph.decoder_config(&dec_id) {
-                    v.push((dec_id, (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4)));
-                }
-            }
-        }
-        v
-    };
+    let mut cache = crate::pipeline::decoder_feed::DecoderFeedCache::new();
+    let summary = crate::pipeline::data_plane::byte_router::route_bytes(
+        &plane,
+        Some(&app),
+        &source_node_id,
+        &data,
+        0,
+        &mut cache,
+    )
+    .await;
 
-    // 2. 逐个喂入 (与 live 帧同等对待: 更新 last_frame + 旁路收集)
-    let eval_state = state.eval_state();
-    for (dec_id, config) in &targets {
-        crate::pipeline::decoder_feed::feed_one_decoder(&eval_state, dec_id, config, &data, ts_us);
+    // FrameDecoder 被喂入 → 快照评估一次 (decoder 输出来自 last_frame 缓存)
+    if summary.decoders_fed {
+        crate::pipeline::data_plane::frame_dispatch::refresh_snapshot(&plane);
     }
 
-    // 3. 空帧 evaluate — decoder 输出来自 last_frame 缓存 (先例: data_loop.rs 空闲帧求值)
-    if !targets.is_empty() {
-        crate::pipeline::graph_eval::evaluate_all_graphs_with(
-            &eval_state,
-            &vofa_next_core::DataFrame::new(vec![]),
-        );
-    }
-
-    Ok(targets.len())
+    Ok(target_count)
 }
 
 /// 订阅图输出快照 — 60 FPS 推送 HashMap<widgetId, HashMap<portId, value>>

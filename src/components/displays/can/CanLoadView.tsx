@@ -3,6 +3,7 @@ import { useAppStore } from '../../../store/appStore';
 import { useCanLoadAlarmStore } from '../../../store/canLoadAlarmStore';
 import { api } from '../../../lib/tauri/tauri';
 import { notify, formatError } from '../../../lib/tauri/notifications';
+import { usePrimaryTransportConfig, usePrimaryCanTransportNodeId } from '../../../lib/hooks/usePrimaryNodes';
 import { t } from '../../../i18n';
 import { Trash2, Activity, Download, Bell, BellOff } from 'lucide-react';
 import type { CanLoadSnapshot, CanIdLoadHistory } from '../../../types';
@@ -26,7 +27,9 @@ import {
 /// - 窗口大小 / 波特率选择器
 export function CanLoadView() {
   const lang = useAppStore((s) => s.lang);
-  const transportConfig = useAppStore((s) => s.transportConfig);
+  const transportConfig = usePrimaryTransportConfig();
+  /// CAN 负载命令的目标 Transport 节点 (Slcan/CandleLight 优先); null = 图中无 Transport 节点
+  const canNodeId = usePrimaryCanTransportNodeId();
   const threshold = useCanLoadAlarmStore((s) => s.threshold);
   const setThreshold = useCanLoadAlarmStore((s) => s.setThreshold);
   const alarmEnabled = useCanLoadAlarmStore((s) => s.enabled);
@@ -46,11 +49,12 @@ export function CanLoadView() {
 
   // 拉取当前 bitrate (用于显示 source + 自动模式默认值)
   useEffect(() => {
+    if (!canNodeId) return;
     api
-      .getCurrentCanBitrate()
+      .getCurrentCanBitrate(canNodeId)
       .then(([bps, source]) => setDetectedBitrate({ bps, source }))
       .catch(() => {});
-  }, [transportConfig]);
+  }, [transportConfig, canNodeId]);
 
   // 设置窗口大小时同步后端
   useEffect(() => {
@@ -59,19 +63,21 @@ export function CanLoadView() {
 
   // 订阅 CAN 负载推送
   useEffect(() => {
+    if (!canNodeId) return;
     const effectiveBitrate = autoBitrate ? null : bitrateOverride;
-    const sub = api.subscribeCanLoad(setSnapshot, {
+    const sub = api.subscribeCanLoad(canNodeId, setSnapshot, {
       intervalMs: 500,
       bitrateBps: effectiveBitrate,
     });
     return () => sub.cancel();
-  }, [autoBitrate, bitrateOverride]);
+  }, [autoBitrate, bitrateOverride, canNodeId]);
 
   // 初始拉取一次
   useEffect(() => {
+    if (!canNodeId) return;
     const effectiveBitrate = autoBitrate ? null : bitrateOverride;
-    api.getCanLoadStats(effectiveBitrate).then(setSnapshot).catch(() => {});
-  }, [autoBitrate, bitrateOverride]);
+    api.getCanLoadStats(canNodeId, effectiveBitrate).then(setSnapshot).catch(() => {});
+  }, [autoBitrate, bitrateOverride, canNodeId]);
 
   const handleClear = () => {
     void api.clearCanLoadStats();
@@ -81,10 +87,11 @@ export function CanLoadView() {
   };
 
   const handleExport = async () => {
+    if (!canNodeId) return;
     setExporting(true);
     try {
       const effectiveBitrate = autoBitrate ? null : bitrateOverride;
-      const path = await api.exportCanLoadCsv(effectiveBitrate);
+      const path = await api.exportCanLoadCsv(canNodeId, effectiveBitrate);
       notify.info(t(lang, 'canLoadExportSuccess'), path, { source: 'can-load-export' });
     } catch (e) {
       notify.error(t(lang, 'canLoadExportFailed'), formatError(e), { source: 'can-load-export' });

@@ -25,22 +25,23 @@ function parseDevicePath(name: string): { key: string; variant: 'cu' | 'tty' } |
   return { variant: m[1] as 'cu' | 'tty', key: m[2] };
 }
 
-/// 端口选择器 — 可复用组件, 供 Serial / Slcan 共享
-/// 显示端口列表 (含筛选) + 刷新按钮, 选中时同步 selectedPortIndex + port_name
+/// 端口选择器 — 可复用受控组件, 供 Serial / Slcan 共享
+/// 显示端口列表 (含筛选) + 刷新按钮, 选中时通过 onSelect 回报端口名
 ///
 /// macOS 优化: 同一设备的 tty.X / cu.X 成对出现时合并为一张卡片,
 /// 默认使用 cu (打开时不等待载波信号), 可通过卡片内的 cu/tty 切换器更换
-///
-/// 与旧 PortConfig 不同:
-/// - 不再包含串口参数表单 (由 TransportConfigPanel 按需渲染)
-/// - 不再包含连接按钮 (统一在 TransportConfigPanel 底部)
-/// - selectedPortIndex 默认 -1, 无 false 高亮
-export function PortPicker() {
+export function PortPicker({
+  selectedPortName,
+  onSelect,
+}: {
+  /// 当前选中的端口名 (受控)
+  selectedPortName: string;
+  /// 选中端口回调
+  onSelect: (portName: string) => void;
+}) {
   const lang = useAppStore((s) => s.lang);
   const ports = useAppStore((s) => s.ports);
-  const selectedPortIndex = useAppStore((s) => s.selectedPortIndex);
   const refreshPorts = useAppStore((s) => s.refreshPorts);
-  const selectPort = useAppStore((s) => s.selectPort);
 
   const [filter, setFilter] = useState('');
   /// 每个分组当前选用的变体 (默认 cu)
@@ -130,10 +131,10 @@ export function PortPicker() {
             // 元数据取自同组任一条目 (同一硬件, cu/tty 的 VID/PID 等一致)
             const meta = (group.cu ?? group.tty ?? group.single!).port;
             const selected =
-              active.idx === selectedPortIndex ||
+              port.name === selectedPortName ||
               (!!paired &&
-                (group.cu!.idx === selectedPortIndex ||
-                  group.tty!.idx === selectedPortIndex));
+                (group.cu!.port.name === selectedPortName ||
+                  group.tty!.port.name === selectedPortName));
             const vidPid =
               meta.vid !== null || meta.pid !== null
                 ? `VID ${meta.vid !== null ? meta.vid.toString(16).toUpperCase().padStart(4, '0') : '----'}  PID ${meta.pid !== null ? meta.pid.toString(16).toUpperCase().padStart(4, '0') : '----'}`
@@ -148,7 +149,7 @@ export function PortPicker() {
                     ? 'bg-bg-active border-accent/50 shadow-[0_1px_4px_rgba(0,0,0,0.3)]'
                     : 'border-transparent hover:bg-bg-hover hover:border-border'
                 }`}
-                onClick={() => selectPort(active.idx)}
+                onClick={() => onSelect(port.name)}
               >
                 {/* 端口图标 */}
                 <div
@@ -194,7 +195,7 @@ export function PortPicker() {
                             title={`/dev/${v}.${group.key}`}
                             onClick={() => {
                               setVariantByKey((s) => ({ ...s, [group.key]: v }));
-                              selectPort(entry.idx);
+                              onSelect(entry.port.name);
                             }}
                           >
                             {v}

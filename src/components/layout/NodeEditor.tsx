@@ -21,8 +21,10 @@ import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
 import type { WidgetConfig, MathOp, FilterPresetKind, DomainType } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
-import { ChannelSourceNode } from '../nodes/ChannelSourceNode';
 import { WidgetNode, getWidgetPorts } from '../nodes/WidgetNode';
+import { TransportNode } from '../nodes/TransportNode';
+import { ProtocolNode } from '../nodes/ProtocolNode';
+import { GlobalNodeProperties } from '../nodes/GlobalNodeProperties';
 import { Maximize, LayoutGrid } from 'lucide-react';
 
 interface NodeEditorProps {
@@ -31,14 +33,15 @@ interface NodeEditorProps {
 
 /// 节点类型注册 — React Flow 要求在组件外部定义以避免无限渲染
 const nodeTypes: NodeTypes = {
-  channelSource: ChannelSourceNode,
+  transport: TransportNode,
+  protocol: ProtocolNode,
   widget: WidgetNode,
 };
 
 /// React Flow 风格节点编辑器
 /// - 从侧边栏拖拽控件到画布 (onDrop 绑在 <ReactFlow> 上, 外层 div 不拦截)
 /// - 节点之间通过边连接表示数据流
-/// - 通道源节点自动存在, 输出 ch0..chN
+/// - 全局节点 (Transport/Protocol) 渲染在所有 tab 画布上
 ///
 /// 必须用 ReactFlowProvider 包裹, 才能在内部使用 useReactFlow().screenToFlowPosition()
 /// 否则拖拽放置的节点会落到错误的画布坐标 (尤其 fitView/pan/zoom 后)
@@ -58,6 +61,8 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   const onEdgesChange = useAppStore((s) => s.onEdgesChange);
   const onConnect = useAppStore((s) => s.onConnect);
   const addWidget = useAppStore((s) => s.addWidget);
+  const addTransportNode = useAppStore((s) => s.addTransportNode);
+  const addProtocolNode = useAppStore((s) => s.addProtocolNode);
   const setSidebarView = useAppStore((s) => s.setSidebarView);
   const reactFlow = useReactFlow();
   // 控件拖拽悬停画布时的高亮 (dockDrag 控制器驱动)
@@ -89,12 +94,10 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   // React Flow 容器引用 — 仅用于视觉反馈 (drag-over 高亮)
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // 按当前 tab 过滤节点和边
+  // 按当前 tab 过滤节点: 本 tab 的 widget 节点 + 全部全局节点 (Transport/Protocol)
   const tabNodes = useMemo(
     () =>
-      rfNodes.filter(
-        (n) => n.data.tabId === tabId || (n.type === 'channelSource' && n.id.endsWith(`-${tabId}`))
-      ) as Node[],
+      rfNodes.filter((n) => n.data.tabId === tabId || n.data.global === true) as Node[],
     [rfNodes, tabId]
   );
 
@@ -108,11 +111,28 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     [rfEdges, tabNodeIds]
   );
 
+  // 选中的全局节点 → 右侧属性面板
+  const selectedGlobalNode = useMemo(
+    () => tabNodes.find((n) => n.selected && n.data.global === true),
+    [tabNodes]
+  );
+
   // 从控件面板拖出控件 — 指针事件落点 (dockDrag 控制器命中 canvas 投放区后调用)
   const createFromDrop = useCallback(
     (x: number, y: number, spec: WidgetDragSpec) => {
       // 用 screenToFlowPosition 正确处理 zoom/pan 后的坐标转换
       const position = reactFlow.screenToFlowPosition({ x, y });
+
+      // 全局节点 (数据接口 / 协议引擎)
+      if (spec.globalNode === 'transport') {
+        addTransportNode(spec.transportKind ?? 'Serial', position);
+        return;
+      }
+      if (spec.globalNode === 'protocol') {
+        addProtocolNode(undefined, position);
+        return;
+      }
+      if (!spec.kind) return;
 
       const widget = createWidget(spec.kind);
       // 算术控件: 应用拖拽时携带的 op
@@ -132,7 +152,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       }
       addWidget(widget, tabId, position);
     },
-    [addWidget, tabId, reactFlow]
+    [addWidget, addTransportNode, addProtocolNode, tabId, reactFlow]
   );
 
   // 当前可见画布注册为控件投放目标 (按画布元素注册 — 多个控制卡片并存时落点各归其主)
@@ -143,20 +163,29 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     return () => dockDrag.registerCanvasHandler(el, null);
   }, [createFromDrop]);
 
-  // 端口域解析: 通道源输出 ch0..chN 视为时域; 控件端口按 getWidgetPorts 的 domain 标注
+  // 端口域解析: 全局节点按端口表 (rx/tx/in/out=字节, chN=时域); 控件端口按 getWidgetPorts 的 domain 标注
   const resolveDomain = useCallback(
     (nodeId: string | null, handleId: string | null | undefined, kind: 'source' | 'target'): DomainType | null => {
       if (!nodeId || !handleId) return null;
       const node = useAppStore.getState().rfNodes.find((n: Node) => n.id === nodeId);
       if (!node) return null;
-      if (node.type === 'channelSource') {
-        return /^ch\d+$/.test(handleId) ? 'time' : null;
+      if (node.type === 'transport') {
+        if (kind === 'source' && handleId === 'rx') return 'bytes';
+        if (kind === 'target' && handleId === 'tx') return 'bytes';
+        return null;
+      }
+      if (node.type === 'protocol') {
+        if (handleId === 'in' || handleId === 'out') return 'bytes';
+        if (kind === 'source' && /^ch\d+$/.test(handleId)) return 'time';
+        return null;
       }
       const widget = node.data?.widget as WidgetConfig | undefined;
       if (!widget) return null;
       // RawData 输入端口是动态派生的 (src:<source>:<handle>), 静态端口表查不到 — 一律按时域,
       // 否则频域输出可绕过域校验连进 RawData
       if (widget.kind === 'RawData') return 'time';
+      // FrameDecoder 旧版回环字节输入口 (兼容旧图数据)
+      if (widget.kind === 'FrameDecoder' && kind === 'target' && handleId === 'loopbackIn') return 'bytes';
       const ports = getWidgetPorts(widget);
       const list = kind === 'source' ? ports.outputs : ports.inputs;
       return list.find((p) => p.id === handleId)?.domain ?? null;
@@ -164,9 +193,8 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     []
   );
 
-  // 连线校验:
-  //   1. 回环口: loopbackOut (字节发送) 只能连 loopbackIn (字节接收), 反之亦然
-  //   2. 域匹配: 时域/频域端口必须同域, 跨域 (时域→频域 / 频域→时域) 阻止并提示
+  // 连线校验: 时域/频域/字节域端口必须同域, 跨域阻止并提示
+  // (字节口: Transport rx/tx, Protocol in/out, FrameDecoder in, Command loopbackOut)
   const isValidConnection = useCallback(
     (conn: {
       source?: string | null;
@@ -174,12 +202,6 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       sourceHandle?: string | null;
       targetHandle?: string | null;
     }) => {
-      const fromLoopback = conn.sourceHandle === 'loopbackOut';
-      const toLoopback = conn.targetHandle === 'loopbackIn';
-      // 一端是回环口时, 另一端必须也是对应回环口
-      if (fromLoopback || toLoopback) {
-        return fromLoopback === toLoopback;
-      }
       const sd = resolveDomain(conn.source ?? null, conn.sourceHandle, 'source');
       const td = resolveDomain(conn.target ?? null, conn.targetHandle, 'target');
       if (sd && td && sd !== td) {
@@ -220,14 +242,17 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           pannable
           zoomable
           className="bg-bg-sidebar border border-border rounded overflow-hidden"
-          nodeColor={(n) => (n.type === 'channelSource' ? '#75beff' : '#89d185')}
+          nodeColor={(n) =>
+            n.type === 'transport' ? '#e5c07b' : n.type === 'protocol' ? '#75beff' : '#89d185'
+          }
         />
         <Panel position="top-left">
-          {tabNodes.length <= 1 && (
+          {!tabNodes.some((n) => n.data.tabId === tabId) && (
             <div className="bg-bg-panel-header border border-dashed border-border rounded px-2.5 py-1.5 text-xs text-text-secondary pointer-events-none">{t(lang, 'dragWidgetHint')}</div>
           )}
         </Panel>
       </ReactFlow>
+      {selectedGlobalNode && <GlobalNodeProperties node={selectedGlobalNode} />}
     </div>
   );
 }

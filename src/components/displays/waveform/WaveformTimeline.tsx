@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback } from 'react';
-import { waveformWindow } from '../../../lib/buffers/dataBuffer';
+import { waveformWindow, type WaveformWindowCache } from '../../../lib/buffers/dataBuffer';
 import { TIME_BASES_SEC, formatTimeBase, getEffectiveChannel, type ScopeAxisConfig } from '../../../types';
 import { timeBaseToWindowSec, HORIZONTAL_DIVS, VERTICAL_DIVS, applyCoupling } from '../../../lib/utils/scopeUtils';
 import { TIMELINE_PAD } from './waveformConstants';
@@ -41,9 +41,11 @@ interface WaveformTimelineProps {
   series: TimelineSeriesSpec[];
   /// 波形图 widgetId — 用于解析派生 series 数据 (win.derived[widgetId][sourceId])
   widgetId: string;
-  /// Stop 模式下的冻结数据快照 — running=false 时使用它绘制缩略图 (而非实时 waveformWindow)
+  /// Stop 模式下的冻结数据快照 — running=false 时使用它绘制缩略图 (而非实时波形缓冲)
   /// 这样示波器暂停时缩略图也同步冻结, 不会继续显示新到达的数据
   frozenData: FrozenWaveformData | null;
+  /// 数据源缓冲 (按 Protocol 源节点溯源); 缺省 = 主波形源单例
+  buffer?: WaveformWindowCache;
   onConfigChange?: (next: ScopeAxisConfig) => void;
 }
 
@@ -86,6 +88,7 @@ export function WaveformTimeline({
   series,
   widgetId,
   frozenData,
+  buffer = waveformWindow,
   onConfigChange,
 }: WaveformTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -105,15 +108,15 @@ export function WaveformTimeline({
   const seriesRef = useRef(series);
   useEffect(() => { seriesRef.current = series; }, [series]);
 
-  /// 获取当前应使用的数据源 — Stop 时用冻结快照, Run 时用实时 waveformWindow
+  /// 获取当前应使用的数据源 — Stop 时用冻结快照, Run 时用实时波形缓冲
   const getActiveWindow = useCallback(() => {
     const fd = frozenDataRef.current;
     if (fd && fd.ts.length > 0) {
       return { timestamps: fd.ts, channelArrays: fd.chs, derivedMap: fd.derived };
     }
-    const win = waveformWindow.get();
+    const win = buffer.get();
     return { timestamps: win.timestamps, channelArrays: win.channels, derivedMap: win.derived };
-  }, []);
+  }, [buffer]);
 
   // ====== 绘制 ======
   useEffect(() => {

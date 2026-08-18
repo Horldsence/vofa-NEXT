@@ -10,6 +10,7 @@ use vofa_next_core::Result;
 /// 首次调用不传 group_id 建组 (返回组 id), 后续传 group_id 加入新分片
 /// (落后 ≥ 200 帧未推送时自动激活)。
 ///
+/// source: 数据源节点 id (Protocol 节点; 每源一个 DataBuffer 实例)
 /// interval_ms: 推送间隔 (毫秒), 默认 33ms (~30 FPS)
 /// max_points: 单次推送的最大点数, 默认 1000
 ///
@@ -17,6 +18,7 @@ use vofa_next_core::Result;
 #[tauri::command]
 pub async fn subscribe_waveform(
     state: State<'_, AppState>,
+    source: String,
     on_event: Channel<WaveformWindow>,
     group_id: Option<String>,
     interval_ms: Option<u64>,
@@ -25,7 +27,7 @@ pub async fn subscribe_waveform(
     let interval = Duration::from_millis(interval_ms.unwrap_or(33));
     let max_pts = max_points.unwrap_or(1000);
     let channel_id = on_event.id();
-    let buffer = state.buffer.clone();
+    let buffer = state.data_plane.buffer_for(&source);
 
     let (source, seq, shard_idx, group_key) = crate::pipeline::stream::join_or_create_group(
         &state.stream_groups,
@@ -58,14 +60,16 @@ pub async fn subscribe_waveform(
     Ok(group_key)
 }
 
-/// 同步查询: 获取最近 N 个波形点
+/// 同步查询: 获取最近 N 个波形点 (source = 数据源 Protocol 节点 id)
 #[tauri::command]
 pub async fn get_recent_waveform(
     state: State<'_, AppState>,
+    source: String,
     count: usize,
 ) -> Result<WaveformWindow> {
-    let buf = state.buffer.lock();
-    Ok(buf.get_recent(count))
+    let buf = state.data_plane.buffer_for(&source);
+    let window = buf.lock().get_recent(count);
+    Ok(window)
 }
 
 /// 同步查询: 获取时间窗口内的波形
@@ -74,51 +78,72 @@ pub async fn get_recent_waveform(
 #[tauri::command]
 pub async fn get_waveform_window(
     state: State<'_, AppState>,
+    source: String,
     start_ms: i64,
     end_ms: i64,
 ) -> Result<WaveformWindow> {
-    let buf = state.buffer.lock();
-    Ok(buf.get_window(start_ms, end_ms))
+    let buf = state.data_plane.buffer_for(&source);
+    let window = buf.lock().get_window(start_ms, end_ms);
+    Ok(window)
 }
 
-/// 清空数据缓冲区
+/// 清空数据缓冲区 (source = 数据源 Protocol 节点 id)
 #[tauri::command]
-pub async fn clear_buffer(state: State<'_, AppState>) -> Result<()> {
-    state.buffer.lock().clear();
+pub async fn clear_buffer(state: State<'_, AppState>, source: String) -> Result<()> {
+    state.data_plane.buffer_for(&source).lock().clear();
     Ok(())
 }
 
 /// 设置缓冲区通道数 (清空已有数据)
 #[tauri::command]
-pub async fn set_buffer_channels(state: State<'_, AppState>, count: usize) -> Result<()> {
-    state.buffer.lock().set_channels(count);
+pub async fn set_buffer_channels(
+    state: State<'_, AppState>,
+    source: String,
+    count: usize,
+) -> Result<()> {
+    state
+        .data_plane
+        .buffer_for(&source)
+        .lock()
+        .set_channels(count);
     Ok(())
 }
 
 /// 获取缓冲区当前通道数和点数
 #[tauri::command]
-pub async fn get_buffer_info(state: State<'_, AppState>) -> Result<(usize, usize)> {
-    let buf = state.buffer.lock();
-    Ok((buf.channel_count(), buf.point_count()))
+pub async fn get_buffer_info(state: State<'_, AppState>, source: String) -> Result<(usize, usize)> {
+    let buf = state.data_plane.buffer_for(&source);
+    let b = buf.lock();
+    Ok((b.channel_count(), b.point_count()))
 }
 
 /// 设置波形缓冲区最大点数
 #[tauri::command]
 pub async fn set_waveform_buffer_capacity(
     state: State<'_, AppState>,
+    source: String,
     max_points: usize,
 ) -> Result<()> {
-    state.buffer.lock().set_max_points(max_points);
+    state
+        .data_plane
+        .buffer_for(&source)
+        .lock()
+        .set_max_points(max_points);
     Ok(())
 }
 
-/// 设置原始数据收集器容量 (字节)
+/// 设置原始数据收集器容量 (字节, source = Transport 节点 id)
 #[tauri::command]
 pub async fn set_rawdata_buffer_capacity(
     state: State<'_, AppState>,
+    source: String,
     capacity: usize,
 ) -> Result<()> {
-    state.raw_data_collector.lock().set_capacity(capacity);
+    state
+        .data_plane
+        .raw_collector_for(&source)
+        .lock()
+        .set_capacity(capacity);
     Ok(())
 }
 
@@ -152,6 +177,7 @@ pub async fn unsubscribe_waveform(state: State<'_, AppState>, channel_id: u32) -
 /// - 首次调用不传 `group_id`: 创建订阅组 (本通道为 shard 0), 返回组 id
 /// - 后续调用传入 `group_id`: 作为新 shard 加入 (最多 MAX_STREAM_SHARDS 个)
 ///
+/// source: Transport 节点 id (每源一个 RawDataCollector, rx/tx 都进该实例)
 /// 分片按积压自动激活/休眠 (shard i 在积压 ≥ i×256KB 时参与分发);
 /// 实际批量随积压自适应放大 (64KB ~ 1MiB), 推送上限 64MB/s/分片。
 ///
@@ -159,6 +185,7 @@ pub async fn unsubscribe_waveform(state: State<'_, AppState>, channel_id: u32) -
 #[tauri::command]
 pub async fn subscribe_rawdata(
     state: State<'_, AppState>,
+    source: String,
     on_event: Channel<RawDataBatch>,
     group_id: Option<String>,
     interval_ms: Option<u64>,
@@ -167,12 +194,13 @@ pub async fn subscribe_rawdata(
     let interval = Duration::from_millis(interval_ms.unwrap_or(16));
     let max_n = max_bytes.unwrap_or(65536);
     let channel_id = on_event.id();
-    let collector = state.raw_data_collector.clone();
+    let collector = state.data_plane.raw_collector_for(&source);
 
     if group_id.is_none() {
-        let c = state.raw_data_collector.lock();
+        let c = collector.lock();
         log::info!(
-            "subscribe_rawdata: 新订阅组, 起始积压={}B ({} chunks, base_index={})",
+            "subscribe_rawdata({}): 新订阅组, 起始积压={}B ({} chunks, base_index={})",
+            source,
             c.stored_bytes(),
             c.chunk_count(),
             c.base_index()
@@ -302,11 +330,13 @@ fn parse_direction_filter(s: &str) -> DirectionFilter {
 /// 与 subscribe_rawdata 的区别: 后端只推送方向匹配且包含搜索模式的 chunk,
 /// 前端无需再遍历过滤, 适合 20MB/s 以上高码率场景。
 ///
+/// source: Transport 节点 id
 /// direction: "all" | "rx" | "tx"
 /// search: 搜索字符串; 空串表示不过滤; 纯 hex 字符按 hex 解析, 其他按 ascii 解析
 #[tauri::command]
 pub async fn subscribe_rawdata_filtered(
     state: State<'_, AppState>,
+    source: String,
     on_event: Channel<RawDataBatch>,
     direction: String,
     search: String,
@@ -317,14 +347,15 @@ pub async fn subscribe_rawdata_filtered(
     let interval = Duration::from_millis(interval_ms.unwrap_or(16));
     let max_n = max_bytes.unwrap_or(65536);
     let channel_id = on_event.id();
-    let collector = state.raw_data_collector.clone();
+    let collector = state.data_plane.raw_collector_for(&source);
     let direction = parse_direction_filter(&direction);
     let search = if search.trim().is_empty() { None } else { Some(search) };
 
     if group_id.is_none() {
-        let c = state.raw_data_collector.lock();
+        let c = collector.lock();
         log::info!(
-            "subscribe_rawdata_filtered: direction={:?}, search={:?}, 起始积压={}B ({} chunks)",
+            "subscribe_rawdata_filtered({}): direction={:?}, search={:?}, 起始积压={}B ({} chunks)",
+            source,
             direction,
             search,
             c.stored_bytes(),
@@ -416,10 +447,21 @@ pub async fn subscribe_rawdata_node_filtered(
     Ok(group_key)
 }
 
-/// 清空原始数据收集器 (全局 + 各 FrameDecoder 节点旁路收集器)
+/// 清空原始数据收集器 (source 指定的 Transport 源 / None = 全部源;
+/// 各 FrameDecoder 节点旁路收集器总是同时清空)
 #[tauri::command]
-pub async fn clear_raw_data_collector(state: State<'_, AppState>) -> Result<()> {
-    state.raw_data_collector.lock().clear();
+pub async fn clear_raw_data_collector(
+    state: State<'_, AppState>,
+    source: Option<String>,
+) -> Result<()> {
+    match source {
+        Some(s) => state.data_plane.raw_collector_for(&s).lock().clear(),
+        None => {
+            for c in state.data_plane.raw_collectors.lock().values() {
+                c.lock().clear();
+            }
+        }
+    }
     for collector in state.decoder_raw_collectors.lock().values() {
         collector.lock().clear();
     }

@@ -1,4 +1,5 @@
 mod commands;
+mod events;
 mod menu;
 mod notify;
 mod pipeline;
@@ -124,7 +125,7 @@ pub fn run() {
             commands::remove_tab_graph,
             commands::set_input_value,
             commands::submit_custom_output,
-            commands::inject_loopback_bytes,
+            commands::inject_bytes,
             commands::subscribe_graph_outputs,
             commands::subscribe_custom_inputs,
             commands::subscribe_spectrum,

@@ -229,7 +229,7 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
   }, [result, sourceId, sampleRate, output, lang, size, cursor]);
 
   return (
-    <div className="group bg-bg-sidebar flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+    <div className="group widget-card-acrylic flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
       {/* 主区: 频谱 Canvas 铺满 */}
       <div
         className="flex-1 min-w-0 min-h-0 relative bg-[#1e1e1e] cursor-crosshair"

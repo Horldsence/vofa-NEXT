@@ -1,5 +1,6 @@
 pub mod can_backend;
 pub mod candle;
+pub mod handle;
 pub mod manager;
 pub mod serial;
 pub mod slcan;
@@ -11,4 +12,5 @@ pub mod udp;
 mod windows_ports;
 
 pub use can_backend::CanBackend;
+pub use handle::TransportHandle;
 pub use manager::TransportManager;

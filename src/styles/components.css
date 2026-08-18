@@ -203,6 +203,104 @@ body.dragging-dock * {
   overflow: hidden;
 }
 
+/* ============ 亚克力 Widget 卡片 (统一容器样式) ============ */
+/* 所有 widget 卡片 (WidgetCard / 全屏模式 widget 容器 / 节点标题栏以外的卡片)
+   都应使用本类.
+
+   状态切换跟随 :root[data-acrylic='true'] — 由 applyAppearance() 根据
+   appearance.acrylicBackground 写入. 关闭时 = 旧版纯色实底 (与 bg-bg-elevated
+   视觉一致); 开启时叠加 backdrop-filter 模糊 + 半透明背景 + 顶部高光 + 饱和度增强,
+   与窗口 OS vibrancy 共享同一组参数 (alpha/blur/saturate 随 acrylicOpacity 滑块联动).
+
+   视觉强度设计 — 亚克力必须明显才能被识别为"玻璃", 因此:
+   - 开启态 alpha 基线 45% (acrylicOpacity=0.6), 透出背后内容
+   - 模糊基线 20px (acrylicOpacity=0.6), 远大于 CSS 文字尺寸, 模糊感强烈
+   - 顶部 1px 白色高光 + 加亮边框, 强化玻璃边缘反光
+   - 关闭态直接用 var(--color-bg-elevated) 实色, 不写 backdrop-filter (零开销). */
+.widget-card-acrylic {
+  background-color: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-default);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 1px 3px rgba(0, 0, 0, 0.35);
+  transition:
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    box-shadow var(--transition-fast) var(--ease-out-cubic),
+    background-color var(--transition-base) var(--ease-out-cubic);
+}
+
+.widget-card-acrylic:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+/* 开启亚克力后, 切换为半透明 + backdrop-filter 模糊 + 饱和度增强 + 玻璃高光 */
+[data-acrylic='true'] .widget-card-acrylic {
+  background-color: color-mix(
+    in srgb,
+    var(--color-bg-elevated) var(--widget-acrylic-alpha),
+    transparent
+  );
+  /* 同时使用 backdrop-filter + -webkit-backdrop-filter 兼容 macOS Safari (WKWebView) */
+  backdrop-filter: blur(var(--widget-acrylic-blur)) saturate(var(--widget-acrylic-saturate));
+  -webkit-backdrop-filter: blur(var(--widget-acrylic-blur)) saturate(var(--widget-acrylic-saturate));
+  /* 玻璃边缘: 加亮边框 + 顶部白色高光, 强化 "玻璃面板" 视觉 */
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* 嵌入式 (节点内) 模式 — 卡片本身没有外框, 内容需要继承亚克力色调 */
+.widget-card-acrylic--embedded {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* ============ 亚克力 Dock 卡片主体 (承载 widget 的容器) ============ */
+/* 关键链路: widget-card-acrylic 通过 backdrop-filter 模糊 "背后内容" 才能看到
+   玻璃质感. 但 widget 卡片背后通常是 dock 卡片主体的 bg-bg-surface (纯色),
+   模糊纯色 = 视觉无变化, 用户感觉"没效果".
+
+   因此 dock 卡片主体在亚克力模式下也要变成半透明, 让更外层的编辑器画布
+   (含 React Flow 节点 / 网格 / 曲线) 透出来, widget 卡片才有东西可模糊.
+
+   alpha 取 widget-acrylic 的 1.6 倍 (更实), 保证 dock 主体仍清晰可辨;
+   blur 与 saturate 共享同一组变量, 与 widget 卡片视觉一致. */
+.dock-card-acrylic {
+  /* 默认: 实色 (与 .module-card 默认一致) */
+  background-color: var(--color-bg-surface);
+  transition:
+    background-color var(--transition-base) var(--ease-out-cubic),
+    border-color var(--transition-fast) var(--ease-out-cubic),
+    box-shadow var(--transition-fast) var(--ease-out-cubic);
+}
+
+[data-acrylic='true'] .dock-card-acrylic {
+  background-color: color-mix(
+    in srgb,
+    var(--color-bg-surface)
+      /* alpha = widget-alpha * 1.6, clamp 到 [40%, 92%], 比 widget 卡片更实 */
+      calc(min(92, max(40, var(--widget-acrylic-alpha) * 1.6)) * 1%),
+    transparent
+  );
+  backdrop-filter: blur(var(--widget-acrylic-blur)) saturate(var(--widget-acrylic-saturate));
+  -webkit-backdrop-filter: blur(var(--widget-acrylic-blur)) saturate(var(--widget-acrylic-saturate));
+  /* 边框在亚克力模式下加亮 + 顶部高光, 玻璃面板质感 */
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20),
+    0 2px 12px rgba(0, 0, 0, 0.30);
+}
+
 /* ============ 拖拽吸附投放区提示 ============ */
 .snap-drop-zone {
   position: absolute;

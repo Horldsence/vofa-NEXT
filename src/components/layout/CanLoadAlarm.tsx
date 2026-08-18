@@ -5,6 +5,8 @@ import { t } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { useCanLoadAlarmStore } from '../../store/canLoadAlarmStore';
 
+import { usePrimaryCanTransportNodeId } from '../../lib/hooks/usePrimaryNodes';
+
 /// CAN 负载告警状态栏指示器
 ///
 /// - 订阅 CAN 负载推送 (1000ms 间隔, 轻量)
@@ -15,16 +17,18 @@ export function CanLoadAlarm() {
   const lang = useAppStore((s) => s.lang);
   const threshold = useCanLoadAlarmStore((s) => s.threshold);
   const enabled = useCanLoadAlarmStore((s) => s.enabled);
+  const canNodeId = usePrimaryCanTransportNodeId();
   const [loadRatio, setLoadRatio] = useState<number>(0);
   /// 上次告警时间戳 (用于节流)
   const lastAlarmRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !canNodeId) {
       setLoadRatio(0);
       return;
     }
     const sub = api.subscribeCanLoad(
+      canNodeId,
       (snap) => {
         setLoadRatio(snap.load_ratio);
         // 超阈值时触发通知 (5 秒节流)
@@ -43,7 +47,7 @@ export function CanLoadAlarm() {
       { intervalMs: 1000 }
     );
     return () => sub.cancel();
-  }, [enabled, threshold, lang]);
+  }, [enabled, threshold, lang, canNodeId]);
 
   if (!enabled || loadRatio < threshold) return null;
 

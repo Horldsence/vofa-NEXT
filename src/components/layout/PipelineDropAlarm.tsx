@@ -15,7 +15,9 @@ const ALARM_THROTTLE_MS = 30_000;
 
 export function PipelineDropAlarm() {
   const lang = useAppStore((s) => s.lang);
-  const rxDroppedWindow = useAppStore((s) => s.stats.rxDroppedWindow);
+  const rxDroppedWindow = useAppStore((s) =>
+    Object.values(s.nodeStats).reduce((a, v) => a + v.rxDroppedWindow, 0)
+  );
   const [infoOpen, setInfoOpen] = useState(false);
   /// 上次告警时间戳 (用于节流)
   const lastAlarmRef = useRef<number>(0);

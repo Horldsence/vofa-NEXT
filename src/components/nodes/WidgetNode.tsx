@@ -117,24 +117,19 @@ export function getWidgetPorts(widget: WidgetConfig): {
       };
     case 'Command': {
       // 命令发送: 从 blocks 中 var_ref 块推导输入端口 (端口名自定义)
-      // 回环模式: 追加 loopbackOut 字节发送口 — 发送的字节沿回环边路由到 FrameDecoder loopbackIn
+      // loopbackOut 字节出口 — 发送的字节沿字节边路由 (Transport.tx 真实发送 / FrameDecoder.in 喂入)
       const blocks = widget.params.blocks ?? [];
       const inputs = blocks
         .filter((b) => b.type === 'var_ref' && b.portName)
         .map((b) => ({ id: b.portName!, label: b.portName!, domain: 'time' as DomainType }));
-      const outputs = widget.params.loopbackEnabled
-        ? [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'time' as DomainType }]
-        : [];
+      const outputs = [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'bytes' as DomainType }];
       return { inputs, outputs };
     }
     case 'FrameDecoder': {
       // 帧解码器: 输出端口 = length/id/field/bitfield 块的 portName + 可选附加端口
-      // 默认无输入端口 (直接消费实时 RX 字节流, 由后端 data_loop 喂入);
-      // 回环模式: 追加 loopbackIn 字节输入口, 只接收回环边注入的字节
+      // 字节输入口 in (旧名 loopbackIn 后端仍兼容): 字节来源完全由输入字节边决定
       const blocks = widget.params.blocks ?? [];
-      const inputs = widget.params.loopbackEnabled
-        ? [{ id: 'loopbackIn', label: 'loopbackIn', domain: 'time' as DomainType }]
-        : [];
+      const inputs = [{ id: 'in', label: 'in', domain: 'bytes' as DomainType }];
       const outputs: WidgetPort[] = [];
       for (const b of blocks) {
         if (b.type === 'length') {
@@ -206,14 +201,14 @@ function deriveRawDataPorts(
   return { inputs, outputs: [] };
 }
 
-/// 端口域颜色 — 频域紫色, 时域蓝色 (仅作圆点/手柄描边, 不占文字宽度, 避免遮挡)
+/// 端口域颜色 — 频域紫色, 时域蓝色, 字节域黄色 (仅作圆点/手柄描边, 不占文字宽度, 避免遮挡)
 function domainColor(domain: DomainType): string {
-  return domain === 'freq' ? '#ba68c8' : '#75beff';
+  return domain === 'freq' ? '#ba68c8' : domain === 'bytes' ? '#e5c07b' : '#75beff';
 }
 
 /// 端口域标注文案 (悬停提示)
 function domainLabel(lang: Lang, domain: DomainType): string {
-  return domain === 'freq' ? t(lang, 'domainFreq') : t(lang, 'domainTime');
+  return domain === 'freq' ? t(lang, 'domainFreq') : domain === 'bytes' ? t(lang, 'domainBytes') : t(lang, 'domainTime');
 }
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
@@ -374,8 +369,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
 
   return (
     <div
-      className="nowheel border border-border rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
-      style={{ backgroundColor: `color-mix(in srgb, ${categoryColor} 25%, var(--color-bg-sidebar))` }}
+      className="nowheel widget-card-acrylic rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
       onDoubleClick={widgetToTab(widget) ? handleOpenWindow : undefined}
       title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
     >

@@ -19,6 +19,8 @@ describe('transitionStore', () => {
         { id: 'can-tab', type: 'can', name: 'CAN', closable: true },
       ],
       activeDataTabId: 'waveform-fixed',
+      sidebarView: 'quickstart',
+      sidebarVisible: true,
     });
   });
 
@@ -41,12 +43,12 @@ describe('transitionStore', () => {
     expect(() =>
       transitionStore(() => useAppStore.getState().setActiveControlTab('default'))
     ).not.toThrow();
-    expect(() => transitionStore(() => useAppStore.getState().toggleSidebar('protocol'))).not.toThrow();
+    expect(() => transitionStore(() => useAppStore.getState().toggleSidebar('widgets'))).not.toThrow();
     expect(startTransition).toHaveBeenCalledTimes(2);
 
     // 执行被捕获的 transition 作用域, 确认侧边栏动作仍正常生效
     vi.mocked(startTransition).mock.calls[1][0]();
-    expect(useAppStore.getState().sidebarView).toBe('protocol');
+    expect(useAppStore.getState().sidebarView).toBe('widgets');
     expect(useAppStore.getState().sidebarVisible).toBe(true);
   });
 });

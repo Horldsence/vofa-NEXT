@@ -8,13 +8,14 @@
 
 import { type Node, type Edge } from '@xyflow/react';
 import { createWidget } from '../utils/createWidget';
-import { CHANNEL_SOURCE_ID } from '../../store/appStore';
 import { ALL_BACKUP_SECTIONS, type AppSnapshot } from '../tauri/appExport';
 import type { DockNode, DockCard } from '../../store/dockStore';
 import type { WidgetConfig, DataTab, ControlTab, TransportConfig, ProtocolConfig } from '../../types';
 
 const TAB = 'default';
-const SOURCE_ID = `${CHANNEL_SOURCE_ID}-${TAB}`;
+/// 模板内全局节点 id (应用时由 applySnapshot/mergeTemplate 处理)
+const TRANSPORT_ID = 'template-transport';
+const PROTOCOL_ID = 'template-protocol';
 
 // ==================== 构建辅助 ====================
 
@@ -49,15 +50,22 @@ function edge(
   return { id, source, sourceHandle, target, targetHandle };
 }
 
-/// 通道源节点 (内联实现, 避免引入 appStoreHelpers 造成循环依赖)
-function source(channels = 4): Node {
+/// 全局 Transport / Protocol 节点 (内联实现, 避免引入 appStoreHelpers 造成循环依赖)
+function transportNode(config: TransportConfig): Node {
   return {
-    id: `${CHANNEL_SOURCE_ID}-${TAB}`,
-    type: 'channelSource',
+    id: TRANSPORT_ID,
+    type: 'transport',
     position: { x: 40, y: 40 },
-    data: { tabId: TAB, channelCount: channels, label: 'Channel Source' },
-    selectable: false,
-    deletable: false,
+    data: { global: true, config, label: config.kind },
+  };
+}
+
+function protocolNode(config: ProtocolConfig, channels = 4): Node {
+  return {
+    id: PROTOCOL_ID,
+    type: 'protocol',
+    position: { x: 260, y: 40 },
+    data: { global: true, config, convertTo: null, channels, label: config.kind },
   };
 }
 
@@ -147,19 +155,31 @@ function buildSnapshot(opts: {
   );
 
   return {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     sections: ALL_BACKUP_SECTIONS,
     // 模板不含设置 — 应用时保留用户当前设置
-    protocol: opts.protocol,
-    transport: opts.transport,
     widgets,
     controlTabs,
     dataTabs,
     activeDataTabId,
     activeControlTabId: TAB,
-    rfNodes: [source(opts.sourceChannels ?? 4), ...opts.widgetNodes],
-    rfEdges: opts.edges,
+    rfNodes: [
+      transportNode(opts.transport),
+      protocolNode(opts.protocol, opts.sourceChannels ?? 4),
+      ...opts.widgetNodes,
+    ],
+    rfEdges: [
+      // Transport.rx → Protocol.in 字节边
+      {
+        id: 'edge-transport-protocol',
+        source: TRANSPORT_ID,
+        sourceHandle: 'rx',
+        target: PROTOCOL_ID,
+        targetHandle: 'in',
+      },
+      ...opts.edges,
+    ],
     rawDataViewPrefs: {},
     dockRoot,
     dockCards,
@@ -192,10 +212,10 @@ function mathTemplate(): AppSnapshot {
       wnode('nd-add', ndAdd, 560, 260),
     ],
     edges: [
-      edge('e1', SOURCE_ID, 'ch0', 'm-sin', 'in0'),
+      edge('e1', PROTOCOL_ID, 'ch0', 'm-sin', 'in0'),
       edge('e2', 'm-sin', 'result', 'nd-sin', 'value'),
-      edge('e3', SOURCE_ID, 'ch0', 'm-add', 'in0'),
-      edge('e4', SOURCE_ID, 'ch1', 'm-add', 'in1'),
+      edge('e3', PROTOCOL_ID, 'ch0', 'm-add', 'in0'),
+      edge('e4', PROTOCOL_ID, 'ch1', 'm-add', 'in1'),
       edge('e5', 'm-add', 'result', 'nd-add', 'value'),
     ],
   });
@@ -215,9 +235,9 @@ function filterTemplate(): AppSnapshot {
       wnode('wf-filter', wf, 300, 260),
     ],
     edges: [
-      edge('e1', SOURCE_ID, 'ch0', 'f-lp', 'in0'),
+      edge('e1', PROTOCOL_ID, 'ch0', 'f-lp', 'in0'),
       edge('e2', 'f-lp', 'result', 'nd-lp', 'value'),
-      edge('e3', SOURCE_ID, 'ch0', 'wf-filter', 'CH0'),
+      edge('e3', PROTOCOL_ID, 'ch0', 'wf-filter', 'CH0'),
       edge('e4', 'f-lp', 'result', 'wf-filter', 'CH1'),
     ],
     activeDataTabId: 'wf-filter',
@@ -265,10 +285,10 @@ function serialTemplate(): AppSnapshot {
       wnode('nd-ch3', n3, 560, 260),
     ],
     edges: [
-      edge('e1', SOURCE_ID, 'ch0', 'g-ch0', 'value'),
-      edge('e2', SOURCE_ID, 'ch1', 'g-ch1', 'value'),
-      edge('e3', SOURCE_ID, 'ch2', 'nd-ch2', 'value'),
-      edge('e4', SOURCE_ID, 'ch3', 'nd-ch3', 'value'),
+      edge('e1', PROTOCOL_ID, 'ch0', 'g-ch0', 'value'),
+      edge('e2', PROTOCOL_ID, 'ch1', 'g-ch1', 'value'),
+      edge('e3', PROTOCOL_ID, 'ch2', 'nd-ch2', 'value'),
+      edge('e4', PROTOCOL_ID, 'ch3', 'nd-ch3', 'value'),
     ],
     activeDataTabId: 'waveform-fixed',
   });
@@ -292,10 +312,10 @@ function demoTemplate(): AppSnapshot {
       wnode('wf', wf, 300, 400),
     ],
     edges: [
-      edge('e1', SOURCE_ID, 'ch0', 'f-lp', 'in0'),
+      edge('e1', PROTOCOL_ID, 'ch0', 'f-lp', 'in0'),
       edge('e2', 'f-lp', 'result', 'nd-lp', 'value'),
       edge('e3', 'f-lp', 'result', 'wf', 'CH0'),
-      edge('e4', SOURCE_ID, 'ch1', 'm-sin', 'in0'),
+      edge('e4', PROTOCOL_ID, 'ch1', 'm-sin', 'in0'),
       edge('e5', 'm-sin', 'result', 'g-sin', 'value'),
     ],
     activeDataTabId: 'wf',
@@ -324,10 +344,10 @@ function fftTemplate(): AppSnapshot {
       wnode('ifft-main', ifft, 600, 280),
     ],
     edges: [
-      edge('e1', SOURCE_ID, 'ch0', 'fft-main', 'in0'),
+      edge('e1', PROTOCOL_ID, 'ch0', 'fft-main', 'in0'),
       edge('e2', 'fft-main', 'spectrum', 'spec-main', 'spectrum'),
       edge('e3', 'fft-main', 'spectrum', 'ifft-main', 'spectrum'),
-      edge('e4', SOURCE_ID, 'ch0', 'wf-ifft', 'CH0'),
+      edge('e4', PROTOCOL_ID, 'ch0', 'wf-ifft', 'CH0'),
       edge('e5', 'ifft-main', 'out0', 'wf-ifft', 'CH1'),
     ],
     activeDataTabId: 'spec-main',

@@ -27,10 +27,12 @@ import { SuspenseFallback } from '../ui/SuspenseFallback';
 import { lazy, Suspense, memo, useCallback, useEffect, useMemo } from 'react';
 import type { WidgetConfig, ScopeMeasurements, ScopeAxisConfig, ProtocolConfig, LoopbackResult } from '../../types';
 import { getEffectiveChannel } from '../../types';
-import { waveformWindow } from '../../lib/buffers/dataBuffer';
+import { waveformWindow, type WaveformWindowCache } from '../../lib/buffers/dataBuffer';
 import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/utils/scopeUtils';
 import { computeConnectedInputs, type ConnectedInput } from '../displays/waveform/waveformSeries';
 import { useWaveformScopeStore, createPerWidgetState } from '../../store/waveformScopeStore';
+import { useWaveformSourceBuffer } from '../../lib/hooks/useWaveformSourceBuffer';
+import { traceProtocolSource } from '../../store/appStoreHelpers';
 
 // 重型 3D 控件 (Three.js) — 懒加载, 首次切到 model3d Tab 时才拉取
 const Model3DWidget = lazy(() => import('../displays/widgets/Model3DWidget.lazy'));
@@ -49,6 +51,7 @@ interface WaveformTabViewProps {
   axisConfig: ScopeAxisConfig;
   measurements: ScopeMeasurements | null;
   channelCount: number;
+  buffer: WaveformWindowCache;
   onConfigChange: (next: ScopeAxisConfig) => void;
   onAutoSet: () => void;
 }
@@ -59,13 +62,14 @@ const WaveformTabView = memo(function WaveformTabView({
   axisConfig,
   measurements,
   channelCount,
+  buffer,
   onConfigChange,
   onAutoSet,
 }: WaveformTabViewProps) {
   return (
     <div className="flex h-full w-full">
       <div className="flex-1 min-w-0 relative">
-        <WaveformChart widget={widget} axisConfig={axisConfig} onConfigChange={onConfigChange} />
+        <WaveformChart widget={widget} axisConfig={axisConfig} onConfigChange={onConfigChange} buffer={buffer} />
       </div>
       <div className="w-[256px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
         <AxisSettings
@@ -203,8 +207,19 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
   const dataTabs = useAppStore((s) => s.dataTabs);
   const widgets = useAppStore((s) => s.widgets);
   const rfEdges = useAppStore((s) => s.rfEdges);
-  const protocolConfig = useAppStore((s) => s.protocolConfig);
-  const detectedChannels = useAppStore((s) => s.detectedChannels);
+  const rfNodes = useAppStore((s) => s.rfNodes);
+  // 主 Protocol 节点 (第一个) 的配置与检测通道数 — 固定波形 Tab 的通道数依据
+  const primaryProtocolId = useMemo(
+    () => rfNodes.find((n) => n.type === 'protocol' && n.data?.global === true)?.id ?? null,
+    [rfNodes]
+  );
+  const primaryProtocolConfig = useMemo(() => {
+    const n = rfNodes.find((x) => x.id === primaryProtocolId);
+    return n ? ((n.data as { config?: ProtocolConfig }).config ?? null) : null;
+  }, [rfNodes, primaryProtocolId]);
+  const detectedChannels = useAppStore((s) =>
+    primaryProtocolId ? (s.detectedChannels[primaryProtocolId] ?? null) : null
+  );
   // 不订阅 rawDataVersion: channel_count 仅在协议/检测变化时改变
   const winChannelCount = waveformWindow.get().channel_count;
 
@@ -213,11 +228,12 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
 
   // 计算默认波形的通道数: 自动模式优先用检测到的通道数, 其次用窗口缓存, 最后兜底 4
   const defaultChannelCount = useMemo(() => {
-    if (protocolConfig.kind === 'RawData' || protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight' || protocolConfig.kind === 'LogicDecode') {
+    if (!primaryProtocolConfig) return winChannelCount || 4;
+    if (primaryProtocolConfig.kind === 'RawData' || primaryProtocolConfig.kind === 'Slcan' || primaryProtocolConfig.kind === 'CandleLight' || primaryProtocolConfig.kind === 'LogicDecode') {
       return 4;
     }
-    return ((protocolConfig as Extract<ProtocolConfig, { channels?: number | null }>).channels ?? detectedChannels ?? (winChannelCount || 4));
-  }, [protocolConfig, detectedChannels, winChannelCount]);
+    return (primaryProtocolConfig.channels ?? detectedChannels ?? (winChannelCount || 4));
+  }, [primaryProtocolConfig, detectedChannels, winChannelCount]);
 
   // 默认波形控件（固定 Tab 使用）
   const defaultWaveformWidget: Extract<WidgetConfig, { kind: 'Waveform' }> = useMemo(
@@ -241,6 +257,15 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       : undefined) ?? defaultWaveformWidget;
   const wid = waveWidget.params.id;
   const channelCount = waveWidget.params.channels;
+
+  // 波形数据源: 固定 Tab = 主 Protocol 节点; 控件波形 = 输入边向上溯源到的 Protocol 节点
+  // (无连接时 sourceId 为 null → 空缓冲, 不订阅)
+  const waveSourceId = useMemo(() => {
+    if (!isWaveformTab) return null;
+    if (wid === 'default-waveform') return primaryProtocolId;
+    return traceProtocolSource(wid, rfEdges, rfNodes);
+  }, [isWaveformTab, wid, primaryProtocolId, rfEdges, rfNodes]);
+  const waveBuffer = useWaveformSourceBuffer(waveSourceId);
 
   const ensureWidget = useWaveformScopeStore((s) => s.ensureWidget);
   const setConfig = useWaveformScopeStore((s) => s.setConfig);
@@ -267,10 +292,10 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
     if (!running) return;
     let raf = 0;
     const loop = () => {
-      const version = waveformWindow.version;
+      const version = waveBuffer.version;
       const cur = useWaveformScopeStore.getState().states[wid];
       if (cur && version !== cur.lastMeasureVersion) {
-        const win = waveformWindow.get();
+        const win = waveBuffer.get();
         let m: ScopeMeasurements | null = null;
         if (win.timestamps.length >= 2) {
           const chIdx = cur.config.channels.findIndex((c) => c.show);
@@ -288,7 +313,7 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [running, wid, channelCount, setMeasurements]);
+  }, [running, wid, channelCount, setMeasurements, waveBuffer]);
 
   /// 稳定回调 — 仅在 widget 身份 / 连线变化时重建, 保证 memo 分支在无关重渲染时跳过
   const handleConfigChange = useCallback(
@@ -297,7 +322,7 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
   );
 
   const handleAutoSet = useCallback(() => {
-    const win = waveformWindow.get();
+    const win = waveBuffer.get();
     // 与主图/缩略图共用 computeConnectedInputs, 避免 "空则全通道" 回退分叉
     const connected =
       wid === 'default-waveform'
@@ -309,7 +334,7 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
     const curConfig = useWaveformScopeStore.getState().states[wid]?.config ?? createPerWidgetState(channelCount).config;
     const autoNext = computeAutoSetConfig(win, curConfig, connected);
     setConfig(wid, channelCount, autoNext);
-  }, [wid, channelCount, rfEdges, setConfig]);
+  }, [wid, channelCount, rfEdges, setConfig, waveBuffer]);
 
   if (!tab) return null;
 
@@ -329,6 +354,7 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
           axisConfig={st.config}
           measurements={st.measurements}
           channelCount={channelCount}
+          buffer={waveBuffer}
           onConfigChange={handleConfigChange}
           onAutoSet={handleAutoSet}
         />

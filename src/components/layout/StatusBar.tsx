@@ -8,6 +8,7 @@ import { BufferUsageStats } from './BufferUsageStats';
 import { CanLoadAlarm } from './CanLoadAlarm';
 import { PipelineDropAlarm } from './PipelineDropAlarm';
 import { useSettingsStore } from '../../store/settingsStore';
+import { usePrimaryProtocolConfig, usePrimaryTransportConfig } from '../../lib/hooks/usePrimaryNodes';
 
 /// 底部状态栏 — 显示连接状态、统计数据
 ///
@@ -23,15 +24,19 @@ const TIER_MAX = 3;
 
 export const StatusBar = memo(function StatusBar() {
   const lang = useAppStore((s) => s.lang);
-  const connectionState = useAppStore((s) => s.connectionState);
-  // 单独订阅 stats 字段, 避免 transport:rx 每次创建新 stats 对象导致整个 StatusBar 重渲染
-  const rxBytes = useAppStore((s) => s.stats.rx_bytes);
-  const txBytes = useAppStore((s) => s.stats.tx_bytes);
-  const rxFrames = useAppStore((s) => s.stats.rx_frames);
-  const txFrames = useAppStore((s) => s.stats.tx_frames);
+  // 多连接并存: 状态栏显示第一个 Transport 节点的状态; 统计为全部节点合计
+  const connectionState = useAppStore((s) => {
+    const first = s.rfNodes.find((n) => n.type === 'transport' && n.data?.global === true);
+    return (first ? s.connectionStates[first.id] : undefined) ?? 'Disconnected';
+  });
+  // 单独订阅合计标量, 避免 transport:rx 每次创建新对象导致整个 StatusBar 重渲染
+  const rxBytes = useAppStore((s) => Object.values(s.nodeStats).reduce((a, v) => a + v.rx_bytes, 0));
+  const txBytes = useAppStore((s) => Object.values(s.nodeStats).reduce((a, v) => a + v.tx_bytes, 0));
+  const rxFrames = useAppStore((s) => Object.values(s.nodeStats).reduce((a, v) => a + v.rx_frames, 0));
+  const txFrames = useAppStore((s) => Object.values(s.nodeStats).reduce((a, v) => a + v.tx_frames, 0));
   // 仅订阅 kind 标量 — 修改传输/协议参数 (如串口端口名) 不触发状态栏重渲染
-  const transportKind = useAppStore((s) => s.transportConfig.kind);
-  const protocolKind = useAppStore((s) => s.protocolConfig.kind);
+  const transportKind = usePrimaryTransportConfig()?.kind;
+  const protocolKind = usePrimaryProtocolConfig()?.kind;
   const refreshPorts = useAppStore((s) => s.refreshPorts);
   const openSettings = useSettingsStore((s) => s.open);
   const openAbout = useSettingsStore((s) => s.openAbout);
@@ -136,10 +141,10 @@ export const StatusBar = memo(function StatusBar() {
       {tier < 2 && (
         <>
           <div className="flex items-center gap-1.5 h-full whitespace-nowrap">
-            {transportLabel[transportKind]}
+            {transportKind ? transportLabel[transportKind] : '—'}
           </div>
           <div className="flex items-center gap-1.5 h-full whitespace-nowrap">
-            {protocolLabel[protocolKind]}
+            {protocolKind ? protocolLabel[protocolKind] : '—'}
           </div>
         </>
       )}

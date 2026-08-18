@@ -19,8 +19,7 @@ vi.hoisted(() => {
 
 import { QUICK_START_TEMPLATES, getTemplate } from '../quickstart/templates';
 import { applyTemplate } from '../quickstart/applyTemplate';
-import { useAppStore, CHANNEL_SOURCE_ID } from '../../store/appStore';
-import { createChannelSourceNode } from '../../store/appStoreHelpers';
+import { useAppStore } from '../../store/appStore';
 import type { WidgetConfig } from '../../types';
 
 describe('快速开始模板', () => {
@@ -29,12 +28,21 @@ describe('快速开始模板', () => {
     expect(ids).toEqual(expect.arrayContaining(['math', 'filter', 'fft', 'can', 'serial', 'demo']));
   });
 
-  it('每个模板生成的快照结构完整且自洽', () => {
+  it('每个模板生成的快照结构完整且自洽 (v3: 全局 Transport + Protocol 节点)', () => {
     for (const tpl of QUICK_START_TEMPLATES) {
       const snap = tpl.build();
-      expect(snap.version).toBe(2);
-      // 通道源节点存在且属于 default 标签页
-      expect(snap.rfNodes?.some((n) => n.type === 'channelSource')).toBe(true);
+      expect(snap.version).toBe(3);
+      // 全局 Transport / Protocol 节点存在
+      const transport = snap.rfNodes?.find((n) => n.type === 'transport' && n.data?.global === true);
+      const protocol = snap.rfNodes?.find((n) => n.type === 'protocol' && n.data?.global === true);
+      expect(transport).toBeDefined();
+      expect(protocol).toBeDefined();
+      // 字节边 Transport.rx → Protocol.in 存在
+      expect(
+        snap.rfEdges?.some(
+          (e) => e.source === transport!.id && e.sourceHandle === 'rx' && e.target === protocol!.id && e.targetHandle === 'in'
+        )
+      ).toBe(true);
       // 所有控件节点 tabId 均为 default
       const nodeIds = new Set(snap.rfNodes?.map((n) => n.id) ?? []);
       for (const n of snap.rfNodes ?? []) {
@@ -55,38 +63,42 @@ describe('快速开始模板', () => {
     }
   });
 
-  it('CAN 模板使用 Slcan 传输与协议', () => {
+  it('CAN 模板使用 Slcan 传输与协议 (全局节点)', () => {
     const snap = getTemplate('can')!.build();
-    expect(snap.transport).toEqual({
+    const transport = snap.rfNodes?.find((n) => n.type === 'transport');
+    const protocol = snap.rfNodes?.find((n) => n.type === 'protocol');
+    expect((transport?.data as { config: unknown }).config).toEqual({
       kind: 'Slcan',
       params: { port_name: '', baud_rate: 115200, can_bitrate: 'bps500k' },
     });
-    expect(snap.protocol).toEqual({ kind: 'Slcan' });
+    expect((protocol?.data as { config: unknown }).config).toEqual({ kind: 'Slcan' });
     expect(snap.dataTabs?.some((t) => t.type === 'can')).toBe(true);
   });
 
   it('串口模板使用 Serial 传输', () => {
     const snap = getTemplate('serial')!.build();
-    expect(snap.transport?.kind).toBe('Serial');
-    expect(snap.protocol?.kind).toBe('JustFloat');
+    const transport = snap.rfNodes?.find((n) => n.type === 'transport');
+    const protocol = snap.rfNodes?.find((n) => n.type === 'protocol');
+    expect((transport?.data as { config: { kind: string } }).config.kind).toBe('Serial');
+    expect((protocol?.data as { config: { kind: string } }).config.kind).toBe('JustFloat');
   });
 });
 
 describe('applyTemplate 合并模式', () => {
   beforeEach(() => {
-    // 复位到默认基线
+    // 复位到默认基线 (无全局节点)
     useAppStore.setState({
       widgets: [],
       controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
       dataTabs: [{ id: 'waveform-fixed', type: 'waveform', name: 'Waveform', closable: false }],
       activeControlTabId: 'default',
       activeDataTabId: 'waveform-fixed',
-      rfNodes: [createChannelSourceNode('default', 4)],
+      rfNodes: [],
       rfEdges: [],
     } as never);
   });
 
-  it('合并后追加新控件标签页并重映射 ID', async () => {
+  it('合并后追加新控件标签页并重映射 ID, 全局节点不重复导入', async () => {
     const snap = getTemplate('math')!.build();
     const before = useAppStore.getState();
     await applyTemplate(snap, 'merge');
@@ -101,15 +113,14 @@ describe('applyTemplate 合并模式', () => {
     for (const id of templateIds) {
       expect(after.widgets.some((w) => w.params.id === id)).toBe(false);
     }
-    // 新节点均归入新标签页
+    // 新控件节点均归入新标签页; 全局节点导入一份 (基线无主节点)
     const newNodes = after.rfNodes.filter((n) => n.data?.tabId === newTab!.id);
-    expect(newNodes.length).toBe((snap.rfNodes ?? []).length);
-    // 通道源节点归属新标签页
-    const sourceNode = after.rfNodes.find((n) => n.id === `${CHANNEL_SOURCE_ID}-${newTab!.id}`);
-    expect(sourceNode).toBeDefined();
+    const templateWidgetNodeCount = (snap.rfNodes ?? []).filter((n) => n.type === 'widget').length;
+    expect(newNodes.length).toBe(templateWidgetNodeCount);
+    expect(after.rfNodes.filter((n) => n.data?.global === true).length).toBe(2);
   });
 
-  it('替换模式覆盖现有节点图与控件', async () => {
+  it('替换模式覆盖现有节点图与控件 (含全局节点)', async () => {
     const snap = getTemplate('filter')!.build();
     await applyTemplate(snap, 'replace');
 
@@ -117,7 +128,9 @@ describe('applyTemplate 合并模式', () => {
     expect(after.controlTabs.length).toBe(1);
     const widgets = after.widgets as WidgetConfig[];
     expect(widgets.length).toBe((snap.widgets ?? []).length);
-    // 替换后 rfNodes 与快照一致 (含通道源)
+    // 替换后 rfNodes 与快照一致 (含全局 Transport/Protocol 节点)
     expect(after.rfNodes.length).toBe((snap.rfNodes ?? []).length);
+    expect(after.rfNodes.some((n) => n.type === 'transport')).toBe(true);
+    expect(after.rfNodes.some((n) => n.type === 'protocol')).toBe(true);
   });
 });

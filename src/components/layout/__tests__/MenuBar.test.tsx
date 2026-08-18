@@ -39,7 +39,7 @@ describe('MenuBar (Windows 自定义菜单栏)', () => {
   beforeEach(() => {
     stubWindowsUA();
     // 固定英文标签并复位侧边栏状态, 避免跨测试状态泄漏
-    useAppStore.setState({ lang: 'en', sidebarVisible: true, sidebarView: 'transport' });
+    useAppStore.setState({ lang: 'en', sidebarVisible: true, sidebarView: 'widgets' });
     windowApiMock.setZoom.mockClear();
     windowApiMock.minimize.mockClear();
     windowApiMock.toggleMaximize.mockClear();

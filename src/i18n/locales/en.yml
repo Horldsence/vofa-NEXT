@@ -624,7 +624,7 @@ windowBlackman: Blackman
 domainTime: Time
 domainFreq: Freq
 domainMismatchTitle: Domain mismatch
-domainMismatchMsg: Time-domain and frequency-domain ports cannot be connected directly
+domainMismatchMsg: Ports of different domains cannot be connected (time / freq / bytes are mutually exclusive)
 
 # 3D Model widget
 model3d: 3D Model
@@ -1038,3 +1038,9 @@ closeHintTitle: Window closed
 closeHintMessage: "The \"{{name}}\" window is closed, but the widget node stays on the canvas. Double-click the node to reopen it."
 closeHintGotIt: Got it
 nodeOpenWindowHint: Double-click to open window
+domainBytes: Bytes
+convertTo: Convert to (convert_to)
+convertNone: No conversion
+cmdNoByteRoute: No byte route — connect loopbackOut to Transport.tx or FrameDecoder.in
+noTransportNode: No transport node — drag a "Data Interface" node from the palette first
+targetTransport: Target transport

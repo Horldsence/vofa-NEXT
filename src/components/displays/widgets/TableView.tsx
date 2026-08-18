@@ -94,14 +94,14 @@ export const TableView = memo(function TableView({ widget, loopbackHistory }: Ta
 
   if (params.columns.length === 0) {
     return (
-      <div className="bg-bg-sidebar border border-border rounded flex-1 flex items-center justify-center text-text-secondary text-xs p-4">
+      <div className="widget-card-acrylic flex-1 flex items-center justify-center text-text-secondary text-xs p-4">
         {t(lang, 'tableViewNoColumns')}
       </div>
     );
   }
 
   return (
-    <div className="bg-bg-sidebar border border-border rounded flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
+    <div className="widget-card-acrylic flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden">
       {/* 表头 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border flex-shrink-0">
         <span className="text-sm font-semibold text-text-bright">{params.label}</span>

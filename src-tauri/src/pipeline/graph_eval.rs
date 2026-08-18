@@ -1,8 +1,19 @@
+//! 数值平面评估 — 槽位热路径 (process_source_batch) + 事件驱动快照评估
+//!
+//! 两平面重构后:
+//! - 热路径按源触发: 某 Protocol 源来帧 → 仅评估"引用该源的 tab 图"与
+//!   "无 ProtocolSource 的纯本地图" (后者沿用旧单源行为: 任意来帧都评估);
+//!   每帧先把该帧写入 source_frames[source] (其他源保持缓存最新帧, latest-value 融合),
+//!   再走 CompiledEval::run 槽位评估 — 调用方式/槽位复用/批内锁粒度与旧版一致
+//! - 快照评估 (evaluate_snapshot_now): 字节/输入事件后以 source_frames 现状评估,
+//!   取代旧 force_eval 空帧机制
+
 use crate::state::GraphEvalState;
 use vofa_next_buffer::DataBuffer;
 use vofa_next_core::DataFrame;
+use vofa_next_nodes::{CompiledGraph, NodeKind, SourceFramesMap};
 
-/// eval 段细分耗时 (纳秒累计, 由调用方汇入 PipelineMetrics)
+/// eval 段细分耗时 (纳秒累计, 由调用方汇入数据平面指标)
 #[derive(Default)]
 pub struct EvalBreakdown {
     pub push_frame_ns: u64,
@@ -11,13 +22,34 @@ pub struct EvalBreakdown {
     pub spectrum_ns: u64,
 }
 
-/// 评估所有图 (静态函数版本, 供 GraphEvalState 使用)
+/// 图是否被指定源触发:
+/// - 引用了该 Protocol 源 (ProtocolSource.node_id == source_id) → 触发
+/// - 不含任何 ProtocolSource (Input/Math/Custom 等纯本地图) → 任意源来帧都触发
+///   (沿用旧单源架构行为: 所有图每帧评估)
+/// - 引用了其他源 → 不触发 (该源来帧时才评估)
+fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
+    let mut has_source = false;
+    for n in g.nodes().values() {
+        if let NodeKind::ProtocolSource { node_id, .. } = &n.kind {
+            has_source = true;
+            if node_id == source_id {
+                return true;
+            }
+        }
+    }
+    !has_source
+}
+
+/// 事件驱动快照评估 — 以 source_frames 现状评估所有图并发布 output_snapshot
 ///
 /// 步骤:
 /// 1. 对每个图调用 evaluate (传入 filter_states + decoder_states, 逐点滤波/解码跨帧持久化)
 /// 2. 合并所有图输出到 output_snapshot
 /// 3. 遍历所有图的 SpectrumSink, 从 output_snapshot 取输入值, push 到对应 analyzer
-pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) {
+///
+/// 调用时机: FrameDecoder 字节喂入后 / set_input_value / submit_custom_output
+/// (取代旧 evaluate_all_graphs_with 的空帧语义 — ProtocolSource 从缓存读最新值)
+pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &SourceFramesMap) {
     let input_values = eval_state.input_values.lock().clone();
     let custom_outputs = eval_state.custom_outputs.lock().clone();
     let graphs = eval_state.graphs.lock();
@@ -28,7 +60,7 @@ pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) 
     let mut combined: vofa_next_nodes::ValuesMap = Default::default();
     for (_, graph) in graphs.iter() {
         let out = graph.evaluate(
-            frame,
+            source_frames,
             &input_values,
             &custom_outputs,
             &mut filter_states,
@@ -62,24 +94,23 @@ pub fn evaluate_all_graphs_with(eval_state: &GraphEvalState, frame: &DataFrame) 
     }
 }
 
-/// 批处理版帧处理 — 一个 RX 包的所有帧一次性完成 push_frame + 图评估 + 派生值收集
+/// 单源帧批处理 (热路径) — 一个源的一批帧一次性完成
+/// source_frames 更新 + push_frame + 图评估 + 派生值收集
 ///
-/// 与逐帧调用 evaluate_all_graphs_with + 派生收集语义完全等价
-/// (每帧: push_frame → evaluate → push_derived, 保证时间戳对齐), 但:
-/// - input_values / custom_outputs 的锁与 clone 每包只做一次
-/// - graphs / filter_states / decoder_states 的锁每包只拿一次
-/// - buffer 由调用方在同一次 lock() 内传入, 不再每帧重复加锁
-/// - 图评估走编译期槽位表 (CompiledEval::run): 逐帧纯数组读写, 零字符串哈希;
-///   slots/written 缓冲批内跨帧复用, 每帧各自清零 (slots 防上帧值泄漏,
-///   written 复刻 "本帧未产出 = 键不存在")
-/// - combined 输出 map 保留为快照物化缓冲 (仅发布点 materialize);
-///   图重编译 (graphs_version 变化) 时清空重建, 避免过期节点残留
-/// - 派生边每批预计算一次 (graph 下标, 槽位下标, buffer 索引), 逐帧零哈希直写
-/// - snapshot.values 用 swap 交换 (旧 map 成为下一次物化的复用缓冲, 零深拷贝)
+/// 与旧 process_frames_batch 语义对应 (每帧: push_frame → evaluate → push_derived,
+/// 保证时间戳对齐), 差异:
+/// - 仅评估被该源触发的图 (graph_triggered_by), 派生回写进该源自己的 buffer
+/// - 每帧先把帧写入 source_frames[source_id] (clone_from 复用分配, 稳态零分配),
+///   ProtocolSource 槽位经 CompiledEval::run 从 source_frames 直读
+/// - input_values / custom_outputs / graphs / filter_states 等锁每批只拿一次 (同旧版)
+/// - 槽位缓冲批内跨帧复用, 每帧各自清零 (同旧版)
+/// - combined 输出 map 为快照物化缓冲, 图重编译 (graphs_version 变化) 时清空 (同旧版)
 ///
 /// `breakdown`: eval 段细分耗时出参 (纳秒累计, 观测用, 不影响行为)
-pub fn process_frames_batch(
+pub fn process_source_batch(
     eval_state: &GraphEvalState,
+    source_frames: &mut SourceFramesMap,
+    source_id: &str,
     frames: &[DataFrame],
     buffer: &mut DataBuffer,
     breakdown: &mut EvalBreakdown,
@@ -99,8 +130,12 @@ pub fn process_frames_batch(
     // analyzer 锁整批持有 (与 spectrum_ticker 同为 graphs → analyzers 顺序, 无死锁)
     let mut analyzers = eval_state.spectrum_analyzers.lock();
 
-    // graph 下标固定 (同一锁 guard 内迭代序稳定), 派生边/槽位缓冲按此对齐
-    let graph_list: Vec<&vofa_next_nodes::CompiledGraph> = graphs.values().collect();
+    // 仅保留被该源触发的图 (graph 下标固定 — 同一锁 guard 内迭代序稳定,
+    // 派生边/槽位缓冲按此对齐)
+    let graph_list: Vec<&CompiledGraph> = graphs
+        .values()
+        .filter(|g| graph_triggered_by(g, source_id))
+        .collect();
 
     // 槽位缓冲: 每 graph 一组 (slots, written), 批内跨帧复用
     let mut slot_bufs: Vec<(Vec<f32>, Vec<bool>)> = graph_list
@@ -123,9 +158,8 @@ pub fn process_frames_batch(
         }
     }
 
-    // combined 保留为快照物化缓冲: 仅发布点由 materialize 覆盖写;
-    // snapshot swap 换出的旧 map 成为下一次物化的复用缓冲, 稳态零分配
-    let mut combined: vofa_next_nodes::ValuesMap = Default::default();
+    // combined 输出 map 不再需要: 发布点直接物化进 snap.values (覆盖写语义,
+    // 未触发图的旧值保留 — latest-value 融合, 取代旧版整表 swap)
 
     // 快照批内节流发布: 大批次 (700k 时一批可达 24ms+) 只在批尾更新快照,
     // 数值读数 (MathWidget/Gauge 等走 output_snapshot) 会明显落后波形轨迹
@@ -134,12 +168,24 @@ pub fn process_frames_batch(
     let mut last_publish = std::time::Instant::now();
 
     for (i, frame) in frames.iter().enumerate() {
-        // 1. push 原始帧到 buffer
+        // 0. 该源最新帧入缓存 (其他源保持缓存值 — latest-value 融合)
+        //    clone_from 复用 channels 分配, 稳态零分配
+        match source_frames.get_mut(source_id) {
+            Some(slot) => {
+                slot.timestamp = frame.timestamp;
+                slot.channels.clone_from(&frame.channels);
+            }
+            None => {
+                source_frames.insert(source_id.to_string(), frame.clone());
+            }
+        }
+
+        // 1. push 原始帧到该源自己的 buffer
         let t = std::time::Instant::now();
         buffer.push_frame(frame);
         breakdown.push_frame_ns += t.elapsed().as_nanos() as u64;
 
-        // 2. 评估所有图 (编译期槽位表, 纯数组读写零字符串哈希)
+        // 2. 评估被触发的图 (编译期槽位表, 纯数组读写零字符串哈希)
         let t = std::time::Instant::now();
         for (gi, g) in graph_list.iter().enumerate() {
             let (slots, written) = &mut slot_bufs[gi];
@@ -147,7 +193,7 @@ pub fn process_frames_batch(
             slots.fill(0.0);
             written.fill(false);
             g.compiled().run(
-                frame,
+                source_frames,
                 &input_values,
                 &custom_outputs,
                 &mut filter_states,
@@ -184,31 +230,30 @@ pub fn process_frames_batch(
         breakdown.spectrum_ns += t.elapsed().as_nanos() as u64;
 
         // 5. 每 1024 帧检查一次, 距上次发布 ≥8ms 则中途发布快照
-        //    (物化当前帧槽位到 combined 再 swap, 语义与批尾发布一致)
-        //    注: 快照发布 (步骤 5/6) 不计入细分耗时 (物化 + 锁 + swap, 发布点稀疏)
+        //    (物化当前帧槽位直接合并进 snap.values — 覆盖写, 未触发图旧值保留)
+        //    注: 快照发布 (步骤 5/6) 不计入细分耗时 (物化 + 锁, 发布点稀疏)
         if i & 0x3FF == 0x3FF && last_publish.elapsed() >= PUBLISH_INTERVAL {
+            let mut snap = eval_state.output_snapshot.lock();
             for (gi, g) in graph_list.iter().enumerate() {
                 let (slots, written) = &slot_bufs[gi];
-                g.compiled().materialize(slots, written, &mut combined);
+                g.compiled().materialize(slots, written, &mut snap.values);
             }
-            let mut snap = eval_state.output_snapshot.lock();
             snap.tick = snap.tick.wrapping_add(1);
-            std::mem::swap(&mut snap.values, &mut combined);
             last_publish = std::time::Instant::now();
         }
     }
 
     // 6. 批尾最终发布 (保证批尾帧的值一定可见) —
-    //    图重编译后旧快照含过期节点 → 先清空再物化 + swap, 保证过期键不回流
-    for (gi, g) in graph_list.iter().enumerate() {
-        let (slots, written) = &slot_bufs[gi];
-        g.compiled().materialize(slots, written, &mut combined);
-    }
+    //    图重编译后旧快照含过期节点 → 先清空再物化, 保证过期键不回流
+    //    (清空后未触发图的键暂时消失, 待其源触发或快照评估时重建 — latest-value 语义)
     let mut snap = eval_state.output_snapshot.lock();
     if snap.graphs_version != graphs_version {
         snap.values.clear();
         snap.graphs_version = graphs_version;
     }
+    for (gi, g) in graph_list.iter().enumerate() {
+        let (slots, written) = &slot_bufs[gi];
+        g.compiled().materialize(slots, written, &mut snap.values);
+    }
     snap.tick = snap.tick.wrapping_add(1);
-    std::mem::swap(&mut snap.values, &mut combined);
 }

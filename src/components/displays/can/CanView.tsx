@@ -7,6 +7,7 @@ import { CanSender } from './CanSender';
 import { CanLoadView } from './CanLoadView';
 import { PanelTabs } from '../../ui/PanelTabs';
 import { ContextualHint } from '../../onboarding/ContextualHint';
+import { usePrimaryProtocolConfig } from '../../../lib/hooks/usePrimaryNodes';
 import { List, Send, BarChart3, Gauge } from 'lucide-react';
 import type { CanFrame } from '../../../types';
 
@@ -15,7 +16,7 @@ type ViewMode = 'list' | 'send' | 'chart' | 'load';
 /// CAN 综合视图 — 帧列表 / 发送器 / 总线活动 / 负载分析 四种视图模式切换
 export function CanView() {
   const lang = useAppStore((s) => s.lang);
-  const protocolConfig = useAppStore((s) => s.protocolConfig);
+  const protocolConfig = usePrimaryProtocolConfig();
   const setSidebarView = useAppStore((s) => s.setSidebarView);
   const [mode, setMode] = useState<ViewMode>('list');
 
@@ -26,7 +27,7 @@ export function CanView() {
     { value: 'load' as const, label: t(lang, 'canLoadAnalysis'), icon: <Gauge /> },
   ];
 
-  const isCanProtocol = protocolConfig.kind === 'Slcan' || protocolConfig.kind === 'CandleLight';
+  const isCanProtocol = protocolConfig?.kind === 'Slcan' || protocolConfig?.kind === 'CandleLight';
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden bg-bg-editor">
@@ -36,7 +37,7 @@ export function CanView() {
           message={t(lang, 'canHintMessage')}
           action={{
             label: t(lang, 'canHintAction'),
-            onClick: () => setSidebarView('protocol'),
+            onClick: () => setSidebarView('widgets'),
           }}
         />
       )}

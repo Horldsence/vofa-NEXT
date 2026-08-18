@@ -180,7 +180,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
 
   return (
     <div
-      className="module-card relative flex flex-col bg-bg-surface h-full w-full"
+      className="module-card dock-card-acrylic relative flex flex-col h-full w-full"
       onMouseDown={() => setFocusedCard(cardId)}
       data-dock-zone="card-edge"
       data-dock-card={cardId}

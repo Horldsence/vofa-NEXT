@@ -38,11 +38,15 @@ const BADGE_CLASSES: Record<string, string> = {
 /// VSCode-style widget card — the shared container for all control & display widgets
 ///
 /// Provides:
-///   1. Standard card container (dark sidebar background + border + rounded)
+///   1. 亚克力 (frosted glass) 卡片容器 — 毛玻璃 + 细描边 + 微高光
 ///   2. Hover-reveal remove (×) and edit (⚙) buttons at top-right
 ///   3. Optional header label (uppercase, text-secondary)
 ///   4. Optional colored badge pill
 ///   5. Children slot for widget-specific content
+///
+/// 亚克力样式与窗口共享同一组变量 (--widget-acrylic-alpha/blur/saturate),
+/// 由 applyAppearance() 根据 acrylicOpacity 设置同步注入. 窗口未开启亚克力时,
+/// 卡片仍然呈亚克力效果 (背后是编辑器画布), 保证可读性稳定.
 export const WidgetCard = memo(function WidgetCard({
   children,
   label,
@@ -78,9 +82,7 @@ export const WidgetCard = memo(function WidgetCard({
   return (
     <div
       className={clsx(
-        'group bg-bg-elevated border border-border rounded p-2.5 flex flex-col gap-1.5 relative',
-        'shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition-[border-color,box-shadow] duration-150',
-        'hover:border-white/15 hover:shadow-[0_4px_14px_rgba(0,0,0,0.4)]',
+        'group widget-card-acrylic p-2.5 flex flex-col gap-1.5 relative',
         !noMinWidth && 'min-w-[140px]',
         className,
       )}

@@ -135,6 +135,18 @@
   /* ---------- 阴影 ---------- */
   --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.65);
 
+  /* ---------- 亚克力 (Frosted Glass) — Widget 卡片 + 窗口共用基线参数 ---------- */
+  /* 实际 alpha/blur 由 applyAppearance() 根据 acrylicOpacity 在 :root 上动态注入
+     --widget-acrylic-alpha / --widget-acrylic-blur / --widget-acrylic-saturate,
+     以下为缺省值 (acrylicOpacity = 0.6 时). 注意: 这些变量只在 :root[data-acrylic='true']
+     下生效 (acrilic 关闭时 .widget-card-acrylic 直接回退到实色 bg-bg-elevated) */
+  --blur-acrylic: 14px;
+  --saturate-acrylic: 180%;
+  /* 卡片 alpha 基线 47% (acrylicOpacity=0.6), 范围 [25%, 65%] — 半透才能看见背后 */
+  --widget-acrylic-alpha: 47%;
+  --widget-acrylic-blur: var(--blur-acrylic);
+  --widget-acrylic-saturate: var(--saturate-acrylic);
+
   /* ---------- 动效 (Motion tokens) ---------- */
   /* 语义时长别名 — components.css 原生 CSS 直接引用 var(--transition-*) */
   --transition-fast: 120ms;

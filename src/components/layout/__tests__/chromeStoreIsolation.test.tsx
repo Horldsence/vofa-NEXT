@@ -79,7 +79,7 @@ describe('chrome store subscription granularity', () => {
   describe('Sidebar (订阅 sidebar slice)', () => {
     it('data slice 更新不重渲染', () => {
       const spy = spyMemoRender(Sidebar as unknown as { type: FunctionComponent });
-      render(<Sidebar view="transport" />);
+      render(<Sidebar view="widgets" />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       bumpDataVersion();
@@ -90,7 +90,7 @@ describe('chrome store subscription granularity', () => {
 
     it('自身 slice (lang) 更新时重渲染', () => {
       const spy = spyMemoRender(Sidebar as unknown as { type: FunctionComponent });
-      render(<Sidebar view="transport" />);
+      render(<Sidebar view="widgets" />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       act(() => useAppStore.setState({ lang: 'en' }));
@@ -110,14 +110,19 @@ describe('chrome store subscription granularity', () => {
       expect(spy).toHaveBeenCalledTimes(1);
     });
 
-    it('自身 slice (stats) 更新时重渲染', () => {
+    it('自身 slice (nodeStats) 更新时重渲染', () => {
       const spy = spyMemoRender(StatusBar as unknown as { type: FunctionComponent });
       render(<StatusBar />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       act(() =>
         useAppStore.setState({
-          stats: { ...useAppStore.getState().stats, rx_bytes: 12345 },
+          nodeStats: {
+            'transport-1': {
+              rx_bytes: 12345, tx_bytes: 0, rx_frames: 0, tx_frames: 0,
+              rx_dropped: 0, rxDroppedWindow: 0, rxDroppedTotal: 0,
+            },
+          },
         })
       );
 
@@ -128,7 +133,7 @@ describe('chrome store subscription granularity', () => {
   describe('ActivityBar (订阅 sidebar/settings/onboarding slice)', () => {
     it('data slice 更新不重渲染', () => {
       const spy = spyMemoRender(ActivityBar as unknown as { type: FunctionComponent });
-      render(<ActivityBar activeView="transport" onSelect={() => {}} />);
+      render(<ActivityBar activeView="widgets" onSelect={() => {}} />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       bumpDataVersion();
@@ -138,7 +143,7 @@ describe('chrome store subscription granularity', () => {
 
     it('自身 slice (lang) 更新时重渲染', () => {
       const spy = spyMemoRender(ActivityBar as unknown as { type: FunctionComponent });
-      render(<ActivityBar activeView="transport" onSelect={() => {}} />);
+      render(<ActivityBar activeView="widgets" onSelect={() => {}} />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       act(() => useAppStore.setState({ lang: 'en' }));

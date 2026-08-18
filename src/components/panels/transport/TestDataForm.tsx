@@ -1,13 +1,14 @@
 import { Info } from 'lucide-react';
 import { t } from '../../../i18n';
 import type { Lang } from '../../../i18n';
-import { useAppStore } from '../../../store/appStore';
 import type { TestDataConfig } from '../../../types';
 
 interface TestDataFormProps {
   params: TestDataConfig;
   onChange: (patch: Partial<TestDataConfig>) => void;
   lang: Lang;
+  /// 当前关联协议引擎的显示名 (由属性面板按字节边下游 Protocol 节点解析)
+  protocolLabel?: string;
 }
 
 const inputClass = 'form-input';
@@ -25,19 +26,8 @@ const signalLabels: { value: TestDataConfig['signal']; key: string }[] = [
   { value: 'MultiTone', key: 'multitone' },
 ];
 
-export function TestDataForm({ params, onChange, lang }: TestDataFormProps) {
-  const protocolConfig = useAppStore((s) => s.protocolConfig);
-
-  const protocolLabel: string = (() => {
-    switch (protocolConfig.kind) {
-      case 'JustFloat': return 'JustFloat';
-      case 'FireWater': return 'FireWater';
-      case 'RawData': return 'RawData';
-      case 'Slcan': return 'Slcan';
-      case 'CandleLight': return 'CandleLight';
-      case 'LogicDecode': return 'LogicDecode';
-    }
-  })();
+export function TestDataForm({ params, onChange, lang, protocolLabel }: TestDataFormProps) {
+  const protocol = protocolLabel ?? 'JustFloat';
 
   return (
     <>
@@ -81,8 +71,8 @@ export function TestDataForm({ params, onChange, lang }: TestDataFormProps) {
         <Info size={14} className="flex-shrink-0 mt-0.25" />
         <span>
           {lang === 'zh'
-            ? `测试数据将根据当前协议引擎 (${protocolLabel}) 自动适配数据格式。`
-            : `Test data will be auto-formatted for the current protocol engine (${protocolLabel}).`}
+            ? `测试数据将根据当前协议引擎 (${protocol}) 自动适配数据格式。`
+            : `Test data will be auto-formatted for the current protocol engine (${protocol}).`}
         </span>
       </div>
     </>

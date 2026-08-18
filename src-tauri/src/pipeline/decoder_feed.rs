@@ -1,10 +1,18 @@
+//! FrameDecoder 状态同步与字节喂入 — 字节来源完全由 BytePlan 中指向该节点的
+//! 字节边决定 (Transport.rx / Protocol.out / CommandSender.loopbackOut 等,
+//! 可能多条); 旧版 "loopback=false 默认喂全局 RX" 逻辑已删除。
+//!
+//! 喂入入口: [`feed_decoder_by_id`] (由字节路由在命中 FrameDecoder 下游时调用)。
+//! 配置缓存 ([`DecoderFeedCache`]) 按 graphs_version 失效的模式保留:
+//! 缓存放每个 Transport 读任务内, 避免每批抢 graphs 锁 (该锁被评估路径整批持有)。
+
 use crate::state::GraphEvalState;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use vofa_next_buffer::RawDataDirection;
 use vofa_next_nodes::FrameParser;
 
-/// FrameDecoder 解析配置 (不含 loopback — 它只决定"谁来喂", 不影响解析行为/重建判定)
+/// FrameDecoder 解析配置 (blocks + 附加端口开关)
 /// 元组: (blocks, enable_valid, enable_frame_count, enable_last_timestamp, enable_fps)
 pub type DecoderParseConfig = (
     Vec<vofa_next_nodes::DecoderBlockDef>,
@@ -14,22 +22,16 @@ pub type DecoderParseConfig = (
     bool,
 );
 
-/// 从 graphs 收集所有 FrameDecoder 配置 → (dec_id, DecoderParseConfig, loopback)
-fn collect_decoder_configs(
-    eval_state: &GraphEvalState,
-) -> HashMap<String, (DecoderParseConfig, bool)> {
+/// 从 graphs 收集所有 FrameDecoder 配置 → (dec_id, DecoderParseConfig)
+fn collect_decoder_configs(eval_state: &GraphEvalState) -> HashMap<String, DecoderParseConfig> {
     let graphs = eval_state.graphs.lock();
-    let mut configs: HashMap<String, (DecoderParseConfig, bool)> = HashMap::new();
+    let mut configs: HashMap<String, DecoderParseConfig> = HashMap::new();
     for (_, graph) in graphs.iter() {
         for dec_id in graph.decoder_node_ids() {
             if let Some(cfg) = graph.decoder_config(&dec_id) {
-                configs.insert(
-                    dec_id,
-                    (
-                        (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4),
-                        cfg.5, // loopback
-                    ),
-                );
+                // cfg.5 为 deprecated 的 loopback 标志, 新语义下忽略
+                // (字节来源完全由输入字节边决定)
+                configs.insert(dec_id, (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4));
             }
         }
     }
@@ -69,9 +71,7 @@ pub fn ensure_decoder(eval_state: &GraphEvalState, dec_id: &str, config: &Decode
 /// 确保 parser 存在并喂入字节, 更新 last_frame;
 /// 每帧消费的原始字节推入该 decoder 的旁路收集器 (供前端 RawData 独立通道显示)。
 ///
-/// 供两条路径共用:
-/// - data_loop: 实时 RX 默认喂入 (feed_frame_decoders_cached, 仅非 loopback 解码器)
-/// - inject_loopback_bytes: 回环边注入 (仅 loopback 解码器, 与串口开关无关)
+/// 由字节路由统一调用 (Transport.rx / Protocol.out / loopbackOut → FrameDecoder.in)。
 pub fn feed_one_decoder(
     eval_state: &GraphEvalState,
     dec_id: &str,
@@ -98,11 +98,11 @@ pub fn feed_one_decoder(
     }
 }
 
-/// FrameDecoder 配置缓存 — 按 graphs_version 失效, 避免 feed_task 每批抢 graphs 锁
-/// (eval_task 整批持有 graphs 锁, 抢锁会把两段流水线串行化)
+/// FrameDecoder 配置缓存 — 按 graphs_version 失效, 避免读任务每批抢 graphs 锁
+/// (评估路径整批持有 graphs 锁, 抢锁会把字节平面与数值平面串行化)
 pub struct DecoderFeedCache {
     version: u64, // u64::MAX = 未初始化
-    configs: HashMap<String, (DecoderParseConfig, bool)>,
+    configs: HashMap<String, DecoderParseConfig>,
 }
 
 impl DecoderFeedCache {
@@ -112,6 +112,25 @@ impl DecoderFeedCache {
             configs: HashMap::new(),
         }
     }
+
+    /// 版本变化时重新收集配置, 并删除已不存在的 decoder 对应的 parser / 旁路收集器
+    pub fn sync(&mut self, eval_state: &GraphEvalState) {
+        let v = eval_state.graphs_version.load(Ordering::Relaxed);
+        if self.version == v {
+            return;
+        }
+        self.configs = collect_decoder_configs(eval_state);
+        self.version = v;
+
+        eval_state
+            .decoder_states
+            .lock()
+            .retain(|id, _| self.configs.contains_key(id));
+        eval_state
+            .decoder_raw_collectors
+            .lock()
+            .retain(|id, _| self.configs.contains_key(id));
+    }
 }
 
 impl Default for DecoderFeedCache {
@@ -120,52 +139,26 @@ impl Default for DecoderFeedCache {
     }
 }
 
-/// 同步 decoder_states 与 graphs 中的 FrameDecoder 节点, 并喂入新字节 (配置缓存版)
+/// 按边路由喂入指定 FrameDecoder — 字节路由命中 FrameDecoder 下游时调用
 ///
-/// 步骤:
-/// 1. 读取 graphs_version, 仅版本变化时才锁 graphs 重新收集 decoder 配置,
-///    并删除已不存在的 decoder 对应的 parser / 旁路收集器
-/// 2. 对每个缓存的 decoder:
-///    - 确保 parser 存在/最新 (ensure_decoder)
-///    - loopback=false: 调用 feed_one_decoder 喂入实时字节
-///    - loopback=true:  跳过 — 它只接收 inject_loopback_bytes 经回环边注入的字节
-///
-/// 由 data_loop 在每包数据上调用; decoder 配置只随图变化,
-/// 缓存避免 feed_task 每批抢 graphs 锁 (该锁被 eval_task 整批持有)。
-///
-/// 返回: 是否存在 FrameDecoder 节点 (含 loopback 节点,
-/// 供 data_loop 决定是否在 frames 为空时仍调用 evaluate)
-pub fn feed_frame_decoders_cached(
+/// 返回: 该 decoder 是否存在并已喂入 (调用方据此决定是否做快照评估)
+pub fn feed_decoder_by_id(
     eval_state: &GraphEvalState,
+    dec_id: &str,
     data: &[u8],
     ts_us: u64,
     cache: &mut DecoderFeedCache,
 ) -> bool {
-    let v = eval_state.graphs_version.load(Ordering::Relaxed);
-    if cache.version != v {
-        cache.configs = collect_decoder_configs(eval_state);
-        cache.version = v;
+    cache.sync(eval_state);
+    let Some(config) = cache.configs.get(dec_id) else {
+        return false;
+    };
+    feed_one_decoder(eval_state, dec_id, config, data, ts_us);
+    true
+}
 
-        // 删除已不存在的 decoder 对应的 parser, 同步清理旁路收集器
-        eval_state
-            .decoder_states
-            .lock()
-            .retain(|id, _| cache.configs.contains_key(id));
-        eval_state
-            .decoder_raw_collectors
-            .lock()
-            .retain(|id, _| cache.configs.contains_key(id));
-    }
-
-    for (dec_id, (config, loopback)) in &cache.configs {
-        if *loopback {
-            // loopback 解码器不接收实时 RX, 但仍需确保 parser/collector 存在
-            // (否则 retain 清理后输出无默认值, 且注入时需重建)
-            ensure_decoder(eval_state, dec_id, config);
-        } else {
-            feed_one_decoder(eval_state, dec_id, config, data, ts_us);
-        }
-    }
-
-    !cache.configs.is_empty()
+/// 立即同步 decoder_states 与 graphs (图重编译后调用, 不依赖喂入路径)
+pub fn sync_decoders_now(eval_state: &GraphEvalState) {
+    let mut cache = DecoderFeedCache::new();
+    cache.sync(eval_state);
 }

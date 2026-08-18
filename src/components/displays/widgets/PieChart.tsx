@@ -142,7 +142,7 @@ export const PieChart = memo(function PieChart({ widget, full = false }: PieChar
   if (full) {
     // DataPanel 全尺寸: 左右双栏
     return (
-      <div className="group bg-bg-sidebar border border-border rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+      <div className="group widget-card-acrylic flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
         {/* 主区: Canvas 铺满, 居中绘制正方形饼图 */}
         <div className="flex-1 min-w-0 min-h-0 relative bg-bg-editor flex items-center justify-center">
           <canvas

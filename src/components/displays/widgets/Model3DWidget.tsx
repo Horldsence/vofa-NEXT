@@ -196,7 +196,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
   const modeLabel = t(lang, MODE_OPTIONS.find((o) => o.value === mode)?.labelKey ?? 'model3dTrajectory');
 
   return (
-    <div className="group bg-bg-sidebar flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+    <div className="group widget-card-acrylic flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
       {/* 主区: 3D Canvas 铺满 */}
       <div className="flex-1 min-w-0 min-h-0 bg-[#0a0a0a] relative">
         <Canvas

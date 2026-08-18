@@ -24,6 +24,9 @@ import { canFrameBuffer } from '../buffers/canBuffer';
 import { logicSampleBuffer } from '../buffers/logicBuffer';
 import { notify, formatError } from './notifications';
 import { t } from '../../i18n';
+import { DEFAULT_SERIAL } from '../../store/slices/connection';
+import { DEFAULT_PROTOCOL } from '../../store/slices/protocol';
+import { getEffectiveChannels } from '../../store/appStoreHelpers';
 import { getAllRawDataViewPrefs, useRawDataViewStore, type RawDataViewPrefs } from '../buffers/rawDataViewStore';
 
 /// 备份分区 — 拆分备份/模板的最小单元
@@ -43,15 +46,19 @@ export const ALL_BACKUP_SECTIONS: BackupSection[] = [
   'widgetsTabs',
 ];
 
-/// 备份快照 schema — version 2
+/// 备份快照 schema — version 3
 /// 各分区字段均为可选: 缺省 (sections 未提供) = 全量; 拆分备份仅含所选分区字段。
+/// v3: 传输/协议配置从顶层单例字段迁移为全局 Transport/Protocol 节点 (rfNodes 内),
+///     顶层 transport/protocol 字段仅用于读取旧版 (v1/v2) 备份。
 export interface AppSnapshot {
-  version: 2 | 1;
+  version: 3 | 2 | 1;
   exportedAt: string;
   /// 该快照包含的分区; 缺省 = 全部 (兼容旧 v1 全量备份)
   sections?: BackupSection[];
   settings?: AppSettings;
+  /// @deprecated v3 起传输/协议配置在全局节点 (rfNodes) 内; 仅旧版备份使用
   protocol?: ProtocolConfig;
+  /// @deprecated 同上
   transport?: TransportConfig;
   widgets?: WidgetConfig[];
   controlTabs?: ControlTab[];
@@ -118,15 +125,14 @@ export async function readSnapshotFromFile(): Promise<AppSnapshot | null> {
 
 /// 读取所有 store 的当前状态并生成全量快照。
 /// rfNodes/rfEdges 经 JSON 往返确保无函数 / undefined 等不可序列化字段。
+/// v3: 传输/协议配置已包含在全局节点 (rfNodes) 内, 不再单列顶层字段。
 export function collectSnapshot(): AppSnapshot {
   const app = useAppStore.getState();
   return {
-    version: 2,
+    version: 3,
     exportedAt: new Date().toISOString(),
     sections: ALL_BACKUP_SECTIONS,
     settings: useSettingsStore.getState().settings,
-    protocol: app.protocolConfig,
-    transport: app.transportConfig,
     widgets: app.widgets,
     controlTabs: app.controlTabs,
     dataTabs: app.dataTabs,
@@ -142,17 +148,22 @@ export function collectSnapshot(): AppSnapshot {
 }
 
 /// 仅收集指定分区的快照 (拆分备份导出)
+/// v3: 'transportProtocol' 分区 = 全局 Transport/Protocol 节点 (rfNodes 子集) + 其间的字节边
 export function collectPartialSnapshot(sections: BackupSection[]): AppSnapshot {
   const full = collectSnapshot();
   const partial: AppSnapshot = {
-    version: 2,
+    version: 3,
     exportedAt: full.exportedAt,
     sections: [...sections],
   };
   if (sections.includes('settings')) partial.settings = full.settings;
   if (sections.includes('transportProtocol')) {
-    partial.protocol = full.protocol;
-    partial.transport = full.transport;
+    const globalNodes = (full.rfNodes ?? []).filter((n) => n.data?.global === true);
+    const globalIds = new Set(globalNodes.map((n) => n.id));
+    partial.rfNodes = globalNodes;
+    partial.rfEdges = (full.rfEdges ?? []).filter(
+      (e) => globalIds.has(e.source) && globalIds.has(e.target)
+    );
   }
   if (sections.includes('widgetsTabs')) {
     partial.widgets = full.widgets;
@@ -163,6 +174,7 @@ export function collectPartialSnapshot(sections: BackupSection[]): AppSnapshot {
     partial.rawDataViewPrefs = full.rawDataViewPrefs;
   }
   if (sections.includes('nodeGraph')) {
+    // transportProtocol 与 nodeGraph 同选时避免覆盖: nodeGraph 含全量节点
     partial.rfNodes = full.rfNodes;
     partial.rfEdges = full.rfEdges;
   }
@@ -179,7 +191,7 @@ export function serializeSnapshot(snap: AppSnapshot): string {
 }
 
 /// 解析备份 JSON 并做最小校验, 非法时抛出带清晰信息的 Error。
-/// v1 全量备份自动迁移为 v2 (无窗口组织字段)。
+/// v1/v2 备份自动迁移为 v3 (无窗口组织字段 → v2; 单例传输/协议 → 全局节点)。
 export function parseSnapshot(json: string): AppSnapshot {
   let parsed: unknown;
   try {
@@ -191,7 +203,7 @@ export function parseSnapshot(json: string): AppSnapshot {
   if (!data || typeof data !== 'object') {
     throw new Error('备份文件格式无效');
   }
-  if (data.version !== 1 && data.version !== 2) {
+  if (data.version !== 1 && data.version !== 2 && data.version !== 3) {
     throw new Error(`不支持的备份版本: ${String(data.version)}`);
   }
   const hasContent = (
@@ -203,17 +215,124 @@ export function parseSnapshot(json: string): AppSnapshot {
   if (!hasContent) {
     throw new Error('备份文件为空或缺少有效内容');
   }
-  return { ...data, version: 2, exportedAt: data.exportedAt ?? new Date().toISOString() } as AppSnapshot;
+  return migrateSnapshotToV3({
+    ...data,
+    exportedAt: data.exportedAt ?? new Date().toISOString(),
+  } as AppSnapshot);
+}
+
+// ==================== v1/v2 → v3 迁移 ====================
+
+/// 迁移后的固定全局节点 id (幂等: 多次迁移结果一致)
+export const MIGRATED_TRANSPORT_ID = 'global-transport';
+export const MIGRATED_PROTOCOL_ID = 'global-protocol';
+
+/// 旧版通道源节点 id 前缀 (v2 及以前每 tab 一个 `__channel_source__-<tabId>`)
+const LEGACY_CHANNEL_SOURCE_PREFIX = '__channel_source__';
+
+/// 将 v1/v2 快照迁移为 v3:
+/// - 顶层 transport/protocol 单例配置 → 一对全局 Transport + Protocol 节点
+/// - 旧通道源节点删除, 其 chN 出边改写为从 Protocol 节点发出
+/// - FrameDecoder 旧字节输入口 loopbackIn → in
+/// - 追加 Transport.rx → Protocol.in 字节边 (两者皆存在且尚无字节边时)
+/// 已是 v3 的快照原样返回 (幂等)
+export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
+  const hasLegacyChannelSource = (snap.rfNodes ?? []).some((n) => n.type === 'channelSource');
+  const hasLegacySingletons = snap.transport != null || snap.protocol != null;
+  const hasLegacyLoopbackIn = (snap.rfEdges ?? []).some((e) => e.targetHandle === 'loopbackIn');
+  if (snap.version === 3 && !hasLegacyChannelSource && !hasLegacySingletons && !hasLegacyLoopbackIn) {
+    return { ...snap, version: 3 };
+  }
+
+  const rfNodes: Node[] = [];
+  let transportId: string | null = null;
+  let protocolId: string | null = null;
+
+  // 已存在的全局节点优先保留 (幂等)
+  for (const n of snap.rfNodes ?? []) {
+    if (n.type === 'channelSource') continue; // 删除通道源节点
+    if (n.data?.global === true && n.type === 'transport' && !transportId) transportId = n.id;
+    if (n.data?.global === true && n.type === 'protocol' && !protocolId) protocolId = n.id;
+    rfNodes.push(n);
+  }
+
+  // 单例配置 → 全局节点
+  if (!transportId) {
+    transportId = MIGRATED_TRANSPORT_ID;
+    rfNodes.unshift({
+      id: transportId,
+      type: 'transport',
+      position: { x: 40, y: 40 },
+      data: { global: true, config: snap.transport ?? DEFAULT_SERIAL, label: 'Transport' },
+      selected: false,
+    } as Node);
+  }
+  if (!protocolId) {
+    protocolId = MIGRATED_PROTOCOL_ID;
+    const config = snap.protocol ?? DEFAULT_PROTOCOL;
+    rfNodes.splice(rfNodes.length > 0 ? 1 : 0, 0, {
+      id: protocolId,
+      type: 'protocol',
+      position: { x: 300, y: 40 },
+      data: {
+        global: true,
+        config,
+        convertTo: null,
+        channels: getEffectiveChannels(config, null),
+        label: 'Protocol',
+      },
+      selected: false,
+    } as Node);
+  }
+
+  // 边改写: 通道源 chN 出边 → Protocol 节点; loopbackIn → in
+  const rfEdges: Edge[] = [];
+  let hasTransportToProtocolByteEdge = false;
+  for (const e of snap.rfEdges ?? []) {
+    let source = e.source;
+    let target = e.target;
+    let targetHandle = e.targetHandle;
+    if (source.startsWith(LEGACY_CHANNEL_SOURCE_PREFIX)) source = protocolId;
+    if (target.startsWith(LEGACY_CHANNEL_SOURCE_PREFIX)) target = protocolId;
+    if (targetHandle === 'loopbackIn') targetHandle = 'in';
+    // 两端都指向已删除通道源以外的不存在节点时丢弃 (防御)
+    if (source === target && source === protocolId && !e.sourceHandle?.startsWith('ch')) continue;
+    if (source === transportId && e.sourceHandle === 'rx' && target === protocolId && targetHandle === 'in') {
+      hasTransportToProtocolByteEdge = true;
+    }
+    rfEdges.push({ ...e, source, target, targetHandle });
+  }
+  if (!hasTransportToProtocolByteEdge) {
+    rfEdges.unshift({
+      id: 'migrated-transport-protocol',
+      source: transportId,
+      sourceHandle: 'rx',
+      target: protocolId,
+      targetHandle: 'in',
+    });
+  }
+
+  const { transport: _t, protocol: _p, ...rest } = snap;
+  return { ...rest, version: 3, rfNodes, rfEdges };
 }
 
 /// 检测快照实际包含哪些分区 (供拆分备份导入时的勾选预填), 按 ALL_BACKUP_SECTIONS 顺序返回
+/// v3: transportProtocol 分区内容 = rfNodes 中的全局 Transport/Protocol 节点
 export function detectPresentSections(snap: AppSnapshot): BackupSection[] {
+  const globalNodes = (snap.rfNodes ?? []).filter((n) => n.data?.global === true);
+  const globalIds = new Set(globalNodes.map((n) => n.id));
+  const widgetNodes = (snap.rfNodes ?? []).filter((n) => n.data?.global !== true);
+  // 字节边 (两端皆全局节点) 属于 transportProtocol 分区, 不算 nodeGraph 内容
+  const nonGlobalEdges = (snap.rfEdges ?? []).filter(
+    (e) => !globalIds.has(e.source) || !globalIds.has(e.target)
+  );
   const has = (s: BackupSection): boolean => {
     switch (s) {
       case 'settings': return snap.settings != null;
-      case 'transportProtocol': return snap.protocol != null || snap.transport != null;
+      case 'transportProtocol':
+        return snap.protocol != null || snap.transport != null || globalNodes.length > 0;
       case 'widgetsTabs': return snap.widgets != null || snap.controlTabs != null || snap.dataTabs != null;
-      case 'nodeGraph': return snap.rfNodes != null || snap.rfEdges != null;
+      case 'nodeGraph': return widgetNodes.length > 0 || nonGlobalEdges.length > 0 || (snap.rfNodes != null && globalNodes.length === 0);
       case 'windowLayout': return snap.dockRoot != null || snap.dockCards != null;
     }
   };
@@ -224,14 +343,22 @@ export function detectPresentSections(snap: AppSnapshot): BackupSection[] {
 
 /// 将 data 分类的缓存容量设置同步到后端与前端 buffer 实例
 /// (与 settingsStore.applyDataCapacity 相同 — 该函数未导出, 此处复刻)
+/// v3: 波形/原始数据容量按源 (节点) 生效, 对当前图中全部 Protocol/Transport 节点应用
 function applyDataCapacity(settings: AppSettings) {
   const data = settings.data;
-  api.setWaveformBufferCapacity(data.waveformBufferPoints).catch((e: unknown) =>
-    console.warn('[appExport] 设置波形缓冲区容量失败:', e)
-  );
-  api.setRawDataBufferCapacity(data.rawDataBufferBytes).catch((e: unknown) =>
-    console.warn('[appExport] 设置原始数据缓冲区容量失败:', e)
-  );
+  const nodes = useAppStore.getState().rfNodes;
+  for (const n of nodes) {
+    if (n.data?.global !== true) continue;
+    if (n.type === 'protocol') {
+      api.setWaveformBufferCapacity(n.id, data.waveformBufferPoints).catch((e: unknown) =>
+        console.warn('[appExport] 设置波形缓冲区容量失败:', e)
+      );
+    } else if (n.type === 'transport') {
+      api.setRawDataBufferCapacity(n.id, data.rawDataBufferBytes).catch((e: unknown) =>
+        console.warn('[appExport] 设置原始数据缓冲区容量失败:', e)
+      );
+    }
+  }
   api.setCanBufferCapacity(data.canBufferFrames).catch((e: unknown) =>
     console.warn('[appExport] 设置 CAN 缓冲区容量失败:', e)
   );
@@ -268,70 +395,87 @@ function resolveSections(
 }
 
 /// 将快照按分区应用到所有 store (恢复 / 模板应用)
+/// 传入前请先经 parseSnapshot / migrateSnapshotToV3 迁移为 v3
 export async function applySnapshot(
   snap: AppSnapshot,
   opts?: { sections?: BackupSection[] }
 ): Promise<void> {
-  const want = new Set(resolveSections(snap, opts));
-  const app = useAppStore.getState();
+  const migrated = migrateSnapshotToV3(snap);
+  const want = new Set(resolveSections(migrated, opts));
 
   // 1. 设置
-  if (want.has('settings') && snap.settings) {
-    await applySettings(snap.settings);
+  if (want.has('settings') && migrated.settings) {
+    await applySettings(migrated.settings);
   }
 
-  // 2. 传输 + 协议 (全局单例)
-  if (want.has('transportProtocol')) {
-    if (snap.protocol) await app.setProtocolConfig(snap.protocol);
-    if (snap.transport) app.setTransportConfig(snap.transport);
+  // 2. 传输 + 协议 (v3: 全局节点; 未同时应用 nodeGraph 时按 id 合并进现有图)
+  const applyNodeGraph = want.has('nodeGraph') && migrated.rfNodes != null;
+  if (want.has('transportProtocol') && !applyNodeGraph && migrated.rfNodes) {
+    const globalNodes = migrated.rfNodes.filter((n) => n.data?.global === true);
+    if (globalNodes.length > 0) {
+      const globalIds = new Set(globalNodes.map((n) => n.id));
+      const byteEdges = (migrated.rfEdges ?? []).filter(
+        (e) => globalIds.has(e.source) && globalIds.has(e.target)
+      );
+      useAppStore.setState((s) => ({
+        rfNodes: [
+          ...s.rfNodes.filter((n) => !globalIds.has(n.id)),
+          ...globalNodes,
+        ],
+        rfEdges: [
+          ...s.rfEdges.filter((e) => !(globalIds.has(e.source) && globalIds.has(e.target))),
+          ...byteEdges,
+        ],
+      }));
+    }
   }
 
   // 3. 控件 + 标签页 + 活动页 + RawData 视图偏好
   if (want.has('widgetsTabs')) {
     const patch: Record<string, unknown> = {};
-    if (snap.widgets) patch.widgets = snap.widgets;
-    if (snap.controlTabs) patch.controlTabs = snap.controlTabs;
-    if (snap.dataTabs) patch.dataTabs = snap.dataTabs;
-    if (snap.activeDataTabId != null) patch.activeDataTabId = snap.activeDataTabId;
-    if (snap.activeControlTabId != null) patch.activeControlTabId = snap.activeControlTabId;
+    if (migrated.widgets) patch.widgets = migrated.widgets;
+    if (migrated.controlTabs) patch.controlTabs = migrated.controlTabs;
+    if (migrated.dataTabs) patch.dataTabs = migrated.dataTabs;
+    if (migrated.activeDataTabId != null) patch.activeDataTabId = migrated.activeDataTabId;
+    if (migrated.activeControlTabId != null) patch.activeControlTabId = migrated.activeControlTabId;
     useAppStore.setState(patch);
-    if (snap.rawDataViewPrefs) {
+    if (migrated.rawDataViewPrefs) {
       useRawDataViewStore.setState({
-        prefsByWidget: snap.rawDataViewPrefs as Record<string, RawDataViewPrefs>,
+        prefsByWidget: migrated.rawDataViewPrefs as Record<string, RawDataViewPrefs>,
       });
     }
   }
 
-  // 4. 节点图
-  if (want.has('nodeGraph') && snap.rfNodes && snap.rfEdges) {
+  // 4. 节点图 (含全局 Transport/Protocol 节点)
+  if (applyNodeGraph && migrated.rfNodes && migrated.rfEdges) {
     // 迁移旧版快照: 连到 RawData 的边可能还带着回退端口 'data' 作为 targetHandle,
     // 而 RawData 的端口是动态派生的 (`src:<source>:<handle>`) — 不归一化会导致
     // React Flow 找不到 handle (warning #008), 边无法渲染
     const rawDataNodeIds = new Set(
-      snap.rfNodes
+      migrated.rfNodes
         .filter((n) => (n.data?.widget as WidgetConfig | undefined)?.kind === 'RawData')
         .map((n) => n.id)
     );
-    const rfEdges = snap.rfEdges.map((e) =>
+    const rfEdges = migrated.rfEdges.map((e) =>
       rawDataNodeIds.has(e.target) && !e.targetHandle?.startsWith('src:')
         ? { ...e, targetHandle: rawDataPortId(e.source, e.sourceHandle) }
         : e
     );
-    useAppStore.setState({ rfNodes: snap.rfNodes, rfEdges });
+    useAppStore.setState({ rfNodes: migrated.rfNodes, rfEdges });
   }
 
   // 5. 窗口组织
-  if (want.has('windowLayout') && snap.dockRoot && snap.dockCards) {
+  if (want.has('windowLayout') && migrated.dockRoot && migrated.dockCards) {
     useDockStore.setState({
-      root: snap.dockRoot,
-      cards: snap.dockCards,
+      root: migrated.dockRoot,
+      cards: migrated.dockCards,
       focusedCardId: null,
     });
-    if (snap.sidebarDock) useLayoutStore.setState({ sidebarDock: snap.sidebarDock });
+    if (migrated.sidebarDock) useLayoutStore.setState({ sidebarDock: migrated.sidebarDock });
   }
 
   // 6. 重新同步后端节点图 (节点图或标签页变化后)
-  if (want.has('nodeGraph') || want.has('widgetsTabs')) {
+  if (want.has('nodeGraph') || want.has('widgetsTabs') || want.has('transportProtocol')) {
     for (const tab of useAppStore.getState().controlTabs) {
       useAppStore.getState().syncTabGraph(tab.id);
     }
@@ -366,8 +510,8 @@ export async function importAppFromFile(): Promise<void> {
     if (!snap) return;
     await applySnapshot(snap);
 
-    // 若当前已连接, 提示用户重新连接以应用导入的传输配置 (不自动连接)
-    const isConnected = useAppStore.getState().connectionState === 'Connected';
+    // 若当前有任一连接, 提示用户重新连接以应用导入的传输配置 (不自动连接)
+    const isConnected = Object.values(useAppStore.getState().connectionStates).some((v) => v === 'Connected');
     notify.info(
       t(lang, 'backupImportSuccess'),
       isConnected ? t(lang, 'backupImportSuccessDescReconnect') : t(lang, 'backupImportSuccessDesc'),
@@ -405,7 +549,7 @@ export async function importSectionsFromFile(
     const snap = await readSnapshotFromFile();
     if (!snap) return false;
     await applySnapshot(snap, sections ? { sections } : undefined);
-    const isConnected = useAppStore.getState().connectionState === 'Connected';
+    const isConnected = Object.values(useAppStore.getState().connectionStates).some((v) => v === 'Connected');
     notify.info(
       t(lang, 'backupImportSuccess'),
       isConnected ? t(lang, 'backupImportSuccessDescReconnect') : t(lang, 'backupImportSuccessDesc'),

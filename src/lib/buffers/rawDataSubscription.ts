@@ -22,17 +22,19 @@ function countBytes(key: string, onEvent: (batch: RawDataBatch) => void) {
 
 /// 订阅原始数据 — 统一分片流 (增量 drain + 自动并发分片)
 ///
+/// source: Transport 节点 id (每源一个 RawDataCollector, rx/tx 都进该实例)
 /// 单 channel 够用时只有 shard 0 工作 (等价于旧行为), 积压超过阈值时
 /// 后端自动多通道并行推送; 每批带组级 seq, 在此重组后交付。
 /// 返回取消订阅函数 (取消全部分片)
 export function subscribeRawData(
+  source: string,
   onEvent: (batch: RawDataBatch) => void,
   options?: { intervalMs?: number; maxBytes?: number }
 ): { cancel: () => void } {
   return subscribeSharded<RawDataBatch>(
     'subscribe_rawdata',
     'unsubscribe_rawdata',
-    {},
+    { source },
     makeOrderedSink(countBytes('rawdata:global', onEvent)),
     { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
   );
@@ -58,6 +60,7 @@ export function subscribeRawDataNode(
 ///
 /// 后端只推送方向匹配且包含搜索模式的 chunk, 前端无需再遍历过滤。
 export function subscribeRawDataFiltered(
+  source: string,
   filter: RawDataFilterOptions,
   onEvent: (batch: RawDataBatch) => void,
   options?: { intervalMs?: number; maxBytes?: number }
@@ -66,6 +69,7 @@ export function subscribeRawDataFiltered(
     'subscribe_rawdata_filtered',
     'unsubscribe_rawdata',
     {
+      source,
       direction: filter.directionFilter,
       search: filter.searchTerm,
     },
@@ -94,7 +98,7 @@ export function subscribeRawDataNodeFiltered(
   );
 }
 
-/// 清空后端原始数据收集器
-export function clearRawDataBuffer(): Promise<void> {
-  return invoke('clear_raw_data_collector');
+/// 清空后端原始数据收集器 (source = Transport 节点 id; 缺省清空全部源)
+export function clearRawDataBuffer(source?: string): Promise<void> {
+  return invoke('clear_raw_data_collector', { source: source ?? null });
 }

@@ -89,6 +89,14 @@ impl ProtocolEngine for FireWaterEngine {
         format!("{}\n", s.join(",")).into_bytes()
     }
 
+    fn encode_frame(&mut self, frame: &DataFrame) -> Vec<u8> {
+        // 自动通道模式且尚未 detected (纯编码侧, 未 feed 过): 以输入帧通道数为准
+        if self.channels.is_none() && self.detected.is_none() {
+            self.detected = Some(frame.channels.len());
+        }
+        self.encode_channels(&frame.channels)
+    }
+
     fn name(&self) -> &str {
         "FireWater"
     }

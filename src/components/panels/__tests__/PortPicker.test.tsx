@@ -18,7 +18,7 @@ const basePort: PortInfo = {
 describe('PortPicker', () => {
   beforeEach(() => {
     act(() => {
-      useAppStore.setState({ lang: 'en', selectedPortIndex: -1 });
+      useAppStore.setState({ lang: 'en' });
     });
   });
 
@@ -35,7 +35,7 @@ describe('PortPicker', () => {
       });
     });
 
-    render(<PortPicker />);
+    render(<PortPicker selectedPortName="" onSelect={() => {}} />);
 
     expect(screen.getByText('USB-SERIAL CH340 (COM3)')).toBeInTheDocument();
     expect(screen.getByText(/USB-SERIAL CH340 · wch\.cn/)).toBeInTheDocument();
@@ -51,7 +51,7 @@ describe('PortPicker', () => {
       });
     });
 
-    render(<PortPicker />);
+    render(<PortPicker selectedPortName="" onSelect={() => {}} />);
 
     // product 行渲染一次，description 行因与 product 相同被去重不渲染
     expect(screen.getAllByText(/USB-SERIAL CH340/).length).toBe(1);
@@ -64,7 +64,7 @@ describe('PortPicker', () => {
       });
     });
 
-    render(<PortPicker />);
+    render(<PortPicker selectedPortName="" onSelect={() => {}} />);
 
     expect(screen.queryByText('USB-SERIAL CH340 (COM3)')).not.toBeInTheDocument();
     expect(screen.getByText(/USB-SERIAL CH340 · wch\.cn/)).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe('PortPicker', () => {
       });
     });
 
-    render(<PortPicker />);
+    render(<PortPicker selectedPortName="" onSelect={() => {}} />);
     const input = screen.getByPlaceholderText(/Filter ports/i);
     fireEvent.change(input, { target: { value: 'stlink' } });
 

@@ -30,6 +30,11 @@ impl ProtocolEngine for RawDataEngine {
         "RawData"
     }
 
+    fn encode_frame(&mut self, _frame: &vofa_next_core::DataFrame) -> Vec<u8> {
+        // RawData 无帧概念, DataFrame 重编码语义不符
+        Vec::new()
+    }
+
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
         Box::new(RawDataEngine::new())
     }

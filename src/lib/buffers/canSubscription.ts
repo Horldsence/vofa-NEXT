@@ -55,9 +55,9 @@ export function subscribeCanFramesFiltered(
   );
 }
 
-/// 发送 CAN 帧
-export function sendCanFrame(frame: CanFrame): Promise<void> {
-  return invoke('send_can_frame', { frame });
+/// 发送 CAN 帧 (nodeId = 目标 Transport 节点 id; protocolNode = null 时后端沿字节平面自动解析下游 Protocol 节点)
+export function sendCanFrame(nodeId: string, frame: CanFrame, protocolNode?: string | null): Promise<void> {
+  return invoke('send_can_frame', { nodeId, protocolNode: protocolNode ?? null, frame });
 }
 
 /// 同步查询: 获取最近 N 个 CAN 帧

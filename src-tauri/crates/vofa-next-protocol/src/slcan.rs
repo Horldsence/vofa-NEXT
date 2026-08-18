@@ -183,6 +183,11 @@ impl ProtocolEngine for SlcanEngine {
         "Slcan"
     }
 
+    fn encode_frame(&mut self, _frame: &vofa_next_core::DataFrame) -> Vec<u8> {
+        // CAN 协议无法从 DataFrame 重编码 (需走 encode_can), 语义不符
+        Vec::new()
+    }
+
     fn split_aligned(&self, data: &[u8], workers: usize) -> Option<Vec<std::ops::Range<usize>>> {
         // 边界 = 每个 \r / \n 之后的位置 (与 feed 的行扫描逻辑一致)
         let boundaries: Vec<usize> = data

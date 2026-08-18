@@ -13,6 +13,8 @@ interface Props {
   };
   error: string | null;
   lastSent: string | null;
+  /// 无字节边路由 (loopbackOut 未连接) — 禁用发送并提示
+  routeMissing: boolean;
   onSend: () => void;
   onUpdateParams: (changes: Partial<Props['params']>) => void;
   lang: Lang;
@@ -23,6 +25,7 @@ export function CommandSenderSidebar({
   computed,
   error,
   lastSent,
+  routeMissing,
   onSend,
   onUpdateParams,
   lang,
@@ -64,11 +67,19 @@ export function CommandSenderSidebar({
       <button
         className="justify-center px-4 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
         onClick={onSend}
-        disabled={!computed.bytes || computed.bytes.length === 0 || !!computed.error}
+        disabled={routeMissing || !computed.bytes || computed.bytes.length === 0 || !!computed.error}
+        title={routeMissing ? t(lang, 'cmdNoByteRoute') : undefined}
       >
         <Send size={12} />
         <span>{t(lang, 'cmdSend')}</span>
       </button>
+
+      {routeMissing && (
+        <div className="flex items-center gap-1 bg-yellow/10 border border-yellow/30 text-yellow px-1.5 py-1 rounded-sm text-xs">
+          <AlertTriangle size={11} />
+          <span>{t(lang, 'cmdNoByteRoute')}</span>
+        </div>
+      )}
 
       {error && (
         <div className="flex items-center gap-1 bg-red/10 border border-red/30 text-red px-1.5 py-1 rounded-sm text-xs">

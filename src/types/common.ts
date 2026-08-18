@@ -77,8 +77,9 @@ export interface FilterConfig {
   precision: number;
 }
 
-/// 信号域类型 — 用于节点图端口的时域/频域静态标注
-export type DomainType = 'time' | 'freq';
+/// 信号域类型 — 用于节点图端口的时域/频域/字节域静态标注
+/// bytes: 字节平面端口 (Transport rx/tx, Protocol in/out, FrameDecoder in, Command loopbackOut)
+export type DomainType = 'time' | 'freq' | 'bytes';
 
 /// FFT 求解配置 (频域求解器 — 输入时域信号 in0, 输出频谱)
 export interface FFTConfig {

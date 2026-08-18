@@ -11,7 +11,15 @@ import { createGraphStateSlice } from './slices/graphState';
 import { createEventSlice } from './slices/events';
 
 export type { SidebarView } from './slices/sidebar';
-export { CHANNEL_SOURCE_ID } from './appStoreHelpers';
+export {
+  createTransportNode,
+  createProtocolNode,
+  isGlobalNode,
+  syncTabGraphToBackend,
+  traceProtocolSource,
+  downstreamProtocolOf,
+  getEffectiveChannels,
+} from './appStoreHelpers';
 
 export type AppStore = ReturnType<typeof createSidebarSlice>
   & ReturnType<typeof createConnectionSlice>

@@ -274,7 +274,7 @@ export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height 
     return (
       <div className={embedded
         ? 'flex flex-col gap-1.5'
-        : 'group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative min-h-[80px]'}>
+        : 'group widget-card-acrylic p-2.5 min-w-[140px] flex flex-col gap-1.5 relative min-h-[80px]'}>
         {onEdit && !embedded && (
           <button
             className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
@@ -305,7 +305,7 @@ export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height 
   return (
     <div className={embedded
       ? 'flex flex-col gap-1.5'
-      : 'group bg-bg-sidebar border border-border rounded p-2.5 min-w-[140px] flex flex-col gap-1.5 relative'}>
+      : 'group widget-card-acrylic p-2.5 min-w-[140px] flex flex-col gap-1.5 relative'}>
       {onEdit && !embedded && (
         <button
           className="absolute top-1 right-6 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"

@@ -126,6 +126,11 @@ impl ProtocolEngine for CandleEngine {
         "CandleLight"
     }
 
+    fn encode_frame(&mut self, _frame: &vofa_next_core::DataFrame) -> Vec<u8> {
+        // CAN 协议无法从 DataFrame 重编码 (需走 encode_can), 语义不符
+        Vec::new()
+    }
+
     fn split_aligned(&self, data: &[u8], workers: usize) -> Option<Vec<std::ops::Range<usize>>> {
         // 边界 = 24 字节倍数位置 (调用方保证 data 起点帧对齐: pending 前置拼接)
         let n = data.len() / CAND_FRAME_SIZE;

@@ -3,7 +3,7 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useAppStore } from '../../../store/appStore';
 import { useSettingsStore } from '../../../store/settingsStore';
-import { waveformWindow } from '../../../lib/buffers/dataBuffer';
+import { waveformWindow, type WaveformWindowCache } from '../../../lib/buffers/dataBuffer';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { t } from '../../../i18n';
 import type { WidgetConfig } from '../../../types';
@@ -28,6 +28,8 @@ interface WaveformChartProps {
   widget: Extract<WidgetConfig, { kind: 'Waveform' }>;
   axisConfig: ScopeAxisConfig;
   onConfigChange?: (next: ScopeAxisConfig) => void;
+  /// 数据源缓冲 (按 Protocol 源节点溯源); 缺省 = 主波形源单例
+  buffer?: WaveformWindowCache;
 }
 
 /// 示波器风格波形图 — 每通道独立 V/div 与 position
@@ -36,7 +38,7 @@ interface WaveformChartProps {
 /// - Run/Stop: 停止时冻结数据
 /// - 游标: SVG 叠加
 /// - 时基与下方缩略图双向同步 (由 WaveformTimeline 实现)
-export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformChartProps) {
+export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = waveformWindow }: WaveformChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   const themeId = useSettingsStore((s) => s.settings.appearance.theme);
@@ -144,7 +146,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
     let derivedMap: Record<string, Record<string, number[]>> | undefined;
 
     if (cfg.running) {
-      const win = waveformWindow.get();
+      const win = buffer.get();
       if (win.timestamps.length === 0) {
         return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
       }
@@ -181,7 +183,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       return coupled.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
     });
     return [tsSec, ...seriesDivs];
-  }, [widget.params.channels, widget.params.id]);
+  }, [widget.params.channels, widget.params.id, buffer]);
 
   // 配置变化 → 更新通道可见性 + 重新归一化数据
   // 关键: V/div 或 position 变化时, 必须重新 setData, 否则波形不会按新档位重绘
@@ -201,7 +203,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
 
   useEffect(() => {
     if (!axisConfig.running) {
-      const win = waveformWindow.get();
+      const win = buffer.get();
       if (win.timestamps.length > 0 && !frozenDataRef.current) {
         // 停止时保持引用而非深拷贝: waveformWindow.clear() 创建新空窗口,
         // 不会 mutate 此引用, 因此引用安全
@@ -224,7 +226,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       frozenDataRef.current = null;
       setFrozenData(null);
     }
-  }, [axisConfig.running, getDisplayData]);
+  }, [axisConfig.running, getDisplayData, buffer]);
 
   useUplotInit(
     containerRef, plotRef, axisConfigRef, seriesSlotsRef,
@@ -237,13 +239,13 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
   useEffect(() => {
     if (!axisConfig.running) return;
     let rafId: number | null = null;
-    const unsub = waveformWindow.subscribe(() => {
+    const unsub = buffer.subscribe(() => {
       // 数据到达, 如果已有待渲染帧则跳过 (节流)
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
         if (plotRef.current) {
-          const v = waveformWindow.version;
+          const v = buffer.version;
           if (v !== lastVersionRef.current) {
             lastVersionRef.current = v;
             plotRef.current.setData(getDisplayData() as unknown as uPlot.AlignedData);
@@ -255,7 +257,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       unsub();
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, [getDisplayData, axisConfig.running]);
+  }, [getDisplayData, axisConfig.running, buffer]);
 
   // 视图同步: timeBase/hPosition 变化时强制 setScale
   useEffect(() => {
@@ -279,6 +281,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       seriesSlotsRef.current,
       widget.params.id,
       frozenDataRef.current,
+      buffer,
     );
     const csv = buildCsvForRange(selectedRange, data);
     if (!csv) return;
@@ -298,6 +301,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
       seriesSlotsRef.current,
       widget.params.id,
       frozenDataRef.current,
+      buffer,
     );
     const csv = buildCsvForRange(selectedRange, data);
     if (!csv) return;
@@ -411,6 +415,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange }: WaveformCh
         series={timelineSeries}
         widgetId={widget.params.id}
         frozenData={!axisConfig.running ? frozenData : null}
+        buffer={buffer}
         onConfigChange={onConfigChange}
       />
     </div>

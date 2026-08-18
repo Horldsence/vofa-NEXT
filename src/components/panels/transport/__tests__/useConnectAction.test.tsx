@@ -1,45 +1,48 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useAppStore } from '../../../../store/appStore';
-import { TransportConfigPanel } from '../../TransportConfigPanel';
+import { useConnectAction } from '../useConnectAction';
 
-describe('useConnectAction (transport connect submit)', () => {
-  const mockConnect = vi.fn();
+/// 最小 harness — 复刻属性面板连接按钮的 form action 用法
+function Harness({ nodeId }: { nodeId: string }) {
+  const { state, formAction, isPending } = useConnectAction(nodeId);
+  return (
+    <form action={formAction}>
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Connecting' : 'Connect'}
+      </button>
+      {state.error && <div>{state.error}</div>}
+    </form>
+  );
+}
+
+describe('useConnectAction (transport node connect submit)', () => {
+  const mockConnectNode = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
     useAppStore.setState({
       lang: 'en',
-      connectionState: 'Disconnected',
-      transportConfig: {
-        kind: 'Serial',
-        params: {
-          port_name: '',
-          baud_rate: 115200,
-          data_bits: 8,
-          parity: 'none',
-          stop_bits: 'one',
-          flow_control: 'none',
-        },
-      },
-      protocolConfig: { kind: 'JustFloat', channels: null },
-      connect: mockConnect,
+      connectionStates: { 'transport-1': 'Disconnected' },
+      connectNode: mockConnectNode,
     });
   });
 
   it('disables the submit button and shows a pending label while connect is in flight', async () => {
     let releaseConnect!: () => void;
-    mockConnect.mockImplementation(
+    mockConnectNode.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           releaseConnect = () => {
-            useAppStore.setState({ connectionState: 'Connected' });
+            useAppStore.setState((s) => ({
+              connectionStates: { ...s.connectionStates, 'transport-1': 'Connected' },
+            }));
             resolve();
           };
         })
     );
 
-    render(<TransportConfigPanel />);
+    render(<Harness nodeId="transport-1" />);
     fireEvent.click(screen.getByRole('button', { name: /connect/i }));
 
     await waitFor(() => {
@@ -49,16 +52,19 @@ describe('useConnectAction (transport connect submit)', () => {
     releaseConnect();
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /disconnect/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^connect$/i })).toBeEnabled();
     });
+    expect(mockConnectNode).toHaveBeenCalledWith('transport-1');
   });
 
   it('surfaces the connect error message when the store connect fails', async () => {
-    mockConnect.mockImplementation(async () => {
-      useAppStore.setState({ connectionState: 'Error' });
+    mockConnectNode.mockImplementation(async () => {
+      useAppStore.setState((s) => ({
+        connectionStates: { ...s.connectionStates, 'transport-1': 'Error' },
+      }));
     });
 
-    render(<TransportConfigPanel />);
+    render(<Harness nodeId="transport-1" />);
     fireEvent.click(screen.getByRole('button', { name: /connect/i }));
 
     await waitFor(() => {

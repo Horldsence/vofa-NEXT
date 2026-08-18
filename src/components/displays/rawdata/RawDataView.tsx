@@ -30,6 +30,28 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const widgets = useAppStore((s) => s.widgets);
   const graphOutputs = useAppStore((s) => s.graphOutputs);
   const graphOutputsTick = useAppStore((s) => s.graphOutputsTick);
+  // 目标 Transport (字节源 = 发送目标; null = 自动取第一个)
+  // 注意: 选择器必须返回稳定引用 (filter 每次产新数组会触发 useSyncExternalStore 死循环),
+  // 故订阅 rfNodes 原始数组, 用 useMemo 派生
+  const rfNodes = useAppStore((s) => s.rfNodes);
+  const transportNodes = useMemo(
+    () => rfNodes.filter((n) => n.type === 'transport' && n.data?.global === true),
+    [rfNodes]
+  );
+  const rawDataSourceNodeId = useAppStore((s) => s.rawDataSourceNodeId);
+  const setRawDataSourceNodeId = useAppStore((s) => s.setRawDataSourceNodeId);
+  const transportOptions = useMemo(
+    () =>
+      transportNodes.map((n) => {
+        const cfg = (n.data as { config?: { kind?: string } }).config;
+        return { id: n.id, label: `${cfg?.kind ?? '?'} (${n.id.slice(-4)})` };
+      }),
+    [transportNodes]
+  );
+  const effectiveTransportId =
+    rawDataSourceNodeId && transportOptions.some((o) => o.id === rawDataSourceNodeId)
+      ? rawDataSourceNodeId
+      : (transportOptions[0]?.id ?? null);
 
   // 持久化 key: widgetId 存在时按控件独立保存, 否则共享 'global' 配置
   const persistKey = widgetId ?? 'global';
@@ -257,7 +279,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   };
 
   const handleSend = () => {
-    if (!sendContent) return;
+    if (!sendContent || !effectiveTransportId) return;
     let suffix = '';
     switch (appendMode) {
       case 'nl': suffix = '\n'; break;
@@ -265,7 +287,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       case 'nl_tab': suffix = '\n\t'; break;
       case 'none': suffix = ''; break;
     }
-    sendText(sendContent + suffix);
+    sendText(effectiveTransportId, sendContent + suffix);
     setSendContent('');
   };
 
@@ -416,6 +438,9 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
                   onSend={handleSend}
                   lang={lang}
                   compact
+                  transports={transportOptions}
+                  selectedTransport={effectiveTransportId}
+                  onTransportChange={setRawDataSourceNodeId}
                 />
               </div>
             </div>
@@ -476,6 +501,9 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
               onSendContentChange={setSendContent}
               onSend={handleSend}
               lang={lang}
+              transports={transportOptions}
+              selectedTransport={effectiveTransportId}
+              onTransportChange={setRawDataSourceNodeId}
             />
           </div>
         )}

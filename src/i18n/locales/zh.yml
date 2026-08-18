@@ -624,7 +624,7 @@ windowBlackman: 布莱克曼
 domainTime: 时域
 domainFreq: 频域
 domainMismatchTitle: 域不匹配
-domainMismatchMsg: 时域与频域端口不能直连 (时域→频域 / 频域→时域均被阻止)
+domainMismatchMsg: 不同域的端口不能直连 (时域 / 频域 / 字节域两两互斥)
 
 # 3D 模型控件
 model3d: 3D 模型
@@ -1038,3 +1038,9 @@ closeHintTitle: 窗口已关闭
 closeHintMessage: "「{{name}}」窗口已关闭，控件节点仍保留在画布上。双击节点即可重新打开窗口。"
 closeHintGotIt: 知道了
 nodeOpenWindowHint: 双击打开窗口
+domainBytes: 字节域
+convertTo: 协议转换 (convert_to)
+convertNone: 无转换
+cmdNoByteRoute: 未连接字节路由 — 请将 loopbackOut 端口连到 Transport.tx 或 FrameDecoder.in
+noTransportNode: 无数据接口节点 — 请先从控件面板拖入「数据接口」
+targetTransport: 目标数据接口

@@ -18,13 +18,17 @@
 
 import { useDockStore, type CardKind, type DragTabPayload, type SnapEdge } from '../store/dockStore';
 import { useLayoutStore, type SidebarDock } from '../store/layoutStore';
-import type { FilterPresetKind, MathOp, WidgetConfig } from '../types';
+import type { FilterPresetKind, MathOp, TransportConfig, WidgetConfig } from '../types';
 
 /// 从控件面板拖出的控件参数 (拖到画布)
 export interface WidgetDragSpec {
-  kind: WidgetConfig['kind'];
+  /// 控件类型 — 全局节点条目 (globalNode 设置) 时缺省
+  kind?: WidgetConfig['kind'];
   op?: MathOp;
   preset?: FilterPresetKind;
+  /// 全局节点拖入: 'transport' = 数据接口 (transportKind 指定类型), 'protocol' = 协议引擎
+  globalNode?: 'transport' | 'protocol';
+  transportKind?: TransportConfig['kind'];
 }
 
 export type DockDragSpec =

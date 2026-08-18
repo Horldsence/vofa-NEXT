@@ -1,6 +1,6 @@
 import type { Lang } from '../../i18n';
 
-export type SidebarView = 'transport' | 'protocol' | 'widgets' | 'quickstart';
+export type SidebarView = 'widgets' | 'quickstart';
 
 export interface SidebarSlice {
   lang: Lang;
@@ -16,7 +16,7 @@ export function createSidebarSlice(set: any, get: any): SidebarSlice {
     lang: 'zh',
     setLang: (lang) => set({ lang }),
 
-    sidebarView: 'transport',
+    sidebarView: 'widgets',
     sidebarVisible: true,
     setSidebarView: (view) => set({ sidebarView: view, sidebarVisible: true }),
     toggleSidebar: (view) => {

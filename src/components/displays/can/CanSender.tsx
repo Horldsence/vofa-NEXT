@@ -34,6 +34,19 @@ export function CanSender() {
   const handleSend = async () => {
     setError('');
     try {
+      // 目标 Transport: 优先 CAN 类 (Slcan/CandleLight), 否则第一个 Transport 节点
+      const nodes = useAppStore.getState().rfNodes;
+      const canNode = nodes.find(
+        (n) =>
+          n.type === 'transport' &&
+          n.data?.global === true &&
+          ((n.data as { config?: { kind?: string } }).config?.kind === 'Slcan' ||
+            (n.data as { config?: { kind?: string } }).config?.kind === 'CandleLight')
+      );
+      const anyTransport = nodes.find((n) => n.type === 'transport' && n.data?.global === true);
+      const targetId = canNode?.id ?? anyTransport?.id;
+      if (!targetId) throw new Error(t(lang, 'noTransportNode'));
+
       const id = parseInt(idText.replace(/^0x/i, ''), 16);
       if (isNaN(id)) throw new Error('无效 ID');
       if (extended && id > 0x1FFFFFFF) throw new Error('扩展 ID 超出 29 位');
@@ -52,7 +65,7 @@ export function CanSender() {
         direction: 'Tx' as CanDirection,
       };
 
-      await sendCanFrame(frame);
+      await sendCanFrame(targetId, frame);
       setHistory((prev) => [...prev.slice(-9), frame]);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

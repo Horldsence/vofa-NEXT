@@ -3,6 +3,7 @@ import type { WidgetConfig, BlockType, CommandBlock } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { api } from '../../../lib/tauri/tauri';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
+import { downstreamProtocolOf } from '../../../store/appStoreHelpers';
 import { computeChecksum, type ChecksumKind } from '../../../lib/utils/checksum';
 import { parseHex, packField, bytesToHex } from '../../../lib/utils/commandParser';
 import { t } from '../../../i18n';
@@ -21,9 +22,15 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const params = widget.params;
   const { id, blocks } = params;
   const updateWidget = useAppStore((s) => s.updateWidget);
-  const sendData = useAppStore((s) => s.sendData);
   const sendAndCapture = useAppStore((s) => s.sendAndCapture);
+  const rfEdges = useAppStore((s) => s.rfEdges);
   const lang = useAppStore((s) => s.lang);
+
+  // 字节路由: loopbackOut 出口的字节边 (→ Transport.tx 真实发送 / FrameDecoder.in 喂入 / Protocol.in)
+  const hasByteRoute = useMemo(
+    () => rfEdges.some((e) => e.source === id && e.sourceHandle === 'loopbackOut'),
+    [rfEdges, id]
+  );
 
   const portNames = useMemo(
     () => blocks.filter((b) => b.type === 'var_ref' && b.portName).map((b) => b.portName!),
@@ -94,13 +101,25 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
   const doSend = useCallback(async (): Promise<boolean> => {
     if (!computed.bytes || computed.bytes.length === 0 || computed.error) return false;
+    if (!hasByteRoute) {
+      setError(t(lang, 'cmdNoByteRoute'));
+      return false;
+    }
     try {
+      const bytes = Array.from(computed.bytes);
+      // 沿字节边图路由注入 (含 Transport.tx 真实发送)
+      await api.injectBytes(id, bytes);
       if (params.loopbackEnabled) {
-        const bytes = Array.from(computed.bytes);
-        await sendAndCapture(bytes);
-        await api.injectLoopbackBytes(id, bytes);
-      } else {
-        await sendData(Array.from(computed.bytes));
+        // 回环历史: 用第一个 Transport + 其下游 Protocol 做即时解析对照 (尽力而为)
+        const st = useAppStore.getState();
+        const transport = st.rfNodes.find((n) => n.type === 'transport' && n.data?.global === true);
+        const protocolId = transport
+          ? downstreamProtocolOf(transport.id, st.rfEdges, st.rfNodes) ??
+            st.rfNodes.find((n) => n.type === 'protocol' && n.data?.global === true)?.id
+          : undefined;
+        if (transport && protocolId) {
+          await sendAndCapture(transport.id, protocolId, bytes);
+        }
       }
       sendCountRef.current += 1;
       setLastSent(`${new Date().toLocaleTimeString()} #${sendCountRef.current} [${computed.bytes.length}B] ${bytesToHex(computed.bytes)}`);
@@ -109,7 +128,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
       setError((e as Error).message);
       return false;
     }
-  }, [computed, params.loopbackEnabled, sendAndCapture, sendData, id]);
+  }, [computed, params.loopbackEnabled, sendAndCapture, hasByteRoute, id, lang]);
 
   const doSendRef = useRef(doSend);
   useEffect(() => { doSendRef.current = doSend; }, [doSend]);
@@ -249,6 +268,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
         computed={computed}
         error={error}
         lastSent={lastSent}
+        routeMissing={!hasByteRoute}
         onSend={handleSend}
         onUpdateParams={updateParams}
         lang={lang}

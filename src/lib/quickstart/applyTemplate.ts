@@ -1,15 +1,16 @@
 //! 应用快速开始模板 — 替换 / 合并两种模式
 //!
-//! - 替换: 清空当前工作区 (节点图 + 窗口组织 + 传输/协议 + 控件/标签页) 后应用模板,
+//! - 替换: 清空当前工作区 (节点图 + 窗口组织 + 全局传输/协议节点 + 控件/标签页) 后应用模板,
 //!          保留用户设置 (语言/主题等)。
 //! - 合并: 把模板作为新控件标签页追加进当前工作区, 所有 ID 重映射避免冲突,
-//!          传输/协议为全局单例, 合并模式下不改变。
+//!          全局 Transport/Protocol 节点不重复导入 — 模板边改指现有主节点。
 
 import { nanoid } from 'nanoid';
 import { type Node, type Edge } from '@xyflow/react';
-import { useAppStore, CHANNEL_SOURCE_ID } from '../../store/appStore';
+import { useAppStore } from '../../store/appStore';
+import { isGlobalNode } from '../../store/appStoreHelpers';
 import { useDockStore } from '../../store/dockStore';
-import { applySnapshot, type AppSnapshot } from '../tauri/appExport';
+import { applySnapshot, migrateSnapshotToV3, type AppSnapshot } from '../tauri/appExport';
 import { notify, formatError } from '../tauri/notifications';
 import { t } from '../../i18n';
 import type { WidgetConfig, DataTab } from '../../types';
@@ -26,9 +27,14 @@ function remapRawDataHandle(handle: string | undefined | null, idMap: Map<string
 }
 
 /// 合并模式: 将模板作为新控件标签页追加
-function mergeTemplate(snap: AppSnapshot): void {
+function mergeTemplate(rawSnap: AppSnapshot): void {
+  const snap = migrateSnapshotToV3(rawSnap);
   const app = useAppStore.getState();
   const newTabId = `tpl-${nanoid(6)}`;
+
+  // 现有主全局节点 (模板的全局节点不导入, 边改指它们)
+  const primaryTransport = app.rfNodes.find((n) => n.type === 'transport' && isGlobalNode(n));
+  const primaryProtocol = app.rfNodes.find((n) => n.type === 'protocol' && isGlobalNode(n));
 
   // widget 旧 id → 新 id
   const idMap = new Map<string, string>();
@@ -37,6 +43,19 @@ function mergeTemplate(snap: AppSnapshot): void {
     idMap.set(w.params.id, newId);
     return { ...w, params: { ...w.params, id: newId } } as WidgetConfig;
   });
+
+  // 模板全局节点 id → 现有主节点 id (无主节点时保留模板 id 并导入该节点)
+  const globalIdMap = new Map<string, string>();
+  const importedGlobalNodes: Node[] = [];
+  for (const n of snap.rfNodes ?? []) {
+    if (!isGlobalNode(n)) continue;
+    const existing = n.type === 'transport' ? primaryTransport : primaryProtocol;
+    if (existing) {
+      globalIdMap.set(n.id, existing.id);
+    } else {
+      importedGlobalNodes.push(n);
+    }
+  }
 
   // 模板的单个控件标签页 → 新标签页
   const templateTab = snap.controlTabs?.[0];
@@ -57,15 +76,13 @@ function mergeTemplate(snap: AppSnapshot): void {
     newDataTabs.push({ ...tab, id: newId, ...(widgetId ? { widgetId } : {}) });
   }
 
-  // 节点: 通道源 → 新标签页; 控件节点 → 重映射 id 与 data.widget.params.id
-  const sourceNodeId = `${CHANNEL_SOURCE_ID}-${newTabId}`;
-  const rfNodes: Node[] = (snap.rfNodes ?? []).map((n) => {
-    if (n.type === 'channelSource') {
-      return { ...n, id: sourceNodeId, data: { ...n.data, tabId: newTabId } };
-    }
+  // 节点: 控件节点 → 重映射 id 与 data.widget.params.id; 全局节点按 globalIdMap 处理
+  const rfNodes: Node[] = [...importedGlobalNodes];
+  for (const n of snap.rfNodes ?? []) {
+    if (isGlobalNode(n)) continue;
     const newId = idMap.get(n.id) ?? nanoid(8);
     const w = n.data.widget as WidgetConfig | undefined;
-    return {
+    rfNodes.push({
       ...n,
       id: newId,
       data: {
@@ -73,23 +90,18 @@ function mergeTemplate(snap: AppSnapshot): void {
         tabId: newTabId,
         widget: w ? { ...w, params: { ...w.params, id: newId } } : w,
       },
-    };
-  });
+    });
+  }
 
-  // 边: source/target 重映射, RawData targetHandle 端口 id 一并重映射
-  const rfEdges: Edge[] = (snap.rfEdges ?? []).map((e) => {
-    const source = e.source.startsWith(CHANNEL_SOURCE_ID)
-      ? sourceNodeId
-      : (idMap.get(e.source) ?? e.source);
-    const target = idMap.get(e.target) ?? e.target;
-    return {
-      ...e,
-      id: nanoid(8),
-      source,
-      target,
-      targetHandle: remapRawDataHandle(e.targetHandle, idMap),
-    };
-  });
+  // 边: source/target 重映射 (widget id + 全局节点 id), RawData targetHandle 端口 id 一并重映射
+  const remapId = (id: string) => globalIdMap.get(id) ?? idMap.get(id) ?? id;
+  const rfEdges: Edge[] = (snap.rfEdges ?? []).map((e) => ({
+    ...e,
+    id: nanoid(8),
+    source: remapId(e.source),
+    target: remapId(e.target),
+    targetHandle: remapRawDataHandle(e.targetHandle, idMap),
+  }));
 
   useAppStore.setState((s) => ({
     widgets: [...s.widgets, ...widgets],
@@ -101,7 +113,7 @@ function mergeTemplate(snap: AppSnapshot): void {
   }));
 
   // 同步新标签页节点图到后端 + 对账 Dock 卡片 (安置新增 Tab)
-  useAppStore.getState().syncTabGraph(newTabId);
+  useAppStore.getState().syncAllTabGraphs();
   const st = useAppStore.getState();
   useDockStore.getState().reconcile('control', st.controlTabs.map((t) => t.id));
   useDockStore.getState().reconcile('data', st.dataTabs.map((t) => t.id));
@@ -123,7 +135,9 @@ export async function applyTemplate(
       mergeTemplate(snap);
     }
 
-    const isConnected = useAppStore.getState().connectionState === 'Connected';
+    const isConnected = Object.values(useAppStore.getState().connectionStates).some(
+      (v) => v === 'Connected'
+    );
     notify.info(
       t(lang, 'templateApplySuccess'),
       isConnected ? t(lang, 'templateApplySuccessDescReconnect') : t(lang, 'templateApplySuccessDesc'),

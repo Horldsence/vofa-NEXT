@@ -2,11 +2,15 @@
 ///
 /// 用于 IPC: 前端把每个 tab 的 nodes + edges 通过 invoke('update_tab_graph') 同步到后端
 /// 后端编译为 CompiledGraph, 在每帧数据到达时评估
+///
+/// 两层平面:
+/// - 字节平面 (全局): Transport / Protocol 节点, 边携带 Vec<u8>, 事件驱动
+/// - 数值平面 (每 tab): ProtocolSource 引用全局 Protocol 节点的最新帧, 输出 ch0..chN
 
 import type { WidgetConfig, MathOp, WindowType, SpectrumOutput, DecoderBlock } from '../../types';
+import type { TransportConfig, ProtocolConfig } from '../../types';
 import { UNARY_MATH_OPS, biquadFromFilterConfig } from '../../types';
 import { evalCustomWidgetDef } from '../../components/displays/widgets/CustomWidget';
-import { CHANNEL_SOURCE_ID } from '../../store/appStore';
 import type { Edge } from '@xyflow/react';
 
 /// Rust 端 NodeKind 序列化 — serde tag="kind" content="params"
@@ -15,8 +19,11 @@ import type { Edge } from '@xyflow/react';
 ///   { "IIR": { "b": [b0, b1, b2], "a": [a0, a1, a2] } }
 /// WindowType/SpectrumOutput 是 unit variant: { "Hann": null }
 /// FrameDecoder 子字段使用 snake_case (Rust 端无 rename_all), blocks 元素遵循 DecoderBlockDef 的 tag="type" + camelCase
+/// Protocol.convert_to 为 None 时序列化省略 (Rust 侧 default + skip_serializing_if)
 export type NodeKind =
-  | { kind: 'ChannelSource'; params: { channels: number } }
+  | { kind: 'Transport'; params: { config: TransportConfig } }
+  | { kind: 'Protocol'; params: { config: ProtocolConfig; convert_to?: ProtocolConfig | null } }
+  | { kind: 'ProtocolSource'; params: { node_id: string; channels: number } }
   | { kind: 'Input' }
   | { kind: 'Math'; params: { op: MathOp; input_count: number } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
@@ -126,7 +133,7 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
           enable_frame_count: widget.params.enableFrameCount,
           enable_last_timestamp: widget.params.enableLastTimestamp,
           enable_fps: widget.params.enableFps,
-          // 旧布局无该字段时按 false (默认接收实时 RX)
+          // 旧布局无该字段时按 false (默认接收实时 RX); 后端已忽略该字段, 仅为 serde 兼容保留
           loopback: widget.params.loopbackEnabled ?? false,
         },
       };
@@ -140,12 +147,36 @@ export function rawDataPortId(sourceId: string, sourceHandle?: string | null): s
   return `src:${sourceId}:${sourceHandle ?? 'data'}`;
 }
 
-/// 构造通道源节点的 NodeDef
-export function makeChannelSourceNodeDef(tabId: string, channels: number): NodeDef {
+/// 构造 ProtocolSource 节点的 NodeDef — tab 数值平面的帧源
+/// id 与被引用的全局 Protocol 节点相同 (后端按 id 关联 source_frames)
+export function makeProtocolSourceNodeDef(tabId: string, protocolNodeId: string, channels: number): NodeDef {
   return {
-    id: `${CHANNEL_SOURCE_ID}-${tabId}`,
+    id: protocolNodeId,
     tab_id: tabId,
-    kind: { kind: 'ChannelSource', params: { channels } },
+    kind: { kind: 'ProtocolSource', params: { node_id: protocolNodeId, channels } },
+  };
+}
+
+/// 构造 Transport 全局节点的 NodeDef
+export function makeTransportNodeDef(tabId: string, nodeId: string, config: TransportConfig): NodeDef {
+  return {
+    id: nodeId,
+    tab_id: tabId,
+    kind: { kind: 'Transport', params: { config } },
+  };
+}
+
+/// 构造 Protocol 全局节点的 NodeDef (convertTo 为 null 时省略序列化)
+export function makeProtocolNodeDef(
+  tabId: string,
+  nodeId: string,
+  config: ProtocolConfig,
+  convertTo: ProtocolConfig | null
+): NodeDef {
+  return {
+    id: nodeId,
+    tab_id: tabId,
+    kind: { kind: 'Protocol', params: { config, convert_to: convertTo ?? null } },
   };
 }
 

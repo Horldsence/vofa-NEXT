@@ -23,7 +23,7 @@ const canBitrateOptions: { value: CanBitrate; label: string }[] = [
 export function SlcanForm({ params, onChange, lang }: SlcanFormProps) {
   return (
     <>
-      <PortPicker />
+      <PortPicker selectedPortName={params.port_name} onSelect={(name) => onChange({ port_name: name })} />
       <div className="flex gap-2">
         <div className="mb-2.5 flex-1">
           <label className="block text-xs text-text-secondary mb-1">{t(lang, 'baudRate')}</label>

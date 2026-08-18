@@ -27,8 +27,8 @@ function resetStores() {
     dataTabs: [STABLE_TAB, HEAVY_TAB],
     widgets: [PIE_WIDGET],
     rfEdges: [],
-    protocolConfig: { kind: 'JustFloat', channels: null },
-    detectedChannels: null,
+    rfNodes: [],
+    detectedChannels: {},
   });
   useWaveformScopeStore.setState({ states: { 'default-waveform': createPerWidgetState(4) } });
 }

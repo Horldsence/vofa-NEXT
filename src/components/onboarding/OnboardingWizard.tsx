@@ -20,28 +20,22 @@ export function OnboardingWizard() {
       contentKey: 'tourWelcomeContent',
     },
     {
-      target: 'transport',
+      target: 'widgets',
       titleKey: 'tourTransportTitle',
       contentKey: 'tourTransportContent',
-      prepare: () => setSidebarView('transport'),
+      prepare: () => setSidebarView('widgets'),
     },
     {
-      target: 'protocol',
+      target: 'widgets',
       titleKey: 'tourProtocolTitle',
       contentKey: 'tourProtocolContent',
-      prepare: () => setSidebarView('protocol'),
+      prepare: () => setSidebarView('widgets'),
     },
     {
       target: 'widgets',
       titleKey: 'tourWidgetsTitle',
       contentKey: 'tourWidgetsContent',
       prepare: () => setSidebarView('widgets'),
-    },
-    {
-      target: 'connect',
-      titleKey: 'tourConnectTitle',
-      contentKey: 'tourConnectContent',
-      prepare: () => setSidebarView('transport'),
     },
     {
       target: 'data-tabs',

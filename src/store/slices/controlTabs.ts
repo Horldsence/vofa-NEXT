@@ -1,5 +1,4 @@
 import { nanoid } from 'nanoid';
-import { createChannelSourceNode, CHANNEL_SOURCE_ID, getEffectiveChannels } from '../appStoreHelpers';
 
 export interface ControlTabSlice {
   controlTabs: { id: string; name: string; widgets: string[] }[];
@@ -19,11 +18,9 @@ export function createControlTabSlice(set: any, get: any): ControlTabSlice {
       const id = nanoid(8);
       set((s: any) => {
         const tabName = name || `Tab ${s.controlTabs.length + 1}`;
-        const effective = getEffectiveChannels(s.protocolConfig, s.detectedChannels);
         return {
           controlTabs: [...s.controlTabs, { id, name: tabName, widgets: [] }],
           activeControlTabId: id,
-          rfNodes: [...s.rfNodes, createChannelSourceNode(id, effective)],
         };
       });
       get().syncTabGraph(id);
@@ -42,12 +39,12 @@ export function createControlTabSlice(set: any, get: any): ControlTabSlice {
         const tabNodeIds = new Set(
           s.rfNodes.filter((n: any) => n.data.tabId === tabId).map((n: any) => n.id)
         );
-        tabNodeIds.add(`${CHANNEL_SOURCE_ID}-${tabId}`);
         return {
           controlTabs: remaining,
           activeControlTabId:
             s.activeControlTabId === tabId ? remaining[0].id : s.activeControlTabId,
-          rfNodes: s.rfNodes.filter((n: any) => n.data.tabId !== tabId && n.id !== `${CHANNEL_SOURCE_ID}-${tabId}`),
+          // 全局节点 (data.global) 不属于任何 tab, 不随 tab 删除
+          rfNodes: s.rfNodes.filter((n: any) => n.data.tabId !== tabId),
           rfEdges: s.rfEdges.filter((e: any) => !tabNodeIds.has(e.source) && !tabNodeIds.has(e.target)),
         };
       });

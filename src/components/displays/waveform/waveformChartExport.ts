@@ -1,4 +1,4 @@
-import { waveformWindow } from '../../../lib/buffers/dataBuffer';
+import { waveformWindow, type WaveformWindowCache } from '../../../lib/buffers/dataBuffer';
 import { getEffectiveChannel } from '../../../types';
 import type { ScopeAxisConfig } from '../../../types';
 import { applyCoupling } from '../../../lib/utils/scopeUtils';
@@ -16,6 +16,7 @@ export function getExportData(
   slots: ExportSlot[],
   widgetId: string,
   frozenData: { ts: number[]; chs: number[][]; derived?: Record<string, Record<string, number[]>> } | null,
+  buffer: WaveformWindowCache = waveformWindow,
 ): { tsSec: number[]; series: number[][]; labels: string[] } {
   let timestamps: number[];
   let channelArrays: number[][];
@@ -23,7 +24,7 @@ export function getExportData(
   let baseTs: number;
 
   if (cfg.running) {
-    const win = waveformWindow.get();
+    const win = buffer.get();
     timestamps = win.timestamps.map((t) => t);
     channelArrays = win.channels;
     derivedMap = win.derived;

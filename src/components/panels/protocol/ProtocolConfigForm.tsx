@@ -1,38 +1,33 @@
-import { useAppStore } from '../../store/appStore';
-import { t } from '../../i18n';
-import { Info, Play, Square } from 'lucide-react';
-import type { ProtocolConfig, LogicDecoderConfig } from '../../types';
+//! 受控协议配置表单 — 从旧 ProtocolSection 抽取, 供全局 Protocol 节点属性面板复用
+//! (协议类型 / 通道配置 / LogicDecode 解码器参数 / 协议说明)
+import { t, type Lang } from '../../../i18n';
+import { Info } from 'lucide-react';
+import type { ProtocolConfig, LogicDecoderConfig } from '../../../types';
 
-/// 协议引擎配置面板
-///
-/// 包含: 协议类型选择 / 通道配置 (JustFloat/FireWater) / 解码器参数 (LogicDecode)
-export function ProtocolSection() {
-  const lang = useAppStore((s) => s.lang);
-  const protocolConfig = useAppStore((s) => s.protocolConfig);
-  const setProtocolConfig = useAppStore((s) => s.setProtocolConfig);
-  const detectedChannels = useAppStore((s) => s.detectedChannels);
-  const transportConfig = useAppStore((s) => s.transportConfig);
-  const connectionState = useAppStore((s) => s.connectionState);
-  const testDataRunning = useAppStore((s) => s.testDataRunning);
-  const startTestData = useAppStore((s) => s.startTestData);
-  const stopTestData = useAppStore((s) => s.stopTestData);
+interface ProtocolConfigFormProps {
+  value: ProtocolConfig;
+  onChange: (config: ProtocolConfig) => void;
+  lang: Lang;
+  /// 自动检测到的通道数 (仅自动模式有意义)
+  detectedChannels?: number | null;
+  /// 单选组名后缀 — 同一面板渲染多个表单时避免 radio name 冲突
+  nameSuffix?: string;
+}
 
-  const isTestData = transportConfig.kind === 'TestData';
-  const isConnected = connectionState === 'Connected';
-
-  const hasChannels = protocolConfig.kind === 'JustFloat' || protocolConfig.kind === 'FireWater';
-  const isAuto = hasChannels && protocolConfig.channels == null;
+export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, nameSuffix = '' }: ProtocolConfigFormProps) {
+  const hasChannels = value.kind === 'JustFloat' || value.kind === 'FireWater';
+  const isAuto = hasChannels && value.channels == null;
 
   const updateKind = (kind: ProtocolConfig['kind']) => {
     if (kind === 'RawData' || kind === 'Slcan' || kind === 'CandleLight') {
-      if (kind === 'Slcan') setProtocolConfig({ kind: 'Slcan' });
-      else if (kind === 'CandleLight') setProtocolConfig({ kind: 'CandleLight' });
-      else setProtocolConfig({ kind: 'RawData' });
+      if (kind === 'Slcan') onChange({ kind: 'Slcan' });
+      else if (kind === 'CandleLight') onChange({ kind: 'CandleLight' });
+      else onChange({ kind: 'RawData' });
     } else if (kind === 'JustFloat' || kind === 'FireWater') {
-      const prevChannels = hasChannels ? protocolConfig.channels : null;
-      setProtocolConfig({ kind, channels: prevChannels });
+      const prevChannels = hasChannels ? value.channels : null;
+      onChange({ kind, channels: prevChannels });
     } else if (kind === 'LogicDecode') {
-      setProtocolConfig({
+      onChange({
         kind: 'LogicDecode',
         decoder: {
           kind: 'Uart',
@@ -44,16 +39,13 @@ export function ProtocolSection() {
 
   const setAutoMode = (auto: boolean) => {
     if (!hasChannels) return;
-    setProtocolConfig({
-      kind: protocolConfig.kind,
-      channels: auto ? null : 4,
-    });
+    onChange({ kind: value.kind, channels: auto ? null : 4 });
   };
 
   const updateManualChannels = (channels: number) => {
     if (!hasChannels) return;
     const clamped = Math.max(1, Math.min(32, Math.floor(channels) || 1));
-    setProtocolConfig({ kind: protocolConfig.kind, channels: clamped });
+    onChange({ kind: value.kind, channels: clamped });
   };
 
   const switchDecoderKind = (decKind: LogicDecoderConfig['kind']) => {
@@ -75,21 +67,21 @@ export function ProtocolSection() {
         };
         break;
     }
-    setProtocolConfig({ kind: 'LogicDecode', decoder });
+    onChange({ kind: 'LogicDecode', decoder });
   };
 
   const updateDecoderParams = <K extends LogicDecoderConfig['kind']>(
     decKind: K,
     patch: Partial<Extract<LogicDecoderConfig, { kind: K }>['params']>
   ) => {
-    if (protocolConfig.kind !== 'LogicDecode') return;
-    if (protocolConfig.decoder.kind !== decKind) return;
-    const dec = protocolConfig.decoder as unknown as Extract<LogicDecoderConfig, { kind: K }>;
+    if (value.kind !== 'LogicDecode') return;
+    if (value.decoder.kind !== decKind) return;
+    const dec = value.decoder as unknown as Extract<LogicDecoderConfig, { kind: K }>;
     const newDecoder = {
       kind: decKind,
       params: { ...dec.params, ...patch },
     } as unknown as LogicDecoderConfig;
-    setProtocolConfig({ kind: 'LogicDecode', decoder: newDecoder });
+    onChange({ kind: 'LogicDecode', decoder: newDecoder });
   };
 
   const kinds: { value: ProtocolConfig['kind']; label: string }[] = [
@@ -106,50 +98,11 @@ export function ProtocolSection() {
 
   return (
     <div>
-      {/* TestData 开始/停止控制 */}
-      {isTestData && (
-        <div className="mb-3 p-2.5 bg-bg-input rounded border border-border">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-text-secondary">
-              {t(lang, 'testData')}
-            </span>
-            <span className={`text-xs ${isConnected ? 'text-text-secondary' : 'text-text-disabled'}`}>
-              {isConnected
-                ? testDataRunning
-                  ? t(lang, 'testDataRunning')
-                  : t(lang, 'testDataStopped')
-                : t(lang, 'notConnected')}
-            </span>
-          </div>
-          {testDataRunning ? (
-            <button
-              type="button"
-              onClick={() => stopTestData()}
-              disabled={!isConnected}
-              className="w-full px-3 h-8 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-            >
-              <Square size={14} />
-              {t(lang, 'stopTestData')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => startTestData()}
-              disabled={!isConnected}
-              className="w-full px-3 h-8 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-            >
-              <Play size={14} />
-              {t(lang, 'startTestData')}
-            </button>
-          )}
-        </div>
-      )}
-
       {/* 协议类型 */}
       <div className="mb-2.5 mt-1">
         <label className="block text-xs text-text-secondary mb-1">{t(lang, 'protocolEngine')}</label>
         <select
-          value={protocolConfig.kind}
+          value={value.kind}
           onChange={(e) => updateKind(e.target.value as ProtocolConfig['kind'])}
           className={selectClass}
         >
@@ -168,7 +121,7 @@ export function ProtocolSection() {
               <label className="flex items-center gap-1.5 cursor-pointer text-sm">
                 <input
                   type="radio"
-                  name="channel-mode"
+                  name={`channel-mode${nameSuffix}`}
                   checked={isAuto}
                   onChange={() => setAutoMode(true)}
                   className="accent-accent"
@@ -178,7 +131,7 @@ export function ProtocolSection() {
               <label className="flex items-center gap-1.5 cursor-pointer text-sm">
                 <input
                   type="radio"
-                  name="channel-mode"
+                  name={`channel-mode${nameSuffix}`}
                   checked={!isAuto}
                   onChange={() => setAutoMode(false)}
                   className="accent-accent"
@@ -194,7 +147,7 @@ export function ProtocolSection() {
                 type="number"
                 min={1}
                 max={32}
-                value={protocolConfig.channels ?? 4}
+                value={value.channels ?? 4}
                 onChange={(e) => updateManualChannels(parseInt(e.target.value) || 1)}
                 className={inputClass}
               />
@@ -213,12 +166,12 @@ export function ProtocolSection() {
       )}
 
       {/* LogicDecode 解码器参数 */}
-      {protocolConfig.kind === 'LogicDecode' && (
+      {value.kind === 'LogicDecode' && (
         <>
           <div className="mb-2.5">
             <label className="block text-xs text-text-secondary mb-1">{t(lang, 'decoderType')}</label>
             <select
-              value={protocolConfig.decoder.kind}
+              value={value.decoder.kind}
               onChange={(e) => switchDecoderKind(e.target.value as LogicDecoderConfig['kind'])}
               className={selectClass}
             >
@@ -228,12 +181,12 @@ export function ProtocolSection() {
             </select>
           </div>
 
-          {protocolConfig.decoder.kind === 'Uart' && (
+          {value.decoder.kind === 'Uart' && (
             <>
               <div className="mb-2.5">
                 <label className="block text-xs text-text-secondary mb-1">{t(lang, 'baudRate')}</label>
                 <select
-                  value={protocolConfig.decoder.params.baud_rate}
+                  value={value.decoder.params.baud_rate}
                   onChange={(e) => updateDecoderParams('Uart', { baud_rate: parseInt(e.target.value) || 115200 })}
                   className={selectClass}
                 >
@@ -246,7 +199,7 @@ export function ProtocolSection() {
                 <div className="mb-2.5 flex-1">
                   <label className="block text-xs text-text-secondary mb-1">{t(lang, 'dataBits')}</label>
                   <select
-                    value={protocolConfig.decoder.params.data_bits}
+                    value={value.decoder.params.data_bits}
                     onChange={(e) => updateDecoderParams('Uart', { data_bits: parseInt(e.target.value) || 8 })}
                     className={selectClass}
                   >
@@ -258,7 +211,7 @@ export function ProtocolSection() {
                 <div className="mb-2.5 flex-1">
                   <label className="block text-xs text-text-secondary mb-1">{t(lang, 'parity')}</label>
                   <select
-                    value={protocolConfig.decoder.params.parity}
+                    value={value.decoder.params.parity}
                     onChange={(e) => updateDecoderParams('Uart', { parity: e.target.value as 'none' | 'odd' | 'even' })}
                     className={selectClass}
                   >
@@ -272,7 +225,7 @@ export function ProtocolSection() {
                 <div className="mb-2.5 flex-1">
                   <label className="block text-xs text-text-secondary mb-1">{t(lang, 'stopBits')}</label>
                   <select
-                    value={protocolConfig.decoder.params.stop_bits}
+                    value={value.decoder.params.stop_bits}
                     onChange={(e) => updateDecoderParams('Uart', { stop_bits: e.target.value as 'one' | 'two' })}
                     className={selectClass}
                   >
@@ -286,7 +239,7 @@ export function ProtocolSection() {
                     type="number"
                     min={0}
                     max={15}
-                    value={protocolConfig.decoder.params.channel}
+                    value={value.decoder.params.channel}
                     onChange={(e) => updateDecoderParams('Uart', { channel: parseInt(e.target.value) || 0 })}
                     className={inputClass}
                   />
@@ -295,7 +248,7 @@ export function ProtocolSection() {
             </>
           )}
 
-          {protocolConfig.decoder.kind === 'I2c' && (
+          {value.decoder.kind === 'I2c' && (
             <div className="flex gap-2">
               <div className="mb-2.5 flex-1">
                 <label className="block text-xs text-text-secondary mb-1">{t(lang, 'sdaChannel')}</label>
@@ -303,7 +256,7 @@ export function ProtocolSection() {
                   type="number"
                   min={0}
                   max={15}
-                  value={protocolConfig.decoder.params.sda_channel}
+                  value={value.decoder.params.sda_channel}
                   onChange={(e) => updateDecoderParams('I2c', { sda_channel: parseInt(e.target.value) || 0 })}
                   className={inputClass}
                 />
@@ -314,7 +267,7 @@ export function ProtocolSection() {
                   type="number"
                   min={0}
                   max={15}
-                  value={protocolConfig.decoder.params.scl_channel}
+                  value={value.decoder.params.scl_channel}
                   onChange={(e) => updateDecoderParams('I2c', { scl_channel: parseInt(e.target.value) || 0 })}
                   className={inputClass}
                 />
@@ -322,7 +275,7 @@ export function ProtocolSection() {
             </div>
           )}
 
-          {protocolConfig.decoder.kind === 'Spi' && (
+          {value.decoder.kind === 'Spi' && (
             <>
               <div className="flex gap-2">
                 <div className="mb-2.5 flex-1">
@@ -331,7 +284,7 @@ export function ProtocolSection() {
                     type="number"
                     min={0}
                     max={15}
-                    value={protocolConfig.decoder.params.sclk_channel}
+                    value={value.decoder.params.sclk_channel}
                     onChange={(e) => updateDecoderParams('Spi', { sclk_channel: parseInt(e.target.value) || 0 })}
                     className={inputClass}
                   />
@@ -342,7 +295,7 @@ export function ProtocolSection() {
                     type="number"
                     min={0}
                     max={15}
-                    value={protocolConfig.decoder.params.mosi_channel}
+                    value={value.decoder.params.mosi_channel}
                     onChange={(e) => updateDecoderParams('Spi', { mosi_channel: parseInt(e.target.value) || 0 })}
                     className={inputClass}
                   />
@@ -355,7 +308,7 @@ export function ProtocolSection() {
                     type="number"
                     min={0}
                     max={15}
-                    value={protocolConfig.decoder.params.miso_channel}
+                    value={value.decoder.params.miso_channel}
                     onChange={(e) => updateDecoderParams('Spi', { miso_channel: parseInt(e.target.value) || 0 })}
                     className={inputClass}
                   />
@@ -366,7 +319,7 @@ export function ProtocolSection() {
                     type="number"
                     min={0}
                     max={15}
-                    value={protocolConfig.decoder.params.cs_channel}
+                    value={value.decoder.params.cs_channel}
                     onChange={(e) => updateDecoderParams('Spi', { cs_channel: parseInt(e.target.value) || 0 })}
                     className={inputClass}
                   />
@@ -375,7 +328,7 @@ export function ProtocolSection() {
               <div className="mb-2.5">
                 <label className="block text-xs text-text-secondary mb-1">{t(lang, 'spiMode')}</label>
                 <select
-                  value={protocolConfig.decoder.params.mode}
+                  value={value.decoder.params.mode}
                   onChange={(e) => updateDecoderParams('Spi', { mode: parseInt(e.target.value) || 0 })}
                   className={selectClass}
                 >
@@ -391,7 +344,7 @@ export function ProtocolSection() {
 
       {/* 协议说明 */}
       <div className="mt-1 p-2 bg-bg-input rounded text-xs text-text-secondary leading-relaxed">
-        {protocolConfig.kind === 'JustFloat' && (
+        {value.kind === 'JustFloat' && (
           <>
             <strong className="text-text-primary">JustFloat</strong>
             <br />
@@ -400,7 +353,7 @@ export function ProtocolSection() {
               : '4-byte LE floats + tail [0x00,0x00,0x80,0x7f]. High-throughput waveform.'}
           </>
         )}
-        {protocolConfig.kind === 'FireWater' && (
+        {value.kind === 'FireWater' && (
           <>
             <strong className="text-text-primary">FireWater</strong>
             <br />
@@ -409,7 +362,7 @@ export function ProtocolSection() {
               : 'CSV format, channels separated by commas, ends with \\n. Human-readable.'}
           </>
         )}
-        {protocolConfig.kind === 'RawData' && (
+        {value.kind === 'RawData' && (
           <>
             <strong className="text-text-primary">RawData</strong>
             <br />
@@ -418,19 +371,19 @@ export function ProtocolSection() {
               : 'Raw byte stream, no parsing. Raw data only.'}
           </>
         )}
-        {protocolConfig.kind === 'Slcan' && (
+        {value.kind === 'Slcan' && (
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="flex-shrink-0 mt-0.25" />
             <span>{t(lang, 'slcanDesc')}</span>
           </span>
         )}
-        {protocolConfig.kind === 'CandleLight' && (
+        {value.kind === 'CandleLight' && (
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="flex-shrink-0 mt-0.25" />
             <span>{t(lang, 'candleLightDesc')}</span>
           </span>
         )}
-        {protocolConfig.kind === 'LogicDecode' && (
+        {value.kind === 'LogicDecode' && (
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="flex-shrink-0 mt-0.25" />
             <span>

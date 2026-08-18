@@ -1,5 +1,17 @@
+//! 协议引擎核心 — ProtocolEngine trait 与跨协议统一的输入/输出容器
+//!
+//! 子模块:
+//! - [`parse`]: 输入字符串解析自由函数 (parse_hex / parse_ascii / detect_format)
+//! - [`split`]: 帧边界并行切分算法 (split_at_boundaries)
+
+pub mod parse;
+pub mod split;
+
 use serde::{Deserialize, Serialize};
 use vofa_next_core::{CanFrame, DataFrame, DecodedEvent, LogicSample};
+
+pub use parse::{detect_format, parse_ascii, parse_hex};
+pub use split::split_at_boundaries;
 
 /// 输入解析格式 — 控制前端传入的字符串如何转为字节
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -15,28 +27,6 @@ pub enum InputFormat {
     /// 且长度为偶数, 则视为 HEX; 否则视为 ASCII。
     /// 例: "AA 01 02" → HEX; "1.0,2.0\n" → ASCII; "Hello" → ASCII
     Auto,
-}
-
-/// 自动识别输入格式 — 返回应该使用的具体格式 (Hex 或 Ascii)
-///
-/// 规则: 去除 "0x" / 空白 / 逗号后, 全为十六进制字符且长度为偶数 → Hex, 否则 Ascii
-pub fn detect_format(input: &str) -> InputFormat {
-    let no_prefix = input.replace("0x", "").replace("0X", "");
-    let clean: String = no_prefix
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != ',')
-        .collect();
-    if clean.is_empty() {
-        return InputFormat::Ascii;
-    }
-    if !clean.len().is_multiple_of(2) {
-        return InputFormat::Ascii;
-    }
-    if clean.chars().all(|c| c.is_ascii_hexdigit()) {
-        InputFormat::Hex
-    } else {
-        InputFormat::Ascii
-    }
 }
 
 /// 协议解析结果 — 由 parse_input 返回, 跨协议统一容器
@@ -102,48 +92,6 @@ impl FeedOutput {
     }
 }
 
-/// 给定升序的帧结束边界 boundaries, 把 [0, *last) 均分为 workers 段,
-/// 每段尾部对齐到不超过均分点的最后一个边界; 空段自动合并 (返回块数 ≤ workers)
-///
-/// - boundaries 为空 → 返回空 Vec (无完整帧可切)
-/// - workers <= 1 → 返回整块 [0, *last)
-/// - 均分点 = last * i / workers, 每段结束 = 不超过均分点的最大边界 (最后一段恒为 *last)
-pub fn split_at_boundaries(
-    boundaries: &[usize],
-    workers: usize,
-) -> Vec<std::ops::Range<usize>> {
-    let Some(&last) = boundaries.last() else {
-        return Vec::new();
-    };
-    if workers <= 1 {
-        return vec![0..last];
-    }
-    let mut ranges = Vec::with_capacity(workers);
-    let mut start = 0usize;
-    for i in 1..workers {
-        let target = last * i / workers;
-        // 不超过均分点的最大边界
-        let end = match boundaries.binary_search(&target) {
-            Ok(idx) => boundaries[idx],
-            Err(idx) => {
-                if idx == 0 {
-                    continue; // 均分点之前无边界 → 空段, 与下一段合并
-                }
-                boundaries[idx - 1]
-            }
-        };
-        // 空段自动合并 (相邻段结束位置相同则跳过)
-        if end > start {
-            ranges.push(start..end);
-            start = end;
-        }
-    }
-    if start < last {
-        ranges.push(start..last);
-    }
-    ranges
-}
-
 /// 协议引擎 trait — 解析接收数据 / 编码发送数据
 pub trait ProtocolEngine: Send {
     /// 喂入原始字节流, 单趟解析并返回该协议支持的全部输出
@@ -167,6 +115,12 @@ pub trait ProtocolEngine: Send {
     /// 是否为自动检测模式
     fn is_auto_mode(&self) -> bool {
         false
+    }
+
+    /// 通用重编码入口: 把解析出的数据帧按本协议编码回字节流 (协议转换用)。
+    /// 默认实现按通道值编码; 自动通道数模式下以输入帧通道数为准。
+    fn encode_frame(&mut self, frame: &DataFrame) -> Vec<u8> {
+        self.encode_channels(&frame.channels)
     }
 
     /// 编码 CAN 帧为传输字节 (仅 Slcan/CandleLight 引擎重写)
@@ -230,113 +184,11 @@ pub trait ProtocolEngine: Send {
     }
 }
 
-/// 解析 HEX 字符串为字节 — 兼容 "AA 01" / "AA01" / "AA,01" / "0xAA 0x01"
-pub fn parse_hex(input: &str) -> Result<Vec<u8>, String> {
-    // 先去掉所有 "0x" / "0X" 前缀, 再过滤空白与逗号
-    let no_prefix = input.replace("0x", "").replace("0X", "");
-    let clean: String = no_prefix
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != ',')
-        .collect();
-    if clean.is_empty() {
-        return Ok(Vec::new());
-    }
-    if !clean.len().is_multiple_of(2) {
-        return Err(format!(
-            "HEX 长度必须为偶数 (每字节 2 个十六进制字符), 当前长度 {}",
-            clean.len()
-        ));
-    }
-    let mut bytes = Vec::with_capacity(clean.len() / 2);
-    let chars: Vec<char> = clean.chars().collect();
-    for i in (0..chars.len()).step_by(2) {
-        let s: String = chars[i..i + 2].iter().collect();
-        let b = u8::from_str_radix(&s, 16).map_err(|_| format!("无效的 HEX 字节: {}", s))?;
-        bytes.push(b);
-    }
-    Ok(bytes)
-}
-
-/// 解析 ASCII 文本 + 转义字符 (\n \r \t \xHH \0 \\)
-pub fn parse_ascii(input: &str) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(input.len());
-    let chars: Vec<char> = input.chars().collect();
-    let mut i = 0;
-    while i < chars.len() {
-        let ch = chars[i];
-        if ch == '\\' && i + 1 < chars.len() {
-            let next = chars[i + 1];
-            match next {
-                'n' => {
-                    bytes.push(0x0a);
-                    i += 2;
-                }
-                'r' => {
-                    bytes.push(0x0d);
-                    i += 2;
-                }
-                't' => {
-                    bytes.push(0x09);
-                    i += 2;
-                }
-                '\\' => {
-                    bytes.push(0x5c);
-                    i += 2;
-                }
-                '0' => {
-                    bytes.push(0x00);
-                    i += 2;
-                }
-                'x' if i + 3 < chars.len() => {
-                    let hex: String = chars[i + 2..i + 4].iter().collect();
-                    if let Ok(b) = u8::from_str_radix(&hex, 16) {
-                        bytes.push(b);
-                        i += 4;
-                    } else {
-                        bytes.push(ch as u8);
-                        i += 1;
-                    }
-                }
-                _ => {
-                    bytes.push(ch as u8);
-                    i += 1;
-                }
-            }
-        } else {
-            // 非 ASCII 字符 (>127) 用 UTF-8 编码
-            let s: String = ch.to_string();
-            for b in s.bytes() {
-                bytes.push(b);
-            }
-            i += 1;
-        }
-    }
-    bytes
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_detect_format_hex() {
-        assert_eq!(detect_format("AA 01 02 BB"), InputFormat::Hex);
-        assert_eq!(detect_format("AA0102BB"), InputFormat::Hex);
-        assert_eq!(detect_format("0xAA 0x01"), InputFormat::Hex);
-        assert_eq!(detect_format("AA,01,02"), InputFormat::Hex);
-    }
-
-    #[test]
-    fn test_detect_format_ascii() {
-        // 包含非 hex 字符 → Ascii
-        assert_eq!(detect_format("1.0,2.0,3.0\\n"), InputFormat::Ascii);
-        assert_eq!(detect_format("Hello"), InputFormat::Ascii);
-        assert_eq!(detect_format("t1234\\r"), InputFormat::Ascii);
-        // 奇数长度 → Ascii
-        assert_eq!(detect_format("ABC"), InputFormat::Ascii);
-        // 空 → Ascii (默认)
-        assert_eq!(detect_format(""), InputFormat::Ascii);
-    }
+    use crate::{CandleEngine, FireWaterEngine, JustFloatEngine, RawDataEngine, SlcanEngine};
+    use vofa_next_core::CanDirection;
 
     #[test]
     fn test_parse_input_auto_resolves_hex() {
@@ -365,65 +217,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_parse_hex_spaces() {
-        assert_eq!(
-            parse_hex("AA 01 02 BB").unwrap(),
-            vec![0xAA, 0x01, 0x02, 0xBB]
-        );
-    }
-
-    #[test]
-    fn test_parse_hex_compact() {
-        assert_eq!(parse_hex("AA0102BB").unwrap(), vec![0xAA, 0x01, 0x02, 0xBB]);
-    }
-
-    #[test]
-    fn test_parse_hex_commas() {
-        assert_eq!(parse_hex("AA,01,02").unwrap(), vec![0xAA, 0x01, 0x02]);
-    }
-
-    #[test]
-    fn test_parse_hex_with_0x_prefix() {
-        assert_eq!(parse_hex("0xAA 0x01").unwrap(), vec![0xAA, 0x01]);
-    }
-
-    #[test]
-    fn test_parse_hex_odd_length_error() {
-        assert!(parse_hex("ABC").is_err());
-    }
-
-    #[test]
-    fn test_parse_hex_invalid_char_error() {
-        assert!(parse_hex("ZZ").is_err());
-    }
-
-    #[test]
-    fn test_parse_ascii_plain() {
-        assert_eq!(parse_ascii("Hello"), vec![b'H', b'e', b'l', b'l', b'o']);
-    }
-
-    #[test]
-    fn test_parse_ascii_escapes() {
-        assert_eq!(parse_ascii("a\\nb\\nc"), vec![b'a', 0x0a, b'b', 0x0a, b'c']);
-        assert_eq!(parse_ascii("\\t\\r\\0\\\\"), vec![0x09, 0x0d, 0x00, 0x5c]);
-    }
-
-    #[test]
-    fn test_parse_ascii_hex_escape() {
-        assert_eq!(parse_ascii("\\xAA\\x01"), vec![0xAA, 0x01]);
-    }
-
-    #[test]
-    fn test_parse_ascii_utf8() {
-        // 中文字符 "中" UTF-8 = E4 B8 AD
-        assert_eq!(parse_ascii("中"), vec![0xE4, 0xB8, 0xAD]);
-    }
-
     // ===== parse_input 跨协议测试 =====
-
-    use crate::{CandleEngine, FireWaterEngine, JustFloatEngine, RawDataEngine, SlcanEngine};
-    use vofa_next_core::CanDirection;
 
     #[test]
     fn test_parse_input_justfloat_hex() {
@@ -519,41 +313,5 @@ mod tests {
             ParsedInput::Error { .. } => {}
             other => panic!("expected Error, got {:?}", other),
         }
-    }
-
-    // ===== split_at_boundaries 测试 =====
-
-    #[test]
-    fn test_split_at_boundaries_even_split() {
-        // 均分对齐: 4 个边界分 2 段, 均分点 8 恰好落在边界上
-        let ranges = split_at_boundaries(&[4, 8, 12, 16], 2);
-        assert_eq!(ranges, vec![0..8, 8..16]);
-    }
-
-    #[test]
-    fn test_split_at_boundaries_aligns_down() {
-        // 均分点不对齐边界时向下对齐: last=15, workers=2, 均分点 7 → 段结束对齐到 5
-        let ranges = split_at_boundaries(&[5, 10, 15], 2);
-        assert_eq!(ranges, vec![0..5, 5..15]);
-    }
-
-    #[test]
-    fn test_split_at_boundaries_fewer_boundaries_than_workers() {
-        // 边界数少于 workers: 空段自动合并
-        let ranges = split_at_boundaries(&[4, 8], 4);
-        assert_eq!(ranges, vec![0..4, 4..8]);
-    }
-
-    #[test]
-    fn test_split_at_boundaries_empty() {
-        // 空 boundaries → 空 Vec (无完整帧)
-        assert!(split_at_boundaries(&[], 4).is_empty());
-    }
-
-    #[test]
-    fn test_split_at_boundaries_single_worker() {
-        // workers=1 → 整块
-        let ranges = split_at_boundaries(&[4, 8, 12], 1);
-        assert_eq!(ranges, vec![0..12]);
     }
 }

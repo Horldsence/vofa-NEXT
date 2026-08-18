@@ -29,7 +29,7 @@ export interface RawDataSnapshot {
 
 /// 波形窗口缓存 — 接收来自后端 Tauri Channel 的推送, 由订阅者维护
 /// 不同于旧的 WaveformBuffer (前端持有完整数据), 此处仅缓存最新窗口快照
-class WaveformWindowCache {
+export class WaveformWindowCache {
   private latest: WaveformWindow = { seq: 0, timestamps: [], channels: [], channel_count: 0 };
   private _version = 0;
   private listeners = new Set<() => void>();

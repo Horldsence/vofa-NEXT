@@ -1,7 +1,6 @@
 import { memo } from 'react';
 import {
   Cable,
-  Binary,
   LayoutGrid,
   Settings,
   Info,
@@ -71,8 +70,6 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
 
   const items: { view: SidebarView; icon: React.ReactNode; key: Parameters<typeof t>[1] }[] = [
     { view: 'quickstart', icon: <Rocket size={22} />, key: 'quickStart' },
-    { view: 'transport', icon: <Cable size={22} />, key: 'dataInterface' },
-    { view: 'protocol', icon: <Binary size={22} />, key: 'protocolEngine' },
     { view: 'widgets', icon: <LayoutGrid size={22} />, key: 'widgetPalette' },
   ];
 

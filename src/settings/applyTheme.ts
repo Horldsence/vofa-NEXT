@@ -65,7 +65,7 @@ export function applyAppearance(appearance: AppSettings['appearance']): void {
     }
   }
 
-  // 亚克力背景: 背景 token 半透明化 + 原生窗口毛玻璃
+  // 亚克力背景: 背景 token 半透明化 + 原生窗口毛玻璃 + Widget 卡片亚克力参数同步
   const acrylic = appearance.acrylicBackground === true;
   if (acrylic) {
     root.dataset.acrylic = 'true';
@@ -81,6 +81,22 @@ export function applyAppearance(appearance: AppSettings['appearance']): void {
   }
   // 纯浏览器 dev 环境无 Tauri 后端, 调用失败时静默忽略
   invoke('set_window_acrylic', { enabled: acrylic }).catch(() => {});
+
+  // Widget 卡片亚克力参数 (与窗口共用 acrylicOpacity, 视觉统一):
+  // 关键: alpha 必须显著低于 100% 才能看到背后内容 (毛玻璃核心), blur 必须 > 0
+  // 才能产生模糊效果. 范围刻意做得激进 — 即使在最实状态 (opacity=1.0) 仍有明显模糊
+  // 和半透明, 因为画布内 widget 卡片背后是编辑器画布/网格/曲线, 模糊这些内容是
+  // 用户期望的"玻璃"质感的核心, 不能做得太微弱.
+  //   - alpha:    0.1→25% (最透), 0.6→45% (基线, 半透明显), 1.0→65% (最实仍半透)
+  //   - blur:     0.1→36px (最透, 模糊最强), 0.6→20px (基线), 1.0→10px (最实仍模糊)
+  //   - saturate: 0.1→130%, 0.6→180%, 1.0→220%
+  const widgetOpacity = Math.min(1, Math.max(0.1, appearance.acrylicOpacity ?? ACRYLIC_BASE_OPACITY));
+  const widgetAlphaPct = Math.round(20 + widgetOpacity * 45);      // 0.1→25%, 0.6→47%, 1.0→65%
+  const widgetBlurPx = Math.round(8 + (1 - widgetOpacity) * 28);   // 0.1→34px, 0.6→19px, 1.0→8px
+  const widgetSaturatePct = Math.round(120 + widgetOpacity * 100); // 0.1→130%, 0.6→180%, 1.0→220%
+  root.style.setProperty('--widget-acrylic-alpha', `${widgetAlphaPct}%`);
+  root.style.setProperty('--widget-acrylic-blur', `${widgetBlurPx}px`);
+  root.style.setProperty('--widget-acrylic-saturate', `${widgetSaturatePct}%`);
 
   // 低动画模式
   if (appearance.reducedMotion) {
