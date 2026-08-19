@@ -399,13 +399,11 @@ export function usePanDrag(
     if (!el) return;
     const isPanGesture = (e: MouseEvent) =>
       e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey);
-    // 捕获阶段拦截 Shift+左键: 阻止冒泡到 uPlot 的 over 元素, 避免同时触发框选
-    // (uPlot 只认 button==0 且不检查修饰键; 右键天然不会触发 uPlot 框选)
-    const onMouseDownCapture = (e: MouseEvent) => {
-      if (e.button === 0 && e.shiftKey) e.stopPropagation();
-    };
+    // 捕获阶段处理平移手势: stopPropagation 阻止 uPlot 的框选
+    // (uPlot 在 over 元素上只认 button==0 且不检查修饰键, 不拦截则 Shift+左键会同时触发框选)
     const onMouseDown = (e: MouseEvent) => {
       if (!isPanGesture(e)) return;
+      e.stopPropagation();
       e.preventDefault();
       const cfg = axisConfigRef.current;
       const firstVisible = cfg.channels.findIndex((c) => c.show);
@@ -456,17 +454,19 @@ export function usePanDrag(
         el.style.cursor = '';
       }
     };
-    // 右键平移手势内屏蔽浏览器上下文菜单 (macOS 上 contextmenu 随右键按下即触发,
-    // 无法等拖动结束再判断, 且波形图上本无右键菜单)
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
-    el.addEventListener('mousedown', onMouseDownCapture, true);
-    el.addEventListener('mousedown', onMouseDown);
+    // 屏蔽波形图上的右键菜单: preventDefault 挡原生菜单; stopPropagation 挡
+    // App 根节点 onContextMenu 弹出的应用内自定义菜单 (macOS 上 contextmenu 随
+    // 右键按下即触发, 无法等拖动结束再判断, 且波形图上本无右键菜单)
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    el.addEventListener('mousedown', onMouseDown, true);
     el.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
-      el.removeEventListener('mousedown', onMouseDownCapture, true);
-      el.removeEventListener('mousedown', onMouseDown);
+      el.removeEventListener('mousedown', onMouseDown, true);
       el.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
