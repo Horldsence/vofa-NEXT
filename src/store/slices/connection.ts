@@ -1,8 +1,10 @@
 import { api } from '../../lib/tauri/tauri';
 import { rawDataBuffer, waveformWindow } from '../../lib/buffers/dataBuffer';
-import { notify, formatError } from '../../lib/tauri/notifications';
-import { t } from '../../i18n';
+import { notify } from '../../lib/tauri/notifications';
+import { nodeErrorText } from '../../lib/tauri/errorGuidance';
+import { t, type Lang } from '../../i18n';
 import { downstreamProtocolOf, type TransportNodeData, type ProtocolNodeData } from '../appStoreHelpers';
+import { schemaFromProtocolConfig } from '../../lib/utils/protocolSchema';
 import { useSettingsStore } from '../settingsStore';
 import type { ConnectionState, PortInfo, ProtocolConfig, TransportConfig, TransportStats, WidgetBinding } from '../../types';
 
@@ -44,6 +46,13 @@ export function cleanupDetectedChannelsPollers() {
   detectedChannelsPollers = {};
 }
 
+/// 节点错误通知文案 — 按错误枚举解析, 每种类型首次出错时追加排查引导
+/// (遵循 settings.general.showContextualTips 开关)
+function nodeError(lang: Lang, e: unknown): string {
+  const tips = useSettingsStore.getState().settings.general.showContextualTips;
+  return nodeErrorText(lang, e, tips);
+}
+
 export interface ConnectionSlice {
   /// 连接状态 — 按 Transport 节点 id
   connectionStates: Record<string, ConnectionState>;
@@ -83,7 +92,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         const lang = get().lang;
         notify.error(
           t(lang, 'notifRefreshPortsFailed'),
-          formatError(e),
+          nodeError(lang, e),
           {
             source: 'refreshPorts',
             actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().refreshPorts(); } }],
@@ -104,6 +113,10 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
       const protocol: ProtocolConfig = protocolNode
         ? (protocolNode.data as ProtocolNodeData).config
         : { kind: 'JustFloat', channels: null };
+      // schema 一并下发 (旧数据缺 schema 时按 config 回退构造; 无下游协议节点 = null)
+      const schema = protocolNode
+        ? ((protocolNode.data as ProtocolNodeData).schema ?? schemaFromProtocolConfig(protocol))
+        : null;
       try {
         // 后端容量按源生效 — 连接前应用当前设置
         const cap = useSettingsStore.getState().settings.data;
@@ -115,7 +128,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         await api.clearRawDataBuffer(nodeId);
         rawDataBuffer.clear();
         waveformWindow.clear();
-        await api.openTransport(nodeId, config, protocol);
+        await api.openTransport(nodeId, config, protocol, schema);
         set((s: any) => ({
           connectionStates: { ...s.connectionStates, [nodeId]: 'Connected' as ConnectionState },
           testDataRunning: { ...s.testDataRunning, [nodeId]: false },
@@ -130,7 +143,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         }));
         notify.error(
           t(lang, 'notifConnectFailed'),
-          formatError(e),
+          nodeError(lang, e),
           {
             source: 'connect',
             actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().connectNode(nodeId); } }],
@@ -150,7 +163,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         const lang = get().lang;
         notify.error(
           t(lang, 'notifDisconnectFailed'),
-          formatError(e),
+          nodeError(lang, e),
           {
             source: 'disconnect',
             actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().disconnectNode(nodeId); } }],
@@ -165,7 +178,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         set((s: any) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: true } }));
       } catch (e) {
         const lang = get().lang;
-        notify.error(t(lang, 'notifStartTestDataFailed'), formatError(e), { source: 'startTestData' });
+        notify.error(t(lang, 'notifStartTestDataFailed'), nodeError(lang, e), { source: 'startTestData' });
       }
     },
 
@@ -175,7 +188,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         set((s: any) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: false } }));
       } catch (e) {
         const lang = get().lang;
-        notify.error(t(lang, 'notifStopTestDataFailed'), formatError(e), { source: 'stopTestData' });
+        notify.error(t(lang, 'notifStopTestDataFailed'), nodeError(lang, e), { source: 'stopTestData' });
       }
     },
 
@@ -184,7 +197,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         await api.sendRaw(nodeId, data);
       } catch (e) {
         const lang = get().lang;
-        notify.error(t(lang, 'notifSendFailed'), formatError(e), { source: 'sendData' });
+        notify.error(t(lang, 'notifSendFailed'), nodeError(lang, e), { source: 'sendData' });
       }
     },
 
@@ -208,7 +221,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         }));
       } catch (e) {
         const lang = get().lang;
-        notify.error(t(lang, 'notifSendFailed'), formatError(e), { source: 'sendAndCapture' });
+        notify.error(t(lang, 'notifSendFailed'), nodeError(lang, e), { source: 'sendAndCapture' });
       }
     },
 
@@ -217,7 +230,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         await api.sendString(nodeId, text);
       } catch (e) {
         const lang = get().lang;
-        notify.error(t(lang, 'notifSendFailed'), formatError(e), { source: 'sendText' });
+        notify.error(t(lang, 'notifSendFailed'), nodeError(lang, e), { source: 'sendText' });
       }
     },
 
@@ -226,7 +239,7 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         await api.sendWidgetValue(nodeId, protocolNode, binding, value);
       } catch (e) {
         const lang = get().lang;
-        notify.error(t(lang, 'notifSendFailed'), formatError(e), { source: 'sendWidget' });
+        notify.error(t(lang, 'notifSendFailed'), nodeError(lang, e), { source: 'sendWidget' });
       }
     },
 

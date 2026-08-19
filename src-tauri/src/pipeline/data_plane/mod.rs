@@ -30,6 +30,7 @@ use tokio::task::JoinHandle;
 use vofa_next_buffer::{DataBuffer, RawDataCollector};
 use vofa_next_core::{
     CanBuffer, CanLoadStats, DecodedBuffer, LogicBuffer, PipelineConfig, ProtocolConfig,
+    ProtocolSchema,
 };
 use vofa_next_nodes::{BytePlan, NodeDef, NodeKind, SourceFramesMap};
 use vofa_next_protocol::ProtocolEngine;
@@ -52,6 +53,8 @@ pub struct ProtocolNodeState {
     pub config: ProtocolConfig,
     /// convert_to 目标配置
     pub convert_config: Option<ProtocolConfig>,
+    /// 帧 schema (协议引擎统一为 schema 模型; None = 旧前端, 引擎按 config 构造)
+    pub schema: Option<ProtocolSchema>,
     /// 并行解析编排器 (feed 内含 spawn_blocking await, 用 tokio mutex 跨 await 持有)
     pub parallel: Arc<tokio::sync::Mutex<ParallelFeeder>>,
     /// 当前是否处于并行解析模式 (顺序↔并行切换时做 pending 交接)
@@ -63,13 +66,24 @@ pub struct ProtocolNodeState {
 }
 
 impl ProtocolNodeState {
-    pub fn new(config: &ProtocolConfig, convert_to: Option<&ProtocolConfig>) -> Self {
+    pub fn new(
+        config: &ProtocolConfig,
+        convert_to: Option<&ProtocolConfig>,
+        schema: Option<&ProtocolSchema>,
+    ) -> Self {
+        // 有 schema 时由 compile_schema 构造引擎 (预设走 legacy 引擎, Custom 走 SchemaEngine);
+        // 无 schema (旧前端) 保持原有 create_engine 路径
+        let engine = match schema {
+            Some(s) => vofa_next_protocol::compile_schema(s),
+            None => vofa_next_protocol::create_engine(config),
+        };
         Self {
-            engine: Arc::new(Mutex::new(vofa_next_protocol::create_engine(config))),
+            engine: Arc::new(Mutex::new(engine)),
             convert_engine: convert_to
                 .map(|c| Arc::new(Mutex::new(vofa_next_protocol::create_engine(c)))),
             config: config.clone(),
             convert_config: convert_to.cloned(),
+            schema: schema.cloned(),
             parallel: Arc::new(tokio::sync::Mutex::new(ParallelFeeder::new())),
             in_parallel: false,
             parallel_supported: None,
@@ -78,10 +92,16 @@ impl ProtocolNodeState {
     }
 
     /// 图配置与运行时配置是否一致 (ProtocolConfig 无 PartialEq, 用 serde 值比较)
-    fn matches(&self, config: &ProtocolConfig, convert_to: Option<&ProtocolConfig>) -> bool {
+    fn matches(
+        &self,
+        config: &ProtocolConfig,
+        convert_to: Option<&ProtocolConfig>,
+        schema: Option<&ProtocolSchema>,
+    ) -> bool {
         serde_json::to_value(&self.config).ok() == serde_json::to_value(config).ok()
             && serde_json::to_value(&self.convert_config).ok()
                 == serde_json::to_value(&convert_to).ok()
+            && serde_json::to_value(&self.schema).ok() == serde_json::to_value(schema).ok()
     }
 }
 
@@ -183,12 +203,17 @@ impl DataPlaneState {
         });
         // 新增 / 配置变更重建
         for n in nodes.values() {
-            if let NodeKind::Protocol { config, convert_to } = &n.kind {
+            if let NodeKind::Protocol {
+                config,
+                convert_to,
+                schema,
+            } = &n.kind
+            {
                 match states.get(&n.id) {
                     Some(st) => {
                         let mut st = st.lock();
-                        if !st.matches(config, convert_to.as_ref()) {
-                            *st = ProtocolNodeState::new(config, convert_to.as_ref());
+                        if !st.matches(config, convert_to.as_ref(), schema.as_ref()) {
+                            *st = ProtocolNodeState::new(config, convert_to.as_ref(), schema.as_ref());
                         }
                     }
                     None => {
@@ -197,6 +222,7 @@ impl DataPlaneState {
                             Arc::new(Mutex::new(ProtocolNodeState::new(
                                 config,
                                 convert_to.as_ref(),
+                                schema.as_ref(),
                             ))),
                         );
                     }

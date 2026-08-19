@@ -102,6 +102,7 @@ pub fn run() {
             commands::start_test_data,
             commands::stop_test_data,
             commands::get_test_data_state,
+            commands::update_transport_protocol,
             // 协议
             commands::set_protocol,
             commands::get_protocol,

@@ -7,6 +7,7 @@ import type {
   InputFormat,
   PortInfo,
   ProtocolConfig,
+  ProtocolSchema,
   TransportConfig,
   TransportStats,
   WidgetBinding,
@@ -73,8 +74,9 @@ export const api = {
   listPorts: () => invoke<PortInfo[]>('list_ports'),
 
   /// 打开传输连接; protocol 仅被 TestData 用作生成数据的线缆格式参考
-  openTransport: (nodeId: string, config: TransportConfig, protocol: ProtocolConfig) =>
-    invoke<void>('open_transport', { nodeId, config, protocol }),
+  /// schema: 可选帧 schema (custom 且带 encode 块时 TestData 按 schema 编码)
+  openTransport: (nodeId: string, config: TransportConfig, protocol: ProtocolConfig, schema?: ProtocolSchema | null) =>
+    invoke<void>('open_transport', { nodeId, config, protocol, schema: schema ?? null }),
 
   closeTransport: (nodeId: string) => invoke<void>('close_transport', { nodeId }),
 
@@ -95,6 +97,11 @@ export const api = {
   stopTestData: (nodeId: string) => invoke<void>('stop_test_data', { nodeId }),
 
   getTestDataState: (nodeId: string) => invoke<boolean>('get_test_data_state', { nodeId }),
+
+  /// 运行时热更新传输节点的链路协议 (图/协议变化后推送, 无需重连)
+  /// schema: 可选帧 schema (与 openTransport 语义一致)
+  updateTransportProtocol: (nodeId: string, protocol: ProtocolConfig, schema?: ProtocolSchema | null) =>
+    invoke<void>('update_transport_protocol', { nodeId, protocol, schema: schema ?? null }),
 
   /// 协议回环: 发送字节并立即捕获指定 Protocol 节点的解析结果
   sendAndCapture: (nodeId: string, protocolNode: string, data: number[]) =>

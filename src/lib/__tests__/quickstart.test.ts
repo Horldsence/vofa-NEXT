@@ -82,6 +82,47 @@ describe('快速开始模板', () => {
     expect((transport?.data as { config: { kind: string } }).config.kind).toBe('Serial');
     expect((protocol?.data as { config: { kind: string } }).config.kind).toBe('JustFloat');
   });
+
+  it('每个模板的 Protocol 节点都携带帧 schema (预设由工厂生成)', () => {
+    for (const tpl of QUICK_START_TEMPLATES) {
+      const snap = tpl.build();
+      const protocol = snap.rfNodes?.find((n) => n.type === 'protocol');
+      const schema = (protocol?.data as { schema?: { preset: string; decode: unknown[] } }).schema;
+      expect(schema, `模板 ${tpl.id} 缺 schema`).toBeDefined();
+      expect(Array.isArray(schema!.decode)).toBe(true);
+    }
+  });
+
+  it('自定义协议模板: custom schema 命名端口 + 多帧 CommandSender', () => {
+    const snap = getTemplate('custom-protocol')!.build();
+    const protocol = snap.rfNodes?.find((n) => n.type === 'protocol');
+    const data = protocol?.data as {
+      schema: { preset: string; legacyConfig?: unknown; decode: { type: string; portName?: string }[] };
+    };
+    expect(data.schema.preset).toBe('custom');
+    expect(data.schema.legacyConfig ?? null).toBeNull();
+    // 命名端口 speed/temp 由 field 块派生
+    const ports = data.schema.decode.filter((b) => b.type === 'field').map((b) => b.portName);
+    expect(ports).toEqual(['speed', 'temp']);
+    // 命名端口直接出现在边上 (后端 ProtocolSource 槽位支持命名端口)
+    expect(snap.rfEdges?.some((e) => e.sourceHandle === 'speed')).toBe(true);
+    expect(snap.rfEdges?.some((e) => e.sourceHandle === 'temp')).toBe(true);
+    // 多帧 CommandSender
+    const cmd = snap.widgets?.find((w) => w.kind === 'Command');
+    const frames = (cmd?.params as { frames?: unknown[] }).frames;
+    expect(Array.isArray(frames)).toBe(true);
+    expect(frames!.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('模板快照过迁移后幂等 (schema 已带, 不再补齐)', async () => {
+    const { migrateSnapshotToV3 } = await import('../tauri/appExport');
+    for (const tpl of QUICK_START_TEMPLATES) {
+      const snap = tpl.build();
+      const once = migrateSnapshotToV3(snap as never);
+      const twice = migrateSnapshotToV3(once as never);
+      expect(JSON.stringify(twice)).toBe(JSON.stringify(once));
+    }
+  });
 });
 
 describe('applyTemplate 合并模式', () => {

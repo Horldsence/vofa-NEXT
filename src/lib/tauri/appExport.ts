@@ -27,6 +27,8 @@ import { t } from '../../i18n';
 import { DEFAULT_SERIAL } from '../../store/slices/connection';
 import { DEFAULT_PROTOCOL } from '../../store/slices/protocol';
 import { getEffectiveChannels } from '../../store/appStoreHelpers';
+import { schemaFromProtocolConfig } from '../utils/protocolSchema';
+import { normalizeCommandConfig } from '../utils/commandFrames';
 import { getAllRawDataViewPrefs, useRawDataViewStore, type RawDataViewPrefs } from '../buffers/rawDataViewStore';
 
 /// 备份分区 — 拆分备份/模板的最小单元
@@ -234,13 +236,24 @@ const LEGACY_CHANNEL_SOURCE_PREFIX = '__channel_source__';
 /// - 顶层 transport/protocol 单例配置 → 一对全局 Transport + Protocol 节点
 /// - 旧通道源节点删除, 其 chN 出边改写为从 Protocol 节点发出
 /// - FrameDecoder 旧字节输入口 loopbackIn → in
+/// - Command 旧版单帧配置 (blocks 在顶层) → frames 多帧结构
+/// - Protocol 节点缺 schema → 按 config 工厂补齐 (协议 schema 化)
 /// - 追加 Transport.rx → Protocol.in 字节边 (两者皆存在且尚无字节边时)
 /// 已是 v3 的快照原样返回 (幂等)
 export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
   const hasLegacyChannelSource = (snap.rfNodes ?? []).some((n) => n.type === 'channelSource');
   const hasLegacySingletons = snap.transport != null || snap.protocol != null;
   const hasLegacyLoopbackIn = (snap.rfEdges ?? []).some((e) => e.targetHandle === 'loopbackIn');
-  if (snap.version === 3 && !hasLegacyChannelSource && !hasLegacySingletons && !hasLegacyLoopbackIn) {
+  // protocol 节点缺 schema (schema 化前的 v3 快照)
+  const hasProtocolMissingSchema = (snap.rfNodes ?? []).some(
+    (n) => n.data?.global === true && n.type === 'protocol' && n.data.schema == null
+  );
+  const isLegacyCommand = (w: WidgetConfig | undefined): boolean =>
+    w?.kind === 'Command' && !Array.isArray((w.params as { frames?: unknown }).frames);
+  const hasLegacyCommand =
+    (snap.widgets ?? []).some(isLegacyCommand) ||
+    (snap.rfNodes ?? []).some((n) => isLegacyCommand(n.data?.widget as WidgetConfig | undefined));
+  if (snap.version === 3 && !hasLegacyChannelSource && !hasLegacySingletons && !hasLegacyLoopbackIn && !hasLegacyCommand && !hasProtocolMissingSchema) {
     return { ...snap, version: 3 };
   }
 
@@ -252,7 +265,21 @@ export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
   for (const n of snap.rfNodes ?? []) {
     if (n.type === 'channelSource') continue; // 删除通道源节点
     if (n.data?.global === true && n.type === 'transport' && !transportId) transportId = n.id;
-    if (n.data?.global === true && n.type === 'protocol' && !protocolId) protocolId = n.id;
+    if (n.data?.global === true && n.type === 'protocol') {
+      if (!protocolId) protocolId = n.id;
+      // 缺 schema → 按 config 工厂补齐 (幂等: 已有 schema 原样保留)
+      if (n.data.schema == null) {
+        const config = n.data.config as ProtocolConfig;
+        rfNodes.push({ ...n, data: { ...n.data, schema: schemaFromProtocolConfig(config) } });
+        continue;
+      }
+    }
+    // Command 旧版单帧配置 → frames (节点内嵌 widget 与 widgets 数组需同步归一化)
+    const w = n.data?.widget as WidgetConfig | undefined;
+    if (isLegacyCommand(w) && w?.kind === 'Command') {
+      rfNodes.push({ ...n, data: { ...n.data, widget: { kind: 'Command', params: normalizeCommandConfig(w.params) } } });
+      continue;
+    }
     rfNodes.push(n);
   }
 
@@ -279,6 +306,7 @@ export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
         config,
         convertTo: null,
         channels: getEffectiveChannels(config, null),
+        schema: schemaFromProtocolConfig(config),
         label: 'Protocol',
       },
       selected: false,
@@ -313,7 +341,13 @@ export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
   }
 
   const { transport: _t, protocol: _p, ...rest } = snap;
-  return { ...rest, version: 3, rfNodes, rfEdges };
+  // widgets 数组内的 Command 旧版单帧配置 → frames
+  const widgets = snap.widgets?.map((w) =>
+    isLegacyCommand(w) && w.kind === 'Command'
+      ? { kind: 'Command' as const, params: normalizeCommandConfig(w.params) }
+      : w
+  );
+  return { ...rest, version: 3, rfNodes, rfEdges, widgets };
 }
 
 /// 检测快照实际包含哪些分区 (供拆分备份导入时的勾选预填), 按 ALL_BACKUP_SECTIONS 顺序返回

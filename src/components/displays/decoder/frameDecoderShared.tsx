@@ -15,6 +15,9 @@ import {
   Grid3x3,
   ShieldCheck,
   Flag,
+  Table,
+  Type,
+  AudioWaveform,
 } from 'lucide-react';
 
 /// 块类型配置: 图标 / Tailwind 静态类名 / 标签 key
@@ -37,7 +40,16 @@ export const BLOCK_TYPE_CONFIG: Record<
   bitfield: { icon: <Grid3x3 size={12} />,     badgeClass: 'bg-orange/20 text-orange border-orange/40',  blockClass: 'border-orange/40 bg-orange/10',     iconClass: 'text-orange', labelKey: 'fdBlockBitfield', addLabelKey: 'fdAddBlockBitfield' },
   checksum: { icon: <ShieldCheck size={12} />, badgeClass: 'bg-red/20 text-red border-red/40',           blockClass: 'border-red/40 bg-red/10',           iconClass: 'text-red',    labelKey: 'fdBlockChecksum', addLabelKey: 'fdAddBlockChecksum' },
   tail:     { icon: <Flag size={12} />,        badgeClass: 'bg-accent/20 text-accent border-accent/40',  blockClass: 'border-accent/40 bg-accent/10',     iconClass: 'text-accent', labelKey: 'fdBlockTail',     addLabelKey: 'fdAddBlockTail' },
+  // schema 模型扩展块 (FrameDecoder 控件不提供添加入口, 见 FRAME_DECODER_ADDABLE_TYPES)
+  csv:        { icon: <Table size={12} />,         badgeClass: 'bg-green/20 text-green border-green/40',   blockClass: 'border-green/40 bg-green/10',     iconClass: 'text-green',  labelKey: 'fdBlockCsv',        addLabelKey: 'fdAddBlockCsv' },
+  asciiField: { icon: <Type size={12} />,          badgeClass: 'bg-yellow/20 text-yellow border-yellow/40', blockClass: 'border-yellow/40 bg-yellow/10',  iconClass: 'text-yellow', labelKey: 'fdBlockAsciiField', addLabelKey: 'fdAddBlockAsciiField' },
+  samples:    { icon: <AudioWaveform size={12} />, badgeClass: 'bg-purple/20 text-purple border-purple/40', blockClass: 'border-purple/40 bg-purple/10',  iconClass: 'text-purple', labelKey: 'fdBlockSamples',    addLabelKey: 'fdAddBlockSamples' },
 };
+
+/// FrameDecoder 控件 UI 可添加的块类型 (扩展块 csv/asciiField/samples 仅供协议 schema 编辑器使用)
+export const FRAME_DECODER_ADDABLE_TYPES = [
+  'header', 'length', 'id', 'field', 'bitfield', 'checksum', 'tail',
+] as const satisfies readonly DecoderBlockType[];
 
 export const CHECKSUM_OPTIONS: { value: ChecksumType; labelKey: string }[] = [
   { value: 'none', labelKey: 'cmdChecksumNone' },
@@ -167,6 +179,12 @@ export function blockSummary(block: DecoderBlock): string {
       return block.algorithm ?? 'sum8';
     case 'tail':
       return block.hex ?? '';
+    case 'csv':
+      return `${block.ports.join(' ')} (${block.separator})`;
+    case 'asciiField':
+      return `${block.portName} : ${block.base}${block.digits}`;
+    case 'samples':
+      return block.decoder.kind;
   }
 }
 
@@ -177,6 +195,8 @@ export function getOutputPortNames(blocks: DecoderBlock[]): string[] {
     if (b.type === 'length') names.push(b.portName ?? 'length');
     else if (b.type === 'id') names.push(b.portName ?? 'id_value');
     else if (b.type === 'field' || b.type === 'bitfield') names.push(b.portName);
+    else if (b.type === 'asciiField') names.push(b.portName);
+    else if (b.type === 'csv') names.push(...b.ports);
   }
   return names;
 }

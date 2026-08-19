@@ -11,6 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 use vofa_next_core::config::{ProtocolConfig, TransportConfig};
+use vofa_next_core::schema::ProtocolSchema;
 use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
 
 use crate::decoder_block::DecoderBlockDef;
@@ -32,6 +33,10 @@ pub const FRAME_DECODER_IN_HANDLE: &str = "in";
 pub const LOOPBACK_IN_HANDLE: &str = "loopbackIn";
 /// widget 节点 (CommandSender 等) 的命令字节出口
 pub const LOOPBACK_OUT_HANDLE: &str = "loopbackOut";
+/// RawData 控件动态输入端口 id 前缀 (`src:<sourceId>:<sourceHandle>`)
+/// 约定来源: 前端 rawDataPortId() (src/lib/utils/nodeDef.ts) — RawData 每个已连接的
+/// (source, sourceHandle) 组合派生一个通道端口; 边只是用户意图标记, 字节不流入 f32 图
+pub const RAW_DATA_PORT_PREFIX: &str = "src:";
 
 /// 节点种类 — 决定节点如何被评估
 ///
@@ -45,18 +50,25 @@ pub enum NodeKind {
     /// 协议引擎节点 (字节平面, 全局)
     /// 输入端口 "in" (Bytes), 输出端口 "out" (Bytes)
     /// convert_to: 可选的协议转换目标配置
+    /// schema: 可选的帧 schema (协议引擎统一为 schema 模型; None = 旧前端, 按 config 构造引擎)
     Protocol {
         config: ProtocolConfig,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         convert_to: Option<ProtocolConfig>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        schema: Option<ProtocolSchema>,
     },
     /// 协议帧源 (数值平面) — 引用某个全局 Protocol 节点的最新帧
-    /// 输出端口 "ch0".."chN" (F32), 求值时从 source_frames[node_id] 读取
+    /// 输出端口默认 "ch0".."chN" (F32), 求值时从 source_frames[node_id] 读取
+    /// port_names: 可选命名端口 (schema 模型的端口名; None/空 = 缺省 ch0..chN)
     ProtocolSource {
         /// 被引用的全局 Protocol 节点 id
         node_id: String,
-        /// 通道数 (输出 ch0..ch{channels-1})
+        /// 通道数 (输出 ch0..ch{channels-1} 或 port_names 各端口)
         channels: usize,
+        /// 命名端口列表 (第 i 个名字对应 channels[i]; 缺省/越界回退 "ch{i}")
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port_names: Option<Vec<String>>,
     },
     /// 输入控件 (Knob/Slider/Button/Radio/Checkbox)
     /// 输出端口固定 "value", 值来自前端 invoke('set_input_value')
@@ -130,6 +142,20 @@ pub enum NodeKind {
     Sink,
 }
 
+/// 解析 ProtocolSource 的输出端口名列表 (编译/求值共用):
+/// port_names 给定且非空时用命名端口 (越界/空名回退 "ch{i}"), 否则缺省 "ch0..chN"
+pub fn protocol_source_port_names(port_names: Option<&[String]>, channels: usize) -> Vec<String> {
+    (0..channels)
+        .map(|i| {
+            port_names
+                .and_then(|ps| ps.get(i))
+                .filter(|p| !p.is_empty())
+                .cloned()
+                .unwrap_or_else(|| format!("ch{}", i))
+        })
+        .collect()
+}
+
 /// 节点定义 — 通过 IPC 从前端同步到后端
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NodeDef {
@@ -157,7 +183,7 @@ pub enum PortDomain {
 ///   (chN 帧通道不经 Protocol 本体暴露, 数值平面用 ProtocolSource)
 /// - FrameDecoder: 输入 "in" 与旧名 "loopbackIn" = Bytes, 其余输出 = F32
 /// - Sink/Custom: 输出 "loopbackOut" = Bytes (CommandSender 命令字节出口)
-/// - ProtocolSource: 输出 "ch0..chN" = F32; 其余节点按现有语义全 F32
+/// - ProtocolSource: 输出 "ch0..chN" 或 port_names 命名端口 = F32; 其余节点按现有语义全 F32
 pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain {
     match kind {
         NodeKind::Transport { .. } => match (is_output, handle) {
@@ -202,6 +228,7 @@ mod tests {
         let protocol = NodeKind::Protocol {
             config: ProtocolConfig::default(),
             convert_to: None,
+            schema: None,
         };
         assert_eq!(
             port_domain(&protocol, PROTOCOL_IN_HANDLE, false),
@@ -240,6 +267,7 @@ mod tests {
         let source = NodeKind::ProtocolSource {
             node_id: "p1".into(),
             channels: 2,
+            port_names: None,
         };
         assert_eq!(port_domain(&source, "ch0", true), PortDomain::F32);
 
@@ -249,6 +277,30 @@ mod tests {
         };
         assert_eq!(port_domain(&math, "in0", false), PortDomain::F32);
         assert_eq!(port_domain(&math, "result", true), PortDomain::F32);
+    }
+
+    #[test]
+    fn test_protocol_schema_and_port_names_default_compat() {
+        // 旧前端: Protocol 无 schema 字段 / ProtocolSource 无 port_names 字段 → serde default 兼容
+        let json = r#"{"kind":"Protocol","params":{"config":{"kind":"RawData"}}}"#;
+        let kind: NodeKind = serde_json::from_str(json).expect("旧 Protocol 数据应反序列化成功");
+        match kind {
+            NodeKind::Protocol {
+                schema, convert_to, ..
+            } => {
+                assert!(schema.is_none());
+                assert!(convert_to.is_none());
+            }
+            other => panic!("expected Protocol, got {:?}", other),
+        }
+
+        let json = r#"{"kind":"ProtocolSource","params":{"node_id":"p1","channels":2}}"#;
+        let kind: NodeKind =
+            serde_json::from_str(json).expect("旧 ProtocolSource 数据应反序列化成功");
+        match kind {
+            NodeKind::ProtocolSource { port_names, .. } => assert!(port_names.is_none()),
+            other => panic!("expected ProtocolSource, got {:?}", other),
+        }
     }
 
     #[test]

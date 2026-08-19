@@ -125,7 +125,10 @@ impl DecodedEventFilter {
 }
 
 /// 解码器配置
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// PartialEq: schema 模型中 DecoderBlockDef::Samples 内嵌本配置,
+/// 块列表比较 (FrameParser::matches_config) 需要逐字段相等判定。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", content = "params")]
 pub enum LogicDecoderConfig {
     Uart {

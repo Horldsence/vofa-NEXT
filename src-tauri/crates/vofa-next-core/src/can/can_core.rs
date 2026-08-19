@@ -72,7 +72,7 @@ pub struct CanFilter {
 /// CAN 帧过滤器 — 决定哪些帧应该被保留
 impl CanFilter {
     /// 检查帧是否匹配过滤条件
-    pub fn matches(&self, frame: &CanFrame) -> bool {
+    pub const fn matches(&self, frame: &CanFrame) -> bool {
         if !self.enabled {
             return true;
         }

@@ -1,9 +1,9 @@
 //! CAN 模块集成测试
 
-use vofa_next_core::can::{CanBuffer, CanFrame, CanFrameTestData, CanLoadStats};
+use vofa_next_core::can::{CanBuffer, CanFrame, CanLoadStats};
 use vofa_next_core::CanDirection;
 
-fn make_frame(id: u32, data: Vec<u8>) -> CanFrame {
+const fn make_frame(id: u32, data: Vec<u8>) -> CanFrame {
     CanFrame {
         timestamp: 0,
         id,

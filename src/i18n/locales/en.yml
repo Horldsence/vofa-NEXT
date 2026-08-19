@@ -3,6 +3,11 @@ portConfig: Port Config
 deviceConfig: Device Config
 dataInterface: Transport
 protocolEngine: Protocol Engine
+protocolCustom: Custom Blocks
+protocolCustomBlocks: Frame Blocks
+protocolResetToPreset: Reset to Preset
+protocolDerivedPorts: Derived Ports
+protocolCustomDesc: User-defined frame blocks. Ports are derived from field/bitfield/csv blocks and can be named freely.
 transportType: Transport
 widgetPalette: Widgets
 aiAssistant: AI Assistant
@@ -269,6 +274,8 @@ notifSendFailed: Send failed
 notifSetProtocolFailed: Protocol setup failed
 notifClearBufferFailed: Clear buffer failed
 notifNodeGraphSyncFailed: Node graph sync failed
+notifTransportHotUpdateFailed: Connection hot-update failed
+notifReconnect: Reconnect
 notifPollChannelsFailed: Channel detection polling failed
 notifStartTestDataFailed: Failed to start test data
 notifStopTestDataFailed: Failed to stop test data
@@ -277,6 +284,17 @@ notifDismiss: Dismiss
 notifDismissAll: Dismiss All
 notifMore: "{{count}} more notifications"
 notifCollapsedHint: Same-source error count
+
+# First-error guidance for node errors (shown once per error kind, managed by errorGuidance.ts)
+errorGuidePrefix: Tip
+errorGuideTransport: Transport failed to open. Check the cable connection and drivers, then refresh the port list and retry
+errorGuideProtocol: Protocol engine failed to start. Check the protocol configuration and channel count
+errorGuidePortNotFound: Port not found. Make sure the device is connected, then refresh the port list
+errorGuidePortAlreadyOpen: The port is already in use. Close other programs using this port (e.g. serial tools) and retry
+errorGuidePortNotOpen: The port is not open yet. Connect the Transport node first
+errorGuideIo: System IO error. Check the device connection and your permission to access the port
+errorGuideConfig: Invalid node configuration. Check the node parameters (port / baud rate / protocol, etc.)
+errorGuideSerde: Data serialization failed. Check the payload or configuration format
 
 # Settings system
 settings: Settings
@@ -348,6 +366,8 @@ templateCan: CAN
 templateCanDesc: Slcan transport + CAN frame view, connect a CAN analyzer to send/receive
 templateSerial: Serial
 templateSerialDesc: Serial float stream + gauge / number display widgets
+templateCustomProtocol: Custom Protocol
+templateCustomProtocolDesc: Custom block protocol (named channels speed/temp) + multi-frame command sender; runs with TestData, no hardware needed
 templateDemo: Combined Demo
 templateDemoDesc: Full pipeline example with filter + math + waveform / gauge
 templateApplyTitle: Apply Template
@@ -974,6 +994,14 @@ fdAddBlockField: Add Field
 fdAddBlockBitfield: Add Bitfield
 fdAddBlockChecksum: Add Checksum
 fdAddBlockTail: Add Tail
+fdBlockCsv: CSV
+fdBlockAsciiField: ASCII Field
+fdBlockSamples: Samples
+fdAddBlockCsv: Add CSV
+fdAddBlockAsciiField: Add ASCII Field
+fdAddBlockSamples: Add Samples
+fdCsvSeparator: Separator
+fdCsvPorts: Ports
 fdChecksumPosAppend: Append
 fdChecksumPosInline: Inline
 fdChecksumPosPrepend: Prepend
@@ -1028,6 +1056,14 @@ cmdSendModeManual: Manual send
 cmdSendModeOnChange: Send on change
 cmdSendModeTimer: Timed send
 cmdSendModeInterval: Interval (ms)
+
+# Frame list (multiple frames per sender)
+cmdFrames: Frames
+cmdAddFrame: Add frame
+cmdRemoveFrame: Delete frame
+cmdRenameFrameHint: Double-click to rename
+cmdNewFrame: Frame
+cmdFrameSettings: Frame settings
 
 # Layout arrangement (drag to rearrange panels)
 dragToRearrange: Drag to another panel's edge to rearrange

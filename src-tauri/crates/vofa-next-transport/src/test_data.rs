@@ -1,30 +1,39 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, mpsc, Notify};
-use vofa_next_core::{ProtocolConfig, TestDataConfig, TestSignal};
+use tokio::sync::{broadcast, mpsc, watch, Notify};
+use vofa_next_core::{
+    ProtocolConfig, SchemaPreset, TestDataConfig, TestDataLink, TestSignal,
+};
 
 /// 启动测试数据生成器
 ///
-/// `protocol` 决定生成数据的线缆格式:
+/// `link` 决定生成数据的线缆格式 (protocol 为 legacy 配置, schema 为帧 schema):
+/// - schema = Custom 且带 encode 块 → 按 schema 编码块生成
+/// - 否则按 link.protocol 走 legacy 编码:
 /// - JustFloat → 4 字节 LE float + 帧尾 [0x00,0x00,0x80,0x7f]
 /// - FireWater → ASCII CSV `v1,v2,...,vn\n`
 /// - RawData   → 递增字节流 (无解析)
 /// - Slcan     → ASCII slcan 帧 `t<id><dlc><data>\r`
 /// - CandleLight → 24 字节二进制 CAN 帧 (cmd=0x11 RX)
 /// - LogicDecode → 字节流, 每字节代表 8 通道数字采样 (channel 0 输出方波)
+///
+/// 链路配置经 `watch` 通道传入, 返回其 `Sender` — 图/协议变化后可运行时热更新,
+/// 无需重建生成任务 (生成循环每批数据读取最新值)。
 pub async fn spawn(
     config: TestDataConfig,
-    protocol: ProtocolConfig,
+    link: TestDataLink,
 ) -> vofa_next_core::Result<(
     mpsc::Sender<Vec<u8>>,
     broadcast::Sender<Vec<u8>>,
     Arc<AtomicBool>,
     Arc<AtomicBool>,
     Arc<Notify>,
+    watch::Sender<TestDataLink>,
 )> {
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
+    let (protocol_tx, protocol_rx) = watch::channel(link);
     let cancel = Arc::new(AtomicBool::new(false));
     let running = Arc::new(AtomicBool::new(false));
     let notify = Arc::new(Notify::new());
@@ -55,13 +64,15 @@ pub async fn spawn(
             if running_gen.load(Ordering::Relaxed) {
                 tokio::select! {
                     _ = tick.tick() => {
+                        // 每批读取最新链路配置 (支持运行时热更新)
+                        let link = protocol_rx.borrow().clone();
                         // 相位以真实流逝时间为基准, 批内按采样间隔递增 (亚毫秒偏移,
                         // 不会产生 MissedTickBehavior::Skip 那样的永久累积漂移)
                         let base_t = start.elapsed().as_secs_f32();
                         let mut data = Vec::new();
                         for i in 0..samples_per_msg {
                             let t = base_t + i as f32 * sample_dt;
-                            data.extend_from_slice(&generate_bytes(channels, signal, t, &protocol, sample_idx));
+                            data.extend_from_slice(&generate_link_bytes(channels, signal, t, &link, sample_idx));
                             sample_idx += 1;
                         }
 
@@ -69,7 +80,8 @@ pub async fn spawn(
                     }
                     _ = notify_gen.notified() => {}
                     data = write_rx.recv() => {
-                        // 测试数据模式忽略写入
+                        // 写入由 TransportHandle::send 统一回环到 data_tx 广播,
+                        // 这里只需排空写入通道 (通道满会导致 send 报错)
                         if data.is_none() { break; }
                     }
                     _ = tokio::time::sleep(Duration::from_millis(100)) => {
@@ -91,10 +103,34 @@ pub async fn spawn(
         log::debug!("测试数据生成器退出");
     });
 
-    Ok((write_tx, data_tx, cancel, running, notify))
+    Ok((write_tx, data_tx, cancel, running, notify, protocol_tx))
 }
 
-/// 按协议类型生成线缆格式的字节流
+/// 按链路配置生成线缆格式的字节流
+///
+/// 编码路径选择:
+/// - schema = Some(Custom) 且 encode = Some → 按 schema 编码块编码 values
+///   (values 与 decode 块派生的端口列表对齐)
+/// - schema = Some(预设) 或 None → 现有 generate_bytes legacy 路径
+fn generate_link_bytes(
+    channels: usize,
+    signal: TestSignal,
+    t: f32,
+    link: &TestDataLink,
+    sample_idx: u64,
+) -> Vec<u8> {
+    if let Some(schema) = &link.schema {
+        if schema.preset == SchemaPreset::Custom {
+            if let Some(encode) = &schema.encode {
+                let frame = generate_frame(channels, signal, t);
+                return vofa_next_core::encode_by_blocks(encode, &schema.port_names(), &frame);
+            }
+        }
+    }
+    generate_bytes(channels, signal, t, &link.protocol, sample_idx)
+}
+
+/// 按协议类型生成线缆格式的字节流 (legacy 路径)
 fn generate_bytes(
     channels: usize,
     signal: TestSignal,

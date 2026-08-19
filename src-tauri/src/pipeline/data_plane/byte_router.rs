@@ -328,6 +328,7 @@ mod tests {
         NodeKind::Protocol {
             config: ProtocolConfig::FireWater { channels },
             convert_to: None,
+            schema: None,
         }
     }
 
@@ -406,6 +407,7 @@ mod tests {
                     NodeKind::Protocol {
                         config: ProtocolConfig::FireWater { channels: Some(2) },
                         convert_to: Some(ProtocolConfig::JustFloat { channels: Some(2) }),
+                        schema: None,
                     },
                 ),
                 node(
@@ -413,6 +415,7 @@ mod tests {
                     NodeKind::Protocol {
                         config: ProtocolConfig::JustFloat { channels: Some(2) },
                         convert_to: None,
+                        schema: None,
                     },
                 ),
             ],

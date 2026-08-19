@@ -137,6 +137,7 @@ mod tests {
             kind: NodeKind::Protocol {
                 config: ProtocolConfig::default(),
                 convert_to: None,
+                schema: None,
             },
         }
     }
@@ -149,7 +150,7 @@ mod tests {
             .open(
                 id,
                 TransportConfig::TestData(Default::default()),
-                ProtocolConfig::RawData,
+                vofa_next_core::TestDataLink::new(ProtocolConfig::RawData),
             )
             .await
             .unwrap();
@@ -241,6 +242,7 @@ mod tests {
             kind: NodeKind::ProtocolSource {
                 node_id: target.into(),
                 channels: 2,
+                port_names: None,
             },
         };
         let graph = vofa_next_nodes::CompiledGraph::compile(

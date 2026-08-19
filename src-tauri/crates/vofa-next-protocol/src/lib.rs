@@ -4,6 +4,7 @@ pub mod firewater;
 pub mod justfloat;
 pub mod logic_decoder;
 pub mod rawdata;
+pub mod schema_engine;
 pub mod slcan;
 
 pub use candle::{
@@ -14,6 +15,7 @@ pub use firewater::FireWaterEngine;
 pub use justfloat::JustFloatEngine;
 pub use logic_decoder::LogicDecoderEngine;
 pub use rawdata::RawDataEngine;
+pub use schema_engine::{compile_schema, SchemaEngine};
 pub use slcan::SlcanEngine;
 
 use vofa_next_core::ProtocolConfig;

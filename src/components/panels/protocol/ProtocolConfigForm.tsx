@@ -1,8 +1,13 @@
 //! 受控协议配置表单 — 从旧 ProtocolSection 抽取, 供全局 Protocol 节点属性面板复用
-//! (协议类型 / 通道配置 / LogicDecode 解码器参数 / 协议说明)
+//! (协议类型 / 通道配置 / LogicDecode 解码器参数 / 协议说明 / 自定义块编辑)
+//!
+//! schema/onSchemaChange 仅主配置传入: 支持把预设转为 custom 块编辑;
+//! convertTo 二级配置不传 schema → 保持纯预设表单 (convertTo 不在 schema 化范围)
 import { t, type Lang } from '../../../i18n';
 import { Info } from 'lucide-react';
-import type { ProtocolConfig, LogicDecoderConfig } from '../../../types';
+import type { ProtocolConfig, ProtocolSchema, LogicDecoderConfig } from '../../../types';
+import { schemaFromProtocolConfig, schemaPortNames } from '../../../lib/utils/protocolSchema';
+import { ProtocolBlocksEditor } from './ProtocolBlocksEditor';
 
 interface ProtocolConfigFormProps {
   value: ProtocolConfig;
@@ -12,29 +17,38 @@ interface ProtocolConfigFormProps {
   detectedChannels?: number | null;
   /// 单选组名后缀 — 同一面板渲染多个表单时避免 radio name 冲突
   nameSuffix?: string;
+  /// 协议帧 schema (传入后启用 custom 块模式)
+  schema?: ProtocolSchema;
+  onSchemaChange?: (schema: ProtocolSchema) => void;
 }
 
-export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, nameSuffix = '' }: ProtocolConfigFormProps) {
+export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, nameSuffix = '', schema, onSchemaChange }: ProtocolConfigFormProps) {
   const hasChannels = value.kind === 'JustFloat' || value.kind === 'FireWater';
   const isAuto = hasChannels && value.channels == null;
+  /// custom 块模式: 仅当 schema 受控传入且 preset='custom'
+  const isCustom = !!onSchemaChange && schema?.preset === 'custom';
 
   const updateKind = (kind: ProtocolConfig['kind']) => {
+    let next: ProtocolConfig;
     if (kind === 'RawData' || kind === 'Slcan' || kind === 'CandleLight') {
-      if (kind === 'Slcan') onChange({ kind: 'Slcan' });
-      else if (kind === 'CandleLight') onChange({ kind: 'CandleLight' });
-      else onChange({ kind: 'RawData' });
+      if (kind === 'Slcan') next = { kind: 'Slcan' };
+      else if (kind === 'CandleLight') next = { kind: 'CandleLight' };
+      else next = { kind: 'RawData' };
     } else if (kind === 'JustFloat' || kind === 'FireWater') {
       const prevChannels = hasChannels ? value.channels : null;
-      onChange({ kind, channels: prevChannels });
-    } else if (kind === 'LogicDecode') {
-      onChange({
+      next = { kind, channels: prevChannels };
+    } else {
+      next = {
         kind: 'LogicDecode',
         decoder: {
           kind: 'Uart',
           params: { baud_rate: 115200, data_bits: 8, parity: 'none', stop_bits: 'one', channel: 0 },
         },
-      });
+      };
     }
+    onChange(next);
+    // 切换预设 → 工厂重建 schema (custom 下切换即"重置为预设")
+    onSchemaChange?.(schemaFromProtocolConfig(next));
   };
 
   const setAutoMode = (auto: boolean) => {
@@ -44,8 +58,25 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
 
   const updateManualChannels = (channels: number) => {
     if (!hasChannels) return;
-    const clamped = Math.max(1, Math.min(32, Math.floor(channels) || 1));
-    onChange({ kind: value.kind, channels: clamped });
+    onChange({ kind: value.kind, channels: Math.max(1, Math.floor(channels) || 1) });
+  };
+
+  /// 当前预设 → custom: 保留工厂生成的块供编辑, legacyConfig 置 null
+  /// (旧数据缺 schema 时先按 config 工厂构造一份)
+  const convertToCustom = () => {
+    if (!onSchemaChange) return;
+    const base = schema ?? schemaFromProtocolConfig(value);
+    onSchemaChange({
+      preset: 'custom',
+      legacyConfig: null,
+      decode: base.decode,
+      encode: base.encode ?? null,
+    });
+  };
+
+  /// custom → 重置为预设: 按当前 config 工厂重建
+  const resetToPreset = () => {
+    onSchemaChange?.(schemaFromProtocolConfig(value));
   };
 
   const switchDecoderKind = (decKind: LogicDecoderConfig['kind']) => {
@@ -98,22 +129,56 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
 
   return (
     <div>
-      {/* 协议类型 */}
+      {/* 协议类型 (schema 受控时追加"自定义块"选项) */}
       <div className="mb-2.5 mt-1">
         <label className="block text-xs text-text-secondary mb-1">{t(lang, 'protocolEngine')}</label>
         <select
-          value={value.kind}
-          onChange={(e) => updateKind(e.target.value as ProtocolConfig['kind'])}
+          value={isCustom ? 'custom' : value.kind}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === 'custom') convertToCustom();
+            else updateKind(v as ProtocolConfig['kind']);
+          }}
           className={selectClass}
         >
           {kinds.map((k) => (
             <option key={k.value} value={k.value}>{k.label}</option>
           ))}
+          {onSchemaChange && <option value="custom">{t(lang, 'protocolCustom')}</option>}
         </select>
       </div>
 
-      {/* 通道配置 (JustFloat / FireWater) */}
-      {hasChannels && (
+      {/* custom 块模式: 块编辑器 + 重置为预设 */}
+      {isCustom && schema && (
+        <>
+          <div className="mb-2.5">
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs text-text-secondary">{t(lang, 'protocolCustomBlocks')}</label>
+              <button
+                type="button"
+                className="text-[10px] text-accent hover:underline"
+                onClick={resetToPreset}
+              >
+                {t(lang, 'protocolResetToPreset')}
+              </button>
+            </div>
+            <ProtocolBlocksEditor
+              blocks={schema.decode}
+              onChange={(decode) => onSchemaChange?.({ ...schema, decode })}
+              lang={lang}
+            />
+          </div>
+          <div className="mb-2.5 px-2 py-1.5 bg-bg-input rounded text-xs text-text-secondary flex justify-between items-center">
+            <span>{t(lang, 'protocolDerivedPorts')}:</span>
+            <span className="text-blue font-mono">
+              {schemaPortNames(schema.decode).join(', ') || '--'}
+            </span>
+          </div>
+        </>
+      )}
+
+      {/* 通道配置 (JustFloat / FireWater, custom 模式下隐藏) */}
+      {!isCustom && hasChannels && (
         <>
           <div className="mb-2.5">
             <label className="block text-xs text-text-secondary mb-1">{t(lang, 'channels')}</label>
@@ -146,7 +211,6 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
               <input
                 type="number"
                 min={1}
-                max={32}
                 value={value.channels ?? 4}
                 onChange={(e) => updateManualChannels(parseInt(e.target.value) || 1)}
                 className={inputClass}
@@ -165,8 +229,8 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
         </>
       )}
 
-      {/* LogicDecode 解码器参数 */}
-      {value.kind === 'LogicDecode' && (
+      {/* LogicDecode 解码器参数 (custom 模式下隐藏) */}
+      {!isCustom && value.kind === 'LogicDecode' && (
         <>
           <div className="mb-2.5">
             <label className="block text-xs text-text-secondary mb-1">{t(lang, 'decoderType')}</label>
@@ -344,7 +408,14 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
 
       {/* 协议说明 */}
       <div className="mt-1 p-2 bg-bg-input rounded text-xs text-text-secondary leading-relaxed">
-        {value.kind === 'JustFloat' && (
+        {isCustom && (
+          <>
+            <strong className="text-text-primary">{t(lang, 'protocolCustom')}</strong>
+            <br />
+            {t(lang, 'protocolCustomDesc')}
+          </>
+        )}
+        {!isCustom && value.kind === 'JustFloat' && (
           <>
             <strong className="text-text-primary">JustFloat</strong>
             <br />
@@ -353,7 +424,7 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
               : '4-byte LE floats + tail [0x00,0x00,0x80,0x7f]. High-throughput waveform.'}
           </>
         )}
-        {value.kind === 'FireWater' && (
+        {!isCustom && value.kind === 'FireWater' && (
           <>
             <strong className="text-text-primary">FireWater</strong>
             <br />
@@ -362,7 +433,7 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
               : 'CSV format, channels separated by commas, ends with \\n. Human-readable.'}
           </>
         )}
-        {value.kind === 'RawData' && (
+        {!isCustom && value.kind === 'RawData' && (
           <>
             <strong className="text-text-primary">RawData</strong>
             <br />
@@ -371,19 +442,19 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
               : 'Raw byte stream, no parsing. Raw data only.'}
           </>
         )}
-        {value.kind === 'Slcan' && (
+        {!isCustom && value.kind === 'Slcan' && (
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="flex-shrink-0 mt-0.25" />
             <span>{t(lang, 'slcanDesc')}</span>
           </span>
         )}
-        {value.kind === 'CandleLight' && (
+        {!isCustom && value.kind === 'CandleLight' && (
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="flex-shrink-0 mt-0.25" />
             <span>{t(lang, 'candleLightDesc')}</span>
           </span>
         )}
-        {value.kind === 'LogicDecode' && (
+        {!isCustom && value.kind === 'LogicDecode' && (
           <span className="inline-flex items-start gap-1.5">
             <Info size={14} className="flex-shrink-0 mt-0.25" />
             <span>

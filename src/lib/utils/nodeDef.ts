@@ -7,7 +7,7 @@
 /// - 字节平面 (全局): Transport / Protocol 节点, 边携带 Vec<u8>, 事件驱动
 /// - 数值平面 (每 tab): ProtocolSource 引用全局 Protocol 节点的最新帧, 输出 ch0..chN
 
-import type { WidgetConfig, MathOp, WindowType, SpectrumOutput, DecoderBlock } from '../../types';
+import type { WidgetConfig, MathOp, WindowType, SpectrumOutput, DecoderBlock, ProtocolSchema } from '../../types';
 import type { TransportConfig, ProtocolConfig } from '../../types';
 import { UNARY_MATH_OPS, biquadFromFilterConfig } from '../../types';
 import { evalCustomWidgetDef } from '../../components/displays/widgets/CustomWidget';
@@ -19,11 +19,12 @@ import type { Edge } from '@xyflow/react';
 ///   { "IIR": { "b": [b0, b1, b2], "a": [a0, a1, a2] } }
 /// WindowType/SpectrumOutput 是 unit variant: { "Hann": null }
 /// FrameDecoder 子字段使用 snake_case (Rust 端无 rename_all), blocks 元素遵循 DecoderBlockDef 的 tag="type" + camelCase
-/// Protocol.convert_to 为 None 时序列化省略 (Rust 侧 default + skip_serializing_if)
+/// Protocol.convert_to / schema 为 None 时序列化省略 (Rust 侧 default + skip_serializing_if)
+/// ProtocolSource.port_names 为 None 时省略 (缺省 ch0..chN)
 export type NodeKind =
   | { kind: 'Transport'; params: { config: TransportConfig } }
-  | { kind: 'Protocol'; params: { config: ProtocolConfig; convert_to?: ProtocolConfig | null } }
-  | { kind: 'ProtocolSource'; params: { node_id: string; channels: number } }
+  | { kind: 'Protocol'; params: { config: ProtocolConfig; convert_to?: ProtocolConfig | null; schema?: ProtocolSchema | null } }
+  | { kind: 'ProtocolSource'; params: { node_id: string; channels: number; port_names?: string[] | null } }
   | { kind: 'Input' }
   | { kind: 'Math'; params: { op: MathOp; input_count: number } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
@@ -149,11 +150,21 @@ export function rawDataPortId(sourceId: string, sourceHandle?: string | null): s
 
 /// 构造 ProtocolSource 节点的 NodeDef — tab 数值平面的帧源
 /// id 与被引用的全局 Protocol 节点相同 (后端按 id 关联 source_frames)
-export function makeProtocolSourceNodeDef(tabId: string, protocolNodeId: string, channels: number): NodeDef {
+/// portNames: 完整端口名列表 (预设 = ch0..chN, custom schema = 命名端口;
+/// 第 i 个名字对应 channels[i], 与 Rust protocol_source_port_names 对齐)
+export function makeProtocolSourceNodeDef(
+  tabId: string,
+  protocolNodeId: string,
+  channels: number,
+  portNames?: string[]
+): NodeDef {
   return {
     id: protocolNodeId,
     tab_id: tabId,
-    kind: { kind: 'ProtocolSource', params: { node_id: protocolNodeId, channels } },
+    kind: {
+      kind: 'ProtocolSource',
+      params: { node_id: protocolNodeId, channels, port_names: portNames ?? null },
+    },
   };
 }
 
@@ -166,17 +177,18 @@ export function makeTransportNodeDef(tabId: string, nodeId: string, config: Tran
   };
 }
 
-/// 构造 Protocol 全局节点的 NodeDef (convertTo 为 null 时省略序列化)
+/// 构造 Protocol 全局节点的 NodeDef (convertTo/schema 为 null 时省略序列化)
 export function makeProtocolNodeDef(
   tabId: string,
   nodeId: string,
   config: ProtocolConfig,
-  convertTo: ProtocolConfig | null
+  convertTo: ProtocolConfig | null,
+  schema: ProtocolSchema | null
 ): NodeDef {
   return {
     id: nodeId,
     tab_id: tabId,
-    kind: { kind: 'Protocol', params: { config, convert_to: convertTo ?? null } },
+    kind: { kind: 'Protocol', params: { config, convert_to: convertTo ?? null, schema: schema ?? null } },
   };
 }
 

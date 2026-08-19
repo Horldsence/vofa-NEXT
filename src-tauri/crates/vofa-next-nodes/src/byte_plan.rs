@@ -141,6 +141,7 @@ mod tests {
             kind: NodeKind::Protocol {
                 config: ProtocolConfig::default(),
                 convert_to: None,
+                schema: None,
             },
         }
     }

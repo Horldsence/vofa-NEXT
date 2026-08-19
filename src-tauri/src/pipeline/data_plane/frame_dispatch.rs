@@ -65,6 +65,7 @@ mod tests {
                 kind: NodeKind::ProtocolSource {
                     node_id: "pt".into(),
                     channels: 2,
+                    port_names: None,
                 },
             }],
             vec![],
@@ -110,6 +111,7 @@ mod tests {
                 kind: NodeKind::ProtocolSource {
                     node_id: "other".into(),
                     channels: 1,
+                    port_names: None,
                 },
             }],
             vec![],

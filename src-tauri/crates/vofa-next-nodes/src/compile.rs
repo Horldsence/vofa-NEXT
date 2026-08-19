@@ -2,7 +2,9 @@
 //!
 //! 编译流程:
 //! 1. 边按两端端口域分类: 均 Bytes → byte_edges; 均 F32 → f32_edges;
-//!    不匹配 → [`CompileError::DomainMismatch`] (取代旧 LOOPBACK_IN_HANDLE 字符串特判)
+//!    不匹配 → [`CompileError::DomainMismatch`] (取代旧 LOOPBACK_IN_HANDLE 字符串特判);
+//!    例外: RawData 关联通道边 (Sink 的 src: 动态端口) 按源端域归类放行, 见
+//!    [`is_raw_data_channel_target`]
 //! 2. 字节平面: [`BytePlan::build`] 独立拓扑排序 (字节平面内循环 → ByteCycle;
 //!    跨平面不构成循环 — f32 平面 DFS 只看 f32_edges)
 //! 3. 数值平面: 对 f32_edges 三色 DFS 拓扑排序, 构建 input_index + 槽位评估表
@@ -14,7 +16,7 @@ use vofa_next_buffer::graph::Edge;
 
 use crate::byte_plan::BytePlan;
 use crate::eval::{CompiledEval, CompiledOp};
-use crate::node_kind::{port_domain, NodeDef, NodeKind, PortDomain};
+use crate::node_kind::{port_domain, NodeDef, NodeKind, PortDomain, RAW_DATA_PORT_PREFIX};
 
 /// 编译后的图 — 包含拓扑序的评估计划
 pub struct CompiledGraph {
@@ -54,6 +56,18 @@ pub enum CompileError {
     ByteCycle,
     #[error("边两端端口域不匹配: {0}")]
     DomainMismatch(String),
+}
+
+/// 判定边目标是否为 RawData 控件的关联通道端口 (Sink + `src:` 动态端口 id)
+/// RawData 是唯一使用 src: 端口约定的节点 (编译为 NodeKind::Sink);
+/// 其他 Sink (Gauge/Command 等) 的端口不带此前缀, 跨域校验不受影响
+fn is_raw_data_channel_target(
+    node_map: &HashMap<String, NodeDef>,
+    target: &str,
+    target_handle: &str,
+) -> bool {
+    target_handle.starts_with(RAW_DATA_PORT_PREFIX)
+        && matches!(node_map.get(target).map(|n| &n.kind), Some(NodeKind::Sink))
 }
 
 impl CompiledGraph {
@@ -108,6 +122,15 @@ impl CompiledGraph {
             match (src_domain, tgt_domain) {
                 (PortDomain::Bytes, PortDomain::Bytes) => byte_edges.push(e.clone()),
                 (PortDomain::F32, PortDomain::F32) => f32_edges.push(e.clone()),
+                // RawData 关联通道边 (Sink 的 src:<source>:<handle> 动态端口):
+                // 边只是用户意图标记, 字节/数值都不经 evaluate 流入 — 按源端域归类放行,
+                // 字节边进 BytePlan 后由字节路由的默认分支忽略 (RawData 视图走订阅旁路)
+                _ if is_raw_data_channel_target(&node_map, &e.target, &e.target_handle) => {
+                    match src_domain {
+                        PortDomain::Bytes => byte_edges.push(e.clone()),
+                        PortDomain::F32 => f32_edges.push(e.clone()),
+                    }
+                }
                 _ => {
                     return Err(CompileError::DomainMismatch(format!(
                         "{}: {}.{} ({:?}) → {}.{} ({:?})",
@@ -294,6 +317,7 @@ impl CompiledEval {
                 NodeKind::ProtocolSource {
                     node_id: source_id,
                     channels,
+                    port_names,
                 } => {
                     let src = frame_sources
                         .iter()
@@ -302,9 +326,10 @@ impl CompiledEval {
                             frame_sources.push(source_id.clone());
                             frame_sources.len() - 1
                         });
-                    for i in 0..*channels {
-                        let port = format!("ch{}", i);
-                        let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, &port);
+                    let names =
+                        crate::node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
+                    for (i, port) in names.iter().enumerate() {
+                        let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
                         ops.push(CompiledOp::ProtocolSource { src, ch: i, slot });
                     }
                 }

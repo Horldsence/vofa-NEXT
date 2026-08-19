@@ -246,6 +246,12 @@ impl FrameDecoderTestData {
                     }
                     buf.extend_from_slice(&parse_hex(hex));
                 }
+                // schema 扩展块由协议引擎 SchemaEngine 消费, FrameDecoder 测试数据生成跳过
+                DecoderBlockDef::Csv { .. }
+                | DecoderBlockDef::AsciiField { .. }
+                | DecoderBlockDef::Samples { .. } => {
+                    continue;
+                }
             }
         }
 

@@ -21,6 +21,25 @@ pub(crate) fn make_protocol_source(
         kind: NodeKind::ProtocolSource {
             node_id: node_id.to_string(),
             channels,
+            port_names: None,
+        },
+    }
+}
+
+/// 带命名端口的 ProtocolSource (schema 模型; port_names 与 channels 对齐)
+pub(crate) fn make_protocol_source_named(
+    id: &str,
+    tab_id: &str,
+    node_id: &str,
+    port_names: &[&str],
+) -> NodeDef {
+    NodeDef {
+        id: id.to_string(),
+        tab_id: tab_id.to_string(),
+        kind: NodeKind::ProtocolSource {
+            node_id: node_id.to_string(),
+            channels: port_names.len(),
+            port_names: Some(port_names.iter().map(|s| s.to_string()).collect()),
         },
     }
 }
@@ -42,6 +61,7 @@ pub(crate) fn make_protocol(id: &str) -> NodeDef {
         kind: NodeKind::Protocol {
             config: ProtocolConfig::default(),
             convert_to: None,
+            schema: None,
         },
     }
 }

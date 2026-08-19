@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { Binary, X } from 'lucide-react';
 import type { ProtocolNodeData } from '../../store/appStoreHelpers';
+import { protocolPortNames } from '../../lib/utils/protocolSchema';
 import { BYTES_DOMAIN_COLOR } from './TransportNode';
 
 /// 时域端口颜色 (与 WidgetNode.domainColor 一致)
@@ -26,13 +27,18 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
   const rfEdges = useAppStore((s) => s.rfEdges);
   const nodeData = data as unknown as ProtocolNodeData;
   const config = nodeData.config;
-  const channels = Math.max(1, nodeData.channels ?? 4);
+  const detectedChannels = useAppStore((s) => s.detectedChannels[id] ?? null);
+  // 输出口: 预设 = ch0..chN (与现有行为一致), custom schema = 命名端口
+  const ports = protocolPortNames(nodeData, detectedChannels);
+  const channels = ports.length;
+  const portsKey = ports.join('');
   const updateNodeInternals = useUpdateNodeInternals();
 
-  // 通道数变化 → 通知 React Flow 重测 handle 位置
+  // 端口数/命名变化 → 通知 React Flow 重测 handle 位置
   useEffect(() => {
     updateNodeInternals(id);
-  }, [updateNodeInternals, id, channels]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateNodeInternals, id, portsKey]);
 
   const connectedHandles = new Set<string>();
   for (const e of rfEdges) {
@@ -74,7 +80,7 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
           <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: BYTES_DOMAIN_COLOR }} />
         </div>
       </div>
-      {/* out 字节口 + ch0..chN 数值口 (右) */}
+      {/* out 字节口 + 数值帧端口 (右): 预设 ch0..chN / custom 命名端口 */}
       <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-end gap-0.5 py-1 z-10">
         <div className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`out · ${t(lang, 'domainBytes')}`}>
           <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: BYTES_DOMAIN_COLOR }} />
@@ -87,16 +93,16 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
             className={handleClass('out')}
           />
         </div>
-        {Array.from({ length: channels }, (_, i) => (
-          <div key={`ch${i}`} className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`ch${i} · ${t(lang, 'domainTime')}`}>
+        {ports.map((port) => (
+          <div key={port} className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`${port} · ${t(lang, 'domainTime')}`}>
             <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: TIME_DOMAIN_COLOR }} />
-            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">ch{i}</span>
+            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port}</span>
             <Handle
               type="source"
               position={Position.Right}
-              id={`ch${i}`}
+              id={port}
               style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: TIME_DOMAIN_COLOR }}
-              className={handleClass(`ch${i}`)}
+              className={handleClass(port)}
             />
           </div>
         ))}

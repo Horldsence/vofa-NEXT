@@ -11,7 +11,7 @@ import {
 import type {
   WidgetConfig,
   DecoderBlock,
-  DecoderBlockType,
+  FrameDecoderBlock,
   InputFormat,
   FrameDecoderManualResult,
 } from '../../../types';
@@ -21,6 +21,7 @@ import { t } from '../../../i18n';
 import { nanoid } from 'nanoid';
 import {
   BLOCK_TYPE_CONFIG,
+  FRAME_DECODER_ADDABLE_TYPES,
   HISTORY_MAX,
   HistoryEntry,
   ExampleEntry,
@@ -107,8 +108,9 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
     updateWidget(id, { kind: 'FrameDecoder', params: { ...params, ...changes } });
   };
 
-  const addBlock = (type: DecoderBlockType) => {
-    const defaults: Record<DecoderBlockType, Partial<DecoderBlock>> = {
+  /// FrameDecoder 控件仅支持 7 种基础块 (扩展块 csv/asciiField/samples 仅供协议 schema 编辑器)
+  const addBlock = (type: (typeof FRAME_DECODER_ADDABLE_TYPES)[number]) => {
+    const defaults: Record<(typeof FRAME_DECODER_ADDABLE_TYPES)[number], Partial<DecoderBlock>> = {
       header: { label: '', hex: 'AA' },
       length: { label: '', fieldType: 'uint8', portName: 'length', unit: 'bytes' },
       id: { label: '', fieldType: 'uint8', portName: 'id_value' },
@@ -117,14 +119,14 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
       checksum: { label: '', algorithm: 'sum8', cover: 'all_prior', position: 'append' },
       tail: { label: '', hex: 'FF' },
     };
-    const newBlock = { id: nanoid(6), type, ...defaults[type] } as DecoderBlock;
+    const newBlock = { id: nanoid(6), type, ...defaults[type] } as FrameDecoderBlock;
     updateParams({ blocks: [...blocks, newBlock] });
     setExpandedIds((prev) => new Set(prev).add(newBlock.id));
   };
 
   const updateBlock = (blockId: string, changes: Partial<DecoderBlock>) => {
     updateParams({
-      blocks: blocks.map((b) => (b.id === blockId ? { ...b, ...changes } as DecoderBlock : b)),
+      blocks: blocks.map((b) => (b.id === blockId ? { ...b, ...changes } as FrameDecoderBlock : b)),
     });
   };
 
@@ -332,9 +334,9 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
           })}
         </div>
 
-        {/* 添加块按钮 */}
+        {/* 添加块按钮 (仅基础 7 种; 扩展块走协议 schema 编辑器) */}
         <div className="flex flex-wrap gap-1 pt-1 border-t border-border flex-shrink-0">
-          {(Object.keys(BLOCK_TYPE_CONFIG) as DecoderBlockType[]).map((bt) => {
+          {FRAME_DECODER_ADDABLE_TYPES.map((bt) => {
             const cfg = BLOCK_TYPE_CONFIG[bt];
             return (
               <button

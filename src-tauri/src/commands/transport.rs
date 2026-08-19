@@ -4,8 +4,8 @@ use serde::Serialize;
 use tauri::{AppHandle, State};
 use vofa_next_buffer::RawDataDirection;
 use vofa_next_core::{
-    ConnectionState, Error, PortInfo, ProtocolConfig, Result, TransportConfig, TransportStats,
-    WidgetBinding,
+    ConnectionState, Error, PortInfo, ProtocolConfig, ProtocolSchema, Result, TestDataLink,
+    TransportConfig, TransportStats, WidgetBinding,
 };
 use vofa_next_transport::TransportManager;
 
@@ -17,7 +17,8 @@ pub async fn list_ports() -> Result<Vec<PortInfo>> {
 
 /// 打开传输连接 (node_id = 图中 Transport 节点 id)
 ///
-/// `protocol` 仅被 TestData 用作生成数据的线缆格式参考, 其他传输类型忽略。
+/// `protocol` 与 `schema` 仅被 TestData 用作生成数据的线缆格式参考, 其他传输类型忽略。
+/// schema = Custom 且带 encode 块时按 schema 编码, 否则走 legacy protocol 路径。
 /// 成功后挂载数据平面读任务 (subscribe → 字节路由 → 数值平面)。
 #[tauri::command]
 pub async fn open_transport(
@@ -26,11 +27,13 @@ pub async fn open_transport(
     node_id: String,
     config: TransportConfig,
     protocol: ProtocolConfig,
+    schema: Option<ProtocolSchema>,
 ) -> Result<()> {
     let kind = notify::transport_kind_str(&config);
     {
         let mut manager = state.transport.lock().await;
-        if let Err(e) = manager.open(&node_id, config, protocol).await {
+        let link = TestDataLink { protocol, schema };
+        if let Err(e) = manager.open(&node_id, config, link).await {
             log::error!("连接失败 ({}): {}", node_id, e);
             notify::error(&app, format!("连接失败: {}", e));
             return Err(e);
@@ -158,14 +161,33 @@ pub async fn get_test_data_state(state: State<'_, AppState>, node_id: String) ->
     Ok(manager.is_test_data_running(&node_id))
 }
 
+/// 运行时热更新传输节点的链路配置 (图连接/协议配置变化后由前端推送)
+///
+/// 当前仅 TestData 生成器消费链路配置 (protocol + 可选 schema); 其他传输类型的
+/// 字节收发与协议无关, 静默接受。节点未打开时返回 PortNotFound, 前端据此 toast 提示用户重连。
+#[tauri::command]
+pub async fn update_transport_protocol(
+    state: State<'_, AppState>,
+    node_id: String,
+    protocol: ProtocolConfig,
+    schema: Option<ProtocolSchema>,
+) -> Result<()> {
+    state
+        .transport
+        .lock()
+        .await
+        .update_link(&node_id, TestDataLink { protocol, schema })
+}
+
 /// 协议回环：发送字节并立即捕获协议引擎解析结果
 ///
 /// 用于协议调试场景 — 将用户构造的字节发送到 transport (node_id),
 /// 同时直接调用指定 Protocol 节点 (protocol_node) 的引擎解析,
 /// 返回发送字节与解析结果对照。
 ///
-/// TestData 模式: 发送的字节通过 transport 回环, 读任务也会再次解析;
-/// 本命令返回的是**即时同步**解析结果, 不等读任务管道。
+/// 所有 Transport 发送的字节都会经 TransportHandle::send 统一回环到
+/// 本节点接收广播, 读任务也会再次解析; 本命令返回的是**即时同步**
+/// 解析结果, 不等读任务管道。
 #[derive(Debug, Clone, Serialize)]
 pub struct LoopbackResult {
     pub sent_hex: String,

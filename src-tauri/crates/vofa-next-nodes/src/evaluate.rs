@@ -88,15 +88,18 @@ impl CompiledGraph {
                 NodeKind::ProtocolSource {
                     node_id: source_id,
                     channels,
+                    port_names,
                 } => {
                     let frame = source_frames.get(source_id);
                     let m = node_out_entry(out, node_id);
-                    for i in 0..*channels {
+                    let names =
+                        crate::node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
+                    for (i, name) in names.iter().enumerate() {
                         let v = frame
                             .and_then(|f| f.channels.get(i))
                             .copied()
                             .unwrap_or(0.0);
-                        set_port(m, &format!("ch{}", i), v);
+                        set_port(m, name, v);
                     }
                 }
                 NodeKind::Input => {

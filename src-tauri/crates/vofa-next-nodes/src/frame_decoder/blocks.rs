@@ -245,6 +245,13 @@ impl FrameParser {
                     }
                     cursor += tail_bytes.len();
                 }
+                // schema 扩展块 (Csv/AsciiField/Samples) 由协议引擎 SchemaEngine 消费;
+                // FrameDecoder 的 FrameParser 暂不支持, 跳过 (不消耗字节)
+                DecoderBlockDef::Csv { .. }
+                | DecoderBlockDef::AsciiField { .. }
+                | DecoderBlockDef::Samples { .. } => {
+                    continue;
+                }
             }
         }
 
@@ -323,41 +330,19 @@ fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bool) 
     }
 }
 
-/// 获取校验算法输出的字节长度
+/// 获取校验算法输出的字节长度 (实现已迁移至 core::schema)
 pub(super) fn checksum_byte_len(algo: ChecksumAlgorithm) -> usize {
-    match algo {
-        ChecksumAlgorithm::None => 0,
-        ChecksumAlgorithm::Sum8
-        | ChecksumAlgorithm::Xor8
-        | ChecksumAlgorithm::Crc8
-        | ChecksumAlgorithm::Lrc => 1,
-        ChecksumAlgorithm::Crc16Modbus | ChecksumAlgorithm::Crc16CCITT => 2,
-        ChecksumAlgorithm::Crc32 => 4,
-        ChecksumAlgorithm::Custom => 0, // Custom 暂不支持后端求值
-    }
+    algo.byte_len()
 }
 
 // ============ HEX 解析工具 ============
 
-/// 解析 HEX 字符串为字节切片
+/// 解析 HEX 字符串为字节切片 (实现已迁移至 core::schema, 供两 crate 共用)
 ///
 /// 输入格式: "AA BB" / "AABB" / "aa bb" / "0xAA 0xBB" 均可,
 /// 空格/逗号/0x 前缀均会被忽略。
 ///
 /// 解析失败 (奇数长度 / 非法字符) 返回空 Vec。
 pub fn parse_hex(hex: &str) -> Vec<u8> {
-    // 过滤空白与逗号, 并移除所有 "0x" 前缀 (允许 "0xAA 0xBB" 格式)
-    let cleaned: String = hex
-        .chars()
-        .filter(|c| !c.is_whitespace() && *c != ',')
-        .collect();
-    let cleaned = cleaned.replace("0x", "");
-    if !cleaned.len().is_multiple_of(2) {
-        return Vec::new();
-    }
-    (0..cleaned.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&cleaned[i..i + 2], 16).ok())
-        .collect::<Option<Vec<u8>>>()
-        .unwrap_or_default()
+    vofa_next_core::parse_hex(hex)
 }

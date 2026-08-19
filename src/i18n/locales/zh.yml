@@ -3,6 +3,11 @@ portConfig: 串口配置
 deviceConfig: 设备配置
 dataInterface: 数据接口
 protocolEngine: 协议引擎
+protocolCustom: 自定义块
+protocolCustomBlocks: 帧块列表
+protocolResetToPreset: 重置为预设
+protocolDerivedPorts: 派生端口
+protocolCustomDesc: 自定义帧块解析, 端口由 field/bitfield/csv 块派生, 可任意命名。
 transportType: 数据接口
 widgetPalette: 控件面板
 aiAssistant: AI 助手
@@ -269,6 +274,8 @@ notifSendFailed: 发送失败
 notifSetProtocolFailed: 协议配置失败
 notifClearBufferFailed: 清空数据失败
 notifNodeGraphSyncFailed: 节点图同步失败
+notifTransportHotUpdateFailed: 连接热更新失败
+notifReconnect: 重新连接
 notifPollChannelsFailed: 通道检测轮询失败
 notifStartTestDataFailed: 启动测试数据失败
 notifStopTestDataFailed: 停止测试数据失败
@@ -277,6 +284,17 @@ notifDismiss: 关闭
 notifDismissAll: 关闭全部
 notifMore: "还有 {{count}} 条通知"
 notifCollapsedHint: 同源错误累计次数
+
+# 节点错误首次引导 (每种错误类型仅显示一次, 由 errorGuidance.ts 管理)
+errorGuidePrefix: 提示
+errorGuideTransport: 传输层打开失败, 请检查线缆连接与驱动, 然后刷新端口列表重试
+errorGuideProtocol: 协议引擎创建失败, 请检查协议配置与通道数是否正确
+errorGuidePortNotFound: 未找到该端口, 请确认设备已连接, 并点击刷新更新端口列表
+errorGuidePortAlreadyOpen: 该端口已被占用, 请关闭其他占用此端口的程序 (如串口助手) 后重试
+errorGuidePortNotOpen: 端口尚未打开, 请先连接该 Transport 节点再执行操作
+errorGuideIo: 系统 IO 错误, 请检查设备连接是否稳定, 以及当前用户是否有端口访问权限
+errorGuideConfig: 节点配置有误, 请检查节点参数 (端口/波特率/协议等) 是否完整合法
+errorGuideSerde: 数据序列化失败, 请检查发送内容或配置格式是否正确
 
 # 设置系统
 settings: 设置
@@ -348,6 +366,8 @@ templateCan: CAN
 templateCanDesc: Slcan 传输 + CAN 帧视图，连接 CAN 分析仪即可收发
 templateSerial: 串口
 templateSerialDesc: 串口浮点数据流 + 仪表 / 数字显示控件
+templateCustomProtocol: 自定义协议
+templateCustomProtocolDesc: 自定义块协议（命名通道 speed/temp）+ 多帧命令发送器，TestData 无需硬件即可运行
 templateDemo: 综合演示
 templateDemoDesc: 滤波 + 数学 + 波形 / 仪表的完整流水线示例
 templateApplyTitle: 应用模板
@@ -974,6 +994,14 @@ fdAddBlockField: 添加字段
 fdAddBlockBitfield: 添加位域
 fdAddBlockChecksum: 添加校验
 fdAddBlockTail: 添加帧尾
+fdBlockCsv: CSV
+fdBlockAsciiField: ASCII字段
+fdBlockSamples: 采样
+fdAddBlockCsv: 添加CSV
+fdAddBlockAsciiField: 添加ASCII字段
+fdAddBlockSamples: 添加采样
+fdCsvSeparator: 分隔符
+fdCsvPorts: 端口列表
 fdChecksumPosAppend: 末尾
 fdChecksumPosInline: 行内
 fdChecksumPosPrepend: 开头
@@ -1028,6 +1056,14 @@ cmdSendModeManual: 手动发送
 cmdSendModeOnChange: 值变化发送
 cmdSendModeTimer: 定时发送
 cmdSendModeInterval: 定时间隔 (ms)
+
+# 帧列表 (一个发送器多个帧)
+cmdFrames: 帧
+cmdAddFrame: 新增帧
+cmdRemoveFrame: 删除帧
+cmdRenameFrameHint: 双击改名
+cmdNewFrame: 帧
+cmdFrameSettings: 帧设置
 
 # 布局编排 (模块拖拽重排)
 dragToRearrange: 拖动到其他模块边缘以重新排列

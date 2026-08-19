@@ -113,6 +113,7 @@ const ProtocolProperties = memo(function ProtocolProperties({ node }: { node: No
   const lang = useAppStore((s) => s.lang);
   const setProtocolNodeConfig = useAppStore((s) => s.setProtocolNodeConfig);
   const setProtocolNodeConvertTo = useAppStore((s) => s.setProtocolNodeConvertTo);
+  const setProtocolNodeSchema = useAppStore((s) => s.setProtocolNodeSchema);
   const detectedChannels = useAppStore((s) => s.detectedChannels[node.id] ?? null);
 
   const data = node.data as unknown as ProtocolNodeData;
@@ -147,6 +148,8 @@ const ProtocolProperties = memo(function ProtocolProperties({ node }: { node: No
         onChange={(c) => void setProtocolNodeConfig(node.id, c)}
         lang={lang}
         detectedChannels={detectedChannels}
+        schema={data.schema}
+        onSchemaChange={(s) => setProtocolNodeSchema(node.id, s)}
       />
 
       {/* 协议转换 (convert_to) — 默认无转换 */}

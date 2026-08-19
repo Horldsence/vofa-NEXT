@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::{broadcast, mpsc, Notify};
-use vofa_next_core::{ConnectionState, Error, Result, TransportConfig, TransportStats};
+use tokio::sync::{broadcast, mpsc, watch, Notify};
+use vofa_next_core::{ConnectionState, Error, Result, TestDataLink, TransportConfig, TransportStats};
 
 /// 单连接句柄 — 一个传输节点实例的全部运行时状态
 ///
 /// 持有写入通道 / 数据广播 / 取消标志 / 状态 / 统计 / 配置,
-/// TestData 传输额外持有运行开关与恢复通知。
+/// TestData 传输额外持有运行开关、恢复通知与协议热更新通道。
 pub struct TransportHandle {
     write_tx: mpsc::Sender<Vec<u8>>,
     data_tx: broadcast::Sender<Vec<u8>>,
@@ -17,6 +17,8 @@ pub struct TransportHandle {
     test_data_running: Option<Arc<AtomicBool>>,
     /// 测试数据生成器恢复通知 (仅 TestData 有效)
     test_data_notify: Option<Arc<Notify>>,
+    /// 测试数据链路配置热更新通道 (仅 TestData 有效)
+    test_data_link: Option<watch::Sender<TestDataLink>>,
     /// 本连接的配置 — 供外部查询 (如 CAN 波特率)
     config: TransportConfig,
 }
@@ -28,6 +30,7 @@ impl TransportHandle {
         cancel: Arc<AtomicBool>,
         test_data_running: Option<Arc<AtomicBool>>,
         test_data_notify: Option<Arc<Notify>>,
+        test_data_link: Option<watch::Sender<TestDataLink>>,
         config: TransportConfig,
     ) -> Self {
         Self {
@@ -38,15 +41,21 @@ impl TransportHandle {
             stats: parking_lot::Mutex::new(TransportStats::default()),
             test_data_running,
             test_data_notify,
+            test_data_link,
             config,
         }
     }
 
     /// 发送数据 (try_send, 队列满时立即报错) 并更新 tx 统计
+    ///
+    /// 统一回环: 写入任一 Transport 的字节同时发布到本节点的接收广播,
+    /// 使 transport→transport 路由链在写入点不断裂 (发送内容对下游
+    /// Protocol/RawData 等订阅者可见)。无订阅者时广播失败静默忽略。
     pub fn send(&self, data: &[u8]) -> Result<()> {
         self.write_tx
             .try_send(data.to_vec())
             .map_err(|e| Error::Transport(format!("发送失败: {}", e)))?;
+        let _ = self.data_tx.send(data.to_vec());
         let mut stats = self.stats.lock();
         stats.tx_bytes += data.len() as u64;
         stats.tx_frames += 1;
@@ -98,6 +107,19 @@ impl TransportHandle {
             .as_ref()
             .map(|r| r.load(Ordering::Relaxed))
             .unwrap_or(false)
+    }
+
+    /// 运行时热更新链路配置 (图/协议变化后调用, 无需重连)
+    ///
+    /// 当前仅 TestData 生成器消费链路配置; 其他传输类型的字节收发与协议无关,
+    /// 静默接受 (返回 false 表示未应用)。
+    pub fn update_link(&self, link: TestDataLink) -> Result<bool> {
+        if let Some(tx) = &self.test_data_link {
+            tx.send(link)
+                .map_err(|e| Error::Transport(format!("链路配置热更新失败: {}", e)))?;
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     /// 关闭连接: 通知后台任务退出并将状态置为 Disconnected

@@ -1,5 +1,7 @@
 // ============ 协议输入解析 ============
 
+import type { LogicDecoderConfig } from './logic';
+
 /// 输入格式 — 与 Rust InputFormat 对应 (serde rename_all="lowercase")
 export type InputFormat = 'hex' | 'ascii' | 'auto';
 
@@ -23,6 +25,9 @@ export type InputFormat = 'hex' | 'ascii' | 'auto';
 // - tail:      匹配帧尾固定字节序列 (可选, 帧结束标志)
 
 /// 帧解码块类型
+/// 前 7 种为 FrameDecoder 控件 UI 可编辑的块;
+/// csv/asciiField/samples 为 schema 模型扩展块 (协议引擎 SchemaEngine 使用,
+/// FrameDecoder 控件不提供添加入口)
 export type DecoderBlockType =
   | 'header'
   | 'length'
@@ -30,7 +35,10 @@ export type DecoderBlockType =
   | 'field'
   | 'bitfield'
   | 'checksum'
-  | 'tail';
+  | 'tail'
+  | 'csv'
+  | 'asciiField'
+  | 'samples';
 
 /// 帧解码校验位置 (与 CommandSender ChecksumPosition 区分, 避免序列化混淆)
 /// - append:  校验字节位于帧末尾 (在 tail 之前)
@@ -134,14 +142,51 @@ export type DecoderBlock =
       /// 帧尾 HEX 字符串
       hex: string;
       matchId?: number | null;
+    }
+  // ---- schema 模型扩展块 (Rust DecoderBlockDef 的 Csv/AsciiField/Samples 变体) ----
+  // Rust 端这三个变体无 id/match_id 字段; TS 上 id/label 仅作前端 UI 引用 (可选,
+  // 序列化后 Rust serde 忽略未知字段, 不影响对齐)
+  | {
+      /// 分隔符文本帧 (FireWater 类): 一行 = 一帧, 按 separator 切分, 逐列解析为 f32,
+      /// 输出到 ports 各端口 (列数多于 ports 时忽略多余列, 少于时缺失端口不输出)
+      type: 'csv';
+      id?: string;
+      label?: string;
+      /// 列分隔符 (如 ",")
+      separator: string;
+      /// 各列输出端口名 (按列序)
+      ports: string[];
+    }
+  | {
+      /// ASCII 定宽字段 (Slcan 类): 读 digits 个 ASCII 字符按进制解析为整数, 输出到 portName
+      type: 'asciiField';
+      id?: string;
+      label?: string;
+      /// 输出端口名
+      portName: string;
+      /// 进制 (hex / dec)
+      base: 'hex' | 'dec';
+      /// 字符数 (定宽)
+      digits: number;
+    }
+  | {
+      /// 逻辑解码采样块 (LogicDecode 类): 字节流整体喂入逻辑解码器,
+      /// 输出 LogicSample / DecodedEvent 而非 DataFrame 通道
+      type: 'samples';
+      id?: string;
+      label?: string;
+      decoder: LogicDecoderConfig;
     };
+
+/// FrameDecoder 控件可编辑的块 — 7 种基础块 (必带 id; 扩展块 csv/asciiField/samples 仅供协议 schema)
+export type FrameDecoderBlock = Extract<DecoderBlock, { id: string }>;
 
 /// 帧解码控件配置
 export interface FrameDecoderConfig {
   id: string;
   label: string;
   /// 块列表 (按顺序定义帧布局)
-  blocks: DecoderBlock[];
+  blocks: FrameDecoderBlock[];
   /// 附加输出端口开关
   enableValid: boolean;        // 输出 valid 端口 (1.0=最近帧校验通过, 0.0=失败/未收到)
   enableFrameCount: boolean;   // 输出 frame_count 端口 (累计有效帧数)
@@ -246,22 +291,43 @@ export interface CommandBlock {
   customScript?: string;
 }
 
-/// 命令发送控件配置
-/// 以数据块列表方式拼接最终字节流, 支持可变数量输入端口 + 校验
-export interface CommandConfig {
+/// 命令发送帧 — 一个发送器可携带多个帧, 每个帧独立的块列表与触发方式
+export interface CommandFrame {
   id: string;
   label: string;
   /// 数据块列表 (按顺序拼接为最终字节流)
   blocks: CommandBlock[];
   /// 发送后追加 \n
   appendNewline: boolean;
-  /// 回环模式开关 — 开启后发送的字节会被协议引擎解析并显示对照 (仅影响发送路径, 与发送模式无关)
-  loopbackEnabled: boolean;
   /// 发送模式 (与回环无关): manual=仅手动, onChange=字节流变化时自动发送, timer=定时自动发送
   sendMode: 'manual' | 'onChange' | 'timer';
   /// 定时发送间隔 ms (sendMode='timer' 有效)
   timerMs: number;
+}
+
+/// 命令发送控件配置
+/// 以帧列表组织数据块, 每帧独立拼接字节流 / 触发发送; 回环为发送器级
+export interface CommandConfig {
+  id: string;
+  label: string;
+  /// 帧列表 (至少一帧)
+  frames: CommandFrame[];
+  /// 回环模式开关 — 开启后发送的字节会被协议引擎解析并显示对照 (仅影响发送路径, 与发送模式无关)
+  loopbackEnabled: boolean;
   /// 回环历史记录
+  loopbackHistory: LoopbackResult[];
+}
+
+/// 旧版 (单帧) 命令发送控件配置 — 仅用于快照/持久化数据迁移
+/// blocks/appendNewline/sendMode/timerMs 已迁入 CommandFrame
+export interface LegacyCommandConfig {
+  id: string;
+  label: string;
+  blocks: CommandBlock[];
+  appendNewline: boolean;
+  loopbackEnabled: boolean;
+  sendMode: 'manual' | 'onChange' | 'timer';
+  timerMs: number;
   loopbackHistory: LoopbackResult[];
 }
 

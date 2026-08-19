@@ -249,3 +249,32 @@ fn test_same_id_protocol_and_protocol_source_coexist() {
     assert_eq!(routes[0].target, "pt");
     assert_eq!(routes[0].target_handle, "in");
 }
+
+#[test]
+fn test_raw_data_channel_edges_classified_by_source_domain() {
+    // RawData 关联通道边 (Sink 的 src:<source>:<handle> 动态端口) 按源端域归类放行:
+    // 字节源 (Transport.rx / Protocol.out) → byte_edges; 数值源 (chN) → f32 边 (不进 byte_edges)
+    let nodes = vec![
+        make_transport("tp"),
+        make_protocol("pt"),
+        make_protocol_source("pt", "t1", "pt", 1),
+        make_sink("w-raw", "t1"),
+    ];
+    let edges = vec![
+        edge("e-rx", "tp", "rx", "w-raw", "src:tp:rx"), // 种子场景: Transport.rx → RawData
+        edge("e-out", "pt", "out", "w-raw", "src:pt:out"), // 种子场景: Protocol.out → RawData
+        edge("e-ch", "pt", "ch0", "w-raw", "src:pt:ch0"), // 数值通道 (现状)
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+    let byte_ids: Vec<_> = g.byte_edges().iter().map(|e| e.id.as_str()).collect();
+    assert_eq!(byte_ids, ["e-rx", "e-out"]);
+}
+
+#[test]
+fn test_raw_data_prefix_on_non_sink_target_still_rejected() {
+    // src: 前缀仅对 Sink (RawData) 放行 — 其他节点的跨域校验不受影响
+    let nodes = vec![make_protocol("pt"), make_math("m1", "t1", MathOp::Add, 1)];
+    let edges = vec![edge("e1", "pt", "out", "m1", "src:pt:out")];
+    let result = CompiledGraph::compile("t1".into(), nodes, edges);
+    assert!(matches!(result, Err(CompileError::DomainMismatch(_))));
+}

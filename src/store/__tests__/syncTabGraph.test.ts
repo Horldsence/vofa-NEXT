@@ -56,6 +56,28 @@ const GAUGE_NODE: Node = {
   },
 };
 
+/// custom schema 协议节点 (命名端口 speed/temp, 非 chN)
+const CUSTOM_PROTOCOL_NODE: Node = {
+  id: 'protocol-custom',
+  type: 'protocol',
+  position: { x: 300, y: 40 },
+  data: {
+    global: true,
+    config: { kind: 'JustFloat', channels: 2 },
+    convertTo: null,
+    channels: 2,
+    label: 'JustFloat',
+    schema: {
+      preset: 'custom',
+      legacyConfig: null,
+      decode: [
+        { id: 'f0', type: 'field', fieldType: 'float32LE', portName: 'speed' },
+        { id: 'f1', type: 'field', fieldType: 'float32LE', portName: 'temp' },
+      ],
+    },
+  },
+};
+
 
 /// 取最近一次 update_tab_graph 调用参数 (invoke mock 类型为无参元组, 统一在此断言)
 function lastGraphArgs(): {
@@ -118,13 +140,52 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     const ps = args.nodes.find((n) => n.kind.kind === 'ProtocolSource');
     expect(ps).toBeDefined();
     expect(ps!.id).toBe('protocol-1');
-    expect(ps!.kind.params).toMatchObject({ node_id: 'protocol-1', channels: 2 });
+    expect(ps!.kind.params).toMatchObject({ node_id: 'protocol-1', channels: 2, port_names: ['ch0', 'ch1'] });
     // 边原样提交 (source = 全局 Protocol 节点 id)
     expect(args.edges.some((e) => e.source === 'protocol-1' && e.source_handle === 'ch0')).toBe(true);
   });
 
-  it('无 chN 边时不产生 ProtocolSource; 其他 tab 的边不混入', async () => {
+  it('custom schema 命名端口边触发 ProtocolSource (port_names = 命名端口)', async () => {
     useAppStore.setState({
+      rfNodes: [TRANSPORT_NODE, CUSTOM_PROTOCOL_NODE, GAUGE_NODE],
+      rfEdges: [
+        { id: 'e-speed', source: 'protocol-custom', sourceHandle: 'speed', target: 'w-gauge', targetHandle: 'value' },
+      ] as Edge[],
+    } as never);
+
+    await syncTabGraphToBackend('default');
+
+    const args = lastGraphArgs();
+    const ps = args.nodes.find((n) => n.kind.kind === 'ProtocolSource');
+    expect(ps).toBeDefined();
+    expect(ps!.id).toBe('protocol-custom');
+    expect(ps!.kind.params).toMatchObject({
+      node_id: 'protocol-custom',
+      channels: 2,
+      port_names: ['speed', 'temp'],
+    });
+    // 命名端口边原样提交 (后端槽位支持命名)
+    expect(args.edges.some((e) => e.source === 'protocol-custom' && e.source_handle === 'speed')).toBe(true);
+    // Protocol 节点定义携带 schema
+    const protocol = args.nodes.find((n) => n.id === 'protocol-custom' && n.kind.kind === 'Protocol');
+    expect(protocol?.kind.params?.schema).toMatchObject({ preset: 'custom' });
+  });
+
+  it('custom schema 下 chN 等未知端口边不触发 ProtocolSource', async () => {
+    useAppStore.setState({
+      rfNodes: [TRANSPORT_NODE, CUSTOM_PROTOCOL_NODE, GAUGE_NODE],
+      rfEdges: [
+        { id: 'e-ch', source: 'protocol-custom', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
+      ] as Edge[],
+    } as never);
+
+    await syncTabGraphToBackend('default');
+
+    const args = lastGraphArgs();
+    expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
+  });
+
+  it('无 chN 边时不产生 ProtocolSource; 其他 tab 的边不混入', async () => {    useAppStore.setState({
       controlTabs: [
         { id: 'default', name: 'Tab 1', widgets: ['w-gauge'] },
         { id: 'tab2', name: 'Tab 2', widgets: [] },
@@ -150,5 +211,92 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
     expect(args.edges.some((e) => e.id === 'e-other')).toBe(false);
     expect(args.nodes.some((n) => n.id === 'w-other')).toBe(false);
+  });
+});
+
+describe('seedInitialGraph (初始图: 设备→协议→RawData)', () => {
+  beforeEach(() => {
+    tauriMock.invoke.mockClear();
+    useAppStore.setState({
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: ['w-raw'] }],
+      activeControlTabId: 'default',
+      rfNodes: [
+        {
+          id: 'w-raw', type: 'widget', position: { x: 560, y: 120 },
+          data: { tabId: 'default', widget: { kind: 'RawData', params: { id: 'w-raw', label: 'RawData' } } },
+        } as Node,
+      ],
+      rfEdges: [],
+    } as never);
+  });
+
+  it('创建 TestData 设备 + JustFloat 协议节点与两条连线', async () => {
+    useAppStore.getState().seedInitialGraph('w-raw');
+
+    const { rfNodes, rfEdges } = useAppStore.getState();
+    const transport = rfNodes.find((n) => n.type === 'transport');
+    const protocol = rfNodes.find((n) => n.type === 'protocol');
+    expect((transport?.data as { config: { kind: string } }).config.kind).toBe('TestData');
+    expect((protocol?.data as { config: { kind: string } }).config.kind).toBe('JustFloat');
+
+    // 设备.rx → 协议.in
+    expect(rfEdges.some((e) => e.source === transport!.id && e.sourceHandle === 'rx'
+      && e.target === protocol!.id && e.targetHandle === 'in')).toBe(true);
+    // 协议.out → RawData (targetHandle 改写为动态端口 src:<id>:out)
+    expect(rfEdges.some((e) => e.source === protocol!.id && e.sourceHandle === 'out'
+      && e.target === 'w-raw' && e.targetHandle === `src:${protocol!.id}:out`)).toBe(true);
+
+    // 图同步到后端
+    await vi.waitFor(() => {
+      expect(tauriMock.invoke).toHaveBeenCalledWith('update_tab_graph', expect.anything());
+    });
+  });
+});
+
+
+describe('图删除操作触发后端同步 (remove change 无 source/target)', () => {
+  beforeEach(() => {
+    tauriMock.invoke.mockClear();
+    useAppStore.setState({
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: ['w-gauge'] }],
+      activeControlTabId: 'default',
+      rfNodes: [TRANSPORT_NODE, PROTOCOL_NODE, GAUGE_NODE],
+      rfEdges: [
+        { id: 'e-byte', source: 'transport-1', sourceHandle: 'rx', target: 'protocol-1', targetHandle: 'in' },
+        { id: 'e-ch', source: 'protocol-1', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
+      ] as Edge[],
+    } as never);
+  });
+
+  /// 等待 syncTabGraph 的 void Promise 落地
+  const flushSync = () => vi.waitFor(() => {
+    expect(tauriMock.invoke).toHaveBeenCalledWith('update_tab_graph', expect.anything());
+  });
+
+  it('删除边后同步后端, 后端边列表不再包含被删边', async () => {
+    useAppStore.getState().onEdgesChange([{ id: 'e-ch', type: 'remove' }]);
+
+    await flushSync();
+    const args = lastGraphArgs();
+    expect(args.edges.some((e) => e.id === 'e-ch')).toBe(false);
+    // 未删除的字节边仍在
+    expect(args.edges.some((e) => e.id === 'e-byte')).toBe(true);
+  });
+
+  it('删除全局节点间的字节边同样触发同步', async () => {
+    useAppStore.getState().onEdgesChange([{ id: 'e-byte', type: 'remove' }]);
+
+    await flushSync();
+    const args = lastGraphArgs();
+    expect(args.edges.some((e) => e.id === 'e-byte')).toBe(false);
+    expect(args.edges.some((e) => e.id === 'e-ch')).toBe(true);
+  });
+
+  it('键盘删除 widget 节点后同步后端, 节点定义被移除', async () => {
+    useAppStore.getState().onNodesChange([{ id: 'w-gauge', type: 'remove' }]);
+
+    await flushSync();
+    const args = lastGraphArgs();
+    expect(args.nodes.some((n) => n.id === 'w-gauge')).toBe(false);
   });
 });

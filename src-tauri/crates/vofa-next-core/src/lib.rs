@@ -4,6 +4,7 @@ pub mod diagnostic;
 pub mod error;
 pub mod frame;
 pub mod logic;
+pub mod schema;
 
 pub use can::*;
 pub use config::*;
@@ -11,3 +12,4 @@ pub use diagnostic::*;
 pub use error::{Error, Result};
 pub use frame::*;
 pub use logic::*;
+pub use schema::*;

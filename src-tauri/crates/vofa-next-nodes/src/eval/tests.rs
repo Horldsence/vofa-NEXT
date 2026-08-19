@@ -351,3 +351,81 @@ fn test_filter_lowpass_preserves_dc() {
         last_y
     );
 }
+
+// ============ ProtocolSource 命名端口 (port_names) 测试 ============
+
+#[test]
+fn test_protocol_source_named_ports_evaluate() {
+    // 命名端口: channels[i] 写入第 i 个命名槽位 (慢路径)
+    let nodes = vec![
+        make_protocol_source_named("ps1", "t1", "proto1", &["temp", "humi"]),
+        make_math("m1", "t1", MathOp::Add, 2),
+    ];
+    let edges = vec![
+        edge("e1", "ps1", "temp", "m1", "in0"),
+        edge("e2", "ps1", "humi", "m1", "in1"),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+    let frames = source_frames(&[("proto1", vec![36.5, 60.0])]);
+    let out = g.evaluate(
+        &frames,
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+    );
+    assert_eq!(out.get("ps1").and_then(|m| m.get("temp")), Some(&36.5));
+    assert_eq!(out.get("ps1").and_then(|m| m.get("humi")), Some(&60.0));
+    // 命名端口下不应再有 ch0/ch1
+    assert!(out.get("ps1").and_then(|m| m.get("ch0")).is_none());
+    // 命名端口参与下游求值
+    assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&96.5));
+}
+
+#[test]
+fn test_protocol_source_named_ports_slot_run() {
+    // 命名端口: 槽位快路径 (CompiledEval::run) 与慢路径语义一致
+    let nodes = vec![make_protocol_source_named("ps1", "t1", "proto1", &["a", "b", "c"])];
+    let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+    let frames = source_frames(&[("proto1", vec![1.0, 2.0])]); // 第 3 通道越界 → 0
+
+    // 槽位名检查: 应分配 a/b/c 三个命名槽位
+    let compiled = g.compiled();
+    assert!(compiled.slot_of("ps1", "a").is_some());
+    assert!(compiled.slot_of("ps1", "b").is_some());
+    assert!(compiled.slot_of("ps1", "c").is_some());
+    assert!(compiled.slot_of("ps1", "ch0").is_none());
+
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    compiled.run(
+        &frames,
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut slots,
+        &mut written,
+    );
+    assert_eq!(slots[compiled.slot_of("ps1", "a").unwrap()], 1.0);
+    assert_eq!(slots[compiled.slot_of("ps1", "b").unwrap()], 2.0);
+    assert_eq!(slots[compiled.slot_of("ps1", "c").unwrap()], 0.0);
+}
+
+#[test]
+fn test_protocol_source_port_names_fallback() {
+    // port_names 越界/空名回退 "ch{i}"; None 保持 ch0..chN (旧前端兼容)
+    use crate::node_kind::protocol_source_port_names;
+    assert_eq!(protocol_source_port_names(None, 2), vec!["ch0", "ch1"]);
+    assert_eq!(
+        protocol_source_port_names(Some(&[]), 2),
+        vec!["ch0", "ch1"]
+    );
+    let names = vec!["x".to_string(), String::new()];
+    assert_eq!(
+        protocol_source_port_names(Some(&names), 3),
+        vec!["x", "ch1", "ch2"]
+    );
+}
