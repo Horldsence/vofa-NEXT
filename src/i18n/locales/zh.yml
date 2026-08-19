@@ -963,6 +963,10 @@ canLoadExportSuccess: 已导出
 
 # 帧解码器 (FrameDecoder)
 frameDecoder: 帧解码器
+trigger: 触发器
+paletteSearchPlaceholder: 搜索控件…
+paletteNoResults: 无匹配控件
+paletteClearSearch: 清空
 fdModeLive: 实时模式
 fdModeManual: 手动测试
 fdSettings: 全局设置
@@ -1002,6 +1006,53 @@ fdBitOffset: 位偏移
 fdBitLength: 位长度
 fdSigned: 是否带符号
 fdSignedYes: 带符号
+
+# 触发器 (Trigger)
+triggerTitle: 触发器
+triggerModeManual: 手动
+triggerModeAuto: 自动
+triggerEdgeLevel: 电平
+triggerEdgeRising: 上升沿
+triggerMatchExact: 精确
+triggerMatchPrefix: 前缀
+triggerMatchContains: 包含
+triggerMatchRegex: 正则
+triggerMatchRange: 范围
+triggerHintExact: 字符串完全相等
+triggerHintPrefix: 命令以模式开头
+triggerHintContains: 命令包含模式
+triggerHintRegex: JavaScript/PCRE 风格正则, 支持 flags (i/m/s/U)
+triggerHintRange: 数值范围 min..max, 支持 Infinity
+triggerMatchType: 匹配类型
+triggerPattern: 命令模板
+triggerOutputValue: 输出值
+triggerFlags: 正则 flags
+triggerFlagsHint: 如 i (忽略大小写) / im / ims
+triggerEnabled: 启用
+triggerRulesCount: 条规则
+triggerRulesEmpty: 暂无规则, 点击下方按钮添加
+triggerAddRule: 添加规则
+triggerManualInput: 手动输入命令
+triggerAutoInput: 自动触发
+triggerShortcutHint: 按 Ctrl/Cmd + Enter 立即触发
+triggerCmdPlaceholder: "输入待匹配命令, 例如: GET_TEMP"
+triggerFire: 触发 (Fire)
+triggerPort: 上游 trigger
+triggerCommand: 当前命令
+triggerMatchResult: 匹配结果
+triggerLastResult: 最近匹配
+triggerMatched: 是否命中
+triggerValue: 输出值
+triggerMissValue: 未命中值
+triggerGlobalSettings: 全局设置
+triggerOutputType: 输出类型
+triggerOutputNumber: 数字
+triggerOutputString: 字符串
+triggerOutputText: 输出文本
+triggerMissText: 默认未命中文本
+triggerMatchGlob: Glob
+triggerHintGlob: 标准 shell glob 模式, 支持 * ? [abc] {a,b,c}
+textDisplay: 文本显示
 fdSignedNo: 无符号
 fdChecksumCover: 校验范围
 fdCoverStart: 起始字节

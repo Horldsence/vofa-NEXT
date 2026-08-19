@@ -129,6 +129,7 @@ impl CompiledGraph {
                     match src_domain {
                         PortDomain::Bytes => byte_edges.push(e.clone()),
                         PortDomain::F32 => f32_edges.push(e.clone()),
+                        PortDomain::String => {} // 字符串平面不进 f32/byte 边
                     }
                 }
                 _ => {
@@ -426,7 +427,8 @@ impl CompiledEval {
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }
                 | NodeKind::Transport { .. }
-                | NodeKind::Protocol { .. } => {
+                | NodeKind::Protocol { .. }
+                | NodeKind::Trigger { .. } => {
                     // 无 f32 输出的节点不应出现在 eval_order 中, 防御性跳过
                     continue;
                 }

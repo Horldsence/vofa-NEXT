@@ -5040,7 +5040,9 @@ dependencies = [
 name = "vofa-next-nodes"
 version = "0.1.2"
 dependencies = [
+ "glob",
  "log",
+ "regex",
  "rustc-hash",
  "serde",
  "serde_json",

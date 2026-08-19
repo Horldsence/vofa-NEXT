@@ -32,6 +32,26 @@ export type NodeKind =
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
   | { kind: 'Ifft' }
   | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean; loopback: boolean } }
+  | {
+      kind: 'Trigger';
+      params: {
+        mode: 'manual' | 'auto';
+        edge: 'level' | 'rising';
+        default_miss: number;
+        default_miss_text: string;
+        command: string;
+        rules: Array<{
+          id: string;
+          pattern: string;
+          match_type: 'exact' | 'prefix' | 'contains' | 'regex' | 'range' | 'glob';
+          flags?: string | null;
+          output_type: 'number' | 'string';
+          output_value: number;
+          output_text: string;
+          enabled: boolean;
+        }>;
+      };
+    }
   | { kind: 'Sink' };
 
 /// 节点定义 DTO (IPC)
@@ -139,6 +159,35 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
         },
       };
     }
+
+    case 'Trigger': {
+      // 触发器节点 — 后端仅占位 (类似 Sink, 不参与求值),
+      // 匹配逻辑由前端 useEffect 调用 match_trigger_command,
+      // 结果经 submitCustomOutput / submitCustomTextOutput 推回 graphOutputs / customTextOutputs
+      return {
+        kind: 'Trigger',
+        params: {
+          mode: widget.params.mode,
+          edge: widget.params.edge,
+          default_miss: widget.params.defaultMiss,
+          default_miss_text: widget.params.defaultMissText,
+          command: widget.params.command,
+          rules: widget.params.rules.map((r) => ({
+            id: r.id,
+            pattern: r.pattern,
+            match_type: r.matchType,
+            flags: r.flags ?? null,
+            output_type: r.outputType,
+            output_value: r.outputValue,
+            output_text: r.outputText,
+            enabled: r.enabled,
+          })),
+        },
+      };
+    }
+    default:
+      // 防御: 未知 widget kind 退化为 Sink (不抛错, 后续可日志告警)
+      return { kind: 'Sink' };
   }
 }
 

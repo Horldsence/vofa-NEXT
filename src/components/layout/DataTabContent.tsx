@@ -11,6 +11,7 @@ import {
   Cpu as CpuIcon,
   CircuitBoard as CircuitBoardIcon,
   ScanText as ScanTextIcon,
+  Zap as ZapIcon,
 } from 'lucide-react';
 import { WaveformChart } from '../displays/waveform/WaveformChart';
 import { RawDataView } from '../displays/rawdata/RawDataView';
@@ -21,6 +22,7 @@ import { CommandSender } from '../displays/command/CommandSender';
 import { CanView } from '../displays/can/CanView';
 import { LogicView } from '../displays/logic/LogicView';
 import { FrameDecoder } from '../displays/decoder/FrameDecoder';
+import { Trigger } from '../controls/Trigger';
 import { TableView } from '../displays/widgets/TableView';
 import { AxisSettings } from '../displays/waveform/AxisSettings';
 import { SuspenseFallback } from '../ui/SuspenseFallback';
@@ -182,6 +184,19 @@ const FrameDecoderTabView = memo(function FrameDecoderTabView({ widget, onRemove
   return (
     <div className="flex h-full w-full">
       <FrameDecoder widget={widget} onRemove={onRemove} />
+    </div>
+  );
+});
+
+interface TriggerTabViewProps {
+  widget: Extract<WidgetConfig, { kind: 'Trigger' }>;
+  onRemove: () => void;
+}
+
+const TriggerTabView = memo(function TriggerTabView({ widget, onRemove }: TriggerTabViewProps) {
+  return (
+    <div className="flex h-full w-full">
+      <Trigger widget={widget} onRemove={onRemove} />
     </div>
   );
 });
@@ -418,6 +433,13 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       if (!widget) return noWidget;
       return <FrameDecoderTabView widget={widget} onRemove={noopRemove} />;
     }
+    case 'trigger': {
+      const widget = widgets.find(
+        (w) => w.params.id === tab.widgetId && w.kind === 'Trigger'
+      ) as Extract<WidgetConfig, { kind: 'Trigger' }> | undefined;
+      if (!widget) return noWidget;
+      return <TriggerTabView widget={widget} onRemove={noopRemove} />;
+    }
     default:
       return null;
   }
@@ -447,6 +469,8 @@ export function DataTabIcon({ type, size = 12 }: { type: string; size?: number }
       return <CircuitBoardIcon size={size} />;
     case 'frame-decoder':
       return <ScanTextIcon size={size} />;
+    case 'trigger':
+      return <ZapIcon size={size} />;
     case 'table-view':
       return <BarChart3Icon size={size} />;
     default:

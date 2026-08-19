@@ -250,6 +250,41 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
         kind: 'RawData',
         params: { id, label: 'Raw Data' },
       };
+    case 'Trigger':
+      return {
+        kind: 'Trigger',
+        params: {
+          id,
+          label: 'Trigger',
+          mode: 'manual',
+          edge: 'level',
+          defaultMiss: 0,
+          defaultMissText: '',
+          command: 'HELLO',
+          rules: [
+            {
+              id: nanoid(6),
+              pattern: 'HELLO',
+              matchType: 'exact',
+              outputType: 'number',
+              outputValue: 1,
+              outputText: '',
+              enabled: true,
+            },
+          ],
+          binding: { mode: 'None' },
+        },
+      };
+    case 'TextDisplay':
+      return {
+        kind: 'TextDisplay',
+        params: {
+          id,
+          label: 'TextDisplay',
+          fontSize: 'base',
+          monospace: true,
+        },
+      };
   }
 }
 

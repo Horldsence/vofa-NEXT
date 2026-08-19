@@ -4,6 +4,43 @@ use std::collections::HashMap;
 use std::time::Duration;
 use vofa_next_dsp::SpectrumResult;
 
+/// 字符串输出推送循环 — 自适应速率推送 custom_text_outputs 到所有订阅者
+///
+/// 订阅者通过 invoke('subscribe_string_outputs', on_event: Channel) 加入
+/// Channel 关闭时自动移除
+///
+/// 自适应: 内容与上次发送相同 → 不发送并降频退避 (最高 250ms);
+/// 有变化 → 立即发送并提速 (最快 33ms, ~30 FPS, 字符串变化频率低于数字)
+pub async fn text_output_ticker(state: GraphEvalState) {
+    log::debug!("字符串输出 ticker 已启动 (自适应 33ms~250ms)");
+    let mut rate = AdaptiveRate::new(Duration::from_millis(33), Duration::from_millis(250));
+
+    loop {
+        tokio::time::sleep(rate.current()).await;
+        // 把当前 custom_text_outputs 同步到快照 (递增 tick)
+        let snap = {
+            let current = state.custom_text_outputs.lock().clone();
+            let mut s = state.text_output_snapshot.lock();
+            let changed = s.values != current;
+            if !changed && s.tick > 0 {
+                drop(s);
+                rate.on_idle();
+                continue;
+            }
+            s.tick = s.tick.wrapping_add(1);
+            s.values = current;
+            s.clone()
+        };
+        let mut subs = state.text_output_subscribers.lock();
+        if subs.is_empty() {
+            rate.on_idle();
+            continue;
+        }
+        subs.retain(|ch| ch.send(snap.clone()).is_ok());
+        rate.on_send();
+    }
+}
+
 /// 同步 spectrum_analyzers 与 graphs — 委托到 pipeline::spectrum_sync
 fn sync_spectrum_analyzers(state: &GraphEvalState) {
     crate::pipeline::spectrum_sync::sync_spectrum_analyzers(state);

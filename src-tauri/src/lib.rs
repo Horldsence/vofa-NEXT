@@ -65,6 +65,13 @@ pub fn run() {
             };
             tauri::async_runtime::spawn(state::custom_input_ticker(eval_state_for_custom));
 
+            // 启动字符串输出 ticker (30 FPS 推送给 TextDisplay)
+            let eval_state_for_text = {
+                let state = app.state::<AppState>();
+                state.eval_state()
+            };
+            tauri::async_runtime::spawn(state::text_output_ticker(eval_state_for_text));
+
             // 启动频谱分析 ticker (30 FFT 计算 + 推送 SpectrumBatch)
             let eval_state_for_spectrum = {
                 let state = app.state::<AppState>();
@@ -128,12 +135,15 @@ pub fn run() {
             commands::remove_tab_graph,
             commands::set_input_value,
             commands::submit_custom_output,
+            commands::submit_custom_text_output,
             commands::inject_bytes,
             commands::subscribe_graph_outputs,
             commands::subscribe_custom_inputs,
+            commands::subscribe_string_outputs,
             commands::subscribe_spectrum,
             commands::unsubscribe_graph_outputs,
             commands::unsubscribe_custom_inputs,
+            commands::unsubscribe_string_outputs,
             commands::unsubscribe_spectrum,
             commands::unsubscribe_waveform,
             // 原始数据
@@ -176,6 +186,8 @@ pub fn run() {
             commands::export_can_load_csv,
             // 帧解码器手动测试 (FrameDecoder 面板)
             commands::parse_frame_decoder_input,
+            // 触发器匹配 (Trigger 面板手动 / 自动模式)
+            commands::match_trigger_command,
             // 调试
             commands::inspect_element,
             // 窗口

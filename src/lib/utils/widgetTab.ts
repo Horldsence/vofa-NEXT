@@ -26,6 +26,8 @@ export function widgetTabType(kind: WidgetConfig['kind']): DataTabType | null {
       return 'frame-decoder';
     case 'RawData':
       return 'raw';
+    case 'Trigger':
+      return 'trigger';
     default:
       return null;
   }
@@ -43,6 +45,7 @@ function windowTabName(widget: WidgetConfig): string {
     case 'Command':
     case 'FrameDecoder':
     case 'RawData':
+    case 'Trigger':
       return widget.params.label;
     default:
       return widget.kind;

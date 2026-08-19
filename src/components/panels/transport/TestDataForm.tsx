@@ -39,7 +39,7 @@ export function TestDataForm({ params, onChange, lang, protocolLabel }: TestData
 
   const commitSampleRate = () => {
     const value = parseInt(sampleRateText, 10);
-    if (Number.isFinite(value) && value >= 1 && value <= 10000) {
+    if (Number.isFinite(value) && value >= 1 && value <= 700000) {
       if (value !== params.sample_rate) onChange({ sample_rate: value });
       else setSampleRateText(String(params.sample_rate));
     } else {

@@ -75,6 +75,8 @@ base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
 log = "0.4"
 thiserror = "1"
+regex = "1"
+glob = "0.3"
 anyhow = "1"
 rustc-hash = "2"
 vofa-next-core = { path = "crates/vofa-next-core" }

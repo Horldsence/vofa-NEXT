@@ -10,6 +10,8 @@ import type {
   ProtocolSchema,
   TransportConfig,
   TransportStats,
+  TriggerMatchResult,
+  TriggerRule,
   WidgetBinding,
   WaveformWindow,
 } from '../../types';
@@ -253,6 +255,35 @@ export const api = {
       enableFrameCount,
       enableLastTimestamp,
       enableFps,
+    }),
+
+  // ===== 触发器匹配 (Trigger 面板) =====
+  /// 在后端按 rules 表对 command 执行匹配, 返回首个命中规则的 outputValue/text;
+  /// 全部未命中则返回 `{ value: defaultMiss, text: defaultMissText, matched: false, outputType: 'miss' }`
+  /// - `numeric`: 用于 range 类型的规则; 传 null 跳过 range 规则
+  /// 顶层参数用 camelCase (Tauri 命令参数约定), 规则字段转换为 snake_case (对齐 Rust serde 命名)
+  matchTriggerCommand: (
+    rules: TriggerRule[],
+    defaultMiss: number,
+    defaultMissText: string,
+    command: string,
+    numeric: number | null,
+  ) =>
+    invoke<TriggerMatchResult>('match_trigger_command', {
+      rules: rules.map((r) => ({
+        id: r.id,
+        pattern: r.pattern,
+        match_type: r.matchType,
+        flags: r.flags ?? null,
+        output_type: r.outputType,
+        output_value: r.outputValue,
+        output_text: r.outputText,
+        enabled: r.enabled,
+      })),
+      defaultMiss,
+      defaultMissText,
+      command,
+      numeric,
     }),
 
   // ===== 调试 =====

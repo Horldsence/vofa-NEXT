@@ -1,4 +1,4 @@
-use crate::state::{AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch};
+use crate::state::{AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, StringOutputSnapshot};
 use tauri::{ipc::Channel, AppHandle, State};
 use vofa_next_buffer::graph::Edge;
 use vofa_next_core::{Error, Result};
@@ -135,6 +135,20 @@ pub async fn submit_custom_output(
     Ok(())
 }
 
+/// 提交字符串输出 — Trigger 控件匹配字符串类型规则时调用
+///
+/// 写入 `custom_text_outputs` map; 后端 `text_output_ticker` 自适应速率推送给
+/// 订阅了 `subscribe_string_outputs` 的前端 (TextDisplay 控件读取显示)
+#[tauri::command]
+pub async fn submit_custom_text_output(
+    state: State<'_, AppState>,
+    widget_id: String,
+    outputs: std::collections::HashMap<String, String>,
+) -> Result<()> {
+    state.custom_text_outputs.lock().insert(widget_id, outputs);
+    Ok(())
+}
+
 /// 字节注入 — CommandSender 回环模式 / 协议调试的发送路径
 /// (取代旧 inject_loopback_bytes: loopback 字符串特判 → 全局 BytePlan 路由)
 ///
@@ -196,6 +210,35 @@ pub async fn subscribe_custom_inputs(
     on_event: Channel<CustomInputBatch>,
 ) -> Result<()> {
     state.custom_input_subscribers.lock().push(on_event);
+    Ok(())
+}
+
+/// 订阅字符串输出快照 — 与 graph_outputs 平行的字符串平面
+///
+/// TextDisplay 控件通过此订阅获取所有触发器的最新字符串输出
+#[tauri::command]
+pub async fn subscribe_string_outputs(
+    state: State<'_, AppState>,
+    on_event: Channel<StringOutputSnapshot>,
+) -> Result<()> {
+    state.text_output_subscribers.lock().push(on_event);
+    Ok(())
+}
+
+/// 取消字符串输出订阅
+#[tauri::command]
+pub async fn unsubscribe_string_outputs(
+    state: State<'_, AppState>,
+    channel_id: u32,
+) -> Result<()> {
+    let mut subs = state.text_output_subscribers.lock();
+    subs.retain(|ch| {
+        // Channel 内部 id 通过 ChannelId 获取 — 这里按引用相等不可行,
+        // 由前端在 unmount 时清空所有 subscribers 即可。
+        // 此命令主要给前端对称调用, 实际清理在前端 closeTauriChannel 中完成。
+        let _ = channel_id;
+        true
+    });
     Ok(())
 }
 

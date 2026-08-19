@@ -29,13 +29,17 @@ import {
   Box,
   Send,
   ScanText,
+  Zap,
   Cable,
   Binary,
+  Search,
+  X,
+  FileText,
 } from 'lucide-react';
 import type { WidgetConfig, TransportConfig } from '../../../types';
 import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../../types';
 import type { PaletteEntry, PaletteSection, SectionId } from './paletteModel';
-import { flattenSections, sectionAnchors, sectionAtScroll, totalSizeOf, HEADER_SIZE, ROW_SIZE } from './paletteModel';
+import { flattenSections, filterSections, sectionAnchors, sectionAtScroll, totalSizeOf, HEADER_SIZE, ROW_SIZE } from './paletteModel';
 import { JumpBar, type JumpTarget } from './JumpBar';
 import { PaletteRow, SectionHeader } from './PaletteRow';
 
@@ -81,6 +85,11 @@ export function WidgetPalette() {
   /// 已播放入场动画的行 key — 虚拟列表滚动会卸载/重挂载行, 标记后重挂载不再重放
   const enterPlayedRef = useRef<Set<string>>(new Set());
 
+  /// 搜索查询 (label/title 大小写不敏感子串匹配)
+  const [searchQuery, setSearchQuery] = useState('');
+  const trimmedQuery = searchQuery.trim().toLowerCase();
+  const isSearching = trimmedQuery.length > 0;
+
   const sections = useMemo<PaletteSection[]>(() => {
     const inputItems: PaletteEntry[] = [
       { key: 'Knob', kind: 'Knob', icon: <KnobIcon />, label: t(lang, 'knob'), title: t(lang, 'knob') },
@@ -90,6 +99,7 @@ export function WidgetPalette() {
       { key: 'Slider', kind: 'Slider', icon: <Sliders />, label: t(lang, 'slider'), title: t(lang, 'slider') },
       { key: 'Command', kind: 'Command', icon: <Send size={14} />, label: t(lang, 'command'), title: t(lang, 'command') },
       { key: 'FrameDecoder', kind: 'FrameDecoder', icon: <ScanText size={14} />, label: t(lang, 'frameDecoder'), title: t(lang, 'frameDecoder') },
+      { key: 'Trigger', kind: 'Trigger', icon: <Zap size={14} />, label: t(lang, 'trigger'), title: t(lang, 'trigger') },
     ];
 
     const displayItems: PaletteEntry[] = [
@@ -103,6 +113,8 @@ export function WidgetPalette() {
       { key: 'Spectrum', kind: 'Spectrum', icon: <Activity />, label: t(lang, 'spectrum'), title: t(lang, 'spectrum') },
       { key: 'Model3D', kind: 'Model3D', icon: <Box />, label: t(lang, 'model3d'), title: t(lang, 'model3d') },
       { key: 'RawData', kind: 'RawData', icon: <Activity size={14} />, label: t(lang, 'rawData'), title: t(lang, 'rawData') },
+      /// TextDisplay — 字符串展示控件 (与 Trigger.text 端口连接)
+      { key: 'TextDisplay', kind: 'TextDisplay', icon: <FileText size={14} />, label: t(lang, 'textDisplay'), title: t(lang, 'textDisplay') },
     ];
 
     /// 算术控件子项 — 每种 op 一个快捷入口
@@ -205,10 +217,22 @@ export function WidgetPalette() {
     [lang],
   );
 
-  /// 扁平条目模型 — 退场动画期间该行仍保留 (折叠状态临时视为展开)
+  /// 搜索过滤后的 sections — 搜索时清空分组内的非匹配条目, 空分组整体剔除;
+  /// 非搜索态直接返回原 sections, 保留折叠/展开状态
+  const filteredSections = useMemo<PaletteSection[]>(
+    () => filterSections(sections, isSearching ? trimmedQuery : ''),
+    [sections, isSearching, trimmedQuery],
+  );
+
+  /// 扁平条目模型 — 退场动画期间该行仍保留 (折叠状态临时视为展开);
+  /// 搜索态强制全部展开 (无折叠意义)
   const items = useMemo(
-    () => flattenSections(sections, collapsing ? { ...collapsed, [collapsing]: false } : collapsed),
-    [sections, collapsed, collapsing],
+    () =>
+      flattenSections(
+        filteredSections,
+        isSearching ? {} : collapsing ? { ...collapsed, [collapsing]: false } : collapsed,
+      ),
+    [filteredSections, isSearching, collapsed, collapsing],
   );
 
   const virtualizer = useVirtualizer({
@@ -365,6 +389,27 @@ export function WidgetPalette() {
     <div className="flex flex-col h-full overflow-hidden gap-1.5">
       <JumpBar targets={jumpTargets} activeId={jumpActive} onJump={jumpTo} />
 
+      {/* 搜索框 — 按 label/title 子串过滤, 命中项所在分组自动展开 (搜索态禁用折叠) */}
+      <div className="relative flex-shrink-0 px-1">
+        <Search size={11} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-disabled pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t(lang, 'paletteSearchPlaceholder')}
+          className="w-full pl-6 pr-6 py-1 text-xs bg-bg-input text-text-primary border border-border rounded-sm focus:outline-none focus:border-accent placeholder:text-text-disabled"
+        />
+        {searchQuery && (
+          <button
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-text-disabled hover:text-text-primary"
+            onClick={() => setSearchQuery('')}
+            title={t(lang, 'paletteClearSearch')}
+          >
+            <X size={11} />
+          </button>
+        )}
+      </div>
+
       {/* 虚拟滚动列表 — 扁平 header/row 模型, 固定行高 */}
       <div
         ref={listRef}
@@ -373,40 +418,46 @@ export function WidgetPalette() {
         onTouchStart={cancelJump}
         className="flex-1 min-h-0 overflow-y-auto"
       >
-        <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
-          <div
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
-            }}
-          >
-            {virtualItems.map((vi) => {
-              const item = items[vi.index];
-              if (!item) return null;
-              return item.type === 'header' ? (
-                <SectionHeader
-                  key={vi.key}
-                  header={item.header}
-                  collapsed={(collapsed[item.sectionId] ?? false) || collapsing === item.sectionId}
-                  onToggle={() => toggleSection(item.sectionId)}
-                />
-              ) : (
-                <PaletteRow
-                  key={vi.key}
-                  entry={item.entry}
-                  category={item.category}
-                  entering={enteringSection === item.sectionId && !enterPlayedRef.current.has(item.key)}
-                  exiting={collapsing === item.sectionId}
-                  onActivate={handleActivate}
-                  onEnterPlayed={markEnterPlayed}
-                />
-              );
-            })}
+        {items.length === 0 && isSearching ? (
+          <div className="flex items-center justify-center h-full text-xs text-text-secondary italic px-2 text-center">
+            {t(lang, 'paletteNoResults')}
           </div>
-        </div>
+        ) : (
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                transform: `translateY(${virtualItems[0]?.start ?? 0}px)`,
+              }}
+            >
+              {virtualItems.map((vi) => {
+                const item = items[vi.index];
+                if (!item) return null;
+                return item.type === 'header' ? (
+                  <SectionHeader
+                    key={vi.key}
+                    header={item.header}
+                    collapsed={isSearching ? false : (collapsed[item.sectionId] ?? false) || collapsing === item.sectionId}
+                    onToggle={() => toggleSection(item.sectionId)}
+                  />
+                ) : (
+                  <PaletteRow
+                    key={vi.key}
+                    entry={item.entry}
+                    category={item.category}
+                    entering={enteringSection === item.sectionId && !enterPlayedRef.current.has(item.key)}
+                    exiting={collapsing === item.sectionId}
+                    onActivate={handleActivate}
+                    onEnterPlayed={markEnterPlayed}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

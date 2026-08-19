@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   flattenSections,
+  filterSections,
   sectionAnchors,
   sectionAtScroll,
   totalSizeOf,
@@ -137,5 +138,75 @@ describe('sectionAtScroll', () => {
 
   it('空锚点回退到第一个分组', () => {
     expect(sectionAtScroll([], 100)).toBe('input');
+  });
+});
+
+describe('filterSections', () => {
+  it('空查询直接返回原 sections (内容相等)', () => {
+    const out = filterSections(sections, '');
+    expect(out).toEqual(sections);
+  });
+
+  it('全空白查询也视为空', () => {
+    const out = filterSections(sections, '   ');
+    expect(out).toEqual(sections);
+  });
+
+  it('按 label 子串大小写不敏感匹配', () => {
+    const out = filterSections(sections, 'kn');
+    expect(out).toHaveLength(1);
+    expect(out[0]?.entries.map((e) => e.key)).toEqual(['Knob']);
+  });
+
+  it('按 title 匹配, 不只匹配 label', () => {
+    // 给 Button 一个不同的 title
+    const sectionsWithTitle: PaletteSection[] = [
+      {
+        id: 'input',
+        header: 'Input',
+        category: 'input',
+        entries: [
+          { key: 'Knob', icon: null, label: 'Knob', title: '旋钮' },
+          { key: 'Button', icon: null, label: 'Button', title: '按钮' },
+        ],
+      },
+    ];
+    const out = filterSections(sectionsWithTitle, '旋钮');
+    expect(out[0]?.entries.map((e) => e.key)).toEqual(['Knob']);
+    const out2 = filterSections(sectionsWithTitle, '按钮');
+    expect(out2[0]?.entries.map((e) => e.key)).toEqual(['Button']);
+  });
+
+  it('全空分组被剔除 (无匹配)', () => {
+    const out = filterSections(sections, 'xyz-nothing');
+    expect(out).toEqual([]);
+  });
+
+  it('保留所有至少有一条命中的分组 (大小写不敏感)', () => {
+    // 'b' (lowercased 'B') 出现在 Knob/Button/sub 中
+    const out = filterSections(sections, 'B');
+    const allKeys = out.flatMap((s) => s.entries.map((e) => e.key));
+    expect(allKeys).toEqual(expect.arrayContaining(['Knob', 'Button', 'sub']));
+    expect(allKeys).not.toContain('Waveform');
+    expect(allKeys).not.toContain('add');
+  });
+
+  it('返回的 sections 不引用原数组 (filter 副作用隔离)', () => {
+    const out = filterSections(sections, 'K');
+    expect(out).not.toBe(sections);
+  });
+
+  it('跨分组命中: "K" 仅命中 Knob (大写敏感测试)', () => {
+    const out = filterSections(sections, 'K');
+    const allKeys = out.flatMap((s) => s.entries.map((e) => e.key));
+    expect(allKeys).toEqual(['Knob']);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.id).toBe('input');
+  });
+
+  it('不修改原 sections 的引用 (immutable)', () => {
+    const before = sections.map((s) => ({ ...s, entries: [...s.entries] }));
+    filterSections(sections, 'kn');
+    expect(sections).toEqual(before);
   });
 });

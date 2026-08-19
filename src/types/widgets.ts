@@ -125,6 +125,61 @@ export interface RawDataConfig {
   label: string;
 }
 
+/// 文本展示控件 — 接收字符串端口输入, 节点内直接渲染
+export interface TextDisplayConfig {
+  id: string;
+  label: string;
+  fontSize: 'sm' | 'base' | 'lg';
+  monospace: boolean;
+}
+
+/// 触发器匹配类型 — 与后端 TriggerMatchType 对齐
+export type TriggerMatchType = 'exact' | 'prefix' | 'contains' | 'regex' | 'range' | 'glob';
+
+/// 触发器单条规则
+export interface TriggerRule {
+  id: string;                        // nanoid(6), 前端 React key 用
+  pattern: string;                   // 命令模板 (字符串 / 正则 / 范围 / glob)
+  matchType: TriggerMatchType;
+  /// 输出值类型: 'number' (写入 value 端口) | 'string' (写入 text 端口)
+  outputType: 'number' | 'string';
+  /// 数字输出值 (outputType='number' 时使用)
+  outputValue: number;
+  /// 字符串输出值 (outputType='string' 时使用)
+  outputText: string;
+  flags?: string;                    // 正则 flags, 如 'i' / 'im'
+  enabled: boolean;
+}
+
+/// 触发器匹配结果 — 与后端 TriggerMatchResult 对齐
+export interface TriggerMatchResult {
+  value: number;
+  matched: boolean;
+  text: string;
+  outputType: 'number' | 'string' | 'miss';
+}
+
+/// 触发器控件 — 命令字符串 → 输出通道数据
+///
+/// 模式 (manual / auto) 与 FrameDecoder 同构:
+/// - manual: 面板内文本框 + Fire 按钮触发, 一次性匹配
+/// - auto:   上游 trigger 端口 (number) 按 edge (level/rising) 持续驱动
+///
+/// 匹配规则由后端 `match_trigger_command` (Rust TriggerMatcher) 求值,
+/// 结果按规则的 `outputType` 回填到 `value` / `matched` (f32) 或 `text` (string) 端口
+/// 供下游消费。
+export interface TriggerConfig {
+  id: string;
+  label: string;
+  mode: 'manual' | 'auto';
+  edge: 'level' | 'rising';          // 仅 mode==='auto' 时生效
+  defaultMiss: number;               // 全部规则未命中时 value 端口的默认值
+  defaultMissText: string;           // 全部规则未命中时 text 端口的默认值
+  command: string;                   // 当前待匹配命令 (manual: 面板输入; auto: 节点文本框)
+  rules: TriggerRule[];
+  binding?: WidgetBinding;           // 与其它输入控件一致 (暂未使用, 保留)
+}
+
 // ============ 控件类别 ============
 
 /// 控件类别 — 用于 WidgetPalette 分组与颜色区分
@@ -157,7 +212,9 @@ export type WidgetConfig =
   | { kind: 'Command'; params: CommandConfig }
   | { kind: 'FrameDecoder'; params: FrameDecoderConfig }
   | { kind: 'TableView'; params: TableViewConfig }
-  | { kind: 'RawData'; params: RawDataConfig };
+  | { kind: 'RawData'; params: RawDataConfig }
+  | { kind: 'Trigger'; params: TriggerConfig }
+  | { kind: 'TextDisplay'; params: TextDisplayConfig };
 
 /// 获取控件所属类别 (用于 palette 分组与着色)
 export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
@@ -190,6 +247,10 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
       return 'custom';
     case 'FrameDecoder':
       return 'input';
+    case 'Trigger':
+      return 'input';
+    case 'TextDisplay':
+      return 'display';
   }
 }
 

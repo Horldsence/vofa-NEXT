@@ -12,5 +12,7 @@ vofa-next-buffer = { workspace = true }
 vofa-next-dsp = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+regex = { workspace = true }
+glob = { workspace = true }
 
 [dev-dependencies]

@@ -64,6 +64,24 @@ export function flattenSections(
   return items;
 }
 
+/// 搜索过滤 — 按 label/title 大小写不敏感子串匹配;
+/// 空查询返回原 sections; 命中分组的 entries 被裁剪, 全空分组整体剔除。
+export function filterSections(
+  sections: readonly PaletteSection[],
+  query: string,
+): PaletteSection[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [...sections];
+  return sections
+    .map((section) => ({
+      ...section,
+      entries: section.entries.filter(
+        (e) => e.label.toLowerCase().includes(q) || e.title.toLowerCase().includes(q),
+      ),
+    }))
+    .filter((section) => section.entries.length > 0);
+}
+
 /// 分组锚点 — 各分组 header 在列表内容中的像素偏移 (按固定行高累计)
 export interface SectionAnchor {
   id: SectionId;

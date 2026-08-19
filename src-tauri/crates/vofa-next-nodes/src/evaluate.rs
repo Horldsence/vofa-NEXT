@@ -217,7 +217,8 @@ impl CompiledGraph {
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }
                 | NodeKind::Transport { .. }
-                | NodeKind::Protocol { .. } => {
+                | NodeKind::Protocol { .. }
+                | NodeKind::Trigger { .. } => {
                     // 无 f32 输出的节点不应出现在 eval_order 中, 防御性跳过
                     continue;
                 }

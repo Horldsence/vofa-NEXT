@@ -36,6 +36,18 @@ pub struct CustomInputBatch {
     pub inputs: HashMap<String, HashMap<String, f32>>,
 }
 
+/// 字符串输出快照 — 与 graphOutputs 平行的字符串平面
+///
+/// Trigger widget 命中字符串类型规则时, 通过 `submit_custom_text_output` 写入;
+/// 后端 ticker 把最新快照推给前端 (TextDisplay 控件读取显示)。
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct StringOutputSnapshot {
+    /// 自增计数器, 与 GraphOutputSnapshot.tick 解耦 (独立推流节奏)
+    pub tick: u64,
+    /// widgetId -> portId -> string value
+    pub values: HashMap<String, HashMap<String, String>>,
+}
+
 /// 频谱分析结果批次 — 后端推送到前端 SpectrumChart
 ///
 /// 30 FPS 推送, key = SpectrumSink widget id, value = 最新一次 FFT 结果
@@ -77,6 +89,12 @@ pub struct GraphEvalState {
     pub output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
     pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
     pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
+    /// 字符串输出 (Trigger 控件匹配字符串类型规则时写入)
+    pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    /// 字符串输出快照 (与 output_snapshot 平行, 由 text_output_ticker 推送)
+    pub text_output_snapshot: Arc<Mutex<StringOutputSnapshot>>,
+    /// 字符串输出订阅者
+    pub text_output_subscribers: Arc<Mutex<Vec<Channel<StringOutputSnapshot>>>>,
     /// Filter 节点状态 (跨帧持久化, 逐点滤波)
     /// key: Filter widget id, value: DigitalFilter (含 FIR 延迟线 / IIR biquad 状态)
     pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
@@ -123,6 +141,14 @@ pub struct AppState {
     /// key: widget_id, value: portId -> value
     /// 由前端 invoke('submit_custom_output') 更新
     pub custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
+    /// 字符串输出 (Trigger 控件匹配字符串类型规则时写入)
+    /// key: widget_id, value: portId -> string
+    /// 由前端 invoke('submit_custom_text_output') 更新
+    pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    /// 字符串输出快照 (TextOutputSnapshot, 供 ticker 推送)
+    pub text_output_snapshot: Arc<Mutex<StringOutputSnapshot>>,
+    /// 字符串输出订阅者
+    pub text_output_subscribers: Arc<Mutex<Vec<Channel<StringOutputSnapshot>>>>,
     /// 图输出订阅者 (60 FPS 推送)
     pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
     /// Custom 输入订阅者 (30 FPS 推送到前端 iframe)
@@ -174,6 +200,9 @@ impl AppState {
         let graphs_version = Arc::new(AtomicU64::new(0));
         let input_values = Arc::new(Mutex::new(HashMap::new()));
         let custom_outputs = Arc::new(Mutex::new(HashMap::new()));
+        let custom_text_outputs = Arc::new(Mutex::new(HashMap::new()));
+        let text_output_snapshot = Arc::new(Mutex::new(StringOutputSnapshot::default()));
+        let text_output_subscribers = Arc::new(Mutex::new(Vec::new()));
         let source_frames = Arc::new(Mutex::new(SourceFramesMap::default()));
         let output_snapshot = Arc::new(Mutex::new(GraphOutputSnapshot {
             tick: 0,
@@ -200,6 +229,9 @@ impl AppState {
             graphs_version: graphs_version.clone(),
             input_values: input_values.clone(),
             custom_outputs: custom_outputs.clone(),
+            text_output_snapshot: text_output_snapshot.clone(),
+            text_output_subscribers: text_output_subscribers.clone(),
+            custom_text_outputs: custom_text_outputs.clone(),
             source_frames: source_frames.clone(),
             output_snapshot: output_snapshot.clone(),
             output_subscribers: output_subscribers.clone(),
@@ -230,6 +262,9 @@ impl AppState {
             graphs_version,
             input_values,
             custom_outputs,
+            custom_text_outputs,
+            text_output_snapshot,
+            text_output_subscribers,
             output_subscribers,
             custom_input_subscribers,
             decoder_raw_collectors,

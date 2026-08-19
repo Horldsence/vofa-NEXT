@@ -16,6 +16,7 @@ use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
 
 use crate::decoder_block::DecoderBlockDef;
 use crate::math_op::MathOp;
+use crate::trigger::TriggerRuleDef;
 
 // ============ 端口 handle 命名约定 ============
 
@@ -140,6 +141,28 @@ pub enum NodeKind {
     /// 这些节点没有 f32 输出, 后端 DAG 不评估它们, 前端通过 edges 自行查值;
     /// Command (CommandSender) 另有 "loopbackOut" 字节出口 (命令字节 → 字节平面)
     Sink,
+    /// 触发器节点 (Trigger)
+    /// 匹配逻辑在前端 useEffect 中调用 `match_trigger_command`,
+    /// 结果经 `submit_custom_output` / `submit_custom_text_output` 推回 graphOutputs。
+    /// 后端仅占位使 serde 能识别 kind 字段 — 不参与后端求值 (类似 Sink)。
+    /// 输出端口:
+    ///   - `value` (F32)   — number 规则的 output_value
+    ///   - `matched` (F32) — 是否命中 (1/0)
+    ///   - `text` (String) — string 规则的 output_value
+    Trigger {
+        /// 模式: 'manual' | 'auto'
+        mode: String,
+        /// 边沿: 'level' | 'rising' (仅 auto 模式生效)
+        edge: String,
+        /// 全部未命中时 value 端口的默认值
+        default_miss: f32,
+        /// 全部未命中时 text 端口的默认值
+        default_miss_text: String,
+        /// 当前待匹配命令字符串
+        command: String,
+        /// 规则列表
+        rules: Vec<TriggerRuleDef>,
+    },
 }
 
 /// 解析 ProtocolSource 的输出端口名列表 (编译/求值共用):
@@ -173,6 +196,8 @@ pub enum PortDomain {
     F32,
     /// 字节平面 (Vec<u8>, 事件驱动)
     Bytes,
+    /// 字符串平面 (String, 事件驱动; 与 graphOutputs 平行存在)
+    String,
 }
 
 /// 查询节点某个端口的域
@@ -203,6 +228,7 @@ pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain
         NodeKind::Sink | NodeKind::Custom { .. } if is_output && handle == LOOPBACK_OUT_HANDLE => {
             PortDomain::Bytes
         }
+        NodeKind::Trigger { .. } if is_output && handle == "text" => PortDomain::String,
         _ => PortDomain::F32,
     }
 }

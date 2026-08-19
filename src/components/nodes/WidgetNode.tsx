@@ -27,6 +27,7 @@ import { MathWidget } from '../displays/widgets/MathWidget';
 import { FilterWidget } from '../displays/widgets/FilterWidget';
 import { FFTWidget } from '../displays/widgets/FFTWidget';
 import { IFFTWidget } from '../displays/widgets/IFFTWidget';
+import { TextDisplay } from '../displays/widgets/TextDisplay';
 
 /// 端口定义 — domain 标注该端口承载的是时域还是频域信号
 export interface WidgetPort {
@@ -173,6 +174,22 @@ export function getWidgetPorts(widget: WidgetConfig): {
         })),
       };
     }
+    case 'Trigger':
+      // 触发器: 1 个数字触发端口 (auto 模式) + 2 个数值输出端口 (value / matched) + 1 个字符串输出端口 (text)
+      return {
+        inputs: [{ id: 'trigger', label: 'trigger', domain: 'time' }],
+        outputs: [
+          { id: 'value', label: 'value', domain: 'time' },
+          { id: 'matched', label: 'matched', domain: 'time' },
+          { id: 'text', label: 'text', domain: 'string' },
+        ],
+      };
+    case 'TextDisplay':
+      // 文本展示: 1 个字符串输入端口
+      return {
+        inputs: [{ id: 'text', label: 'text', domain: 'string' }],
+        outputs: [],
+      };
     case 'RawData':
       // 关联端口 (ASSOCIATIVE): 端口在此仅为回退值 — 实际端口由 WidgetNode 动态派生,
       // 每个已连接的 source 节点 = 一个通道端口。边只是用户意图标记: 控件视图展示
@@ -349,12 +366,20 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
             onEdit={handleEditCustom}
           />
         );
+      case 'TextDisplay':
+        return (
+          <TextDisplay
+            widget={widget as Extract<WidgetConfig, { kind: 'TextDisplay' }>}
+            onRemove={onRemove}
+          />
+        );
       case 'Model3D':
     case 'Spectrum':
     case 'Waveform':
     case 'Command':
     case 'FrameDecoder':
     case 'RawData':
+    case 'Trigger':
         // 这些控件在节点内仅显示占位, 实际渲染在数据窗口 (双击节点可打开/激活窗口)
         return (
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">

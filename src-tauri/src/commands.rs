@@ -13,6 +13,7 @@ mod pipeline;
 mod protocol;
 mod rawdata;
 mod transport;
+mod trigger;
 mod window;
 
 pub use buffer::*;
@@ -26,4 +27,5 @@ pub use pipeline::*;
 pub use protocol::*;
 pub use rawdata::*;
 pub use transport::*;
+pub use trigger::*;
 pub use window::*;

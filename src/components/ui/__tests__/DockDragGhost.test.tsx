@@ -27,10 +27,6 @@ function moveTo(x: number, y: number) {
   window.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y, button: 0 }));
 }
 
-function releaseAt(x: number, y: number) {
-  window.dispatchEvent(new MouseEvent('pointerup', { clientX: x, clientY: y, button: 0 }));
-}
-
 describe('DockDragGhost 渲染', () => {
   let container: HTMLDivElement;
 

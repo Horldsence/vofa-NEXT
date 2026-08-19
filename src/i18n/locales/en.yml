@@ -963,6 +963,10 @@ canLoadExportSuccess: Exported
 
 # Frame Decoder
 frameDecoder: Frame Decoder
+trigger: Trigger
+paletteSearchPlaceholder: Search widgets…
+paletteNoResults: No matches
+paletteClearSearch: Clear
 fdModeLive: Live Mode
 fdModeManual: Manual Test
 fdSettings: Global Settings
@@ -1005,6 +1009,53 @@ fdSignedYes: Signed
 fdSignedNo: Unsigned
 fdChecksumCover: Checksum cover
 fdCoverStart: Cover start
+
+# Trigger widget
+triggerTitle: Trigger
+triggerModeManual: Manual
+triggerModeAuto: Auto
+triggerEdgeLevel: Level
+triggerEdgeRising: Rising
+triggerMatchExact: Exact
+triggerMatchPrefix: Prefix
+triggerMatchContains: Contains
+triggerMatchRegex: Regex
+triggerMatchRange: Range
+triggerHintExact: Exact string match
+triggerHintPrefix: Command starts with pattern
+triggerHintContains: Command contains pattern
+triggerHintRegex: JavaScript/PCRE regex, flags supported (i/m/s/U)
+triggerHintRange: Numeric range min..max, Infinity supported
+triggerMatchType: Match type
+triggerPattern: Pattern
+triggerOutputValue: Output value
+triggerFlags: Regex flags
+triggerFlagsHint: e.g. i (case-insensitive) / im / ims
+triggerEnabled: Enabled
+triggerRulesCount: rules
+triggerRulesEmpty: No rules yet, click below to add
+triggerAddRule: Add rule
+triggerManualInput: Manual command input
+triggerAutoInput: Auto trigger
+triggerShortcutHint: Press Ctrl/Cmd + Enter to fire
+triggerCmdPlaceholder: "Type a command, e.g. GET_TEMP"
+triggerFire: Fire
+triggerPort: Upstream trigger
+triggerCommand: Current command
+triggerMatchResult: Match result
+triggerLastResult: Last result
+triggerMatched: Matched
+triggerValue: Output value
+triggerMissValue: Miss value
+triggerGlobalSettings: Global settings
+triggerOutputType: Output type
+triggerOutputNumber: Number
+triggerOutputString: String
+triggerOutputText: Output text
+triggerMissText: Default miss text
+triggerMatchGlob: Glob
+triggerHintGlob: Standard shell glob (supports * ? [abc] {a,b,c})
+textDisplay: Text Display
 fdCoverEnd: Cover end
 fdMatchId: Match ID
 fdMatchIdPlaceholder: Only executes when id_value equals this (optional)

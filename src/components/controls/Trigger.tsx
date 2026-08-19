@@ -1,0 +1,540 @@
+// ============ 触发器 (Trigger) 控件 ============
+//
+// 维护「命令 → 输出值」对照表, 命中时把数字写入 value/matched 两个输出端口 (通道数据, 非字节)。
+//
+// UI 与状态机沿用 FrameDecoder 的 manual/auto 双面板设计:
+// - manual: 面板文本框 + Fire 按钮, 一次性调后端 match_trigger_command
+// - auto:   上游 trigger 端口 (number) 按 edge (level/rising) 触发, 调同一命令
+//
+// 匹配逻辑全部在 Rust 后端 (TriggerMatcher), 前端只做 UI 状态机与缓存最近结果。
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Play, Radio, Zap, AlertTriangle } from 'lucide-react';
+import { useAppStore } from '../../store/appStore';
+import { useGraphInput } from '../../lib/hooks/useGraphInput';
+import { t } from '../../i18n';
+import { api } from '../../lib/tauri/tauri';
+import { nanoid } from 'nanoid';
+import type { TriggerConfig, TriggerMatchType, TriggerMatchResult, TriggerRule } from '../../types';
+import type { WidgetConfig } from '../../types';
+import type { Lang } from '../../i18n';
+
+// ============ 常量: 匹配类型配置 ============
+
+const MATCH_TYPE_CONFIG: Record<
+  TriggerMatchType,
+  { labelKey: string; icon: string; badgeClass: string; placeholder: string; hintKey: string }
+> = {
+  exact:    { labelKey: 'triggerMatchExact',    icon: '=',  badgeClass: 'bg-blue/20 text-blue border-blue/40',           placeholder: 'GET_TEMP', hintKey: 'triggerHintExact'    },
+  prefix:   { labelKey: 'triggerMatchPrefix',   icon: '⇆',  badgeClass: 'bg-accent/20 text-accent border-accent/40',     placeholder: 'GET',      hintKey: 'triggerHintPrefix'   },
+  contains: { labelKey: 'triggerMatchContains', icon: '⊃',  badgeClass: 'bg-purple/20 text-purple border-purple/40',     placeholder: 'TEMP',     hintKey: 'triggerHintContains' },
+  regex:    { labelKey: 'triggerMatchRegex',    icon: '/',  badgeClass: 'bg-orange/20 text-orange border-orange/40',     placeholder: '^H.*O$',   hintKey: 'triggerHintRegex'    },
+  range:    { labelKey: 'triggerMatchRange',    icon: '↔',  badgeClass: 'bg-green/20 text-green border-green/40',         placeholder: '1..10',    hintKey: 'triggerHintRange'    },
+  glob:     { labelKey: 'triggerMatchGlob',     icon: '*',  badgeClass: 'bg-yellow/20 text-yellow border-yellow/40',     placeholder: 'GET_*',    hintKey: 'triggerHintGlob'     },
+};
+
+const MATCH_TYPES: TriggerMatchType[] = ['exact', 'prefix', 'contains', 'regex', 'range', 'glob'];
+
+function ruleSummary(rule: TriggerRule): string {
+  if (!rule.enabled) return '⌀ disabled';
+  const cfg = MATCH_TYPE_CONFIG[rule.matchType];
+  return `${cfg.icon} ${rule.pattern || '(empty)'} → ${rule.outputValue}`;
+}
+
+// ============ 内联子组件 1: 规则行 (TriggerRuleRow) ============
+
+interface TriggerRuleRowProps {
+  rule: TriggerRule;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  onUpdate: (changes: Partial<TriggerRule>) => void;
+  onRemove: () => void;
+  lang: Lang;
+}
+
+function TriggerRuleRow({ rule, expanded, onToggleExpand, onUpdate, onRemove, lang }: TriggerRuleRowProps) {
+  const cfg = MATCH_TYPE_CONFIG[rule.matchType];
+  return (
+    <div className="border border-border rounded-sm">
+      <div className="flex items-center gap-1.5 px-1.5 py-1 cursor-pointer select-none" onClick={onToggleExpand}>
+        <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase border ${cfg.badgeClass}`}>
+          <span className="font-mono">{cfg.icon}</span>
+          {t(lang, cfg.labelKey)}
+        </span>
+        <span className="text-[10px] text-text-secondary font-mono truncate flex-1 min-w-0">{ruleSummary(rule)}</span>
+        <span className="text-text-secondary flex-shrink-0 p-0.5 pointer-events-none">
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        </span>
+        <button
+          className="text-text-secondary hover:text-red flex-shrink-0 p-0.5"
+          onClick={(e) => { e.stopPropagation(); onRemove(); }}
+          title={t(lang, 'removeWidget')}
+        >
+          <Trash2 size={11} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="px-2 pb-2 flex flex-col gap-1.5">
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'triggerEnabled')}</label>
+            <button
+              className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary text-left ${rule.enabled ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
+              onClick={() => onUpdate({ enabled: !rule.enabled })}
+            >
+              {rule.enabled ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
+            </button>
+          </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'triggerMatchType')}</label>
+            <select
+              className="form-select text-xs w-full"
+              value={rule.matchType}
+              onChange={(e) => onUpdate({ matchType: e.target.value as TriggerMatchType })}
+            >
+              {MATCH_TYPES.map((mt) => (
+                <option key={mt} value={mt}>{t(lang, MATCH_TYPE_CONFIG[mt].labelKey)}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'triggerPattern')}</label>
+            <input
+              type="text"
+              className="form-input text-xs font-mono w-full"
+              value={rule.pattern}
+              placeholder={cfg.placeholder}
+              onChange={(e) => onUpdate({ pattern: e.target.value })}
+              title={t(lang, cfg.hintKey)}
+            />
+          </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-[10px] text-text-secondary">{t(lang, 'triggerOutputType')}</label>
+            <div className="flex bg-bg-input rounded border border-border overflow-hidden">
+              {(['number', 'string'] as const).map((ot) => (
+                <button
+                  key={ot}
+                  className={`flex-1 px-2 py-0.5 text-xs transition-colors ${ot !== 'number' ? 'border-l border-border' : ''} ${rule.outputType === ot ? 'bg-accent text-bg-editor' : 'text-text-secondary hover:text-text-primary'}`}
+                  onClick={() => onUpdate({ outputType: ot })}
+                >
+                  {ot === 'number' ? t(lang, 'triggerOutputNumber') : t(lang, 'triggerOutputString')}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-[10px] text-text-secondary">
+              {rule.outputType === 'string' ? t(lang, 'triggerOutputText') : t(lang, 'triggerOutputValue')}
+            </label>
+            {rule.outputType === 'string' ? (
+              <input
+                type="text"
+                className="form-input text-xs w-full"
+                value={rule.outputText}
+                onChange={(e) => onUpdate({ outputText: e.target.value })}
+              />
+            ) : (
+              <input
+                type="number"
+                step="any"
+                className="form-input text-xs font-mono w-full"
+                value={Number.isFinite(rule.outputValue) ? rule.outputValue : 0}
+                onChange={(e) => {
+                  const n = parseFloat(e.target.value);
+                  onUpdate({ outputValue: Number.isFinite(n) ? n : 0 });
+                }}
+              />
+            )}
+          </div>
+          {rule.matchType === 'regex' && (
+            <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+              <label className="text-[10px] text-text-secondary">{t(lang, 'triggerFlags')}</label>
+              <input
+                type="text"
+                className="form-input text-xs font-mono w-full"
+                value={rule.flags ?? ''}
+                placeholder="i, im, ims"
+                onChange={(e) => onUpdate({ flags: e.target.value })}
+                title={t(lang, 'triggerFlagsHint')}
+              />
+            </div>
+          )}
+          <div className="text-[10px] text-text-secondary opacity-70">{t(lang, cfg.hintKey)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ 内联子组件 2: 手动模式面板 (ManualPanel) ============
+
+interface ManualPanelProps {
+  command: string;
+  onCommandChange: (s: string) => void;
+  result: TriggerMatchResult | null;
+  loading: boolean;
+  error: string | null;
+  onFire: () => void;
+  lang: Lang;
+}
+
+function ManualPanel({ command, onCommandChange, result, loading, error, onFire, lang }: ManualPanelProps) {
+  return (
+    <>
+      <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, 'triggerManualInput')}</div>
+      <textarea
+        className="w-full font-mono text-xs bg-bg-input text-text-primary border border-border rounded-sm px-2 py-1.5 outline-none focus:border-accent resize-y min-h-[60px] leading-relaxed"
+        value={command}
+        onChange={(e) => onCommandChange(e.target.value)}
+        placeholder={t(lang, 'triggerCmdPlaceholder')}
+        spellCheck={false}
+        rows={3}
+        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onFire(); } }}
+      />
+      <div className="text-[10px] text-text-secondary opacity-70">{t(lang, 'triggerShortcutHint')}</div>
+
+      <button
+        className="w-full justify-center px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
+        onClick={onFire}
+        disabled={loading}
+      >
+        <Zap size={12} />
+        <span>{t(lang, 'triggerFire')}</span>
+      </button>
+
+      {error && (
+        <div className="flex items-start gap-1 bg-red/10 border border-red/30 text-red px-2 py-1.5 rounded-sm text-xs">
+          <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" />
+          <span className="break-all">{error}</span>
+        </div>
+      )}
+      {result && <ResultBlock result={result} titleKey="triggerMatchResult" lang={lang} />}
+    </>
+  );
+}
+
+// 复用: 结果预览 (matched + value)
+function ResultBlock({ result, titleKey, lang }: { result: TriggerMatchResult; titleKey: string; lang: Lang }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, titleKey)}</div>
+      <div className="flex items-center gap-2 px-2 py-1 bg-bg-editor rounded-sm">
+        <span className="text-[10px] text-text-secondary">{t(lang, 'triggerMatched')}</span>
+        <span className={`text-xs font-mono ${result.matched ? 'text-green' : 'text-red'}`}>
+          {result.matched ? '✓ YES' : '✗ NO'}
+        </span>
+      </div>
+      <div className="flex items-center justify-between gap-2 px-2 py-1 bg-bg-editor rounded-sm">
+        <span className="text-[10px] text-text-secondary">{t(lang, 'triggerValue')}</span>
+        <span className="text-xs font-mono text-green">{result.value.toFixed(4)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ============ 内联子组件 3: 自动模式面板 (AutoPanel) ============
+
+interface AutoPanelProps {
+  triggerValue: number;
+  edge: 'level' | 'rising';
+  onEdgeChange: (e: 'level' | 'rising') => void;
+  result: TriggerMatchResult | null;
+  lang: Lang;
+}
+
+function AutoPanel({ triggerValue, edge, onEdgeChange, result, lang }: AutoPanelProps) {
+  return (
+    <>
+      <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">
+        {t(lang, 'triggerAutoInput')}
+      </div>
+
+      <div className="flex items-center gap-2 px-2 py-1.5 bg-bg-editor border border-border rounded-sm">
+        <span className="text-[10px] text-text-secondary">{t(lang, 'triggerPort')}</span>
+        <span className={`text-xs font-mono ${triggerValue !== 0 ? 'text-green' : 'text-text-secondary'}`}>
+          {triggerValue.toFixed(4)}
+        </span>
+        <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded ${triggerValue !== 0 ? 'bg-green/20 text-green' : 'bg-bg-input text-text-secondary'}`}>
+          {triggerValue !== 0 ? 'ACTIVE' : 'IDLE'}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+        <label className="text-[10px] text-text-secondary">{t(lang, 'triggerEdge')}</label>
+        <div className="flex bg-bg-input rounded border border-border overflow-hidden">
+          {(['level', 'rising'] as const).map((e) => (
+            <button
+              key={e}
+              className={`flex-1 px-2 py-0.5 text-xs transition-colors ${e !== 'level' ? 'border-l border-border' : ''} ${edge === e ? 'bg-accent text-bg-editor' : 'text-text-secondary hover:text-text-primary'}`}
+              onClick={() => onEdgeChange(e)}
+            >
+              {t(lang, e === 'level' ? 'triggerEdgeLevel' : 'triggerEdgeRising')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+        <label className="text-[10px] text-text-secondary">{t(lang, 'triggerCommand')}</label>
+        {/* 自动模式的匹配输入来自上游 trigger 端口, 只读展示 (手动命令文本不参与) */}
+        <span className="text-xs font-mono text-text-primary px-2 py-1 bg-bg-input border border-border rounded truncate">
+          {String(triggerValue)}
+        </span>
+      </div>
+
+      {result && <ResultBlock result={result} titleKey="triggerLastResult" lang={lang} />}
+    </>
+  );
+}
+
+// ============ 主组件: Trigger ============
+
+interface TriggerProps {
+  widget: Extract<WidgetConfig, { kind: 'Trigger' }>;
+  onRemove: () => void;
+}
+
+export function Trigger({ widget }: TriggerProps) {
+  const params: TriggerConfig = widget.params;
+  const { id, mode, edge, defaultMiss, defaultMissText, command, rules } = params;
+
+  const updateWidget = useAppStore((s) => s.updateWidget);
+  const submitCustomOutput = useAppStore((s) => s.submitCustomOutput);
+  const submitCustomTextOutput = useAppStore((s) => s.submitCustomTextOutput);
+  const lang = useAppStore((s) => s.lang);
+
+  // 块列表 UI 状态
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  // 触发结果缓存 (手动 / 自动面板共用)
+  const [lastResult, setLastResult] = useState<TriggerMatchResult | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // 自动模式: 读取上游 trigger 端口
+  const triggerValue = useGraphInput(id, 'trigger', null, 0);
+
+  // 上升沿检测: 在 useRef 中保存上一次 triggerValue
+  const prevTriggerRef = useRef<number>(0);
+
+  // 通用: 更新 widget params (注意保留其它字段)
+  const updateParams = useCallback(
+    (changes: Partial<TriggerConfig>) => {
+      updateWidget(id, { kind: 'Trigger', params: { ...params, ...changes } });
+    },
+    [id, params, updateWidget],
+  );
+
+  // 块列表操作
+  const toggleExpand = useCallback((ruleId: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(ruleId)) next.delete(ruleId);
+      else next.add(ruleId);
+      return next;
+    });
+  }, []);
+
+  const handleAddRule = useCallback(
+    (matchType: TriggerMatchType) => {
+      const newRule: TriggerRule = {
+        id: nanoid(6),
+        pattern: '',
+        matchType,
+        outputType: 'number',
+        outputValue: 0,
+        outputText: '',
+        enabled: true,
+      };
+      updateParams({ rules: [...rules, newRule] });
+      setExpandedIds((prev) => new Set(prev).add(newRule.id));
+    },
+    [rules, updateParams],
+  );
+
+  const handleUpdateRule = useCallback(
+    (ruleId: string, changes: Partial<TriggerRule>) => {
+      updateParams({
+        rules: rules.map((r) => (r.id === ruleId ? { ...r, ...changes } : r)),
+      });
+    },
+    [rules, updateParams],
+  );
+
+  const handleRemoveRule = useCallback(
+    (ruleId: string) => {
+      updateParams({ rules: rules.filter((r) => r.id !== ruleId) });
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(ruleId);
+        return next;
+      });
+    },
+    [rules, updateParams],
+  );
+
+  // 触发匹配 (manual 与 auto 共用)
+  const runMatch = useCallback(
+    async (cmdOverride?: string) => {
+      const cmd = cmdOverride ?? command;
+      setLoading(true);
+      setError(null);
+      try {
+        // range 规则需要数值: 命令本身能解析为数字时作为 numeric 传给后端, 否则 null (跳过 range 规则)
+        const trimmed = cmd.trim();
+        const n = trimmed === '' ? NaN : Number(trimmed);
+        const result = await api.matchTriggerCommand(rules, defaultMiss, defaultMissText, cmd, Number.isFinite(n) ? n : null);
+        setLastResult(result);
+        // 按后端返回的 output_type 分发到数字 / 字符串通道
+        // matched 始终是数字 (1/0), 无论命中的是 number 还是 string 类型规则
+        if (result.outputType === 'string') {
+          // 字符串规则: text 走字符串平面, matched 仍走数字平面
+          void submitCustomTextOutput(id, { text: result.text });
+          void submitCustomOutput(id, { matched: result.matched ? 1 : 0 });
+        } else {
+          // number 规则 或 miss: value + matched 都走数字平面
+          void submitCustomOutput(id, { value: result.value, matched: result.matched ? 1 : 0 });
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setLoading(false);
+      }
+    },
+    [command, defaultMiss, id, rules, submitCustomOutput],
+  );
+
+  // 手动模式: Fire 按钮
+  const handleFire = useCallback(() => {
+    void runMatch();
+  }, [runMatch]);
+
+  // 自动模式: 检测 trigger 跳变 / 持续有效
+  useEffect(() => {
+    if (mode !== 'auto') {
+      prevTriggerRef.current = triggerValue;
+      return;
+    }
+    const prev = prevTriggerRef.current;
+    const rising = edge === 'rising' && prev === 0 && triggerValue > 0;
+    const active = edge === 'level' ? triggerValue !== 0 : rising;
+    if (active) {
+      // 自动模式: 以上游 trigger 值为匹配输入 — 字符串形式作命令, 数值形式作 range 的 numeric
+      void runMatch(String(triggerValue));
+    }
+    prevTriggerRef.current = triggerValue;
+  }, [triggerValue, mode, edge, runMatch]);
+
+  // 手动模式: command 改变时实时同步到 widget.params (持久化用户最新输入)
+  // 自动模式不使用该输入 — 匹配输入来自上游 trigger 端口
+  const handleCommandChange = useCallback(
+    (next: string) => updateParams({ command: next }),
+    [updateParams],
+  );
+
+  return (
+    <div className="bg-bg-sidebar border border-border rounded flex-1 min-w-0 min-h-0 flex relative overflow-hidden">
+      {/* 左侧: 规则块列表 */}
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2 p-3 overflow-y-auto bg-bg-sidebar">
+        {/* 顶部: 标题 + 模式切换 */}
+        <div className="flex items-center justify-between pb-1.5 border-b border-border flex-shrink-0">
+          <span className="text-base font-semibold text-text-bright">{params.label || t(lang, 'triggerTitle')}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-text-secondary">{rules.length} {t(lang, 'triggerRulesCount')}</span>
+            {/* 模式切换 */}
+            <div className="flex bg-bg-input rounded border border-border overflow-hidden">
+              <button
+                className={`px-2 py-0.5 text-[10px] transition-colors ${mode === 'manual' ? 'bg-accent text-bg-editor' : 'text-text-secondary hover:text-text-primary'}`}
+                onClick={() => updateParams({ mode: 'manual' })}
+                title={t(lang, 'triggerModeManual')}
+              >
+                <Play size={10} className="inline mr-0.5" />
+                {t(lang, 'triggerModeManual')}
+              </button>
+              <button
+                className={`px-2 py-0.5 text-[10px] transition-colors border-l border-border ${mode === 'auto' ? 'bg-accent text-bg-editor' : 'text-text-secondary hover:text-text-primary'}`}
+                onClick={() => updateParams({ mode: 'auto' })}
+                title={t(lang, 'triggerModeAuto')}
+              >
+                <Radio size={10} className="inline mr-0.5" />
+                {t(lang, 'triggerModeAuto')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* 规则列表 */}
+        <div className="flex flex-col gap-1.5">
+          {rules.length === 0 && (
+            <div className="text-xs text-text-secondary opacity-60 italic py-4 text-center">{t(lang, 'triggerRulesEmpty')}</div>
+          )}
+          {rules.map((rule) => (
+            <TriggerRuleRow
+              key={rule.id}
+              rule={rule}
+              expanded={expandedIds.has(rule.id)}
+              onToggleExpand={() => toggleExpand(rule.id)}
+              onUpdate={(changes) => handleUpdateRule(rule.id, changes)}
+              onRemove={() => handleRemoveRule(rule.id)}
+              lang={lang}
+            />
+          ))}
+        </div>
+
+        <div className="flex flex-wrap gap-1 pt-1 border-t border-border flex-shrink-0">
+          {MATCH_TYPES.map((mt) => {
+            const cfg = MATCH_TYPE_CONFIG[mt];
+            return (
+              <button
+                key={mt}
+                className="inline-flex items-center gap-1 bg-transparent border border-dashed border-border text-text-secondary px-2 py-1 text-[11px] rounded-sm cursor-pointer transition-all hover:text-text-primary hover:border-accent"
+                onClick={() => handleAddRule(mt)}
+                title={t(lang, cfg.hintKey)}
+              >
+                <Plus size={11} />
+                <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold border ${cfg.badgeClass}`}>
+                  <span className="font-mono">{cfg.icon}</span>
+                  {t(lang, cfg.labelKey)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* 右侧: 模式面板 + 全局设置 */}
+      <div className="w-[320px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
+        {mode === 'manual' ? (
+          <ManualPanel command={command} onCommandChange={handleCommandChange} result={lastResult}
+            loading={loading} error={error} onFire={handleFire} lang={lang} />
+        ) : (
+          <AutoPanel triggerValue={triggerValue} edge={edge}
+            onEdgeChange={(e) => updateParams({ edge: e })} result={lastResult} lang={lang} />
+        )}
+
+        <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-1">{t(lang, 'triggerGlobalSettings')}</div>
+        <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-xs text-text-secondary">{t(lang, 'cmdLabel')}</label>
+            <input type="text" value={params.label}
+              onChange={(e) => updateParams({ label: e.target.value })}
+              className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors" />
+          </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-xs text-text-secondary">{t(lang, 'triggerMissValue')}</label>
+            <input type="number" step="any"
+              value={Number.isFinite(defaultMiss) ? defaultMiss : 0}
+              onChange={(e) => { const n = parseFloat(e.target.value); updateParams({ defaultMiss: Number.isFinite(n) ? n : 0 }); }}
+              className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors font-mono" />
+          </div>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-2">
+            <label className="text-xs text-text-secondary">{t(lang, 'triggerMissText')}</label>
+            <input type="text"
+              value={defaultMissText}
+              onChange={(e) => updateParams({ defaultMissText: e.target.value })}
+              className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

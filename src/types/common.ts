@@ -79,7 +79,7 @@ export interface FilterConfig {
 
 /// 信号域类型 — 用于节点图端口的时域/频域/字节域静态标注
 /// bytes: 字节平面端口 (Transport rx/tx, Protocol in/out, FrameDecoder in, Command loopbackOut)
-export type DomainType = 'time' | 'freq' | 'bytes';
+export type DomainType = 'time' | 'freq' | 'bytes' | 'string';
 
 /// FFT 求解配置 (频域求解器 — 输入时域信号 in0, 输出频谱)
 export interface FFTConfig {
@@ -369,7 +369,7 @@ export interface ControlTab {
 
 // ============ 数据显示区 Tab ============
 
-export type DataTabType = 'waveform' | 'raw' | 'pie' | 'image' | 'waveform-extra' | 'model3d' | 'spectrum' | 'command' | 'can' | 'logic' | 'frame-decoder' | 'table-view';
+export type DataTabType = 'waveform' | 'raw' | 'pie' | 'image' | 'waveform-extra' | 'model3d' | 'spectrum' | 'command' | 'can' | 'logic' | 'frame-decoder' | 'table-view' | 'trigger';
 
 export interface DataTab {
   id: string;

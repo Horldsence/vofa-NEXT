@@ -78,3 +78,32 @@ export function submitCustomOutput(
 ): Promise<void> {
   return invoke('submit_custom_output', { widgetId, outputs });
 }
+
+/// 提交字符串输出 — Trigger 控件命中字符串类型规则时调用
+/// 后端写入 custom_text_outputs 并经 text_output_ticker 推送给订阅者 (TextDisplay)
+export function submitCustomTextOutput(
+  widgetId: string,
+  outputs: Record<string, string>
+): Promise<void> {
+  return invoke('submit_custom_text_output', { widgetId, outputs });
+}
+
+/// 字符串输出快照 — 与 GraphOutputSnapshot 平行的字符串平面
+export interface StringOutputSnapshot {
+  tick: number;
+  values: Record<string, Record<string, string>>;
+}
+
+/// 订阅字符串输出快照 — 30 FPS 自适应推送 (镜像 subscribeGraphOutputs)
+export function subscribeStringOutputs(
+  onEvent: (snapshot: StringOutputSnapshot) => void
+): { cancel: () => void } {
+  const channel = new Channel<StringOutputSnapshot>();
+  channel.onmessage = onEvent;
+  void invoke('subscribe_string_outputs', { onEvent: channel });
+  return {
+    cancel: () => {
+      void closeTauriChannel(channel, 'unsubscribe_string_outputs', channel.id);
+    },
+  };
+}

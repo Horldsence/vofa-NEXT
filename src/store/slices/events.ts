@@ -3,6 +3,7 @@ import {
   subscribeGraphOutputs,
   subscribeCustomInputs,
   subscribeSpectrum,
+  subscribeStringOutputs,
 } from '../../lib/buffers/graphSubscription';
 import { canFrameBuffer } from '../../lib/buffers/canBuffer';
 import { subscribeCanFrames } from '../../lib/buffers/canSubscription';
@@ -21,6 +22,7 @@ import { EMPTY_NODE_STATS, cleanupDetectedChannelsPollers } from './connection';
 
 let unlistenFns: UnlistenFn[] = [];
 let graphOutputSub: { cancel: () => void } | null = null;
+let textOutputSub: { cancel: () => void } | null = null;
 let customInputSub: { cancel: () => void } | null = null;
 let spectrumSub: { cancel: () => void } | null = null;
 let canFramesSub: { cancel: () => void } | null = null;
@@ -142,6 +144,9 @@ export function createEventSlice(set: any, get: any): EventSlice {
       const spectrumCoalescer = makeRafCoalescer<Record<string, unknown>>(
         (v) => set({ spectrumResults: v })
       );
+      const textOutputCoalescer = makeRafCoalescer<Record<string, unknown>>(
+        (v) => set({ customTextOutputs: v })
+      );
 
       if (graphOutputSub) graphOutputSub.cancel();
       graphOutputSub = subscribeGraphOutputs((snapshot) => {
@@ -151,6 +156,11 @@ export function createEventSlice(set: any, get: any): EventSlice {
       if (customInputSub) customInputSub.cancel();
       customInputSub = subscribeCustomInputs((batch) => {
         customCoalescer.push(batch.inputs);
+      });
+
+      if (textOutputSub) textOutputSub.cancel();
+      textOutputSub = subscribeStringOutputs((snapshot) => {
+        textOutputCoalescer.push(snapshot.values);
       });
 
       if (spectrumSub) spectrumSub.cancel();
@@ -207,6 +217,10 @@ export function createEventSlice(set: any, get: any): EventSlice {
         if (customInputSub) {
           customInputSub.cancel();
           customInputSub = null;
+        }
+        if (textOutputSub) {
+          textOutputSub.cancel();
+          textOutputSub = null;
         }
         if (spectrumSub) {
           spectrumSub.cancel();

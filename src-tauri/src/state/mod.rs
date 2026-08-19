@@ -11,6 +11,8 @@ mod tickers;
 
 pub use app_state::{
     AppState, CustomInputBatch, GraphEvalState, GraphOutputSnapshot, SpectrumBatch,
-    StreamGroupState,
+    StreamGroupState, StringOutputSnapshot,
 };
-pub use tickers::{custom_input_ticker, graph_output_ticker, spectrum_ticker};
+pub use tickers::{
+    custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker,
+};

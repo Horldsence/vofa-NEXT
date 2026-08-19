@@ -39,6 +39,7 @@ pub mod evaluate;
 pub mod frame_decoder;
 pub mod math_op;
 pub mod node_kind;
+pub mod trigger;
 
 pub use byte_plan::{BytePlan, ByteRoute};
 pub use compile::{CompileError, CompiledGraph};
@@ -53,6 +54,7 @@ pub use node_kind::{
     LOOPBACK_OUT_HANDLE, PROTOCOL_IN_HANDLE, PROTOCOL_OUT_HANDLE, TRANSPORT_RX_HANDLE,
     TRANSPORT_TX_HANDLE,
 };
+pub use trigger::{TriggerMatchResult, TriggerMatchType, TriggerRuleDef};
 pub use vofa_next_dsp::{
     DigitalFilter, FilterKind, FilterPreset, IfftState, SpectrumOutput, WindowType,
 };
