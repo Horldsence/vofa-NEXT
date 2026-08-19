@@ -109,7 +109,13 @@ function App() {
     // 以保留旧版固定 raw Tab 的常驻行为 (画布占位节点 + raw 数据 Tab)
     const st = useAppStore.getState();
     if (st.widgets.length === 0 && !st.dataTabs.some((t) => t.type === 'raw')) {
-      st.addWidget(createWidget('RawData'), 'default', { x: 420, y: 120 });
+      const rawWidget = createWidget('RawData');
+      st.addWidget(rawWidget, 'default', { x: 560, y: 120 });
+      // 空图时再给出 设备→协议解析→RawData 初始连线, 新用户开箱即有完整数据通路
+      const fresh = useAppStore.getState();
+      if (!fresh.rfNodes.some((n) => n.data?.global === true)) {
+        fresh.seedInitialGraph(rawWidget.params.id);
+      }
     }
 
     return () => {

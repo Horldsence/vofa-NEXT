@@ -34,6 +34,8 @@ interface ChannelOption {
   key: string;
   sourceId: string;
   sourceHandle: string | undefined;
+  /// 字节平面源 (Transport/Protocol) 的完整标签 (如 "Serial (a1b2)·rx") — 缺省回退 handle/widget 标签
+  label?: string;
 }
 
 interface Props {
@@ -52,6 +54,10 @@ interface Props {
   modeCount: number;
   droppedBytes: number;
   channelOptions: ChannelOption[];
+  /// 串口选择 (字节源 = 发送目标) — 仅全局模式渲染
+  transportOptions: { id: string; label: string }[];
+  selectedTransport: string | null;
+  onTransportChange: (id: string) => void;
   selectionCount: number;
   copyFeedback: boolean;
   userScrolledRef: React.MutableRefObject<boolean>;
@@ -87,6 +93,9 @@ export function RawDataViewHeader({
   modeCount,
   droppedBytes,
   channelOptions,
+  transportOptions,
+  selectedTransport,
+  onTransportChange,
   selectionCount,
   copyFeedback,
   userScrolledRef,
@@ -170,6 +179,19 @@ export function RawDataViewHeader({
           )}
         </div>
 
+        {channel === 'global' && transportOptions.length > 0 && (
+          <select
+            className="bg-bg-input border border-border rounded px-1 py-0.5 text-xs font-mono text-text-primary transition-colors hover:border-accent focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 cursor-pointer max-w-[140px]"
+            value={selectedTransport ?? ''}
+            onChange={(e) => onTransportChange(e.target.value)}
+            title={t(lang, 'targetTransport')}
+          >
+            {transportOptions.map((tr) => (
+              <option key={tr.id} value={tr.id}>{tr.label}</option>
+            ))}
+          </select>
+        )}
+
         {channelOptions.length > 0 && (
           <label className="flex items-center gap-1 text-xs text-text-secondary flex-shrink-0">
             <span>{t(lang, 'rawDataChannel')}</span>
@@ -181,7 +203,7 @@ export function RawDataViewHeader({
               <option value="global">{t(lang, 'rawDataGlobal')}</option>
               {channelOptions.map((o) => (
                 <option key={o.key} value={o.key}>
-                  {o.sourceHandle || sourceLabel(o.sourceId)}
+                  {o.label ?? (o.sourceHandle || sourceLabel(o.sourceId))}
                 </option>
               ))}
             </select>

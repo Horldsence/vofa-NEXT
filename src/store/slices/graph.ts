@@ -16,6 +16,7 @@ import {
   createProtocolNode,
   isGlobalNode,
   syncTabGraphToBackend,
+  DEFAULT_PROTOCOL_CONFIG,
 } from '../appStoreHelpers';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
 import type { ProtocolConfig, TransportConfig, WidgetConfig } from '../../types';
@@ -39,6 +40,8 @@ export interface GraphSlice {
   removeGlobalNode: (nodeId: string) => void;
   /// 更新 Transport 节点配置 (节点 data + 全 tab 图同步)
   setTransportNodeConfig: (nodeId: string, config: TransportConfig) => void;
+  /// 初始图种子: 设备(TestData) → 协议解析(JustFloat) → RawData — 新用户开箱即有完整数据通路
+  seedInitialGraph: (rawDataWidgetId: string) => void;
 }
 
 export function createGraphSlice(set: any, get: any): GraphSlice {
@@ -119,17 +122,32 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
       get().syncAllTabGraphs();
     },
 
+    seedInitialGraph: (rawDataWidgetId) => {
+      // 默认设备选 TestData — 新用户无硬件也能连接后立即看到数据
+      const transport = createTransportNode('TestData', { x: 60, y: 100 });
+      const protocol = createProtocolNode(DEFAULT_PROTOCOL_CONFIG, { x: 300, y: 100 });
+      set((s: any) => ({ rfNodes: [...s.rfNodes, transport, protocol] }));
+      // onConnect 负责 RawData 动态端口改写 (rawDataPortId) 与图同步
+      get().onConnect({ source: transport.id, sourceHandle: 'rx', target: protocol.id, targetHandle: 'in' });
+      get().onConnect({ source: protocol.id, sourceHandle: 'out', target: rawDataWidgetId, targetHandle: 'data' });
+      get().ensureChannelsPolling?.();
+    },
+
     onNodesChange: (changes) => {
       // 键盘 Delete 删除全局节点: 清理其边 + 关闭连接 + 全 tab 重同步
       // (X 按钮走 removeGlobalNode; 这里兜 React Flow 的 remove change)
       const removedGlobalIds: string[] = [];
       const removedTransportIds: string[] = [];
+      // 被删除的 widget 节点所属 tab — 删除后其边/节点定义须同步移除
+      const removedWidgetTabIds = new Set<string>();
       for (const ch of changes) {
         if (ch.type === 'remove') {
           const node = get().rfNodes.find((n: Node) => n.id === ch.id);
           if (node && isGlobalNode(node)) {
             removedGlobalIds.push(ch.id);
             if (node.type === 'transport') removedTransportIds.push(ch.id);
+          } else if (node?.data?.tabId) {
+            removedWidgetTabIds.add(node.data.tabId as string);
           }
         }
       }
@@ -146,17 +164,26 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
         get().syncAllTabGraphs();
         get().ensureChannelsPolling?.();
       }
+      removedWidgetTabIds.forEach((tabId) => get().syncTabGraph(tabId));
     },
 
     onEdgesChange: (changes) => {
       const affected = new Set<string>();
+      // remove change 只有 id (无 source/target) — 必须先在旧边集合里查出端点
+      const oldEdges = get().rfEdges;
       for (const ch of changes) {
-        if ('source' in ch && (ch as any).source) {
-          affectedTabsOf([(ch as any).source]).forEach((t) => affected.add(t));
+        let source: string | null | undefined;
+        let target: string | null | undefined;
+        if (ch.type === 'remove') {
+          const edge = oldEdges.find((e: Edge) => e.id === ch.id);
+          source = edge?.source;
+          target = edge?.target;
+        } else {
+          if ('source' in ch) source = (ch as any).source;
+          if ('target' in ch) target = (ch as any).target;
         }
-        if ('target' in ch && (ch as any).target) {
-          affectedTabsOf([(ch as any).target]).forEach((t) => affected.add(t));
-        }
+        if (source) affectedTabsOf([source]).forEach((t) => affected.add(t));
+        if (target) affectedTabsOf([target]).forEach((t) => affected.add(t));
       }
       set((s: any) => ({
         rfEdges: applyEdgeChanges(changes, s.rfEdges),

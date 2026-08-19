@@ -2,12 +2,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
 import { rawDataBuffer, RawDataBuffer } from '../../../lib/buffers/dataBuffer';
 import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
+import { acquireRawDataTransport, releaseRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
+import { classifyRawDataChannel } from '../../../lib/utils/rawDataChannel';
 import { FilteredRawDataBuffer, parseSearchPattern } from '../../../lib/buffers/filteredRawDataBuffer';
 import type { RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
 import { perfEvent } from '../../../lib/utils/perfLog';
 import { useSelection } from '../../../lib/hooks/useSelection';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { rawDataPortId } from '../../../lib/utils/nodeDef';
+import { traceTransportSource } from '../../../store/appStoreHelpers';
 import '../../../i18n';
 import type { RawDataGrouping, RawDataRepr, DirectionFilter, HexColorMode, AppendMode, SendPanelMode } from './rawDataViewHelpers';
 import { byteToHex, byteToAscii, formatTime } from './rawDataViewHelpers';
@@ -73,20 +76,34 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const [copyFeedback, setCopyFeedback] = useState(false);
 
   // 通道选择: 该 widget 的入边 (source, sourceHandle) 组合 (去重)
+  // 字节平面源 (Transport/Protocol 全局节点) 附带节点标签, 避免多接口时选项同为 "rx"/"out" 无法区分
   const channelOptions = useMemo(() => {
     if (!widgetId) return [];
+    const globalLabel = (id: string): string | null => {
+      const n = rfNodes.find((n) => n.id === id);
+      const cfg = (n?.data as { config?: { kind?: string } } | undefined)?.config;
+      if (n?.type === 'transport') return `${cfg?.kind ?? '?'} (${id.slice(-4)})`;
+      if (n?.type === 'protocol') return cfg?.kind ?? 'Protocol';
+      return null;
+    };
     const seen = new Set<string>();
-    const options: { key: string; sourceId: string; sourceHandle: string | undefined }[] = [];
+    const options: { key: string; sourceId: string; sourceHandle: string | undefined; label?: string }[] = [];
     for (const e of rfEdges) {
       if (e.target !== widgetId) continue;
       const sourceHandle = e.sourceHandle ?? undefined;
       const key = rawDataPortId(e.source, sourceHandle);
       if (seen.has(key)) continue;
       seen.add(key);
-      options.push({ key, sourceId: e.source, sourceHandle });
+      const g = globalLabel(e.source);
+      options.push({
+        key,
+        sourceId: e.source,
+        sourceHandle,
+        label: g ? `${g}·${sourceHandle ?? 'data'}` : undefined,
+      });
     }
     return options;
-  }, [widgetId, rfEdges]);
+  }, [widgetId, rfEdges, rfNodes]);
 
   const sourceLabel = useCallback(
     (id: string) => {
@@ -96,17 +113,30 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     [widgets]
   );
 
-  const sourceIsFrameDecoder = useCallback(
-    (id: string) => widgets.some((w) => w.kind === 'FrameDecoder' && w.params.id === id),
-    [widgets]
-  );
-
   const selectedChannel = channelOptions.find((o) => o.key === channel);
-  const isDec =
-    !!selectedChannel &&
-    selectedChannel.sourceHandle === 'raw' &&
-    sourceIsFrameDecoder(selectedChannel.sourceId);
-  const isNum = !!selectedChannel && !isDec;
+  // 通道分类: FrameDecoder raw 口 = 节点旁路字节流; Transport/Protocol 源 = 接口原始字节流;
+  // 其余 = 数值流 (graphOutputs)
+  const channelInfo = useMemo(
+    () =>
+      selectedChannel
+        ? classifyRawDataChannel(selectedChannel, rfNodes, rfEdges, widgets)
+        : null,
+    [selectedChannel, rfNodes, rfEdges, widgets]
+  );
+  const isDec = channelInfo?.kind === 'decoder-node';
+  const isByteSrc = channelInfo?.kind === 'byte-source';
+  const isNum = !!selectedChannel && !isDec && !isByteSrc;
+
+  // 发送目标: 全局模式 = 头部选择器选中的 Transport;
+  // 单通道模式 = 通道连线上溯到的 Transport (锁定, 不可改), 溯源失败回退全局选择
+  const channelTransportId = useMemo(() => {
+    if (channel === 'global' || !selectedChannel) return null;
+    return traceTransportSource(selectedChannel.sourceId, rfEdges, rfNodes);
+  }, [channel, selectedChannel, rfEdges, rfNodes]);
+  const sendTargetId =
+    channel === 'global' ? effectiveTransportId : (channelTransportId ?? effectiveTransportId);
+  const sendTargetLabel =
+    transportOptions.find((o) => o.id === sendTargetId)?.label ?? null;
 
   // 切换控件 / 通道消失时回退到 global
   useEffect(() => setChannel('global'), [widgetId]);
@@ -134,6 +164,31 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     return () => releaseRawDataNode(nodeBufferKey);
   }, [nodeBufferKey]);
 
+  // 字节源通道 buffer: 与全局选中源一致时复用全局 rawDataBuffer (避免重复订阅),
+  // 否则按 Transport 引用计数获取独立 buffer; 上溯失败 (无 transportId) 用空 buffer 占位
+  const byteTransportId = isByteSrc ? (channelInfo?.transportId ?? null) : null;
+  const reuseGlobalBuffer = byteTransportId !== null && byteTransportId === effectiveTransportId;
+  const transportBufferKey = byteTransportId && !reuseGlobalBuffer ? byteTransportId : null;
+  const [transportBuffer, setTransportBuffer] = useState<RawDataBuffer | null>(null);
+  useEffect(() => {
+    if (!transportBufferKey) {
+      setTransportBuffer(null);
+      return;
+    }
+    const acquired = acquireRawDataTransport(transportBufferKey);
+    setTransportBuffer(acquired);
+    return () => releaseRawDataTransport(transportBufferKey);
+  }, [transportBufferKey]);
+  const emptyByteBufferRef = useRef<RawDataBuffer | null>(null);
+  if (!emptyByteBufferRef.current) emptyByteBufferRef.current = new RawDataBuffer();
+  const byteSourceBuffer = !isByteSrc
+    ? null
+    : reuseGlobalBuffer
+      ? rawDataBuffer
+      : byteTransportId
+        ? transportBuffer
+        : emptyByteBufferRef.current;
+
   // 过滤模式: 本地增量过滤视图 (复用源 buffer 既有数据, 零额外 IPC)
   const [filteredBuffer, setFilteredBuffer] = useState<FilteredRawDataBuffer | null>(null);
   useEffect(() => {
@@ -144,7 +199,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     const t0 = performance.now();
     perfEvent(`rawdata filter ON dir=${filterOptions.directionFilter} search="${filterOptions.searchTerm}"`);
     const buf = new FilteredRawDataBuffer(
-      nodeBuffer ?? rawDataBuffer,
+      nodeBuffer ?? byteSourceBuffer ?? rawDataBuffer,
       filterOptions.directionFilter,
       parseSearchPattern(filterOptions.searchTerm)
     );
@@ -153,7 +208,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       buf.dispose();
       perfEvent(`rawdata filter OFF, 存活 ${(performance.now() - t0).toFixed(0)}ms`);
     };
-  }, [isFiltered, isNum, nodeBuffer, filterOptions]);
+  }, [isFiltered, isNum, nodeBuffer, byteSourceBuffer, filterOptions]);
 
   // 调试: 长任务监控 — 主线程单次任务 >100ms 即记录 (卡死定位)
   useEffect(() => {
@@ -171,7 +226,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     }
   }, []);
 
-  const buffer = filteredBuffer ?? nodeBuffer ?? rawDataBuffer;
+  const buffer = filteredBuffer ?? nodeBuffer ?? byteSourceBuffer ?? rawDataBuffer;
 
   // 强制重新渲染的版本号
   const [version, setVersion] = useState(0);
@@ -279,7 +334,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   };
 
   const handleSend = () => {
-    if (!sendContent || !effectiveTransportId) return;
+    if (!sendContent || !sendTargetId) return;
     let suffix = '';
     switch (appendMode) {
       case 'nl': suffix = '\n'; break;
@@ -287,7 +342,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       case 'nl_tab': suffix = '\n\t'; break;
       case 'none': suffix = ''; break;
     }
-    sendText(effectiveTransportId, sendContent + suffix);
+    sendText(sendTargetId, sendContent + suffix);
     setSendContent('');
   };
 
@@ -363,6 +418,9 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
         userScrolledRef={userScrolledRef}
         lang={lang}
         sourceLabel={sourceLabel}
+        transportOptions={transportOptions}
+        selectedTransport={effectiveTransportId}
+        onTransportChange={setRawDataSourceNodeId}
         onGroupingChange={setGrouping}
         onReprChange={setRepr}
         onDirectionFilterChange={setDirectionFilter}
@@ -438,9 +496,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
                   onSend={handleSend}
                   lang={lang}
                   compact
-                  transports={transportOptions}
-                  selectedTransport={effectiveTransportId}
-                  onTransportChange={setRawDataSourceNodeId}
+                  targetTransportLabel={sendTargetLabel}
                 />
               </div>
             </div>
@@ -501,9 +557,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
               onSendContentChange={setSendContent}
               onSend={handleSend}
               lang={lang}
-              transports={transportOptions}
-              selectedTransport={effectiveTransportId}
-              onTransportChange={setRawDataSourceNodeId}
+              targetTransportLabel={sendTargetLabel}
             />
           </div>
         )}

@@ -181,8 +181,9 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       }
       const widget = node.data?.widget as WidgetConfig | undefined;
       if (!widget) return null;
-      // RawData 输入端口是动态派生的 (src:<source>:<handle>), 静态端口表查不到 — 一律按时域,
-      // 否则频域输出可绕过域校验连进 RawData
+      // RawData 输入端口是动态派生的 (src:<source>:<handle>), 静态端口表查不到 — 一律按时域。
+      // 注: RawData 实际同时接受字节域/时域源 (见 isValidConnection 的 RawData 特判),
+      // 此处返回 time 只是让频域输出在通用校验下仍被拦截
       if (widget.kind === 'RawData') return 'time';
       // FrameDecoder 旧版回环字节输入口 (兼容旧图数据)
       if (widget.kind === 'FrameDecoder' && kind === 'target' && handleId === 'loopbackIn') return 'bytes';
@@ -195,6 +196,8 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
 
   // 连线校验: 时域/频域/字节域端口必须同域, 跨域阻止并提示
   // (字节口: Transport rx/tx, Protocol in/out, FrameDecoder in, Command loopbackOut)
+  // 例外: RawData 是字节/时域双域 Sink — Transport rx / Protocol out 等字节源可直连
+  // (通道显示该接口原始字节流), 仅频域源仍阻止
   const isValidConnection = useCallback(
     (conn: {
       source?: string | null;
@@ -203,6 +206,17 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       targetHandle?: string | null;
     }) => {
       const sd = resolveDomain(conn.source ?? null, conn.sourceHandle, 'source');
+      const targetNode = useAppStore.getState().rfNodes.find((n: Node) => n.id === conn.target);
+      const targetWidget = targetNode?.data?.widget as WidgetConfig | undefined;
+      if (targetWidget?.kind === 'RawData') {
+        if (sd === 'freq') {
+          notify.warn(t(lang, 'domainMismatchTitle'), t(lang, 'domainMismatchMsg'), {
+            source: 'domain-mismatch',
+          });
+          return false;
+        }
+        return true;
+      }
       const td = resolveDomain(conn.target ?? null, conn.targetHandle, 'target');
       if (sd && td && sd !== td) {
         notify.warn(t(lang, 'domainMismatchTitle'), t(lang, 'domainMismatchMsg'), {
@@ -231,7 +245,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.2, minZoom: 1, maxZoom: 1 }}
         minZoom={0.2}
         maxZoom={2.5}
         proOptions={{ hideAttribution: true }}
