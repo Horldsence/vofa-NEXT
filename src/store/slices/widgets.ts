@@ -2,6 +2,13 @@ import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
 import { createWidget } from '../../lib/utils/createWidget';
 import { widgetToTab } from '../../lib/utils/widgetTab';
+import { normalizeCommandConfig } from '../../lib/utils/commandFrames';
+
+/// Command 控件配置归一化 (旧版单帧 → frames), 其余控件原样返回
+function normalizeWidget(widget: WidgetConfig): WidgetConfig {
+  if (widget.kind !== 'Command') return widget;
+  return { kind: 'Command', params: normalizeCommandConfig(widget.params) };
+}
 
 export interface WidgetSlice {
   widgets: WidgetConfig[];
@@ -45,6 +52,7 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
     closeCustomEditor: () => set({ customEditorState: { open: false, widgetId: null } }),
 
     addWidget: (widget, tabId, position) => {
+      widget = normalizeWidget(widget);
       set((s: any) => {
         const pos = position ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 };
         const newNode: Node = {
@@ -105,6 +113,7 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
     },
 
     updateWidget: (id, widget) => {
+      widget = normalizeWidget(widget);
       const node = get().rfNodes.find((n: any) => n.id === id);
       const tabId = node?.data?.tabId as string | undefined;
       set((s: any) => ({

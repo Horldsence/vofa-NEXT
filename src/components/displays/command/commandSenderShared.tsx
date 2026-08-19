@@ -49,18 +49,6 @@ export const FIELD_TYPE_OPTIONS: FieldType[] = [
   'bytes',
 ];
 
-/// 拼接多个 Uint8Array
-export function concatChunks(chunks: Uint8Array[]): Uint8Array {
-  const total = chunks.reduce((s, c) => s + c.length, 0);
-  const result = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    result.set(c, offset);
-    offset += c.length;
-  }
-  return result;
-}
-
 /// 块摘要 (列表中单行显示)
 export function blockSummary(block: CommandBlock): string {
   switch (block.type) {

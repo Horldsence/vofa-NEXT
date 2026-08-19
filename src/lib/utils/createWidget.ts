@@ -191,15 +191,21 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
         params: {
           id,
           label: 'Command',
-          blocks: [
-            { id: 'b1', type: 'const_hex', label: '帧头', hex: 'AA 01' },
-            { id: 'b2', type: 'var_ref', label: '速度', portName: 'speed', fieldType: 'uint16LE' },
-            { id: 'b3', type: 'checksum', label: '校验', checksum: 'sum8' },
+          frames: [
+            {
+              id: `${id}-frame-1`,
+              label: 'Frame 1',
+              blocks: [
+                { id: 'b1', type: 'const_hex', label: '帧头', hex: 'AA 01' },
+                { id: 'b2', type: 'var_ref', label: '速度', portName: 'speed', fieldType: 'uint16LE' },
+                { id: 'b3', type: 'checksum', label: '校验', checksum: 'sum8' },
+              ],
+              appendNewline: false,
+              sendMode: 'manual',
+              timerMs: 100,
+            },
           ],
-          appendNewline: false,
           loopbackEnabled: false,
-          sendMode: 'manual',
-          timerMs: 100,
           loopbackHistory: [],
         },
       };

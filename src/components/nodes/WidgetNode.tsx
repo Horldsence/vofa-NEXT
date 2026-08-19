@@ -9,6 +9,7 @@ import type { WidgetConfig, DomainType } from '../../types';
 import type { Lang } from '../../i18n';
 import { UNARY_MATH_OPS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
+import { commandInputPortNames } from '../../lib/utils/commandFrames';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
@@ -116,12 +117,10 @@ export function getWidgetPorts(widget: WidgetConfig): {
         outputs: [],
       };
     case 'Command': {
-      // 命令发送: 从 blocks 中 var_ref 块推导输入端口 (端口名自定义)
+      // 命令发送: 输入端口 = 所有帧 var_ref 块 portName 并集 (端口名自定义)
       // loopbackOut 字节出口 — 发送的字节沿字节边路由 (Transport.tx 真实发送 / FrameDecoder.in 喂入)
-      const blocks = widget.params.blocks ?? [];
-      const inputs = blocks
-        .filter((b) => b.type === 'var_ref' && b.portName)
-        .map((b) => ({ id: b.portName!, label: b.portName!, domain: 'time' as DomainType }));
+      const inputs = commandInputPortNames(widget.params)
+        .map((name) => ({ id: name, label: name, domain: 'time' as DomainType }));
       const outputs = [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'bytes' as DomainType }];
       return { inputs, outputs };
     }
@@ -180,6 +179,7 @@ export function getWidgetPorts(widget: WidgetConfig): {
 /// 派生 RawData 输入端口 — 动态: 每条入边的 (source, sourceHandle) 组合 = 一个通道端口。
 /// 端口 id 用 `src:<sourceId>:<sourceHandle>` (稳定, 不随源节点 label 变化),
 /// label 取源节点的输出端口名 (handle)。尚未连接任何边时回退到单个默认端口, 便于用户建立第一条连接。
+/// 域标注: 字节源端口 (Transport rx / Protocol out) 标 bytes (黄色), 其余标 time
 function deriveRawDataPorts(
   edges: Edge[],
   nodeId: string
@@ -193,7 +193,8 @@ function deriveRawDataPorts(
     const key = rawDataPortId(e.source, e.sourceHandle);
     if (seen.has(key)) continue;
     seen.add(key);
-    inputs.push({ id: key, label: handle, domain: 'time' });
+    const domain: DomainType = handle === 'rx' || handle === 'out' ? 'bytes' : 'time';
+    inputs.push({ id: key, label: handle, domain });
   }
   if (inputs.length === 0) {
     return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };

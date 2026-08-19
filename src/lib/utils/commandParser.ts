@@ -196,6 +196,18 @@ function parseNumber(value: string, min: number, max: number): number {
   return n;
 }
 
+/// 拼接多个 Uint8Array
+export function concatChunks(chunks: Uint8Array[]): Uint8Array {
+  const total = chunks.reduce((s, c) => s + c.length, 0);
+  const result = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    result.set(c, offset);
+    offset += c.length;
+  }
+  return result;
+}
+
 /// 字节数组转 HEX 字符串 (用于预览显示)
 export function bytesToHex(bytes: Uint8Array, separator: string = ' '): string {
   return Array.from(bytes)

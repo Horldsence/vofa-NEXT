@@ -1,11 +1,13 @@
 import { Send, AlertTriangle } from 'lucide-react';
-import type { WidgetConfig } from '../../../types';
+import type { WidgetConfig, CommandFrame } from '../../../types';
 import type { Lang } from '../../../i18n';
 import { t } from '../../../i18n';
 import { bytesToHex, bytesToAscii } from '../../../lib/utils/commandParser';
 
 interface Props {
   params: Extract<WidgetConfig, { kind: 'Command' }>['params'];
+  /// 当前选中帧 — 追加换行/发送模式/定时间隔为帧级设置
+  frame: CommandFrame;
   computed: {
     bytes: Uint8Array | null;
     error: string | null;
@@ -17,21 +19,24 @@ interface Props {
   routeMissing: boolean;
   onSend: () => void;
   onUpdateParams: (changes: Partial<Props['params']>) => void;
+  onUpdateFrame: (changes: Partial<CommandFrame>) => void;
   lang: Lang;
 }
 
 export function CommandSenderSidebar({
   params,
+  frame,
   computed,
   error,
   lastSent,
   routeMissing,
   onSend,
   onUpdateParams,
+  onUpdateFrame,
   lang,
 }: Props) {
-  const sendMode = params.sendMode ?? 'manual';
-  const timerMs = params.timerMs ?? 100;
+  const sendMode = frame.sendMode ?? 'manual';
+  const timerMs = frame.timerMs ?? 100;
 
   return (
     <div className="w-[300px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
@@ -106,20 +111,25 @@ export function CommandSenderSidebar({
             className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
           />
         </div>
+      </div>
+
+      {/* 帧设置 (当前选中帧) */}
+      <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pt-1">{t(lang, 'cmdFrameSettings')}</div>
+      <div className="flex flex-col gap-2 p-2 bg-bg-editor border border-border rounded">
         <div className="grid grid-cols-[80px_1fr] items-center gap-2">
           <label className="text-xs text-text-secondary">{t(lang, 'cmdAppendNewline')}</label>
           <button
-            className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${params.appendNewline ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
-            onClick={() => onUpdateParams({ appendNewline: !params.appendNewline })}
+            className={`bg-bg-input border border-border text-text-secondary px-2 py-0.5 text-xs rounded-sm cursor-pointer transition-all hover:text-text-primary ${frame.appendNewline ? 'bg-bg-button text-text-inverse border-bg-button' : ''}`}
+            onClick={() => onUpdateFrame({ appendNewline: !frame.appendNewline })}
           >
-            {params.appendNewline ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
+            {frame.appendNewline ? t(lang, 'cmdNewlineOn') : t(lang, 'cmdNewlineOff')}
           </button>
         </div>
         <div className="grid grid-cols-[80px_1fr] items-center gap-2">
           <label className="text-xs text-text-secondary">{t(lang, 'cmdSendMode')}</label>
           <select
             value={sendMode}
-            onChange={(e) => onUpdateParams({ sendMode: e.target.value as 'manual' | 'onChange' | 'timer' })}
+            onChange={(e) => onUpdateFrame({ sendMode: e.target.value as 'manual' | 'onChange' | 'timer' })}
             className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
           >
             <option value="manual">{t(lang, 'cmdSendModeManual')}</option>
@@ -135,7 +145,7 @@ export function CommandSenderSidebar({
               min={10}
               max={10000}
               value={timerMs}
-              onChange={(e) => onUpdateParams({ timerMs: parseInt(e.target.value) || 100 })}
+              onChange={(e) => onUpdateFrame({ timerMs: parseInt(e.target.value) || 100 })}
               className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent"
             />
           </div>
