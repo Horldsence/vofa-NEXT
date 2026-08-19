@@ -259,7 +259,7 @@ export const LIGHT_THEME: ThemeDefinition = {
   name: 'Light',
   isBuiltIn: true,
   tokens: {
-    bgActivity: '#2c2c2c',
+    bgActivity: '#e8e8e8',
     bgSidebar: '#f3f3f3',
     bgEditor: '#ffffff',
     bgWindow: '#f0f0f0',
