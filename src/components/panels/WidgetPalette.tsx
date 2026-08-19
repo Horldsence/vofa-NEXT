@@ -1,9 +1,8 @@
-import { Fragment, useState } from 'react';
+import { useRef, useState } from 'react';
 import clsx from 'clsx';
 import { useAppStore } from '../../store/appStore';
 import { createWidget } from '../../lib/utils/createWidget';
 import { t } from '../../i18n';
-import { useSlidingPill, SlidingPill } from '../ui/SlidingPill';
 import {
   Gauge as KnobIcon,
   Square,
@@ -30,23 +29,21 @@ import {
   Box,
   Send,
   ScanText,
-  Info,
   Cable,
   Binary,
+  ChevronRight,
 } from 'lucide-react';
 import type { WidgetConfig, WidgetCategory, MathOp, FilterPresetKind, TransportConfig } from '../../types';
 import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../types';
 import { dockDrag } from '../../lib/dockDrag';
 
-/// 控件面板 — 按 tab 分组分类, 不同类别颜色不同
+/// 控件面板 — 紧凑单行列表 + 可折叠分组 + 顶部分类跳转条
 ///
-/// 4 个分类 Tab (图标 + 文字分段控件, 滑动指示器与 Dock 卡片 Tab 一致):
-///   - input:   数据类 (Knob/Button/Radio/Checkbox/Slider/Command) — 蓝色
-///   - display: 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Spectrum/Model3D) — 绿色
-///   - math:    算术控件 (Math/Filter) — 橙色, 组内再分「算术 / 滤波器」两节
-///   - custom:  自定义控件 (Custom JS) — 紫色
+/// 分组顺序: 数据 → 数据接口 → 协议引擎 → 显示 → 算术 → 滤波器 → 频域 → 自定义
+/// 顶部跳转条点击图标平滑滚动到对应分组 (折叠时自动展开), 滚动时高亮当前分组。
+/// 每个控件一行 (分类色小图标 + 名称), 左键拖拽或单击均可添加。
 
-/// 面板项统一模型 — 各分类项归一成同构条目, 渲染走同一套卡片
+/// 面板项统一模型 — 各分类项归一成同构条目, 渲染走同一套行样式
 interface PaletteEntry {
   key: string;
   kind?: WidgetConfig['kind'];
@@ -54,11 +51,21 @@ interface PaletteEntry {
   label: string;
   op?: MathOp;
   preset?: FilterPresetKind;
-  /// 全局节点条目: 数据接口 / 协议引擎 (拖入或点击创建全局节点, 不属于任何单一 tab)
+  /// 全局节点条目: 数据接口 / 协议引擎 (拖入或点击创建全局节点)
   globalNode?: 'transport' | 'protocol';
   transportKind?: TransportConfig['kind'];
   onAdd?: () => void;
   title: string;
+}
+
+type SectionId = 'input' | 'transport' | 'protocol' | 'display' | 'math' | 'filter' | 'fft' | 'custom';
+
+interface PaletteSection {
+  id: SectionId;
+  header: string;
+  /// 图标块 / 跳转条所用分类色
+  category: WidgetCategory;
+  entries: PaletteEntry[];
 }
 
 export function WidgetPalette() {
@@ -68,22 +75,13 @@ export function WidgetPalette() {
   const addProtocolNode = useAppStore((s) => s.addProtocolNode);
   const activeControlTabId = useAppStore((s) => s.activeControlTabId);
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
-  const [activeCategory, setActiveCategory] = useState<WidgetCategory>('input');
 
-  /// 分类 Tab 滑动指示器 (与 DockCardFrame 同一套动效)
-  const { containerRef: tabBarRef, pill: tabPill } = useSlidingPill(activeCategory);
-
-  const categories: {
-    id: WidgetCategory;
-    label: string;
-    color: string;
-    icon: React.ReactNode;
-  }[] = [
-    { id: 'input', label: t(lang, 'catInput'), color: WIDGET_CATEGORY_COLORS.input, icon: <Sliders size={13} /> },
-    { id: 'display', label: t(lang, 'catDisplay'), color: WIDGET_CATEGORY_COLORS.display, icon: <LineChart size={13} /> },
-    { id: 'math', label: t(lang, 'catMath'), color: WIDGET_CATEGORY_COLORS.math, icon: <Sigma size={13} /> },
-    { id: 'custom', label: t(lang, 'catCustom'), color: WIDGET_CATEGORY_COLORS.custom, icon: <Code2 size={13} /> },
-  ];
+  /// 分组折叠状态 — 默认全部展开, 仅本次会话内有效
+  const [collapsed, setCollapsed] = useState<Partial<Record<SectionId, boolean>>>({});
+  /// 当前可视分组 (跳转条高亮)
+  const [activeSection, setActiveSection] = useState<SectionId>('input');
+  const listRef = useRef<HTMLDivElement>(null);
+  const sectionRefs = useRef<Partial<Record<SectionId, HTMLElement | null>>>({});
 
   const inputItems: PaletteEntry[] = [
     { key: 'Knob', kind: 'Knob', icon: <KnobIcon />, label: t(lang, 'knob'), title: t(lang, 'knob') },
@@ -183,33 +181,26 @@ export function WidgetPalette() {
     },
   ];
 
-  /// 当前分类的分节内容 — math 类别拆成「算术 / 滤波器」两节, input 类别追加「数据接口 / 协议」两节
-  const sections: { header?: string; entries: PaletteEntry[] }[] =
-    activeCategory === 'input'
-      ? [
-          { entries: inputItems },
-          { header: t(lang, 'dataInterface'), entries: transportItems },
-          { header: t(lang, 'protocolEngine'), entries: protocolItems },
-        ]
-      : activeCategory === 'display'
-        ? [{ entries: displayItems }]
-        : activeCategory === 'custom'
-          ? [{ entries: customItems }]
-          : [
-              { header: t(lang, 'catMath'), entries: mathItems },
-              { header: t(lang, 'filter'), entries: filterItems },
-              { header: t(lang, 'fft'), entries: fftItems },
-            ];
+  const sections: PaletteSection[] = [
+    { id: 'input', header: t(lang, 'catInput'), category: 'input', entries: inputItems },
+    { id: 'transport', header: t(lang, 'dataInterface'), category: 'input', entries: transportItems },
+    { id: 'protocol', header: t(lang, 'protocolEngine'), category: 'input', entries: protocolItems },
+    { id: 'display', header: t(lang, 'catDisplay'), category: 'display', entries: displayItems },
+    { id: 'math', header: t(lang, 'catMath'), category: 'math', entries: mathItems },
+    { id: 'filter', header: t(lang, 'filter'), category: 'math', entries: filterItems },
+    { id: 'fft', header: t(lang, 'fft'), category: 'math', entries: fftItems },
+    { id: 'custom', header: t(lang, 'catCustom'), category: 'custom', entries: customItems },
+  ];
 
-  /// 当前类别说明 (单行, 截断时悬停显示全文)
-  const helpText =
-    activeCategory === 'input'
-      ? t(lang, 'catInputHelp')
-      : activeCategory === 'display'
-        ? t(lang, 'catDisplayHelp')
-        : activeCategory === 'math'
-          ? t(lang, 'catMathHelp')
-          : t(lang, 'catCustomHelp');
+  /// 顶部跳转条 — 算术/滤波器/频域合并为一个「算术」跳转入口
+  const jumpTargets: { id: SectionId; label: string; color: string; icon: React.ReactNode }[] = [
+    { id: 'input', label: t(lang, 'catInput'), color: WIDGET_CATEGORY_COLORS.input, icon: <Sliders size={14} /> },
+    { id: 'transport', label: t(lang, 'dataInterface'), color: WIDGET_CATEGORY_COLORS.input, icon: <Cable size={14} /> },
+    { id: 'protocol', label: t(lang, 'protocolEngine'), color: WIDGET_CATEGORY_COLORS.input, icon: <Binary size={14} /> },
+    { id: 'display', label: t(lang, 'catDisplay'), color: WIDGET_CATEGORY_COLORS.display, icon: <LineChart size={14} /> },
+    { id: 'math', label: t(lang, 'catMath'), color: WIDGET_CATEGORY_COLORS.math, icon: <Sigma size={14} /> },
+    { id: 'custom', label: t(lang, 'catCustom'), color: WIDGET_CATEGORY_COLORS.custom, icon: <Code2 size={14} /> },
+  ];
 
   const handleClickAdd = (item: PaletteEntry) => {
     if (item.onAdd) {
@@ -248,7 +239,39 @@ export function WidgetPalette() {
     addWidget(widget, activeControlTabId, { x: 280, y: 80 + Math.random() * 100 });
   };
 
-  /// 各类别的图标底色 / 悬停边框 (静态类名, 保证 Tailwind 可扫描)
+  /// 跳转到分组 — 折叠时先展开, 再平滑滚动到位
+  /// 只滚动内部列表容器 (不用 scrollIntoView, 避免连带滚动祖先容器把跳转条顶出窗口上部)
+  const jumpTo = (id: SectionId) => {
+    setCollapsed((c) => (c[id] ? { ...c, [id]: false } : c));
+    setActiveSection(id);
+    const list = listRef.current;
+    const el = sectionRefs.current[id];
+    if (!list || !el) return;
+    list.scrollTo({
+      top: list.scrollTop + el.getBoundingClientRect().top - list.getBoundingClientRect().top,
+      behavior: 'smooth',
+    });
+  };
+
+  /// 滚动时同步当前可视分组 — 取顶部偏移量不超过滚动位置 (留一行余量) 的最后一个分组
+  const handleScroll = () => {
+    const list = listRef.current;
+    if (!list) return;
+    let current: SectionId = 'input';
+    for (const s of sections) {
+      const el = sectionRefs.current[s.id];
+      if (el && el.offsetTop - list.offsetTop <= list.scrollTop + 32) {
+        current = s.id;
+      }
+    }
+    if (current !== activeSection) setActiveSection(current);
+  };
+
+  /// 跳转条高亮归属 — 滤波器/频域归入「算术」入口
+  const jumpActive: SectionId =
+    activeSection === 'filter' || activeSection === 'fft' ? 'math' : activeSection;
+
+  /// 各类别的图标底色 (静态类名, 保证 Tailwind 可扫描)
   const categoryTileClass: Record<WidgetCategory, string> = {
     input: 'bg-blue/15 text-blue group-hover:bg-blue/25',
     display: 'bg-green/15 text-green group-hover:bg-green/25',
@@ -256,115 +279,100 @@ export function WidgetPalette() {
     custom: 'bg-purple/15 text-purple group-hover:bg-purple/25',
   };
 
-  const categoryHoverClass: Record<WidgetCategory, string> = {
-    input: 'hover:border-blue/50',
-    display: 'hover:border-green/50',
-    math: 'hover:border-orange/50',
-    custom: 'hover:border-purple/50',
-  };
-
-  /// 统一卡片样式 — 分类色图标块 + 标签, 悬停抬升 + 彩色描边
-  const cardClass = (cat: WidgetCategory) =>
-    clsx(
-      'group bg-bg-input border border-border-subtle rounded-md p-2 flex flex-col items-center gap-2',
-      'cursor-grab transition-all duration-150 select-none active:cursor-grabbing active:scale-[0.98]',
-      'hover:bg-bg-hover hover:-translate-y-0.5 hover:shadow-[0_6px_16px_rgba(0,0,0,0.35)]',
-      categoryHoverClass[cat],
-    );
+  /// 行样式 — 单行: 分类色图标块 + 名称, 字号取 theme token (--font-size-sm)
+  const rowClass =
+    'group flex items-center gap-2 h-8 px-1.5 rounded-sm cursor-grab select-none transition-colors duration-150 active:cursor-grabbing hover:bg-bg-hover';
 
   const tileClass = (cat: WidgetCategory) =>
     clsx(
-      'w-9 h-9 rounded-sm flex items-center justify-center [&_svg]:w-4 [&_svg]:h-4 transition-colors',
+      'w-6 h-6 rounded-sm flex items-center justify-center flex-shrink-0 [&_svg]:w-4 [&_svg]:h-4 transition-colors',
       categoryTileClass[cat],
     );
 
   return (
-    <div className="flex flex-col h-full overflow-hidden gap-2">
-      {/* 分类 Tab — 图标 + 文字分段控件, 滑动指示器与 Dock Tab 一致 */}
-      <div
-        ref={tabBarRef}
-        className="relative flex items-center gap-0.5 p-1 rounded-lg bg-bg-panel-header border border-border-subtle flex-shrink-0"
-      >
-        <SlidingPill pill={tabPill} />
-        {categories.map((cat) => {
-          const active = activeCategory === cat.id;
+    <div className="flex flex-col h-full overflow-hidden gap-1.5">
+      {/* 分类跳转条 — 点击图标滚动到对应分组, 当前可视分组高亮 */}
+      <div className="flex items-center gap-0.5 p-1 rounded-lg bg-bg-panel-header border border-border-subtle flex-shrink-0">
+        {jumpTargets.map((target) => {
+          const active = jumpActive === target.id;
           return (
             <button
-              key={cat.id}
-              data-tab-key={cat.id}
+              key={target.id}
+              title={target.label}
               className={clsx(
-                'relative flex-1 flex items-center justify-center gap-1 h-7 px-1 text-xs font-medium rounded-sm cursor-pointer transition-colors duration-150 select-none whitespace-nowrap',
-                active
-                  ? 'text-text-bright'
-                  : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary',
+                'flex-1 flex items-center justify-center h-7 rounded-sm cursor-pointer transition-colors duration-150 select-none',
+                active ? 'bg-bg-hover' : 'hover:bg-bg-hover',
               )}
-              onClick={() => setActiveCategory(cat.id)}
+              onClick={() => jumpTo(target.id)}
             >
               <span
-                className="flex items-center flex-shrink-0 transition-colors"
-                style={active ? { color: cat.color } : undefined}
+                className="flex items-center transition-colors"
+                style={{ color: active ? target.color : undefined }}
               >
-                {cat.icon}
+                <span className={active ? '' : 'text-text-secondary'}>{target.icon}</span>
               </span>
-              {cat.label}
             </button>
           );
         })}
       </div>
 
-      {/* 控件网格 — auto-rows-min + content-start 防止项被剩余空间纵向拉伸
-          负 margin + 等值 padding 扩大裁剪盒: 悬停抬升/阴影不被 overflow 裁掉, 视觉间距不变 */}
-      <div className="grid grid-cols-2 gap-2 flex-1 min-h-0 overflow-y-auto auto-rows-min content-start -m-1 p-1">
-        {sections.map((section) => (
-          <Fragment key={section.header ?? 'main'}>
-            {section.header && (
-              <div className="col-span-2 px-0.5 pt-1 text-[10px] font-medium uppercase tracking-wider text-text-disabled select-none">
-                {section.header}
-              </div>
-            )}
-            {section.entries.map((item) => (
-              <div
-                key={item.key}
-                className={cardClass(activeCategory)}
-                onPointerDown={(e) => {
-                  if (e.button !== 0) return;
-                  if ((e.target as HTMLElement).closest('button, input')) return;
-                  dockDrag.begin(e, {
-                    kind: 'widget',
-                    widget: {
-                      kind: item.kind,
-                      op: item.op,
-                      preset: item.preset,
-                      globalNode: item.globalNode,
-                      transportKind: item.transportKind,
-                    },
-                    label: item.label,
-                  });
-                }}
-                onClick={() => {
-                  if (dockDrag.consumeClick()) return;
-                  handleClickAdd(item);
-                }}
-                title={item.title}
+      {/* 控件列表 — 折叠分组 + 紧凑单行条目 */}
+      <div ref={listRef} onScroll={handleScroll} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-0.5">
+        {sections.map((section) => {
+          const isCollapsed = collapsed[section.id] ?? false;
+          return (
+            <div
+              key={section.id}
+              ref={(el) => {
+                sectionRefs.current[section.id] = el;
+              }}
+              className="flex flex-col gap-0.5"
+            >
+              <button
+                className="flex items-center gap-1 w-full px-1 pt-1.5 pb-0.5 text-[length:var(--font-size-xs)] font-medium uppercase tracking-wider text-text-disabled hover:text-text-secondary cursor-pointer select-none transition-colors"
+                onClick={() => setCollapsed((c) => ({ ...c, [section.id]: !isCollapsed }))}
               >
-                <div className={tileClass(activeCategory)}>
-                  {item.icon}
-                </div>
-                <span className="text-[11px] leading-none text-text-secondary transition-colors group-hover:text-text-primary">
-                  {item.label}
-                </span>
-              </div>
-            ))}
-          </Fragment>
-        ))}
-      </div>
-
-      {/* 当前类别说明 — 单行提示, 截断时悬停显示全文 */}
-      <div className="flex items-center gap-1.5 px-0.5 h-5 text-[10px] text-text-disabled flex-shrink-0 select-none">
-        <Info size={11} className="flex-shrink-0" />
-        <span className="truncate" title={helpText}>
-          {helpText}
-        </span>
+                <ChevronRight
+                  size={12}
+                  className={clsx('flex-shrink-0 transition-transform duration-150', !isCollapsed && 'rotate-90')}
+                />
+                {section.header}
+              </button>
+              {!isCollapsed &&
+                section.entries.map((item) => (
+                  <div
+                    key={item.key}
+                    className={rowClass}
+                    onPointerDown={(e) => {
+                      if (e.button !== 0) return;
+                      if ((e.target as HTMLElement).closest('button, input')) return;
+                      dockDrag.begin(e, {
+                        kind: 'widget',
+                        widget: {
+                          kind: item.kind,
+                          op: item.op,
+                          preset: item.preset,
+                          globalNode: item.globalNode,
+                          transportKind: item.transportKind,
+                        },
+                        label: item.label,
+                      });
+                    }}
+                    onClick={() => {
+                      if (dockDrag.consumeClick()) return;
+                      handleClickAdd(item);
+                    }}
+                    title={item.title}
+                  >
+                    <div className={tileClass(section.category)}>{item.icon}</div>
+                    <span className="text-[length:var(--font-size-sm)] leading-none truncate text-text-secondary transition-colors group-hover:text-text-primary">
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

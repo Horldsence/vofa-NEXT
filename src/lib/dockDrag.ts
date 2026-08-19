@@ -41,6 +41,8 @@ export interface GhostState {
   x: number;
   y: number;
   label: string;
+  /// 释放态 — 拖拽放下后的短暂放大淡出动画; 低动画偏好 (prefers-reduced-motion) 时不产生
+  releasing?: boolean;
 }
 
 type Hover =
@@ -62,10 +64,22 @@ interface ActiveDrag {
 
 /// 触发拖拽所需的最小移动距离 (px) — 与 HTML5 DnD 阈值相当
 const THRESHOLD = 5;
+/// 释放动画时长 (ms) — 与 DockDragGhost 的 transition 时长一致
+const RELEASE_MS = 180;
 
 let drag: ActiveDrag | null = null;
 /// 最近一次拖拽是否激活 — 用于抑制激活拖拽后跟随的 click (否则拖完会误触发点击)
 let suppressNextClick = false;
+/// 释放动画代际 — 新拖拽开始时递增, 使挂起的清除定时器失效
+let ghostEpoch = 0;
+
+/// 低动画偏好 (无障碍) — matchMedia 不可用 (如 jsdom) 时视为低动画, 不放释放动画
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window.matchMedia !== 'function' ||
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  );
+}
 /// 画布投放处理 — 按画布元素注册 (多个控制卡片并存时, 落点归属指针下方的画布)
 type CanvasHandler = (x: number, y: number, spec: WidgetDragSpec) => void;
 const canvasHandlers = new Map<Element, CanvasHandler>();
@@ -92,6 +106,7 @@ export function begin(
   if (e.button !== undefined && e.button !== 0) return;
   if (drag) return; // 防御: 一次只允许一个拖拽
   suppressNextClick = false;
+  ghostEpoch++; // 使上一次释放动画的清除定时器失效
   // 指针捕获: 在窗口外释放时 pointerup 仍会投递到捕获目标, 避免拖拽卡死
   const target = e.target as Element | null;
   if (target && typeof target.setPointerCapture === 'function' && e.pointerId !== undefined) {
@@ -146,7 +161,16 @@ function onUp(e: PointerEvent) {
     commit(d);
   }
   finish();
-  emitGhost(null);
+  if (d.active && !prefersReducedMotion()) {
+    // 释放动画: 幽灵在落点放大淡出, 动画结束后清除 (代际校验防止误清新拖拽的幽灵)
+    const epoch = ghostEpoch;
+    emitGhost({ x: d.lastX, y: d.lastY, label: d.spec.label, releasing: true });
+    setTimeout(() => {
+      if (epoch === ghostEpoch) emitGhost(null);
+    }, RELEASE_MS);
+  } else {
+    emitGhost(null);
+  }
   emitCanvasHover(false);
 }
 
@@ -380,6 +404,7 @@ export function __resetForTests(): void {
     document.body.classList.remove('dragging-dock');
   }
   suppressNextClick = false;
+  ghostEpoch++; // 使挂起的释放动画定时器失效
   canvasHandlers.clear();
   emitCanvasHover(false);
   emitGhost(null);
