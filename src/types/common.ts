@@ -178,23 +178,37 @@ export function computeMathResult(op: MathOp, inputs: number[]): number {
 // ============ 3D 模型显示 ============
 
 /// 3D 显示模式
-/// - trajectory: 三通道作为 (x, y, z) 坐标, 渲染拖尾散点轨迹
-/// - attitude:   三通道作为欧拉角 (roll=x, pitch=y, yaw=z, 弧度), 渲染姿态立方体
-export type Model3DMode = 'trajectory' | 'attitude';
+/// - trajectory:           xyz 作为位置, 渲染拖尾轨迹
+/// - attitude:             roll/pitch/yaw 作为欧拉角 (弧度), 渲染旋转模型
+/// - trajectory-attitude:  同时显示拖尾轨迹 + 跟随位置/姿态旋转的模型
+export type Model3DMode = 'trajectory' | 'attitude' | 'trajectory-attitude';
+
+/// 3D 模型源
+/// - builtin-cube: 默认半透明立方体 (向后兼容旧 widget)
+/// - custom:       用户通过 Tauri 对话框导入的 GLB/GLTF, path 持久化到 widget 配置
+export type Model3DSource =
+  | { kind: 'builtin-cube' }
+  | { kind: 'custom'; path: string; name: string };
 
 /// 3D 模型控件配置
-/// 输入端口固定为 x / y / z, 缺失通道补 0
+/// 输入端口: x / y / z (位置) + roll / pitch / yaw (旋转, 缺失补 0)
+/// 各模式实际使用的端口:
+///   trajectory           -> x / y / z
+///   attitude             -> roll / pitch / yaw
+///   trajectory-attitude  -> x / y / z + roll / pitch / yaw
 export interface Model3DConfig {
   id: string;
   label: string;
   /// 显示模式
   mode: Model3DMode;
-  /// 拖尾长度 (trajectory 模式, 默认 200)
+  /// 拖尾长度 (trajectory / trajectory-attitude 模式, 默认 200)
   trailLength: number;
   /// 拖尾/立方体颜色 (HEX, 如 '#75beff')
   color: string;
   /// 坐标轴长度 (默认 1.0)
   axisLength: number;
+  /// 模型来源 (默认 builtin-cube)
+  modelSource: Model3DSource;
 }
 
 // ============ Biquad 滤波器系数计算 (与 Rust RBJ Audio EQ Cookbook 一致) ============

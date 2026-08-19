@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { WidgetConfig, WindowType, SpectrumOutput } from '../../types';
+import type { Model3DConfig, WidgetConfig, WindowType, SpectrumOutput } from '../../types';
 
 /// Custom widget 编辑器默认代码 (与 CustomWidgetEditor 中常量保持一致)
 export const DEFAULT_CUSTOM_CODE = `({
@@ -183,6 +183,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           trailLength: 200,
           color: '#75beff',
           axisLength: 1.0,
+          modelSource: { kind: 'builtin-cube' },
         },
       };
     case 'Command':
@@ -250,4 +251,35 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
         params: { id, label: 'Raw Data' },
       };
   }
+}
+
+/// Model3D 配置归一化 — 旧保存数据缺 modelSource 字段时回退到 builtin-cube
+///
+/// 该函数是幂等的; 已包含合法 modelSource 时原样返回
+export function normalizeModel3DConfig(raw: Partial<Model3DConfig>): Model3DConfig {
+  const mode =
+    raw.mode === 'attitude' ||
+    raw.mode === 'trajectory-attitude' ||
+    raw.mode === 'trajectory'
+      ? raw.mode
+      : 'trajectory';
+  const color = typeof raw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : '#75beff';
+  const trailLength =
+    typeof raw.trailLength === 'number' && raw.trailLength > 0 ? raw.trailLength : 200;
+  const axisLength =
+    typeof raw.axisLength === 'number' && raw.axisLength > 0 ? raw.axisLength : 1.0;
+  const modelSource =
+    raw.modelSource?.kind === 'custom' && typeof raw.modelSource.path === 'string'
+      ? { kind: 'custom' as const, path: raw.modelSource.path, name: raw.modelSource.name ?? 'model.glb' }
+      : { kind: 'builtin-cube' as const };
+
+  return {
+    id: raw.id ?? '',
+    label: raw.label ?? 'Model3D',
+    mode,
+    trailLength,
+    color,
+    axisLength,
+    modelSource,
+  };
 }

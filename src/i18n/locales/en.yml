@@ -674,9 +674,15 @@ model3dSettings: 3D Settings
 model3dMode: Mode
 model3dTrajectory: Trajectory
 model3dAttitude: Attitude
+model3dTrajectoryAttitude: Trajectory + Attitude
 model3dTrailLength: Trail Length
 model3dColor: Color
 model3dAxisLength: Axis Length
+model3dModel: Model
+model3dModelBuiltin: Built-in Cube
+model3dPickModel: Import GLB/GLTF…
+model3dResetModel: Reset to Built-in
+model3dModelLoadError: Failed to load model
 
 # Command Sender widget
 command: Command

@@ -1,13 +1,21 @@
 import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
-import { createWidget } from '../../lib/utils/createWidget';
+import { createWidget, normalizeModel3DConfig } from '../../lib/utils/createWidget';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { normalizeCommandConfig } from '../../lib/utils/commandFrames';
 
-/// Command 控件配置归一化 (旧版单帧 → frames), 其余控件原样返回
+/// 控件配置归一化入口
+/// - Command: 旧版单帧 → frames
+/// - Model3D: 旧版缺 modelSource 字段 → builtin-cube fallback
+/// 其余控件原样返回
 function normalizeWidget(widget: WidgetConfig): WidgetConfig {
-  if (widget.kind !== 'Command') return widget;
-  return { kind: 'Command', params: normalizeCommandConfig(widget.params) };
+  if (widget.kind === 'Command') {
+    return { kind: 'Command', params: normalizeCommandConfig(widget.params) };
+  }
+  if (widget.kind === 'Model3D') {
+    return { kind: 'Model3D', params: normalizeModel3DConfig(widget.params) };
+  }
+  return widget;
 }
 
 export interface WidgetSlice {

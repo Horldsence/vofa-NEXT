@@ -674,9 +674,15 @@ model3dSettings: 3D 设置
 model3dMode: 模式
 model3dTrajectory: 轨迹
 model3dAttitude: 姿态
+model3dTrajectoryAttitude: 轨迹 + 姿态
 model3dTrailLength: 拖尾长度
 model3dColor: 颜色
 model3dAxisLength: 坐标轴长度
+model3dModel: 模型
+model3dModelBuiltin: 内置立方体
+model3dPickModel: 导入 GLB/GLTF…
+model3dResetModel: 恢复内置
+model3dModelLoadError: 模型加载失败
 
 # 命令发送控件
 command: 命令发送

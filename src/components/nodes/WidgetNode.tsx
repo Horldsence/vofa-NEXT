@@ -107,12 +107,19 @@ export function getWidgetPorts(widget: WidgetConfig): {
       // (FFT 求解器的 spectrum 输出 → 本端口), 不再用下拉选择
       return { inputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }], outputs: [] };
     case 'Model3D':
-      // 3D 模型: 三通道输入 x/y/z, 无输出 (前端 Three.js 直接渲染)
+      // 3D 模型: 六通道输入 (位置 x/y/z + 旋转 roll/pitch/yaw), 无输出 (前端 Three.js 直接渲染)
+      // - trajectory          -> 仅使用 x/y/z (位置)
+      // - attitude            -> 仅使用 roll/pitch/yaw (欧拉角, 弧度)
+      // - trajectory-attitude -> 同时使用全部六通道
+      // 缺失端口由 useGraphInputs 补 0, 向后兼容旧连线
       return {
         inputs: [
           { id: 'x', label: 'x', domain: 'time' },
           { id: 'y', label: 'y', domain: 'time' },
           { id: 'z', label: 'z', domain: 'time' },
+          { id: 'roll', label: 'roll', domain: 'time' },
+          { id: 'pitch', label: 'pitch', domain: 'time' },
+          { id: 'yaw', label: 'yaw', domain: 'time' },
         ],
         outputs: [],
       };
