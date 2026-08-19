@@ -1,3 +1,4 @@
+import { useEffect, useId, useState } from 'react';
 import { PortPicker } from '../PortPicker';
 import { t } from '../../../i18n';
 import type { Lang } from '../../../i18n';
@@ -13,20 +14,46 @@ const baudRates = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const selectClass = 'form-select';
 
 export function SerialForm({ params, onChange, lang }: SerialFormProps) {
+  const baudListId = useId();
+  // 编辑期间允许任意中间文本（空、0 等），失焦时才校验并提交
+  const [baudText, setBaudText] = useState(String(params.baud_rate));
+
+  useEffect(() => {
+    setBaudText(String(params.baud_rate));
+  }, [params.baud_rate]);
+
+  const commitBaudRate = () => {
+    const value = parseInt(baudText, 10);
+    if (Number.isFinite(value) && value > 0) {
+      if (value !== params.baud_rate) onChange('baud_rate', value);
+      else setBaudText(String(params.baud_rate));
+    } else {
+      setBaudText(String(params.baud_rate));
+    }
+  };
+
   return (
     <>
       <PortPicker selectedPortName={params.port_name} onSelect={(name) => onChange('port_name', name)} />
       <div className="mb-2.5">
         <label className="block text-xs text-text-secondary mb-1">{t(lang, 'baudRate')}</label>
-        <select
-          className={selectClass}
-          value={params.baud_rate}
-          onChange={(e) => onChange('baud_rate', parseInt(e.target.value))}
-        >
+        <input
+          type="number"
+          min={1}
+          className="form-input"
+          list={baudListId}
+          value={baudText}
+          onChange={(e) => setBaudText(e.target.value)}
+          onBlur={commitBaudRate}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+        />
+        <datalist id={baudListId}>
           {baudRates.map((rate) => (
-            <option key={rate} value={rate}>{rate}</option>
+            <option key={rate} value={rate} />
           ))}
-        </select>
+        </datalist>
       </div>
       <div className="flex gap-2">
         <div className="mb-2.5 flex-1">

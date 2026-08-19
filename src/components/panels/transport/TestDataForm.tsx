@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Info } from 'lucide-react';
 import { t } from '../../../i18n';
 import type { Lang } from '../../../i18n';
@@ -29,6 +30,23 @@ const signalLabels: { value: TestDataConfig['signal']; key: string }[] = [
 export function TestDataForm({ params, onChange, lang, protocolLabel }: TestDataFormProps) {
   const protocol = protocolLabel ?? 'JustFloat';
 
+  // 编辑期间允许任意中间文本（空、0 等），失焦时才校验并提交
+  const [sampleRateText, setSampleRateText] = useState(String(params.sample_rate));
+
+  useEffect(() => {
+    setSampleRateText(String(params.sample_rate));
+  }, [params.sample_rate]);
+
+  const commitSampleRate = () => {
+    const value = parseInt(sampleRateText, 10);
+    if (Number.isFinite(value) && value >= 1 && value <= 10000) {
+      if (value !== params.sample_rate) onChange({ sample_rate: value });
+      else setSampleRateText(String(params.sample_rate));
+    } else {
+      setSampleRateText(String(params.sample_rate));
+    }
+  };
+
   return (
     <>
       <div className="flex gap-2">
@@ -49,8 +67,12 @@ export function TestDataForm({ params, onChange, lang, protocolLabel }: TestData
             type="number"
             min={1}
             max={10000}
-            value={params.sample_rate}
-            onChange={(e) => onChange({ sample_rate: parseInt(e.target.value) || 1 })}
+            value={sampleRateText}
+            onChange={(e) => setSampleRateText(e.target.value)}
+            onBlur={commitSampleRate}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+            }}
             className={inputClass}
           />
         </div>
