@@ -55,15 +55,27 @@ export function formatTimeBase(sec: number): string {
   return sec + 's/div';
 }
 
+/// 工程前缀 (数量级 → 前缀), 从小到大
+const ENG_PREFIXES: [number, string][] = [
+  [1e-9, 'n'], [1e-6, 'µ'], [1e-3, 'm'], [1, ''], [1e3, 'k'], [1e6, 'M'], [1e9, 'G'],
+];
+
 /// 格式化 V/div 为示波器风格字符串
 /// unit 默认为 'V', 但 Y 轴不一定是电压, 可传入任意单位 (如 'A' / '°C' / '')
-/// 支持 µ/m 前缀 (小值) 和 k 前缀 (大值)
+/// 自动选择 n/µ/m/k/M/G 前缀, 使尾数落在 [1, 1000) — 任意小/大的值都可读
+/// 例: 0.5 → "500mV/div", 2e-5 → "20µV/div", 2e-10 → "200nV/div", 5000 → "5kV/div"
 export function formatVPerDiv(v: number, unit = 'V'): string {
   const u = unit || '';
-  if (v < 0.001) return (v * 1e6).toFixed(0) + 'µ' + u + '/div';
-  if (v < 1) return (v * 1e3).toFixed(0) + 'm' + u + '/div';
-  if (v >= 1000) return (v / 1e3).toFixed(0) + 'k' + u + '/div';
-  return v + u + '/div';
+  if (!isFinite(v) || v <= 0) return v + u + '/div';
+  // 小于最小前缀时夹逼到 n, 保证尾数始终在 [1, 1000)
+  let scale = ENG_PREFIXES[0][0];
+  let prefix = ENG_PREFIXES[0][1];
+  for (const [s, p] of ENG_PREFIXES) {
+    if (v >= s) { scale = s; prefix = p; }
+  }
+  // 3 位有效数字并去除尾零, 避免浮点长尾 (如 0.30000000000000004)
+  const mantissa = parseFloat((v / scale).toPrecision(3));
+  return mantissa + prefix + u + '/div';
 }
 
 /// 耦合方式
@@ -93,7 +105,7 @@ export const DEFAULT_RENDER: SeriesRender = {
 
 /// 每通道独立配置
 export interface ChannelAxisConfig {
-  vPerDiv: number;        // V/格 (取自 V_PER_DIV)
+  vPerDiv: number;        // V/格 (通常取自 V_PER_DIV; 手动输入/AutoSet 可为表外任意值)
   position: number;       // 垂直偏移 (伏, 屏幕中心 = 0)
   show: boolean;          // 通道可见性
   coupling: Coupling;     // 耦合方式 (DC/AC/GND)

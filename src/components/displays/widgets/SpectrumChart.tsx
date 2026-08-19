@@ -52,12 +52,21 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
     if (!canvas) return;
     const parent = canvas.parentElement;
     if (!parent) return;
+    // rAF 延迟 setState: 避免 RO 回调内同步改布局导致的 ResizeObserver loop 告警
+    let raf: number | null = null;
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect;
-      setSize({ w: Math.floor(r.width), h: Math.floor(r.height) });
+      if (raf !== null) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        setSize({ w: Math.floor(r.width), h: Math.floor(r.height) });
+      });
     });
     ro.observe(parent);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (raf !== null) cancelAnimationFrame(raf);
+    };
   }, []);
 
   // 绘制频谱图

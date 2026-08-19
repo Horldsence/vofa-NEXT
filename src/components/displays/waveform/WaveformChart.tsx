@@ -272,7 +272,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
 
   useWheelZoom(containerRef, axisConfigRef, onConfigChange);
 
-  usePanDrag(containerRef, plotRef, axisConfigRef, onConfigChange);
+  usePanDrag(containerRef, plotRef, axisConfigRef, onConfigChange, setSelectedRange);
 
   const exportSelection = useCallback(() => {
     if (!selectedRange) return;

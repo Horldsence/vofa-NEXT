@@ -14,6 +14,8 @@ interface OnboardingStore {
   hasOpenedThisSession: boolean;
   /// 首次关闭数据窗口的提示是否已弹出 (会话级, 只提示一次)
   closeHintShown: boolean;
+  /// 波形图交互提示 (左键平移/时间轴框选) 是否已弹出 (会话级, 只提示一次)
+  waveformInteractHintShown: boolean;
 
   openWizard: () => void;
   closeWizard: () => void;
@@ -25,6 +27,7 @@ interface OnboardingStore {
   dismissTip: (id: string) => void;
   isTipDismissed: (id: string) => boolean;
   markCloseHintShown: () => void;
+  markWaveformInteractHintShown: () => void;
 }
 
 export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
@@ -33,6 +36,7 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
   dismissedTips: new Set(),
   hasOpenedThisSession: false,
   closeHintShown: false,
+  waveformInteractHintShown: false,
 
   openWizard: () => set({ isWizardOpen: true, hasOpenedThisSession: true }),
   closeWizard: () => set({ isWizardOpen: false }),
@@ -53,4 +57,5 @@ export const useOnboardingStore = create<OnboardingStore>((set, get) => ({
     }),
   isTipDismissed: (id) => get().dismissedTips.has(id),
   markCloseHintShown: () => set({ closeHintShown: true }),
+  markWaveformInteractHintShown: () => set({ waveformInteractHintShown: true }),
 }));

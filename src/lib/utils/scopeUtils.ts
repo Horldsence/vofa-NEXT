@@ -1,6 +1,5 @@
 import {
   TIME_BASES_SEC,
-  V_PER_DIV,
   type Coupling,
   type ScopeAxisConfig,
   type ScopeMeasurements,
@@ -9,6 +8,18 @@ import {
 
 const H_DIVS = 10;
 const V_DIVS = 8;
+
+/// V/div 取档 — 向上取最近 1-2-5 档 (不限于 V_PER_DIV 表, 可跨任意数量级)
+/// 向上取保证信号跨度始终 <= V_DIVS * FILL_RATIO 格, 不会顶出屏幕;
+/// 小信号 (如 Vpp < 1mV) 会取到表外的 µV/nV 档, 避免压成一条直线
+export function snapVPerDivUp(target: number): number {
+  if (!isFinite(target) || target <= 0) return 1;
+  const decade = Math.pow(10, Math.floor(Math.log10(target)));
+  const m = target / decade;
+  // 容差抵消浮点误差 (如 0.3/0.1 = 2.9999999999999996)
+  const mantissa = m <= 1 + 1e-9 ? 1 : m <= 2 + 1e-9 ? 2 : m <= 5 + 1e-9 ? 5 : 10;
+  return mantissa * decade;
+}
 
 /// 耦合方式数据变换 - 对原始通道数据应用 DC/AC/GND 耦合
 /// DC: 直通; AC: 减去窗口内非 NaN 均值 (去除直流分量); GND: 全部置 0 (显示 0V 基准)
@@ -143,19 +154,11 @@ export function computeAutoSetConfig(
       }
     }
     if (globalMin !== Infinity) {
-      const targetVd = (globalMax - globalMin) / (V_DIVS * VERTICAL_FILL_RATIO);
-      let bestVdIdx = 0;
-      let bestVdDiff = Infinity;
-      for (let i = 0; i < V_PER_DIV.length; i++) {
-        const diff = Math.abs(V_PER_DIV[i] - targetVd);
-        if (diff < bestVdDiff) {
-          bestVdDiff = diff;
-          bestVdIdx = i;
-        }
-      }
+      const vpp = globalMax - globalMin;
       newChannels[0] = {
         ...newChannels[0],
-        vPerDiv: V_PER_DIV[bestVdIdx],
+        // vpp=0 (平直信号) 时保持当前 vPerDiv, 仅居中
+        vPerDiv: vpp > 0 ? snapVPerDivUp(vpp / (V_DIVS * VERTICAL_FILL_RATIO)) : newChannels[0].vPerDiv,
         position: (globalMax + globalMin) / 2,
       };
     }
@@ -172,17 +175,7 @@ export function computeAutoSetConfig(
         if (v > vmax) vmax = v;
       }
       if (vmin === Infinity) continue;
-      // 信号 Vpp 占满 V_DIVS * FILL_RATIO 格, 而非全部 V_DIVS 格
-      const targetVd = (vmax - vmin) / (V_DIVS * VERTICAL_FILL_RATIO);
-      let bestVdIdx = 0;
-      let bestVdDiff = Infinity;
-      for (let i = 0; i < V_PER_DIV.length; i++) {
-        const diff = Math.abs(V_PER_DIV[i] - targetVd);
-        if (diff < bestVdDiff) {
-          bestVdDiff = diff;
-          bestVdIdx = i;
-        }
-      }
+      const vpp = vmax - vmin;
       while (newChannels.length <= chIdx) {
         newChannels.push({
           vPerDiv: 1,
@@ -193,7 +186,8 @@ export function computeAutoSetConfig(
       }
       newChannels[chIdx] = {
         ...newChannels[chIdx],
-        vPerDiv: V_PER_DIV[bestVdIdx],
+        // 信号 Vpp 占满 V_DIVS * FILL_RATIO 格; vpp=0 (平直信号) 保持当前 vPerDiv, 仅居中
+        vPerDiv: vpp > 0 ? snapVPerDivUp(vpp / (V_DIVS * VERTICAL_FILL_RATIO)) : newChannels[chIdx].vPerDiv,
         // position 取信号中点, 让信号居中显示
         position: (vmax + vmin) / 2,
       };

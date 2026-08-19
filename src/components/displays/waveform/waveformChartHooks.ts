@@ -2,6 +2,11 @@ import { useRef, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import uPlot from 'uplot';
 import { timeBaseToWindowSec, VERTICAL_DIVS } from '../../../lib/utils/scopeUtils';
 import { getEffectiveChannel, getEffectiveRender, TIME_BASES_SEC, V_PER_DIV, formatVPerDiv } from '../../../types';
+import { useAppStore } from '../../../store/appStore';
+import { useSettingsStore } from '../../../store/settingsStore';
+import { useOnboardingStore } from '../../../store/onboardingStore';
+import { notify } from '../../../lib/tauri/notifications';
+import { t } from '../../../i18n';
 import {
   CHANNEL_COLORS, DERIVED_COLORS, TEXT_COLOR, GRID_COLOR, TICK_COLOR, getContainerSize,
 } from './waveformConstants';
@@ -146,6 +151,7 @@ export function useUplotInit(
         legend: { show: false },
         cursor: {
           points: { size: 4 },
+          // 左键拖动 = 框选 (uPlot 内建); 平移走右键 / Shift+左键 (usePanDrag)
           drag: { x: true, y: false },
           // 光标吸附到"线": X 始终跟随鼠标 (不吸附), Y 吸附到首条可见曲线在鼠标 X 处的插值
           // snap 关闭或 Ctrl 隐藏时: X/Y 均自由跟随鼠标 (仍显示十字线)
@@ -257,6 +263,8 @@ export function useUplotInit(
                 setSelectedRange(null);
                 return;
               }
+              // 首次框选时提示平移方式 (会话级一次)
+              maybeShowInteractHint();
               const s1 = u.posToVal(left, 'x');
               const s2 = u.posToVal(left + width, 'x');
               setSelectedRange({
@@ -280,14 +288,17 @@ export function useUplotInit(
       lastW = w; lastH = h;
     };
 
+    // 整体 rAF 延迟: RO 回调内同步创建/setSize uPlot 会读写布局,
+    // 易触发 "ResizeObserver loop completed with undelivered notifications"
     const resize = () => {
       const { w, h } = getContainerSize(container);
       if (w === lastW && h === lastH) return;
-      if (!plot) { createPlot(); return; }
+      lastW = w; lastH = h;
       if (resizeRaf !== null) cancelAnimationFrame(resizeRaf);
       resizeRaf = requestAnimationFrame(() => {
-        plot?.setSize({ width: w, height: h });
-        lastW = w; lastH = h;
+        resizeRaf = null;
+        if (!plot) createPlot();
+        else plot.setSize({ width: w, height: h });
       });
     };
 
@@ -358,21 +369,43 @@ export function useWheelZoom(
   }, [onConfigChange]);
 }
 
-// ---- 中键拖拽平移 ----
+// ---- 右键 / Shift+左键 / 中键 拖拽平移 ----
+
+/// 首次框选/平移时弹出交互提示 (会话级一次, 遵循「上下文提示」开关)
+function maybeShowInteractHint() {
+  if (!useSettingsStore.getState().settings.general.showContextualTips) return;
+  const st = useOnboardingStore.getState();
+  if (st.waveformInteractHintShown) return;
+  st.markWaveformInteractHintShown();
+  const lang = useAppStore.getState().lang;
+  notify.info(
+    t(lang, 'waveformInteractHintTitle'),
+    t(lang, 'waveformInteractHintMessage'),
+    { actions: [{ label: t(lang, 'closeHintGotIt'), run: () => {} }] }
+  );
+}
 
 export function usePanDrag(
   containerRef: React.RefObject<HTMLDivElement | null>,
   plotRef: React.MutableRefObject<uPlot | null>,
   axisConfigRef: React.MutableRefObject<ScopeAxisConfig>,
   onConfigChange: ((next: ScopeAxisConfig) => void) | undefined,
+  setSelectedRange: React.Dispatch<React.SetStateAction<{ startSec: number; endSec: number } | null>>,
 ) {
-  const panRef = useRef<{ startX: number; startY: number; startHPos: number; startPos: number; chIdx: number } | null>(null);
+  const panRef = useRef<{ startX: number; startY: number; startHPos: number; startPos: number; chIdx: number; dragged: boolean } | null>(null);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const isPanGesture = (e: MouseEvent) =>
+      e.button === 1 || e.button === 2 || (e.button === 0 && e.shiftKey);
+    // 捕获阶段拦截 Shift+左键: 阻止冒泡到 uPlot 的 over 元素, 避免同时触发框选
+    // (uPlot 只认 button==0 且不检查修饰键; 右键天然不会触发 uPlot 框选)
+    const onMouseDownCapture = (e: MouseEvent) => {
+      if (e.button === 0 && e.shiftKey) e.stopPropagation();
+    };
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button !== 1) return;
+      if (!isPanGesture(e)) return;
       e.preventDefault();
       const cfg = axisConfigRef.current;
       const firstVisible = cfg.channels.findIndex((c) => c.show);
@@ -383,6 +416,7 @@ export function usePanDrag(
         startHPos: cfg.hPosition,
         startPos: getEffectiveChannel(cfg, chIdx).position,
         chIdx,
+        dragged: false,
       };
       el.style.cursor = 'grabbing';
     };
@@ -392,6 +426,13 @@ export function usePanDrag(
       const plot = plotRef.current;
       if (!plot) return;
       e.preventDefault();
+      if (!ps.dragged) {
+        // 首次真正拖动时: 清框选 + 弹交互提示 (单击不触发)
+        ps.dragged = true;
+        maybeShowInteractHint();
+        setSelectedRange(null);
+        plot.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+      }
       const cfg = axisConfigRef.current;
       const dx = e.clientX - ps.startX;
       const dy = e.clientY - ps.startY;
@@ -415,15 +456,22 @@ export function usePanDrag(
         el.style.cursor = '';
       }
     };
+    // 右键平移手势内屏蔽浏览器上下文菜单 (macOS 上 contextmenu 随右键按下即触发,
+    // 无法等拖动结束再判断, 且波形图上本无右键菜单)
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    el.addEventListener('mousedown', onMouseDownCapture, true);
     el.addEventListener('mousedown', onMouseDown);
+    el.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
+      el.removeEventListener('mousedown', onMouseDownCapture, true);
       el.removeEventListener('mousedown', onMouseDown);
+      el.removeEventListener('contextmenu', onContextMenu);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [onConfigChange]);
+  }, [onConfigChange, setSelectedRange]);
 }
 
 // ---- Ctrl/Cmd 隐藏游标 ----

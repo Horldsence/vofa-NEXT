@@ -53,18 +53,27 @@ export const StatusBar = memo(function StatusBar() {
   useEffect(() => {
     const el = rootRef.current;
     if (!el) return;
+    // rAF 延迟 setState: 避免 RO 回调内同步改布局导致的 ResizeObserver loop 告警
+    let raf: number | null = null;
     const ro = new ResizeObserver((entries) => {
       const w = entries[0].contentRect.width;
-      const grew = w > lastWidth.current;
-      lastWidth.current = w;
-      setTier((t) => {
-        if (grew) return Math.max(0, t - 1);
-        if (el.scrollWidth > el.clientWidth + 1) return Math.min(TIER_MAX, t + 1);
-        return t;
+      if (raf !== null) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        const grew = w > lastWidth.current;
+        lastWidth.current = w;
+        setTier((t) => {
+          if (grew) return Math.max(0, t - 1);
+          if (el.scrollWidth > el.clientWidth + 1) return Math.min(TIER_MAX, t + 1);
+          return t;
+        });
       });
     });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (raf !== null) cancelAnimationFrame(raf);
+    };
   }, []);
 
   // 溢出校正: 每次渲染后(绘制前)检测实际溢出, 逐级收缩直到放下或到达 TIER_MAX.
