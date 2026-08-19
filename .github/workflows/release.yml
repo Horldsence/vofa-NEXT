@@ -179,3 +179,27 @@ jobs:
           mapfile -t FILES < /tmp/release-assets.txt
           gh release create "$TAG" "${FILES[@]}" "${ARGS[@]}"
           echo "✅ Release $TAG 创建成功"
+
+      - name: Update beta channel manifest (rolling tag)
+        # 应用 beta 通道从固定 URL 拉取 beta-latest.json (不经 GitHub API, 避免限流 403)。
+        # 每次正式发布 (prerelease 或正式版, 非 draft) 都刷新它, 语义等同"所有 release 取最新";
+        # stable 通道走 releases/latest/download/latest.json, 无需额外维护。
+        if: inputs.draft == false
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ ! -f artifacts/latest.json ]; then
+            echo "::warning::无 latest.json (可能缺少签名构件), 跳过 beta 通道 manifest 更新"
+            exit 0
+          fi
+          cp artifacts/latest.json beta-latest.json
+          if ! gh release view beta >/dev/null 2>&1; then
+            gh release create beta --prerelease \
+              --title "Beta 更新通道" \
+              --notes "此 release 仅用于托管 beta 通道的更新清单 (beta-latest.json), 由 CI 自动维护, 请勿删除或标记为 latest。" \
+              --target main
+          fi
+          gh release upload beta beta-latest.json --clobber
+          echo "✅ beta 通道 manifest 已更新到 v${{ inputs.version }}"

@@ -1,35 +1,31 @@
 //! 按通道 (stable/beta) 检查应用更新。
 //!
-//! 流程: 从 GitHub Releases API 拉取最近的 release 列表, 按通道过滤
-//! (stable 通道排除 prerelease, beta 通道全部接受), 选出 semver 最大的
-//! release, 再将其 `latest.json` asset 作为 endpoint 交给
-//! tauri-plugin-updater 完成实际的版本比较与更新下载。
+//! 两个通道各对应一个静态 manifest URL, 不经 GitHub API, 避免未认证
+//! 请求 60 次/小时/出口 IP 的限流 (超额返回 403):
+//! - stable: GitHub 最新正式 release 的 latest.json
+//! - beta:   滚动 tag `beta` 上的 beta-latest.json, 由 release CI 在
+//!           每次发布 (含正式版) 时更新, 语义等同"所有 release 中取最新"
+//! 拿到 manifest 后交给 tauri-plugin-updater 完成版本比较与更新下载。
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::Emitter;
 use tauri_plugin_updater::{Update, UpdaterExt};
 
-/// GitHub Releases API 地址 (列出最近 20 个 release)。
-const RELEASES_API: &str =
-    "https://api.github.com/repos/Horldsence/vofa-NEXT/releases?per_page=20";
+/// stable 通道 manifest: 最新正式 release 的 latest.json。
+const STABLE_MANIFEST: &str =
+    "https://github.com/Horldsence/vofa-NEXT/releases/latest/download/latest.json";
 
-/// 更新通道: 稳定版只接收正式 release, 测试版同时接收 prerelease。
+/// beta 通道 manifest: 滚动 tag `beta` 上的 beta-latest.json (release CI 维护)。
+const BETA_MANIFEST: &str =
+    "https://github.com/Horldsence/vofa-NEXT/releases/download/beta/beta-latest.json";
+
+/// 更新通道: 稳定版跟踪正式 release, 测试版同时跟踪 prerelease。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Channel {
     Stable,
     Beta,
-}
-
-/// GitHub Releases API 返回的单个 release (仅保留用到的字段)。
-#[derive(Debug, Clone, Deserialize)]
-pub struct GithubRelease {
-    pub tag_name: String,
-    pub prerelease: bool,
-    pub draft: bool,
-    pub body: Option<String>,
-    pub published_at: Option<String>,
 }
 
 /// `check_update` 命令的返回结果 (camelCase 与前端约定)。
@@ -46,23 +42,12 @@ pub struct CheckUpdateResult {
 /// 暂存已检测到、等待用户确认下载的更新。
 pub struct PendingUpdate(pub Mutex<Option<Update>>);
 
-/// 从 release 列表中按通道选出目标版本, 返回其在列表中的索引。
-///
-/// 过滤规则: 排除 draft; stable 通道额外排除 prerelease; tag 剥掉前导
-/// 'v' 后必须能解析为 semver。返回 semver 最大者的索引, 无候选返回 None。
-pub fn select_release(releases: &[GithubRelease], channel: Channel) -> Option<usize> {
-    releases
-        .iter()
-        .enumerate()
-        .filter(|(_, r)| !r.draft)
-        .filter(|(_, r)| channel == Channel::Beta || !r.prerelease)
-        .filter_map(|(i, r)| {
-            semver::Version::parse(r.tag_name.trim_start_matches('v'))
-                .ok()
-                .map(|v| (i, v))
-        })
-        .max_by(|(_, a), (_, b)| a.cmp(b))
-        .map(|(i, _)| i)
+/// 通道对应的更新 manifest URL。
+fn manifest_url(channel: Channel) -> &'static str {
+    match channel {
+        Channel::Stable => STABLE_MANIFEST,
+        Channel::Beta => BETA_MANIFEST,
+    }
 }
 
 /// 按通道检查更新。命中时把 `Update` 存入 `PendingUpdate` 供下载命令使用。
@@ -81,31 +66,8 @@ pub async fn check_update(
         date: None,
     };
 
-    // 1. 拉取 GitHub release 列表并按通道选出目标
-    let releases: Vec<GithubRelease> = reqwest::Client::new()
-        .get(RELEASES_API)
-        .header(reqwest::header::USER_AGENT, "vofa-next-updater")
-        .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let Some(idx) = select_release(&releases, channel) else {
-        return Ok(unavailable());
-    };
-    let release = &releases[idx];
-
-    // 2. 以该 release 的 latest.json 为 endpoint 交给 updater 插件做版本比较
-    let endpoint = reqwest::Url::parse(&format!(
-        "https://github.com/Horldsence/vofa-NEXT/releases/download/{}/latest.json",
-        release.tag_name
-    ))
-    .map_err(|e| e.to_string())?;
+    // 以通道对应的静态 manifest 为 endpoint, 交给 updater 插件做版本比较
+    let endpoint = reqwest::Url::parse(manifest_url(channel)).map_err(|e| e.to_string())?;
 
     let maybe_update = app
         .updater_builder()
@@ -117,17 +79,17 @@ pub async fn check_update(
         .await
         .map_err(|e| e.to_string())?;
 
-    // 3. 有更新则暂存, 无更新则清空暂存
+    // 有更新则暂存, 无更新则清空暂存; notes/date 取自 manifest 自身字段
     if let Some(update) = maybe_update {
-        let version = update.version.trim_start_matches('v').to_string();
-        *pending.0.lock().map_err(|e| e.to_string())? = Some(update);
-        Ok(CheckUpdateResult {
+        let result = CheckUpdateResult {
             available: true,
             current_version,
-            version: Some(version),
-            notes: release.body.clone(),
-            date: release.published_at.clone(),
-        })
+            version: Some(update.version.trim_start_matches('v').to_string()),
+            notes: update.body.clone(),
+            date: update.date.map(|d| d.to_string()),
+        };
+        *pending.0.lock().map_err(|e| e.to_string())? = Some(update);
+        Ok(result)
     } else {
         *pending.0.lock().map_err(|e| e.to_string())? = None;
         Ok(unavailable())
@@ -168,80 +130,29 @@ pub async fn download_and_install_update(
 mod tests {
     use super::*;
 
-    /// 构造测试用 release 的便捷函数。
-    fn release(tag: &str, prerelease: bool, draft: bool) -> GithubRelease {
-        GithubRelease {
-            tag_name: tag.to_string(),
-            prerelease,
-            draft,
-            body: None,
-            published_at: None,
+    #[test]
+    fn stable_channel_uses_latest_release_manifest() {
+        assert_eq!(
+            manifest_url(Channel::Stable),
+            "https://github.com/Horldsence/vofa-NEXT/releases/latest/download/latest.json"
+        );
+    }
+
+    #[test]
+    fn beta_channel_uses_rolling_beta_tag_manifest() {
+        assert_eq!(
+            manifest_url(Channel::Beta),
+            "https://github.com/Horldsence/vofa-NEXT/releases/download/beta/beta-latest.json"
+        );
+    }
+
+    #[test]
+    fn manifests_are_valid_urls_and_never_hit_github_api() {
+        // 回归保护: manifest 必须走 release 资产服务, 不得回到 api.github.com
+        // (未认证限额 60 次/小时/IP, 超额 403)
+        for url in [STABLE_MANIFEST, BETA_MANIFEST] {
+            let parsed = reqwest::Url::parse(url).expect("manifest 必须是合法 URL");
+            assert_ne!(parsed.host_str(), Some("api.github.com"));
         }
-    }
-
-    #[test]
-    fn stable_channel_excludes_prereleases() {
-        let releases = vec![
-            release("v0.1.2", false, false),
-            release("v0.2.0-beta.1", true, false),
-        ];
-        let idx = select_release(&releases, Channel::Stable).expect("应选中稳定版");
-        assert_eq!(releases[idx].tag_name, "v0.1.2");
-    }
-
-    #[test]
-    fn beta_channel_includes_prereleases_and_picks_max_semver() {
-        let releases = vec![
-            release("v0.1.2", false, false),
-            release("v0.2.0-beta.1", true, false),
-            release("v0.2.0-beta.3", true, false),
-        ];
-        let idx = select_release(&releases, Channel::Beta).expect("应选中最高版本");
-        assert_eq!(releases[idx].tag_name, "v0.2.0-beta.3");
-    }
-
-    #[test]
-    fn drafts_are_excluded() {
-        let releases = vec![
-            release("v0.1.2", false, false),
-            release("v0.9.9", false, true),
-        ];
-        let idx = select_release(&releases, Channel::Stable).expect("draft 不应参与");
-        assert_eq!(releases[idx].tag_name, "v0.1.2");
-    }
-
-    #[test]
-    fn unparseable_tags_are_excluded() {
-        let releases = vec![
-            release("v0.1.2", false, false),
-            release("not-a-version", false, false),
-            release("release-nightly", true, false),
-        ];
-        let idx = select_release(&releases, Channel::Beta).expect("非法 tag 不应参与");
-        assert_eq!(releases[idx].tag_name, "v0.1.2");
-    }
-
-    #[test]
-    fn empty_or_all_excluded_returns_none() {
-        assert!(select_release(&[], Channel::Stable).is_none());
-        assert!(select_release(&[], Channel::Beta).is_none());
-
-        // beta 通道下全部是 draft / 非法 tag 时也为 None
-        let releases = vec![release("v0.9.9", false, true), release("nightly", true, false)];
-        assert!(select_release(&releases, Channel::Beta).is_none());
-
-        // stable 通道下只有 prerelease 时为 None
-        let releases = vec![release("v0.2.0-beta.1", true, false)];
-        assert!(select_release(&releases, Channel::Stable).is_none());
-    }
-
-    #[test]
-    fn release_beats_prerelease_of_same_version() {
-        let releases = vec![
-            release("v0.2.0-beta.3", true, false),
-            release("v0.2.0", false, false),
-        ];
-        let idx = select_release(&releases, Channel::Beta).expect("正式版应大于同版本 prerelease");
-        assert_eq!(releases[idx].tag_name, "v0.2.0");
     }
 }
