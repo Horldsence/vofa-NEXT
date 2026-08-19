@@ -1,6 +1,7 @@
 name: Build
 
 on:
+  pull_request:
   workflow_dispatch:
     inputs:
       version:
@@ -91,6 +92,41 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+
+      - name: Select fastest apt mirror
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          MIRRORS=(
+            "http://azure.archive.ubuntu.com/ubuntu"
+            "http://archive.ubuntu.com/ubuntu"
+            "http://security.ubuntu.com/ubuntu"
+            "https://mirrors.tuna.tsinghua.edu.cn/ubuntu"
+            "https://mirrors.aliyun.com/ubuntu"
+            "https://mirrors.ustc.edu.cn/ubuntu"
+            "https://mirrors.cloud.tencent.com/ubuntu"
+          )
+          BEST=""
+          BEST_TIME=999999
+          for m in "${MIRRORS[@]}"; do
+            t=$(curl -o /dev/null -s -w '%{time_total}' --connect-timeout 3 --max-time 10 "$m/dists/jammy/Release" || echo 999999)
+            echo "$m -> ${t}s"
+            if awk "BEGIN{exit !($t < $BEST_TIME)}"; then
+              BEST_TIME=$t
+              BEST=$m
+            fi
+          done
+          if [ -z "$BEST" ]; then
+            echo "::warning::所有镜像测速失败，保留默认源"
+            exit 0
+          fi
+          echo "Fastest mirror: $BEST (${BEST_TIME}s)"
+          sudo sed -i \
+            -e "s|http://azure.archive.ubuntu.com/ubuntu|$BEST|g" \
+            -e "s|http://archive.ubuntu.com/ubuntu|$BEST|g" \
+            -e "s|http://security.ubuntu.com/ubuntu|$BEST|g" \
+            /etc/apt/sources.list
+          grep -v '^#' /etc/apt/sources.list | grep . | head -5
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
