@@ -5,7 +5,7 @@ import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag } from '../../lib/dockDrag';
 import { t } from '../../i18n';
-import { WidgetPalette } from '../panels/WidgetPalette';
+import { WidgetPalette } from '../panels/widgetPalette';
 import { QuickStartPanel } from '../panels/QuickStartPanel';
 import { PanelLeft, RefreshCw } from 'lucide-react';
 import { AnimatedSwitch } from '../ui/AnimatedSwitch';

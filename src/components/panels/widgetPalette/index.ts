@@ -1,0 +1,1 @@
+export { WidgetPalette } from './WidgetPalette';

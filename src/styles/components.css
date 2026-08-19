@@ -879,9 +879,46 @@ body.dragging-dock * {
   will-change: transform, opacity;
 }
 
+/* ============ 控件面板行动画 ============ */
+/* 分组展开时新行入场: 淡入 + 轻微下滑 (仅展开窗口内挂载的行播放) */
+@keyframes palette-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 分组折叠时行退场: 淡出 + 轻微左移, 结束后行才从模型剔除 */
+@keyframes palette-row-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+}
+
+.animate-palette-row {
+  animation: palette-row-enter 150ms ease-out;
+  will-change: transform, opacity;
+}
+
+.animate-palette-row-exit {
+  animation: palette-row-exit 150ms ease-out forwards;
+  will-change: transform, opacity;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-rawdata-enter,
-  .animate-rawdata-row {
+  .animate-rawdata-row,
+  .animate-palette-row,
+  .animate-palette-row-exit {
     animation: none;
   }
 }
@@ -909,6 +946,8 @@ body.dragging-dock * {
   }
   .animate-rawdata-enter,
   .animate-rawdata-row,
+  .animate-palette-row,
+  .animate-palette-row-exit,
   .animate-led-pulse,
   .notif-progress {
     animation: none;
