@@ -327,6 +327,26 @@ updateReady: 更新已安装，重启后生效
 updateRelaunch: 重启应用
 updateUpToDate: 已是最新版本
 updateError: 更新失败
+updateAutoCheck: 自动检查更新
+updateAutoCheckDesc: 启动时自动检查是否有新版本
+updateChannel: 更新通道
+updateChannelDesc: 选择接收正式版或预发布版更新
+updateChannelStable: 正式版 (Stable)
+updateChannelBeta: 测试版 (Beta)
+updateChannelConfirmTitle: 切换更新通道
+updateChannelToBetaMsg: 切换到测试版通道后，将收到预发布版本更新，可能包含不稳定功能。确定切换吗？
+updateChannelToStableMsg: 切换到正式版通道后，仅接收正式版更新。确定切换吗？
+updateAvailableTitle: 发现新版本
+updateReleaseDate: 发布日期
+updateReleaseNotes: 更新内容
+updateNow: 立即更新
+updateLater: 稍后
+updateSkipVersion: 跳过此版本
+updateRestart: 重启更新
+updateRetry: 重试
+updateReadyHint: 更新已就绪，重启后生效
+updateConfirm: 确定
+updateCancel: 取消
 backupExportSuccess: 配置导出成功
 backupExportSuccessDesc: 应用完整配置已保存到文件
 backupImportSuccess: 配置导入成功

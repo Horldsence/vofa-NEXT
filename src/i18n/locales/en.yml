@@ -327,6 +327,26 @@ updateReady: Update installed, takes effect after restart
 updateRelaunch: Relaunch App
 updateUpToDate: You're up to date
 updateError: Update failed
+updateAutoCheck: Automatically check for updates
+updateAutoCheckDesc: Check for new versions on startup
+updateChannel: Update Channel
+updateChannelDesc: Choose to receive stable or pre-release updates
+updateChannelStable: Stable
+updateChannelBeta: Beta
+updateChannelConfirmTitle: Switch Update Channel
+updateChannelToBetaMsg: After switching to the Beta channel, you will receive pre-release updates that may contain unstable features. Continue?
+updateChannelToStableMsg: After switching to the Stable channel, you will only receive stable updates. Continue?
+updateAvailableTitle: New Version Available
+updateReleaseDate: Release date
+updateReleaseNotes: Release Notes
+updateNow: Update Now
+updateLater: Later
+updateSkipVersion: Skip This Version
+updateRestart: Restart to Update
+updateRetry: Retry
+updateReadyHint: Update ready, takes effect after restart
+updateConfirm: OK
+updateCancel: Cancel
 backupExportSuccess: Config exported
 backupExportSuccessDesc: Full app config saved to file
 backupImportSuccess: Config imported

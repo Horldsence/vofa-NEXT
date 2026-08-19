@@ -5,6 +5,7 @@ mod notify;
 mod pipeline;
 mod state;
 mod subscription;
+mod update;
 
 use state::AppState;
 use tauri::Manager;
@@ -37,6 +38,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(AppState::new())
+        .manage(update::PendingUpdate(Default::default()))
         .setup(|app| {
             // 构建原生菜单栏。
             // - macOS: 菜单位于系统全局菜单栏, 与窗口透明无关, 正常挂载。
@@ -179,6 +181,9 @@ pub fn run() {
             // 窗口
             commands::set_window_acrylic,
             commands::close_splashscreen,
+            // 应用更新
+            update::check_update,
+            update::download_and_install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

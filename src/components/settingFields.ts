@@ -72,6 +72,14 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
     descKey: 'settingDebugDesc',
     control: { kind: 'toggle' },
   },
+  {
+    category: 'general',
+    field: 'autoCheckUpdate',
+    labelKey: 'updateAutoCheck',
+    descKey: 'updateAutoCheckDesc',
+    control: { kind: 'toggle' },
+    keywords: ['update', '更新'],
+  },
   // Appearance
   {
     category: 'appearance',

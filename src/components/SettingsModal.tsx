@@ -37,7 +37,7 @@ import { SettingFieldDef, SETTING_FIELDS } from './settingFields';
 import { exportAppToFile, importAppFromFile } from '../lib/tauri/appExport';
 import { formatError } from '../lib/tauri/notifications';
 import { BackupModal } from './BackupModal';
-import { useUpdater } from '../lib/hooks/useUpdater';
+import { useUpdateStore, type UpdateChannel } from '../store/updateStore';
 
 const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   general: <SettingsIcon size={16} />,
@@ -74,8 +74,19 @@ export function SettingsModal() {
   const resetCategory = useSettingsStore((s) => s.resetCategory);
   const [themeEditorOpen, setThemeEditorOpen] = useState(false);
   const [backupModalOpen, setBackupModalOpen] = useState(false);
-  const { state: updateState, checkUpdate, install, restart } = useUpdater();
   const [appVersion, setAppVersion] = useState('');
+  /// 更新状态 — 与状态栏/更新弹窗共享 updateStore
+  const updateStatus = useUpdateStore((s) => s.status);
+  const updateInfo = useUpdateStore((s) => s.updateInfo);
+  const updateProgress = useUpdateStore((s) => s.progress);
+  const updateError = useUpdateStore((s) => s.error);
+  const checkForUpdate = useUpdateStore((s) => s.check);
+  const downloadAndInstall = useUpdateStore((s) => s.downloadAndInstall);
+  const relaunchApp = useUpdateStore((s) => s.relaunch);
+  const setUpdateChannel = useUpdateStore((s) => s.setChannel);
+  const updateChannel = useSettingsStore((s) => s.settings.general.updateChannel);
+  /// 待确认的通道切换 (非空时显示确认框)
+  const [pendingChannel, setPendingChannel] = useState<UpdateChannel | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -154,22 +165,26 @@ export function SettingsModal() {
   if (!isOpen) return null;
 
   // 更新按钮行为与状态文案
-  const updateBusy = updateState.status === 'checking' || updateState.status === 'downloading';
+  const updateBusy = updateStatus === 'checking' || updateStatus === 'downloading';
   const updateLabel =
-    updateState.status === 'checking'
+    updateStatus === 'checking'
       ? t(lang, 'updateChecking')
-      : updateState.status === 'available'
-        ? `${t(lang, 'updateDownload')} v${updateState.version}`
-        : updateState.status === 'downloading'
-          ? `${t(lang, 'updateDownloading')} ${updateState.percent}%`
-          : updateState.status === 'ready'
+      : updateStatus === 'available' && updateInfo
+        ? `${t(lang, 'updateDownload')} v${updateInfo.version}`
+        : updateStatus === 'downloading'
+          ? `${t(lang, 'updateDownloading')} ${updateProgress}%`
+          : updateStatus === 'ready'
             ? t(lang, 'updateRelaunch')
             : t(lang, 'updateCheck');
   const handleUpdateClick = () => {
-    if (updateState.status === 'ready') void restart();
-    else if (updateState.status === 'available') void install();
-    else if (!updateBusy) void checkUpdate();
+    if (updateStatus === 'ready') void relaunchApp();
+    else if (updateStatus === 'available') void downloadAndInstall();
+    else if (!updateBusy) void checkForUpdate('manual');
   };
+
+  // 更新通道显示值 — 未显式设置时按当前版本推导 (含 '-' 视为预发布)
+  const effectiveChannel: UpdateChannel =
+    updateChannel ?? (appVersion.includes('-') ? 'beta' : 'stable');
 
   // 渲染单个控件
   const renderControl = (def: SettingFieldDef) => {
@@ -383,23 +398,39 @@ export function SettingsModal() {
                 <RefreshCw size={14} className={updateBusy ? 'animate-spin' : ''} />
                 <span>{updateLabel}</span>
               </button>
-              {updateState.status === 'downloading' && (
+              <div className="flex items-center justify-between gap-2 py-1.5">
+                <span className="text-xs text-text-secondary" title={t(lang, 'updateChannelDesc')}>
+                  {t(lang, 'updateChannel')}
+                </span>
+                <select
+                  className="px-2 py-0.5 bg-bg-input text-text-primary border border-border rounded text-xs focus:outline-none focus:border-accent transition-colors cursor-pointer"
+                  value={effectiveChannel}
+                  onChange={(e) => {
+                    const next = e.target.value as UpdateChannel;
+                    if (next !== effectiveChannel) setPendingChannel(next);
+                  }}
+                >
+                  <option value="stable">{t(lang, 'updateChannelStable')}</option>
+                  <option value="beta">{t(lang, 'updateChannelBeta')}</option>
+                </select>
+              </div>
+              {updateStatus === 'downloading' && (
                 <div className="h-1 rounded-full bg-bg-hover overflow-hidden mb-1">
                   <div
                     className="h-full bg-accent transition-all duration-200"
-                    style={{ width: `${updateState.percent}%` }}
+                    style={{ width: `${updateProgress}%` }}
                   />
                 </div>
               )}
-              {updateState.status === 'up-to-date' && (
+              {updateStatus === 'up-to-date' && (
                 <div className="text-xs text-text-secondary pb-1">{t(lang, 'updateUpToDate')}</div>
               )}
-              {updateState.status === 'ready' && (
+              {updateStatus === 'ready' && (
                 <div className="text-xs text-text-secondary pb-1">{t(lang, 'updateReady')}</div>
               )}
-              {updateState.status === 'error' && (
+              {updateStatus === 'error' && updateError && (
                 <div className="text-xs text-red-400 pb-1 break-all">
-                  {t(lang, 'updateError')}: {updateState.message}
+                  {t(lang, 'updateError')}: {updateError}
                 </div>
               )}
             </div>
@@ -510,6 +541,48 @@ export function SettingsModal() {
         }
       />
       <BackupModal isOpen={backupModalOpen} onClose={() => setBackupModalOpen(false)} />
+      {/* 更新通道切换确认 — select 为受控值, 取消即自动回原值 */}
+      {pendingChannel && (
+        <div
+          className="fixed inset-0 bg-bg-overlay z-[9500] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]"
+          onClick={(e) => {
+            // 阻止冒泡到设置弹窗遮罩 (避免整个设置弹窗被关闭)
+            e.stopPropagation();
+            setPendingChannel(null);
+          }}
+        >
+          <div
+            className="w-[360px] max-w-[90vw] bg-bg-sidebar border border-border rounded-lg shadow-modal p-5 flex flex-col gap-3 animate-[settings-slide-in_0.2s_ease-out]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="text-sm font-semibold text-text-bright">
+              {t(lang, 'updateChannelConfirmTitle')}
+            </div>
+            <div className="text-xs text-text-secondary leading-relaxed">
+              {t(lang, pendingChannel === 'beta' ? 'updateChannelToBetaMsg' : 'updateChannelToStableMsg')}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                className="bg-transparent text-text-primary border border-border px-2.5 py-1 text-xs cursor-pointer rounded transition-all hover:bg-bg-hover hover:border-accent hover:text-text-bright"
+                onClick={() => setPendingChannel(null)}
+              >
+                {t(lang, 'updateCancel')}
+              </button>
+              <button
+                className="px-3 py-1 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-xs transition-colors hover:bg-bg-button-hover"
+                onClick={() => {
+                  setUpdateChannel(pendingChannel);
+                  setPendingChannel(null);
+                }}
+              >
+                {t(lang, 'updateConfirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

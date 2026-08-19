@@ -15,6 +15,12 @@ export interface AppSettings {
     showOnboarding: boolean;
     showContextualTips: boolean;
     debug: boolean;
+    /** 启动时自动检查更新 */
+    autoCheckUpdate: boolean;
+    /** 更新通道 (null = 按当前版本推导: 含 '-' 视为预发布 → beta, 否则 stable) */
+    updateChannel: 'stable' | 'beta' | null;
+    /** 用户选择跳过的更新版本号 (内部字段, 不进设置 UI) */
+    skippedUpdateVersion: string | null;
   };
   appearance: {
     theme: string;
@@ -90,6 +96,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     showOnboarding: true,
     showContextualTips: true,
     debug: false,
+    autoCheckUpdate: true,
+    updateChannel: null,
+    skippedUpdateVersion: null,
   },
   appearance: {
     theme: 'dark',

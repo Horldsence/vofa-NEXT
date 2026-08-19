@@ -7,6 +7,7 @@ import clsx from 'clsx';
 import { BufferUsageStats } from './BufferUsageStats';
 import { CanLoadAlarm } from './CanLoadAlarm';
 import { PipelineDropAlarm } from './PipelineDropAlarm';
+import { UpdateIndicator } from './UpdateIndicator';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePrimaryProtocolConfig, usePrimaryTransportConfig } from '../../lib/hooks/usePrimaryNodes';
 
@@ -196,6 +197,7 @@ export const StatusBar = memo(function StatusBar() {
       <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <CanLoadAlarm />
       <PipelineDropAlarm />
+      <UpdateIndicator />
       {tier < 3 && <BufferUsageStats compact={tier >= 2} />}
       <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <button

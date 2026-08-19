@@ -17,6 +17,7 @@ import { useAppStore } from './store/appStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useOnboardingStore } from './store/onboardingStore';
 import { useLayoutStore } from './store/layoutStore';
+import { useUpdateStore } from './store/updateStore';
 import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
 
@@ -26,6 +27,7 @@ const AboutModal = lazy(() => import('./components/AboutModal.lazy'));
 const CustomWidgetEditorContainer = lazy(() => import('./components/CustomWidgetEditorContainer.lazy'));
 const OnboardingWizard = lazy(() => import('./components/onboarding/OnboardingWizard.lazy'));
 const HelpCenterModal = lazy(() => import('./components/onboarding/HelpCenterModal.lazy'));
+const UpdateDialog = lazy(() => import('./components/UpdateDialog.lazy'));
 
 function App() {
   const initEventListeners = useAppStore((s) => s.initEventListeners);
@@ -44,6 +46,8 @@ function App() {
 
   const settingsLoaded = useSettingsStore((s) => s.loaded);
   const showOnboarding = useSettingsStore((s) => s.settings.general.showOnboarding);
+  const autoCheckUpdate = useSettingsStore((s) => s.settings.general.autoCheckUpdate);
+  const updateDialogOpen = useUpdateStore((s) => s.dialogOpen);
   const statusBarVisible = useSettingsStore((s) => s.settings.appearance.statusBarVisible);
   const hasOpenedOnboarding = useOnboardingStore((s) => s.hasOpenedThisSession);
   const openOnboarding = useOnboardingStore((s) => s.openWizard);
@@ -137,6 +141,13 @@ function App() {
       openOnboarding();
     }
   }, [settingsLoaded, showOnboarding, hasOpenedOnboarding, openOnboarding]);
+
+  // 设置加载完成后: 自动检查更新 (仅一次; auto 失败不打断用户)
+  useEffect(() => {
+    if (!settingsLoaded || !autoCheckUpdate) return;
+    void useUpdateStore.getState().check('auto');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded]);
 
   // 监听原生菜单事件 (menu:about / menu:settings / menu:new-tab / menu:close-tab / menu:toggle-sidebar)
   // 事件处理器内通过 getState() 读取最新状态, 避免订阅易变字段导致反复重订阅
@@ -280,6 +291,11 @@ function App() {
       {isHelpOpen && (
         <Suspense fallback={<SuspenseFallback overlay />}>
           <HelpCenterModal />
+        </Suspense>
+      )}
+      {updateDialogOpen && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <UpdateDialog />
         </Suspense>
       )}
     </div>

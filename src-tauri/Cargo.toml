@@ -111,4 +111,6 @@ tauri-plugin-notification = "2"
 tauri-plugin-store = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+semver = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 window-vibrancy = "0.6"
