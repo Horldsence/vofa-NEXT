@@ -10,12 +10,13 @@
 //! 前端 TS 镜像见 src/lib/utils/nodeDef.ts。
 
 use serde::{Deserialize, Serialize};
-use vofa_next_core::{ProtocolConfig, TransportConfig, ProtocolSchema};
+use schema_types::{DecoderBlockDef, ProtocolConfig, ProtocolSchema};
+use vofa_core::config::TransportConfig;
 use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
 
-use crate::decoder_block::DecoderBlockDef;
+use node_trigger::TriggerRuleDef;
+
 use crate::math_op::MathOp;
-use crate::trigger::TriggerRuleDef;
 
 // ============ 端口 handle 命名约定 ============
 

@@ -11,11 +11,11 @@ use std::collections::HashMap;
 
 use vofa_next_dsp::{DigitalFilter, IfftState, SpectrumOutput, WindowType};
 
+use node_frame_decoder::FrameParser;
+use node_kind::{DecoderBlockDef, NodeKind};
+
 use crate::compile::CompiledGraph;
-use crate::decoder_block::DecoderBlockDef;
 use crate::eval::{node_out_entry, set_port, SourceFramesMap};
-use crate::frame_decoder::FrameParser;
-use crate::node_kind::NodeKind;
 use crate::ValuesMap;
 
 impl CompiledGraph {
@@ -93,7 +93,7 @@ impl CompiledGraph {
                     let frame = source_frames.get(source_id);
                     let m = node_out_entry(out, node_id);
                     let names =
-                        crate::node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
+                        node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
                     for (i, name) in names.iter().enumerate() {
                         let v = frame
                             .and_then(|f| f.channels.get(i))

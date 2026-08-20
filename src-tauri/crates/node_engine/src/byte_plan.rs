@@ -12,8 +12,8 @@ use std::collections::HashMap;
 
 use vofa_next_buffer::Edge;
 
-use crate::compile::CompileError;
-use crate::node_kind::{NodeDef, NodeKind};
+use crate::CompileError;
+use node_kind::{NodeDef, NodeKind};
 
 /// 字节路由 — 一条字节边的下游端点
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,7 +122,8 @@ fn dfs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vofa_next_core::{ProtocolConfig, TransportConfig};
+    use schema_types::ProtocolConfig;
+use vofa_core::config::TransportConfig;
 
     fn transport(id: &str) -> NodeDef {
         NodeDef {

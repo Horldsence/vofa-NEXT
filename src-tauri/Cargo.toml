@@ -20,6 +20,10 @@ members = [
   "crates/diagnostic",
   "crates/logic_decoder",
   "crates/logic_types",
+  "crates/node_engine",
+  "crates/node_frame_decoder",
+  "crates/node_kind",
+  "crates/node_trigger",
   "crates/protocol_can_bridge",
   "crates/protocol_engine",
   "crates/protocol_float",
@@ -115,10 +119,15 @@ protocol_engine = { path = "crates/protocol_engine" }
 protocol_float = { path = "crates/protocol_float" }
 protocol_can_bridge = { path = "crates/protocol_can_bridge" }
 logic_decoder = { path = "crates/logic_decoder" }
+node_engine = { path = "crates/node_engine" }
+node_frame_decoder = { path = "crates/node_frame_decoder" }
+node_kind = { path = "crates/node_kind" }
+node_trigger = { path = "crates/node_trigger" }
 schema_engine = { path = "crates/schema_engine" }
 vofa-next-transport = { path = "crates/vofa-next-transport" }
 vofa-next-protocol = { path = "crates/vofa-next-protocol" }
 vofa-next-buffer = { path = "crates/vofa-next-buffer" }
+vofa_next_buffer = { path = "crates/vofa-next-buffer", package = "vofa-next-buffer" }
 vofa-next-nodes = { path = "crates/vofa-next-nodes" }
 vofa-next-dsp = { path = "crates/vofa-next-dsp" }
 vofa-next-automotive = { path = "crates/vofa-next-automotive" }

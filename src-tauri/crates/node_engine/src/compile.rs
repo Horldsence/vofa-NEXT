@@ -14,9 +14,10 @@ use std::collections::HashMap;
 use rustc_hash::FxBuildHasher;
 use vofa_next_buffer::Edge;
 
+use node_kind::{port_domain, NodeDef, NodeKind, PortDomain, RAW_DATA_PORT_PREFIX};
+
 use crate::byte_plan::BytePlan;
 use crate::eval::{CompiledEval, CompiledOp};
-use crate::node_kind::{port_domain, NodeDef, NodeKind, PortDomain, RAW_DATA_PORT_PREFIX};
 
 /// 编译后的图 — 包含拓扑序的评估计划
 pub struct CompiledGraph {
@@ -328,7 +329,7 @@ impl CompiledEval {
                             frame_sources.len() - 1
                         });
                     let names =
-                        crate::node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
+                        node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
                     for (i, port) in names.iter().enumerate() {
                         let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
                         ops.push(CompiledOp::ProtocolSource { src, ch: i, slot });
@@ -456,5 +457,4 @@ impl CompiledEval {
     }
 }
 
-#[cfg(test)]
-mod tests;
+// 测试模块已迁移至 src/compile_tests.rs / eval_tests.rs / equiv_tests.rs (顶层 #[cfg(test)])

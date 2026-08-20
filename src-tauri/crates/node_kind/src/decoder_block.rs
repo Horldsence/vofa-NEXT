@@ -16,7 +16,7 @@
 //! - Tail:     匹配帧尾固定字节序列 (可选, 帧结束标志)
 //! - Csv / AsciiField / Samples: schema 模型扩展块 (见 core::schema)
 
-pub use vofa_next_core::{
+pub use schema_types::{
     AsciiBase, DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
     LengthUnit,
 };

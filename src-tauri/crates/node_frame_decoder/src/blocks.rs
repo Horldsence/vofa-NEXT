@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use super::{ChecksumAlgorithm, FrameParser, ParseResult};
-use crate::decoder_block::{
+use schema_types::{
     DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
 };
 
@@ -344,5 +344,5 @@ pub(super) fn checksum_byte_len(algo: ChecksumAlgorithm) -> usize {
 ///
 /// 解析失败 (奇数长度 / 非法字符) 返回空 Vec。
 pub fn parse_hex(hex: &str) -> Vec<u8> {
-    vofa_next_core::parse_hex(hex)
+    schema_types::parse_hex(hex)
 }

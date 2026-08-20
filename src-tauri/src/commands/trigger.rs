@@ -6,7 +6,7 @@
 //! - 返回 `{ value, matched, text, output_type }` 给前端写入 `graphOutputs` 与 `customTextOutputs`
 
 use vofa_next_core::Result;
-use vofa_next_nodes::trigger::{TriggerMatcher, TriggerMatchResult, TriggerRuleDef};
+use vofa_next_nodes::{TriggerMatchResult, TriggerMatcher, TriggerRuleDef};
 
 /// 执行一次触发器匹配
 ///

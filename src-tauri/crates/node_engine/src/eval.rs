@@ -7,13 +7,13 @@
 use std::collections::HashMap;
 
 use rustc_hash::FxBuildHasher;
-use vofa_next_core::DataFrame;
-use vofa_next_dsp::{DigitalFilter, IfftState};
+use vofa_core::DataFrame;
+use vofa_next_dsp::{DigitalFilter, FilterKind, IfftState};
 
-use crate::frame_decoder::FrameParser;
-use crate::math_op::MathOp;
+use node_frame_decoder::FrameParser;
+use node_kind::MathOp;
+
 use crate::ValuesMap;
-use vofa_next_dsp::FilterKind;
 
 /// 多源最新帧缓存 — key = 全局 Protocol 节点 id, value = 该源最近一帧
 /// (latest-value 融合: 每个源独立缓存, 求值时按源读取)
@@ -43,7 +43,7 @@ pub(crate) fn set_port(m: &mut HashMap<String, f32, FxBuildHasher>, port: &str, 
 }
 
 /// 编译期槽位操作 — 平坦操作序列 (拓扑序 == eval_order), 逐帧评估零字符串哈希
-pub(crate) enum CompiledOp {
+pub enum CompiledOp {
     /// ProtocolSource: source_frames[frame_sources[src]].channels[ch] → slot
     /// (源缺失/通道越界写 0.0, 与未连接语义一致)
     ProtocolSource { src: usize, ch: usize, slot: usize },
@@ -287,7 +287,4 @@ impl CompiledEval {
     }
 }
 
-#[cfg(test)]
-mod equiv_tests;
-#[cfg(test)]
-mod tests;
+// 测试模块已迁移至 src/equiv_tests.rs / src/eval_tests.rs (顶层 #[cfg(test)])

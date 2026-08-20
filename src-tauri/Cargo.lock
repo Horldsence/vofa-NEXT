@@ -2392,6 +2392,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "node_engine"
+version = "0.1.2"
+dependencies = [
+ "node_frame_decoder",
+ "node_kind",
+ "rustc-hash",
+ "schema_types",
+ "serde",
+ "thiserror 1.0.69",
+ "vofa-next-buffer",
+ "vofa-next-dsp",
+ "vofa_core",
+]
+
+[[package]]
+name = "node_frame_decoder"
+version = "0.1.2"
+dependencies = [
+ "log",
+ "schema_types",
+ "serde",
+]
+
+[[package]]
+name = "node_kind"
+version = "0.1.2"
+dependencies = [
+ "node_trigger",
+ "schema_types",
+ "serde",
+ "serde_json",
+ "vofa-next-dsp",
+ "vofa_core",
+]
+
+[[package]]
+name = "node_trigger"
+version = "0.1.2"
+dependencies = [
+ "glob",
+ "log",
+ "regex",
+ "serde",
+]
+
+[[package]]
 name = "notify-rust"
 version = "4.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5169,15 +5215,10 @@ dependencies = [
 name = "vofa-next-nodes"
 version = "0.1.2"
 dependencies = [
- "glob",
- "log",
- "regex",
- "rustc-hash",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "vofa-next-buffer",
- "vofa-next-core",
+ "node_engine",
+ "node_frame_decoder",
+ "node_kind",
+ "node_trigger",
  "vofa-next-dsp",
 ]
 

@@ -3,9 +3,8 @@
 //! encode_frame / encode_frames → FrameParser (parse / feed)
 //! 验证编码→解析闭环: 输出值应与输入一致
 
-use super::test_data::FrameDecoderTestData;
-use super::{ChecksumAlgorithm, FrameParser};
-use crate::decoder_block::{DecoderBlockDef, FieldType};
+use node_frame_decoder::{ChecksumAlgorithm, FrameDecoderTestData, FrameParser};
+use schema_types::{DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType, LengthUnit};
 use std::collections::HashMap;
 
 fn header(id: &str, hex: &str) -> DecoderBlockDef {

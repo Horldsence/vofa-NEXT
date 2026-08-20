@@ -1,7 +1,7 @@
 //! FrameParser 核心测试 — parse_hex / 校验算法 / 状态机端到端解析
 
-use super::*;
-use crate::decoder_block::{DecoderBlockDef, FieldType};
+use node_frame_decoder::{parse_hex, ChecksumAlgorithm, FrameParser};
+use schema_types::{DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType, LengthUnit};
 
 #[test]
 fn test_parse_hex_spaces() {

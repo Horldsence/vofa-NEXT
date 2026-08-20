@@ -1,12 +1,14 @@
 //! 测试共享辅助 — 各模块测试共用的节点/边/帧源构造器
 
 use vofa_next_buffer::Edge;
-use vofa_next_core::{ProtocolConfig, TransportConfig, DataFrame};
-use vofa_next_dsp::{SpectrumOutput, WindowType};
+use schema_types::ProtocolConfig;
+use vofa_core::{DataFrame};
+use vofa_core::config::TransportConfig;
+use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
 
-use crate::eval::SourceFramesMap;
-use crate::node_kind::{NodeDef, NodeKind};
-use crate::{FilterKind, MathOp};
+use node_kind::{MathOp, NodeDef, NodeKind};
+
+use crate::SourceFramesMap;
 
 pub(crate) fn make_protocol_source(
     id: &str,

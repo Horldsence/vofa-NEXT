@@ -45,7 +45,7 @@ use std::collections::HashMap;
 
 use super::blocks::{block_should_execute, checksum_byte_len, parse_hex};
 use super::ChecksumAlgorithm;
-use crate::decoder_block::{
+use schema_types::{
     DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
 };
 

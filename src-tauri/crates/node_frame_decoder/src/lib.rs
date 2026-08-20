@@ -18,19 +18,13 @@ mod test_data;
 
 use std::collections::HashMap;
 
-use crate::decoder_block::DecoderBlockDef;
+use schema_types::DecoderBlockDef;
 
 pub use blocks::parse_hex;
 pub use test_data::FrameDecoderTestData;
 
-/// 校验算法类型已迁移至 `vofa-next-core::schema` (纯数据 + 纯函数求值);
-/// 此处 re-export 保持 `frame_decoder::ChecksumAlgorithm` 引用不变。
-pub use vofa_next_core::ChecksumAlgorithm;
-
-#[cfg(test)]
-mod roundtrip_tests;
-#[cfg(test)]
-mod tests;
+/// 校验算法类型 — 来源 `schema_types::ChecksumAlgorithm`
+pub use schema_types::ChecksumAlgorithm;
 
 // ============ ParsedFrame ============
 

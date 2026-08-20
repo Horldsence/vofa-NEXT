@@ -1,11 +1,11 @@
 //! 数值平面求值测试 — evaluate (慢路径) 与 CompiledEval::run (槽位快路径)
 
-use std::collections::HashMap;
+use node_kind::MathOp;
+use vofa_next_dsp::{DigitalFilter, FilterKind};
 
 use super::*;
 use crate::compile::CompiledGraph;
 use crate::test_helpers::*;
-use crate::FilterKind;
 
 fn empty_frames() -> SourceFramesMap {
     SourceFramesMap::default()
@@ -417,7 +417,7 @@ fn test_protocol_source_named_ports_slot_run() {
 #[test]
 fn test_protocol_source_port_names_fallback() {
     // port_names 越界/空名回退 "ch{i}"; None 保持 ch0..chN (旧前端兼容)
-    use crate::node_kind::protocol_source_port_names;
+    use node_kind::protocol_source_port_names;
     assert_eq!(protocol_source_port_names(None, 2), vec!["ch0", "ch1"]);
     assert_eq!(
         protocol_source_port_names(Some(&[]), 2),

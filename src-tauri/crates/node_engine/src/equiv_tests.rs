@@ -2,12 +2,13 @@
 
 use std::collections::HashMap;
 
+use node_kind::{DecoderBlockDef, MathOp, NodeDef, NodeKind};
+use vofa_next_dsp::{FilterKind, IfftState, SpectrumOutput, WindowType};
+
 use super::SourceFramesMap;
 use crate::compile::CompiledGraph;
-use crate::decoder_block::DecoderBlockDef;
 use crate::test_helpers::*;
-use crate::{FilterKind, MathOp, NodeDef, NodeKind, SpectrumOutput, ValuesMap, WindowType};
-use vofa_next_dsp::IfftState;
+use crate::ValuesMap;
 
 fn empty_frames() -> SourceFramesMap {
     SourceFramesMap::default()
@@ -136,7 +137,7 @@ fn test_compiled_eval_equivalence() {
             kind: NodeKind::FrameDecoder {
                 blocks: vec![DecoderBlockDef::Field {
                     id: "f".to_string(),
-                    field_type: crate::FieldType::UInt8,
+                    field_type: node_kind::FieldType::UInt8,
                     port_name: "value".to_string(),
                     length_ref: None,
                     match_id: None,
