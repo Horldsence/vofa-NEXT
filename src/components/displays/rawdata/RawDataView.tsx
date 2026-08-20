@@ -380,7 +380,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
         const native = window.getSelection();
-        if (selection.selected.size === 0 && native && !native.isCollapsed) return;
+        if (native && !native.isCollapsed) return;
         e.preventDefault();
         void copySelected();
       }
