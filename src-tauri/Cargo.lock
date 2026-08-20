@@ -4944,6 +4944,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "transport_can_bridge"
+version = "0.1.2"
+dependencies = [
+ "log",
+ "nusb",
+ "serialport",
+ "thiserror 1.0.69",
+ "tokio",
+ "vofa-next-core",
+]
+
+[[package]]
+name = "transport_core"
+version = "0.1.2"
+dependencies = [
+ "async-trait",
+ "log",
+ "parking_lot",
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "transport_can_bridge",
+ "transport_net",
+ "transport_serial",
+ "vofa-next-core",
+]
+
+[[package]]
+name = "transport_net"
+version = "0.1.2"
+dependencies = [
+ "log",
+ "thiserror 1.0.69",
+ "tokio",
+ "vofa-next-core",
+]
+
+[[package]]
+name = "transport_serial"
+version = "0.1.2"
+dependencies = [
+ "log",
+ "serialport",
+ "thiserror 1.0.69",
+ "tokio",
+ "vofa-next-core",
+ "windows-sys 0.52.0",
+]
+
+[[package]]
 name = "transpose"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5238,18 +5288,10 @@ dependencies = [
 name = "vofa-next-transport"
 version = "0.1.2"
 dependencies = [
- "anyhow",
- "async-trait",
- "log",
- "nusb",
- "parking_lot",
- "serde",
- "serde_json",
- "serialport",
- "thiserror 1.0.69",
- "tokio",
- "vofa-next-core",
- "windows-sys 0.52.0",
+ "transport_can_bridge",
+ "transport_core",
+ "transport_net",
+ "transport_serial",
 ]
 
 [[package]]

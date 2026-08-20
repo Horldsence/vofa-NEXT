@@ -131,7 +131,10 @@ fn generate_link_bytes(
 }
 
 /// 按协议类型生成线缆格式的字节流 (legacy 路径)
-fn generate_bytes(
+///
+/// `pub` 用于 `tests/` 集成测试验证字节格式; 协议层不应直接调用。
+#[doc(hidden)]
+pub fn generate_bytes(
     channels: usize,
     signal: TestSignal,
     t: f32,
@@ -229,7 +232,10 @@ fn generate_bytes(
 
 /// 生成一帧通道浮点值 (与原实现保持一致)
 /// t 为生成器启动以来的真实流逝时间 (秒), 作为所有信号的时间基准
-fn generate_frame(channels: usize, signal: TestSignal, t: f32) -> Vec<f32> {
+///
+/// `pub` 用于 `tests/` 集成测试验证信号形状; 协议层不应直接调用。
+#[doc(hidden)]
+pub fn generate_frame(channels: usize, signal: TestSignal, t: f32) -> Vec<f32> {
     (0..channels)
         .map(|i| {
             let freq = 1.0 + i as f32;
@@ -298,75 +304,4 @@ fn generate_frame(channels: usize, signal: TestSignal, t: f32) -> Vec<f32> {
             }
         })
         .collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_justfloat_format() {
-        let protocol = ProtocolConfig::JustFloat { channels: Some(2) };
-        let data = generate_bytes(2, TestSignal::Sine, 0.0, &protocol, 0);
-        // 2 channels * 4 bytes + 4 byte tail
-        assert_eq!(data.len(), 12);
-        // 帧尾
-        assert_eq!(&data[8..12], &[0x00, 0x00, 0x80, 0x7f]);
-    }
-
-    #[test]
-    fn test_firewater_format() {
-        let protocol = ProtocolConfig::FireWater { channels: Some(2) };
-        let data = generate_bytes(2, TestSignal::Sine, 0.0, &protocol, 0);
-        let s = String::from_utf8(data.clone()).unwrap();
-        assert!(s.ends_with('\n'));
-        assert_eq!(s.matches(',').count(), 1);
-    }
-
-    #[test]
-    fn test_slcan_format() {
-        let protocol = ProtocolConfig::Slcan;
-        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
-        let s = String::from_utf8(data).unwrap();
-        assert!(s.starts_with('t'));
-        assert!(s.ends_with('\r'));
-        // t + 3 (id) + 1 (dlc) + 16 (8 bytes hex) + 1 (\r) = 22
-        assert_eq!(s.len(), 22);
-    }
-
-    #[test]
-    fn test_candle_format() {
-        let protocol = ProtocolConfig::CandleLight;
-        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
-        assert_eq!(data.len(), 24);
-        assert_eq!(data[0], 0x11); // RX cmd
-        assert_eq!(data[12], 8); // dlc
-    }
-
-    #[test]
-    fn test_rawdata_format() {
-        let protocol = ProtocolConfig::RawData;
-        let data = generate_bytes(4, TestSignal::Dc, 0.0, &protocol, 42);
-        // 4 channel bytes + 4 byte counter
-        assert_eq!(data.len(), 8);
-        assert_eq!(&data[4..8], &42u32.to_le_bytes());
-    }
-
-    #[test]
-    fn test_logic_decode_format() {
-        let protocol = ProtocolConfig::LogicDecode {
-            decoder: vofa_next_core::LogicDecoderConfig::Uart {
-                baud_rate: 115200,
-                data_bits: 8,
-                parity: vofa_next_core::Parity::None,
-                stop_bits: vofa_next_core::StopBits::One,
-                channel: 0,
-            },
-        };
-        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
-        // 8 samples per tick
-        assert_eq!(data.len(), 8);
-        // 通道 0 应有方波翻转
-        assert_ne!(data[0] & 0x01, 0);
-    }
 }

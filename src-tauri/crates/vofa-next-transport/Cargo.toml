@@ -1,20 +1,14 @@
 [package]
 name = "vofa-next-transport"
+description = "VOFA-NEXT 传输层 façade — 聚合 transport_core/serial/net/can_bridge 子 crate"
 version.workspace = true
 edition.workspace = true
 
-[dependencies]
-vofa-next-core = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tokio = { workspace = true }
-log = { workspace = true }
-thiserror = { workspace = true }
-anyhow = { workspace = true }
-serialport = "4"
-async-trait = "0.1"
-parking_lot = "0.12"
-nusb = "0.2"
+[lints]
+workspace = true
 
-[target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Registry"] }
+[dependencies]
+transport_core = { workspace = true }
+transport_serial = { workspace = true }
+transport_net = { workspace = true }
+transport_can_bridge = { workspace = true }

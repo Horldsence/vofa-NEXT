@@ -29,6 +29,10 @@ members = [
   "crates/protocol_float",
   "crates/schema_engine",
   "crates/schema_types",
+  "crates/transport_can_bridge",
+  "crates/transport_core",
+  "crates/transport_net",
+  "crates/transport_serial",
   "crates/vofa-next-core",
   "crates/vofa-next-transport",
   "crates/vofa-next-protocol",
@@ -124,6 +128,10 @@ node_frame_decoder = { path = "crates/node_frame_decoder" }
 node_kind = { path = "crates/node_kind" }
 node_trigger = { path = "crates/node_trigger" }
 schema_engine = { path = "crates/schema_engine" }
+transport_can_bridge = { path = "crates/transport_can_bridge" }
+transport_core = { path = "crates/transport_core" }
+transport_net = { path = "crates/transport_net" }
+transport_serial = { path = "crates/transport_serial" }
 vofa-next-transport = { path = "crates/vofa-next-transport" }
 vofa-next-protocol = { path = "crates/vofa-next-protocol" }
 vofa-next-buffer = { path = "crates/vofa-next-buffer" }

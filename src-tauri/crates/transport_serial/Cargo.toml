@@ -1,0 +1,18 @@
+[package]
+name = "transport_serial"
+description = "VOFA-NEXT 串口传输 — 同步串口 + Windows COM Description 枚举"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa-next-core = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+serialport = "4"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_Devices_DeviceAndDriverInstallation", "Win32_System_Registry"] }

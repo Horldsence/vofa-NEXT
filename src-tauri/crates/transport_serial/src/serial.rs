@@ -1,4 +1,5 @@
-use serialport::{self, DataBits, FlowControl, Parity, SerialPortType, StopBits};
+use serialport::{DataBits, FlowControl, Parity, SerialPortType, StopBits};
+use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
