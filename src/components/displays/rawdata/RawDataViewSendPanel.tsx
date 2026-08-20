@@ -37,7 +37,8 @@ export function RawDataViewSendPanel({
       {appendOptions.map((opt) => (
         <button
           key={opt.mode}
-          className={`px-1.5 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-xs font-mono cursor-pointer transition-all hover:border-accent hover:text-text-primary ${appendMode === opt.mode ? 'bg-accent border-accent text-text-inverse' : ''}`}
+          className={`px-1.5 py-0.5 border rounded-sm text-xs font-mono cursor-pointer transition-all ${appendMode === opt.mode ? 'bg-accent border-accent text-text-inverse' : 'bg-bg-input border-border text-text-secondary hover:border-accent hover:text-text-primary'}`}
+          aria-pressed={appendMode === opt.mode}
           onClick={() => onAppendModeChange(opt.mode)}
         >
           {opt.label}
