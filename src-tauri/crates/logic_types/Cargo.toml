@@ -1,0 +1,13 @@
+[package]
+name = "logic_types"
+description = "逻辑分析仪数据类型 — 采样、事件、过滤、缓冲"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

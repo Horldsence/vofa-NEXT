@@ -10,7 +10,19 @@ name = "vofa_next_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
-members = ["crates/vofa-next-core", "crates/vofa-next-transport", "crates/vofa-next-protocol", "crates/vofa-next-buffer", "crates/vofa-next-nodes", "crates/vofa-next-dsp", "crates/vofa-next-automotive"]
+members = [
+  "crates/can_types",
+  "crates/core",
+  "crates/diagnostic",
+  "crates/logic_types",
+  "crates/vofa-next-core",
+  "crates/vofa-next-transport",
+  "crates/vofa-next-protocol",
+  "crates/vofa-next-buffer",
+  "crates/vofa-next-nodes",
+  "crates/vofa-next-dsp",
+  "crates/vofa-next-automotive",
+]
 
 [workspace.package]
 edition = "2021"
@@ -80,6 +92,10 @@ glob = "0.3"
 anyhow = "1"
 rustc-hash = "2"
 vofa-next-core = { path = "crates/vofa-next-core" }
+vofa_core = { path = "crates/core" }
+can_types = { path = "crates/can_types" }
+logic_types = { path = "crates/logic_types" }
+diagnostic = { path = "crates/diagnostic" }
 vofa-next-transport = { path = "crates/vofa-next-transport" }
 vofa-next-protocol = { path = "crates/vofa-next-protocol" }
 vofa-next-buffer = { path = "crates/vofa-next-buffer" }

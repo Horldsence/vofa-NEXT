@@ -427,6 +427,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "can_types"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "vofa_core",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -786,6 +795,16 @@ dependencies = [
  "quote",
  "rustc_version",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "diagnostic"
+version = "0.1.2"
+dependencies = [
+ "can_types",
+ "serde",
+ "serde_json",
+ "vofa_core",
 ]
 
 [[package]]
@@ -2163,6 +2182,15 @@ name = "log"
 version = "0.4.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
+
+[[package]]
+name = "logic_types"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "vofa_core",
+]
 
 [[package]]
 name = "lru-slab"
@@ -5021,9 +5049,13 @@ dependencies = [
 name = "vofa-next-core"
 version = "0.1.2"
 dependencies = [
+ "can_types",
+ "diagnostic",
+ "logic_types",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "vofa_core",
 ]
 
 [[package]]
@@ -5077,6 +5109,15 @@ dependencies = [
  "tokio",
  "vofa-next-core",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "vofa_core"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

@@ -1,0 +1,14 @@
+[package]
+name = "diagnostic"
+description = "诊断协议类型 — ISO-TP / UDS / OBD-II / J1939"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

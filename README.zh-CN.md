@@ -51,6 +51,7 @@
 - [版本控制](#版本控制)
 - [开源协议](#开源协议)
 - [鸣谢](#鸣谢)
+- [打赏](#打赏)
 
 ## 项目简介
 
@@ -404,3 +405,8 @@ cd src-tauri && cargo test
 [issues-url]: https://github.com/horldsence/vofa-next/issues
 [license-shield]: https://img.shields.io/github/license/horldsence/vofa-next.svg?style=flat-square
 [license-url]: https://github.com/horldsence/vofa-next/blob/master/LICENSE
+
+## 打赏
+
+？！赏赏！？
+**爱发电**: [@Horldsence](https://ifdian.net/a/Horldsence)

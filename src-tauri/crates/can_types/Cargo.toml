@@ -1,0 +1,13 @@
+[package]
+name = "can_types"
+description = "CAN 数据类型 — 帧/方向/波特率/缓冲/负载统计"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
