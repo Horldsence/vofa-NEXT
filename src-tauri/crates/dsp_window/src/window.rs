@@ -66,7 +66,7 @@ impl WindowType {
 ///
 /// # 示例
 /// ```
-/// use vofa_next_dsp::{apply_window, WindowType};
+/// use dsp_window::{apply_window, WindowType};
 /// let mut data = vec![1.0; 1024];
 /// apply_window(&WindowType::Hann, &mut data);
 /// // 端点接近 0, 中间接近 1

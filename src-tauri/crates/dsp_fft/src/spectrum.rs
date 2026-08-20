@@ -13,7 +13,7 @@ use rustfft::num_complex::Complex32;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-pub use crate::window::WindowType;
+pub use dsp_window::WindowType;
 
 /// 频谱输出模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -162,7 +162,7 @@ impl SpectrumAnalyzer {
         }
 
         // 应用窗函数 (in-place)
-        crate::window::apply_window(&self.window_type, &mut self.fft_input);
+        dsp_window::apply_window(&self.window_type, &mut self.fft_input);
 
         // FFT — process 会读取 fft_input, 写入 fft_output
         if self

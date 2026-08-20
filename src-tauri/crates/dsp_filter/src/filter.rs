@@ -4,7 +4,7 @@
 //!
 //! 用法:
 //! ```
-//! use vofa_next_dsp::{DigitalFilter, FilterPreset};
+//! use dsp_filter::{DigitalFilter, FilterPreset};
 //! let mut f = DigitalFilter::from_preset(FilterPreset::Lowpass { cutoff: 100.0, sample_rate: 1000.0 });
 //! let out = f.process(0.5);
 //! ```

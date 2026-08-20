@@ -1,0 +1,10 @@
+[package]
+name = "dsp_filter"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }

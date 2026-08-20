@@ -4,7 +4,6 @@ edition = "2021"
 version = "0.1.2"
 
 [dependencies]
-serde = { workspace = true }
-rustfft = "6"
-realfft = "3"
-log = { workspace = true }
+dsp_window = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_fft = { workspace = true }

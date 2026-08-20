@@ -102,7 +102,7 @@ mod tests {
     use super::*;
     use crate::spectrum::SpectrumAnalyzer;
     use crate::spectrum::SpectrumOutput;
-    use crate::window::WindowType;
+    use dsp_window::WindowType;
     use std::f32::consts::PI;
 
     #[test]

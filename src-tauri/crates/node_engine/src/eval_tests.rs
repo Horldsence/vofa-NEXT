@@ -318,8 +318,8 @@ fn test_filter_lowpass_preserves_dc() {
             "f1",
             "t1",
             FilterKind::IIR {
-                b: vofa_next_dsp::filter::lowpass_biquad(100.0, 1000.0).0,
-                a: vofa_next_dsp::filter::lowpass_biquad(100.0, 1000.0).1,
+                b: vofa_next_dsp::lowpass_biquad(100.0, 1000.0).0,
+                a: vofa_next_dsp::lowpass_biquad(100.0, 1000.0).1,
             },
         ),
     ];

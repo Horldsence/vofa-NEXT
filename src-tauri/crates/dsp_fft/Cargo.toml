@@ -1,0 +1,14 @@
+[package]
+name = "dsp_fft"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+rustfft = "6"
+realfft = "3"
+log = { workspace = true }
+dsp_window = { workspace = true }

@@ -973,6 +973,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "dsp_fft"
+version = "0.1.2"
+dependencies = [
+ "dsp_window",
+ "log",
+ "realfft",
+ "rustfft",
+ "serde",
+]
+
+[[package]]
+name = "dsp_filter"
+version = "0.1.2"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "dsp_window"
+version = "0.1.2"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "dtoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5282,10 +5307,9 @@ dependencies = [
 name = "vofa-next-dsp"
 version = "0.1.2"
 dependencies = [
- "log",
- "realfft",
- "rustfft",
- "serde",
+ "dsp_fft",
+ "dsp_filter",
+ "dsp_window",
 ]
 
 [[package]]

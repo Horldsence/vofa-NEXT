@@ -1,7 +1,7 @@
 //! 数字滤波器集成测试
 
 use std::f32::consts::PI;
-use vofa_next_dsp::{
+use dsp_filter::{
     bandpass_biquad, bandstop_biquad, highpass_biquad, lowpass_biquad, DigitalFilter, FilterKind,
     FilterPreset,
 };

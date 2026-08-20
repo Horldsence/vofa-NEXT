@@ -21,6 +21,9 @@ members = [
   "crates/can_types",
   "crates/core",
   "crates/diagnostic",
+  "crates/dsp_filter",
+  "crates/dsp_fft",
+  "crates/dsp_window",
   "crates/logic_decoder",
   "crates/logic_types",
   "crates/node_engine",
@@ -141,6 +144,9 @@ vofa-next-buffer = { path = "crates/vofa-next-buffer" }
 vofa_next_buffer = { path = "crates/vofa-next-buffer", package = "vofa-next-buffer" }
 vofa-next-nodes = { path = "crates/vofa-next-nodes" }
 vofa-next-dsp = { path = "crates/vofa-next-dsp" }
+dsp_window = { path = "crates/dsp_window" }
+dsp_filter = { path = "crates/dsp_filter" }
+dsp_fft = { path = "crates/dsp_fft" }
 vofa-next-automotive = { path = "crates/vofa-next-automotive" }
 automotive_isotp = { path = "crates/automotive_isotp" }
 automotive_diag = { path = "crates/automotive_diag" }
