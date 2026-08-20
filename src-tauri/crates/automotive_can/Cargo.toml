@@ -1,0 +1,16 @@
+[package]
+name = "automotive_can"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa-next-core = { workspace = true }
+vofa-next-transport = { workspace = true }
+vofa-next-protocol = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+async-trait = "0.1"
+parking_lot = "0.12"

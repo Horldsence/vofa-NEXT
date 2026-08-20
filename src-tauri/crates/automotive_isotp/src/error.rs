@@ -1,3 +1,5 @@
+//! ISO-TP / 诊断引擎公共错误
+
 use thiserror::Error;
 
 /// 诊断引擎错误

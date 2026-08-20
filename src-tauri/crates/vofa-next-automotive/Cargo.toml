@@ -7,14 +7,8 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
+automotive_can = { workspace = true }
+automotive_diag = { workspace = true }
+automotive_isotp = { workspace = true }
 vofa-next-transport = { workspace = true }
-vofa-next-protocol = { workspace = true }
 libautomotive = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-tokio = { workspace = true }
-log = { workspace = true }
-thiserror = { workspace = true }
-async-trait = "0.1"
-parking_lot = "0.12"

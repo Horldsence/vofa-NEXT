@@ -1,0 +1,11 @@
+[package]
+name = "automotive_diag"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa-next-core = { workspace = true }
+libautomotive = { workspace = true }

@@ -240,6 +240,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
+name = "automotive_can"
+version = "0.1.2"
+dependencies = [
+ "async-trait",
+ "log",
+ "parking_lot",
+ "tokio",
+ "vofa-next-core",
+ "vofa-next-protocol",
+ "vofa-next-transport",
+]
+
+[[package]]
+name = "automotive_diag"
+version = "0.1.2"
+dependencies = [
+ "libautomotive",
+ "vofa-next-core",
+]
+
+[[package]]
+name = "automotive_isotp"
+version = "0.1.2"
+dependencies = [
+ "async-trait",
+ "log",
+ "thiserror 1.0.69",
+ "tokio",
+ "vofa-next-core",
+ "vofa-next-transport",
+]
+
+[[package]]
 name = "aws-lc-rs"
 version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5212,16 +5245,10 @@ dependencies = [
 name = "vofa-next-automotive"
 version = "0.1.2"
 dependencies = [
- "async-trait",
+ "automotive_can",
+ "automotive_diag",
+ "automotive_isotp",
  "libautomotive",
- "log",
- "parking_lot",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
- "vofa-next-core",
- "vofa-next-protocol",
  "vofa-next-transport",
 ]
 

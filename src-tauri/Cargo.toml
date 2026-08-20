@@ -11,6 +11,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
 members = [
+  "crates/automotive_can",
+  "crates/automotive_diag",
+  "crates/automotive_isotp",
   "crates/buffer_ring",
   "crates/buffer_databuffer",
   "crates/buffer_graph",
@@ -139,6 +142,9 @@ vofa_next_buffer = { path = "crates/vofa-next-buffer", package = "vofa-next-buff
 vofa-next-nodes = { path = "crates/vofa-next-nodes" }
 vofa-next-dsp = { path = "crates/vofa-next-dsp" }
 vofa-next-automotive = { path = "crates/vofa-next-automotive" }
+automotive_isotp = { path = "crates/automotive_isotp" }
+automotive_diag = { path = "crates/automotive_diag" }
+automotive_can = { path = "crates/automotive_can" }
 libautomotive = "0.1"
 
 [build-dependencies]
