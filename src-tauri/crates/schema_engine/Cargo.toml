@@ -1,0 +1,19 @@
+[package]
+name = "schema_engine"
+description = "VOFA-NEXT Schema 协议引擎 — 自定义帧 schema 流式解析/编码"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }
+schema_types = { workspace = true }
+protocol_engine = { workspace = true }
+logic_decoder = { workspace = true }
+protocol_can_bridge = { workspace = true }
+protocol_float = { workspace = true }
+serde = { workspace = true }

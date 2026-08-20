@@ -366,6 +366,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "buffer_databuffer"
+version = "0.1.2"
+dependencies = [
+ "buffer_ring",
+ "serde",
+ "serde_json",
+ "vofa-next-core",
+]
+
+[[package]]
+name = "buffer_graph"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "vofa-next-core",
+]
+
+[[package]]
+name = "buffer_raw"
+version = "0.1.2"
+dependencies = [
+ "base64 0.22.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "buffer_ring"
+version = "0.1.2"
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -432,7 +464,6 @@ version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
- "vofa_core",
 ]
 
 [[package]]
@@ -2184,6 +2215,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ceec5bc11778974d1bcb055b18002eba7f4b3518b6a0081b3af5f21666da9ad"
 
 [[package]]
+name = "logic_decoder"
+version = "0.1.2"
+dependencies = [
+ "logic_types",
+ "protocol_engine",
+ "vofa_core",
+]
+
+[[package]]
 name = "logic_types"
 version = "0.1.2"
 dependencies = [
@@ -2999,6 +3039,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "protocol_can_bridge"
+version = "0.1.2"
+dependencies = [
+ "can_types",
+ "protocol_engine",
+ "vofa_core",
+]
+
+[[package]]
+name = "protocol_engine"
+version = "0.1.2"
+dependencies = [
+ "can_types",
+ "logic_types",
+ "serde",
+ "vofa_core",
+]
+
+[[package]]
+name = "protocol_float"
+version = "0.1.2"
+dependencies = [
+ "protocol_engine",
+ "vofa_core",
+]
+
+[[package]]
 name = "quick-xml"
 version = "0.41.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3442,6 +3509,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "91c1b7e4904c873ef0710c1f407dde2e6287de2bebc1bbbf7d430bb7cbffd939"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "schema_engine"
+version = "0.1.2"
+dependencies = [
+ "can_types",
+ "logic_decoder",
+ "logic_types",
+ "protocol_can_bridge",
+ "protocol_engine",
+ "protocol_float",
+ "schema_types",
+ "serde",
+ "vofa_core",
+]
+
+[[package]]
+name = "schema_types"
+version = "0.1.2"
+dependencies = [
+ "can_types",
+ "diagnostic",
+ "logic_types",
+ "serde",
+ "serde_json",
+ "vofa_core",
 ]
 
 [[package]]
@@ -5040,6 +5134,10 @@ name = "vofa-next-buffer"
 version = "0.1.2"
 dependencies = [
  "base64 0.22.1",
+ "buffer_databuffer",
+ "buffer_graph",
+ "buffer_raw",
+ "buffer_ring",
  "serde",
  "serde_json",
  "vofa-next-core",
@@ -5052,9 +5150,8 @@ dependencies = [
  "can_types",
  "diagnostic",
  "logic_types",
+ "schema_types",
  "serde",
- "serde_json",
- "thiserror 1.0.69",
  "vofa_core",
 ]
 
@@ -5088,8 +5185,11 @@ dependencies = [
 name = "vofa-next-protocol"
 version = "0.1.2"
 dependencies = [
- "serde",
- "serde_json",
+ "logic_decoder",
+ "protocol_can_bridge",
+ "protocol_engine",
+ "protocol_float",
+ "schema_engine",
  "vofa-next-core",
 ]
 
@@ -5115,6 +5215,7 @@ dependencies = [
 name = "vofa_core"
 version = "0.1.2"
 dependencies = [
+ "can_types",
  "serde",
  "serde_json",
  "thiserror 1.0.69",

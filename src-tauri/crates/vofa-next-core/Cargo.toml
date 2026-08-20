@@ -8,9 +8,8 @@ workspace = true
 
 [dependencies]
 serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
 vofa_core = { workspace = true }
 can_types = { workspace = true }
 logic_types = { workspace = true }
 diagnostic = { workspace = true }
+schema_types = { workspace = true }

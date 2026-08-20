@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use rustc_hash::FxBuildHasher;
-use vofa_next_buffer::graph::Edge;
+use vofa_next_buffer::Edge;
 
 use crate::byte_plan::BytePlan;
 use crate::eval::{CompiledEval, CompiledOp};

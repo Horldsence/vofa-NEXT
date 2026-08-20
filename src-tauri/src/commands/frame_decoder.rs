@@ -1,5 +1,5 @@
 use vofa_next_core::Result;
-use vofa_next_protocol::InputFormat;
+use vofa_next_protocol::{detect_format, parse_ascii, parse_hex, InputFormat};
 
 /// 帧解码器手动测试结果 (与前端 FrameDecoderManualResult 对应)
 #[derive(Debug, Clone, serde::Serialize)]
@@ -30,7 +30,6 @@ pub async fn parse_frame_decoder_input(
     enable_fps: bool,
 ) -> Result<FrameDecoderManualResult> {
     use vofa_next_nodes::FrameParser;
-    use vofa_next_protocol::engine::{detect_format, parse_ascii, parse_hex};
 
     // 1. 解析输入字符串为字节
     let actual_format = match format {

@@ -274,7 +274,7 @@ async fn feed_protocol(
 mod tests {
     use super::*;
     use crate::state::AppState;
-    use vofa_next_buffer::graph::Edge;
+    use vofa_next_buffer::Edge;
     use vofa_next_core::{ProtocolConfig, TransportConfig};
     use vofa_next_nodes::{BytePlan, DecoderBlockDef, FieldType, NodeDef};
 

@@ -1,0 +1,14 @@
+[package]
+name = "protocol_engine"
+description = "VOFA-NEXT 协议引擎核心 — ProtocolEngine trait + 输入/输出容器 + 解析/切分自由函数"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }

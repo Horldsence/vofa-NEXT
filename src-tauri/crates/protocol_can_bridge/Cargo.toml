@@ -1,0 +1,13 @@
+[package]
+name = "protocol_can_bridge"
+description = "VOFA-NEXT CAN 桥接协议引擎 — Slcan + CandleLight + RawData"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+protocol_engine = { workspace = true }

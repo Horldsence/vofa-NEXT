@@ -11,10 +11,20 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
 members = [
+  "crates/buffer_ring",
+  "crates/buffer_databuffer",
+  "crates/buffer_graph",
+  "crates/buffer_raw",
   "crates/can_types",
   "crates/core",
   "crates/diagnostic",
+  "crates/logic_decoder",
   "crates/logic_types",
+  "crates/protocol_can_bridge",
+  "crates/protocol_engine",
+  "crates/protocol_float",
+  "crates/schema_engine",
+  "crates/schema_types",
   "crates/vofa-next-core",
   "crates/vofa-next-transport",
   "crates/vofa-next-protocol",
@@ -91,11 +101,21 @@ regex = "1"
 glob = "0.3"
 anyhow = "1"
 rustc-hash = "2"
+buffer_ring = { path = "crates/buffer_ring" }
+buffer_databuffer = { path = "crates/buffer_databuffer" }
+buffer_graph = { path = "crates/buffer_graph" }
+buffer_raw = { path = "crates/buffer_raw" }
 vofa-next-core = { path = "crates/vofa-next-core" }
 vofa_core = { path = "crates/core" }
 can_types = { path = "crates/can_types" }
 logic_types = { path = "crates/logic_types" }
 diagnostic = { path = "crates/diagnostic" }
+schema_types = { path = "crates/schema_types" }
+protocol_engine = { path = "crates/protocol_engine" }
+protocol_float = { path = "crates/protocol_float" }
+protocol_can_bridge = { path = "crates/protocol_can_bridge" }
+logic_decoder = { path = "crates/logic_decoder" }
+schema_engine = { path = "crates/schema_engine" }
 vofa-next-transport = { path = "crates/vofa-next-transport" }
 vofa-next-protocol = { path = "crates/vofa-next-protocol" }
 vofa-next-buffer = { path = "crates/vofa-next-buffer" }

@@ -11,7 +11,9 @@
 //!
 //! ## 设计原则
 //!
-//! 1. **零依赖外部 crate**:仅依赖 [`vofa_core`]、`serde`。
+//! 1. **零依赖外部 crate**:仅依赖 `serde` / `serde_json`(无 `vofa_core` 依赖,
+//!    以打破与 `vofa_core::config::SlcanConfig` 的 Cargo 循环 — `vofa_core` Layer 0
+//!    需要本 crate 的 `CanBitrate` 用于传输层配置)。
 //! 2. **serde 优先**:所有 wire 类型派生 `Serialize`/`Deserialize`,与前端 IPC。
 //! 3. **单职责**:本 crate 不引入 `tokio` / `serialport` 等 I/O 依赖。
 

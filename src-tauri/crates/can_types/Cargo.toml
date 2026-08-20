@@ -8,6 +8,5 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa_core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

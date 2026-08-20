@@ -1,0 +1,16 @@
+[package]
+name = "schema_types"
+description = "帧 schema 数据类型 — 校验算法、字段类型、解码/编码块、HEX 解析、协议配置"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }
+diagnostic = { workspace = true }

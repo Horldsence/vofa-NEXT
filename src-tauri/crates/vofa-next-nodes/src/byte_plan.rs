@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use vofa_next_buffer::graph::Edge;
+use vofa_next_buffer::Edge;
 
 use crate::compile::CompileError;
 use crate::node_kind::{NodeDef, NodeKind};
@@ -122,7 +122,7 @@ fn dfs(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vofa_next_core::config::{ProtocolConfig, TransportConfig};
+    use vofa_next_core::{ProtocolConfig, TransportConfig};
 
     fn transport(id: &str) -> NodeDef {
         NodeDef {

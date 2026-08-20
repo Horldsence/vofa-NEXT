@@ -1,6 +1,6 @@
 use crate::state::{AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, StringOutputSnapshot};
 use tauri::{ipc::Channel, AppHandle, State};
-use vofa_next_buffer::graph::Edge;
+use vofa_next_buffer::Edge;
 use vofa_next_core::{Error, Result};
 use vofa_next_nodes::{BytePlan, NodeDef};
 

@@ -1,9 +1,16 @@
 [package]
 name = "vofa-next-protocol"
+description = "VOFA-NEXT 协议栈 façade — 聚合 protocol_engine / protocol_can_bridge / protocol_float / logic_decoder / schema_engine"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 vofa-next-core = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+protocol_engine = { workspace = true }
+protocol_float = { workspace = true }
+protocol_can_bridge = { workspace = true }
+logic_decoder = { workspace = true }
+schema_engine = { workspace = true }

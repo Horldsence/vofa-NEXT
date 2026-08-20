@@ -1,0 +1,13 @@
+[package]
+name = "logic_decoder"
+description = "VOFA-NEXT 逻辑分析仪解码引擎 — UART/I2C/SPI"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+logic_types = { workspace = true }
+protocol_engine = { workspace = true }

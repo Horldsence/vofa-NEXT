@@ -1,32 +1,29 @@
-//! # vofa-next-core
+//! # vofa-next-core (façade)
 //!
-//! 历史说明:本 crate 早期集中放置所有共享类型。
+//! **Stage A 收尾**:本 crate 已转为纯 re-export 壳,所有实际类型迁出至下游 5 个 crate:
 //!
-//! **拆分进度**(Stage A 第一批已迁出):
-//! - [`vofa_core`]        — 基础类型 error/frame/serial_params
-//! - [`can_types`]        — CAN 帧/缓冲/负载统计
-//! - [`logic_types`]      — 逻辑分析仪类型/缓冲
-//! - [`diagnostic`]       — UDS/OBD-II/J1939 配置与消息
+//! | 子 crate           | 承载类型                                              |
+//! |--------------------|------------------------------------------------------|
+//! | [`vofa_core`]      | Error/Result, DataFrame/RawData, ConnectionState/PortInfo/TransportStats,<br>Parity/StopBits/FlowControl, TransportConfig + 7 backend, WidgetConfig + 9 widget, PipelineConfig |
+//! | [`can_types`]      | CanFrame/CanBuffer/CanBitrate/CanLoadStats/CandleDeviceInfo ... |
+//! | [`logic_types`]    | LogicSample/LogicBuffer/DecodedEvent/LogicDecoderConfig ... |
+//! | [`diagnostic`]     | UdsService/ObdMode/J1939Id/DiagnosticConfig ...       |
+//! | [`schema_types`]   | ChecksumAlgorithm/DecoderBlockDef/ProtocolSchema/ProtocolConfig/parse_hex/encode_by_blocks ... |
 //!
-//! 新 crate 提供"替代导入路径",可独立使用。本 crate 内部仍持有
-//! `pub mod can; pub mod logic;` 等旧模块(含 schema/config)用于过渡,
-//! 旧路径 `vofa_next_core::DataFrame` 等仍可工作。
+//! 所有原有 `vofa_next_core::TypeName` 路径在根命名空间下仍然可用;
+//! 旧的 `vofa_next_core::config::*` / `::can::*` / `::logic::*` / `::diagnostic::*`
+//! 子模块路径**已删除**,调用方请改用根路径或直接用底层 crate。
 //!
-//! **Stage H (清理阶段)** 将删除旧 can/logic/diagnostic 模块,
-//! 保留本 crate 作为纯 façade re-export。
+//! ## Stage H (清理阶段)
+//!
+//! 本 crate 最终将被整体移除,所有调用方改用 5 个底层 crate。façade 仅作短期过渡。
 
-pub mod can;
-pub mod config;
-pub mod diagnostic;
-pub mod error;
-pub mod frame;
-pub mod logic;
-pub mod schema;
-
-pub use can::*;
-pub use config::*;
+pub use can_types::*;
 pub use diagnostic::*;
-pub use error::{Error, Result};
-pub use frame::*;
-pub use logic::*;
-pub use schema::*;
+pub use logic_types::*;
+pub use schema_types::*;
+pub use vofa_core::config::*;
+pub use vofa_core::serial_params::*;
+pub use vofa_core::{
+    now_us, DataFrame, Error, PortInfo, RawData, Result, TransportStats, ConnectionState,
+};

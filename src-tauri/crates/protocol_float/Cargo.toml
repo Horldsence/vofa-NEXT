@@ -1,0 +1,12 @@
+[package]
+name = "protocol_float"
+description = "VOFA-NEXT 浮点协议引擎 — JustFloat + FireWater"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+protocol_engine = { workspace = true }

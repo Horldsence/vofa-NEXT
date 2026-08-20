@@ -10,8 +10,7 @@
 //! 前端 TS 镜像见 src/lib/utils/nodeDef.ts。
 
 use serde::{Deserialize, Serialize};
-use vofa_next_core::config::{ProtocolConfig, TransportConfig};
-use vofa_next_core::schema::ProtocolSchema;
+use vofa_next_core::{ProtocolConfig, TransportConfig, ProtocolSchema};
 use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
 
 use crate::decoder_block::DecoderBlockDef;
