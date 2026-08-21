@@ -7,7 +7,7 @@ use vofa_core::{Parity, StopBits};
 // ============ 采样与事件 ============
 
 /// 逻辑分析仪采样 — 多通道数字电平快照
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct LogicSample {
     /// 时间戳(微秒)
     pub timestamp: u64,
@@ -51,18 +51,18 @@ impl LogicBatch {
     }
 
     /// 采样数
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.samples.len()
     }
 
     /// 是否空
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.samples.is_empty()
     }
 }
 
 /// I2C 事件
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum I2cEvent {
     Start,
     Stop,
@@ -71,7 +71,7 @@ pub enum I2cEvent {
 }
 
 /// 协议解码结果
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum DecodedEvent {
     Uart {
         timestamp: u64,
@@ -115,7 +115,7 @@ impl DecodedEvent {
 ///
 /// 所有字段为 None 时匹配全部采样;设置掩码后按
 /// `(channels & mask) == (value & mask)` 匹配(value 缺省为 0)。
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct LogicSampleFilter {
     /// 通道位图掩码 — 只关心这些通道
     pub channel_mask: Option<u32>,
@@ -150,6 +150,7 @@ impl LogicSampleFilter {
 /// `byte_pattern` 对事件载荷字节(UART byte / I2C addr+data / SPI mosi+miso)
 /// 做子串匹配。
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
 pub struct DecodedEventFilter {
     /// 协议类型过滤(大小写不敏感): "uart" | "i2c" | "spi"
     pub kind: Option<String>,
@@ -164,7 +165,7 @@ impl DecodedEventFilter {
     }
 
     /// 事件协议名(小写)是否与过滤器匹配
-    fn kind_matches(event_kind: &str, kind: &str) -> bool {
+    const fn kind_matches(event_kind: &str, kind: &str) -> bool {
         kind.eq_ignore_ascii_case(event_kind)
     }
 

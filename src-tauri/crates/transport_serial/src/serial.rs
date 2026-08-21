@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{Error, PortInfo, Result, SerialConfig};
+use vofa_core::{Error, PortInfo, Result, SerialConfig};
 
 #[cfg(windows)]
 use crate::windows_ports::port_descriptions;
@@ -70,26 +70,26 @@ pub fn spawn(
             _ => DataBits::Eight,
         })
         .parity(match config.parity {
-            vofa_next_core::Parity::Odd => Parity::Odd,
-            vofa_next_core::Parity::Even => Parity::Even,
-            vofa_next_core::Parity::None => Parity::None,
+            vofa_core::Parity::Odd => Parity::Odd,
+            vofa_core::Parity::Even => Parity::Even,
+            vofa_core::Parity::None => Parity::None,
         })
         .stop_bits(match config.stop_bits {
-            vofa_next_core::StopBits::Two => StopBits::Two,
-            vofa_next_core::StopBits::One => StopBits::One,
+            vofa_core::StopBits::Two => StopBits::Two,
+            vofa_core::StopBits::One => StopBits::One,
         })
         .flow_control(match config.flow_control {
-            vofa_next_core::FlowControl::Software => FlowControl::Software,
-            vofa_next_core::FlowControl::Hardware => FlowControl::Hardware,
-            vofa_next_core::FlowControl::None => FlowControl::None,
+            vofa_core::FlowControl::Software => FlowControl::Software,
+            vofa_core::FlowControl::Hardware => FlowControl::Hardware,
+            vofa_core::FlowControl::None => FlowControl::None,
         })
         .timeout(Duration::from_millis(50))
         .open()
-        .map_err(|e| Error::Transport(format!("打开串口失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("打开串口失败: {e}")))?;
 
     let mut write_port = port
         .try_clone()
-        .map_err(|e| Error::Transport(format!("克隆串口失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("克隆串口失败: {e}")))?;
 
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
@@ -99,15 +99,15 @@ pub fn spawn(
     let data_tx_read = data_tx.clone();
     let cancel_read = cancel.clone();
     std::thread::spawn(move || {
-        let mut buf = [0u8; 65536];
+        let mut buf = vec![0u8; 65536].into_boxed_slice();
         while !cancel_read.load(Ordering::Relaxed) {
             match port.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
                     let _ = data_tx_read.send(buf[..n].to_vec());
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(_) => break,
             }
         }
@@ -121,7 +121,7 @@ pub fn spawn(
             match write_rx.blocking_recv() {
                 Some(data) => {
                     if let Err(e) = write_port.write_all(&data) {
-                        log::error!("串口写入失败: {}", e);
+                        log::error!("串口写入失败: {e}");
                         break;
                     }
                 }

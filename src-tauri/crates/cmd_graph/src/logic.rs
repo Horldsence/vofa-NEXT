@@ -5,9 +5,10 @@ use pipeline_stream::{
 };
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use vofa_next_core::{
-    DecodedEventBatch, DecodedEventFilter, LogicSampleBatch, LogicSampleFilter, Result,
+use logic_types::{
+    DecodedEventBatch, DecodedEventFilter, LogicSampleBatch, LogicSampleFilter,
 };
+use vofa_core::Result;
 
 // ============ 逻辑分析仪命令 ============
 

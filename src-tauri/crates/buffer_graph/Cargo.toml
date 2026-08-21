@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-vofa-next-core = { workspace = true }
+vofa_core = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

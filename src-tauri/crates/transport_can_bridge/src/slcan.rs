@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{Error, Result, SlcanConfig};
+use vofa_core::{Error, Result, SlcanConfig};
 
 /// 启动 slcan 传输
 ///

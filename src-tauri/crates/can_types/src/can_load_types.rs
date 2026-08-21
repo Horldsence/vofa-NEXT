@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 单个 ID 的负载统计快照
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CanIdLoadStats {
     pub id: u32,
     pub extended: bool,
@@ -47,6 +47,7 @@ pub struct CanIdLoadHistory {
 
 /// 负载历史采样点
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+// Note: does not derive Eq because f64 fields make it impossible
 pub struct CanLoadHistoryPoint {
     /// 时间戳(微秒)
     pub timestamp: u64,

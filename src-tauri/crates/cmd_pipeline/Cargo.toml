@@ -11,5 +11,6 @@ workspace = true
 app_state = { workspace = true }
 log = { workspace = true }
 tauri = { version = "2", features = [] }
-vofa-next-core = { workspace = true }
-vofa-next-nodes = { workspace = true }
+vofa_core = { workspace = true }
+node_engine = { workspace = true }
+node_trigger = { workspace = true }

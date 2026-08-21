@@ -13,6 +13,6 @@ log = { workspace = true }
 pipeline_stream = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
-vofa-next-buffer = { workspace = true }
-vofa-next-core = { workspace = true }
+buffer_databuffer = { workspace = true }
+vofa_core = { workspace = true }
 window-vibrancy = "0.6"

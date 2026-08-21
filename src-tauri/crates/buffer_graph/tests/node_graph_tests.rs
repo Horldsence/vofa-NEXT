@@ -1,5 +1,5 @@
 use buffer_graph::{Edge, NodeGraph};
-use vofa_next_core::DataFrame;
+use vofa_core::DataFrame;
 
 fn make_edge(id: &str, src: &str, src_h: &str, tgt: &str, tgt_h: &str) -> Edge {
     Edge {

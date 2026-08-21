@@ -26,6 +26,7 @@ pub(crate) struct UartState {
 }
 
 /// I2C 解码状态机
+#[allow(clippy::struct_excessive_bools)]
 pub(crate) struct I2cState {
     /// 当前 SDA 电平
     pub(crate) sda_prev: bool,
@@ -84,15 +85,14 @@ impl LogicDecoderEngine {
 
     /// 获取通道位电平
     #[inline]
-    pub(crate) fn channel_bit(sample: &LogicSample, channel: u8) -> bool {
+    pub(crate) const fn channel_bit(sample: &LogicSample, channel: u8) -> bool {
         (sample.channels >> channel) & 1 == 1
     }
 
     /// 当前时间戳 (微秒)
     pub(crate) fn now_us() -> u64 {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_micros() as u64)
             .unwrap_or(0)
     }

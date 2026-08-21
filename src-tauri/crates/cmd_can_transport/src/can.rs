@@ -5,7 +5,8 @@ use pipeline_stream::{
 };
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use vofa_next_core::{CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo, Result};
+use can_types::{CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo};
+use vofa_core::Result;
 
 // ============ CAN 帧相关 ============
 
@@ -34,7 +35,7 @@ pub async fn send_can_frame(
             routes.iter().find_map(|r| {
                 matches!(
                     nodes.get(&r.target).map(|n| &n.kind),
-                    Some(vofa_next_nodes::NodeKind::Protocol { .. })
+                    Some(node_kind::NodeKind::Protocol { .. })
                 )
                 .then(|| r.target.clone())
             })
@@ -50,7 +51,7 @@ pub async fn send_can_frame(
             .get(&proto_id)
             .cloned()
             .ok_or_else(|| {
-                vofa_next_core::Error::Config(format!("协议节点不存在: {}", proto_id))
+                vofa_core::Error::Config(format!("协议节点不存在: {}", proto_id))
             })?;
         let engine = st.lock().engine.clone();
         let bytes = engine.lock().encode_can(&frame);
@@ -203,5 +204,5 @@ pub async fn get_can_buffer_info(state: State<'_, AppState>) -> Result<usize> {
 /// 列出所有 candleLight 设备
 #[tauri::command]
 pub async fn list_candle_devices() -> Result<Vec<CandleDeviceInfo>> {
-    vofa_next_transport::candle::list_devices()
+    transport_can_bridge::candle::list_devices()
 }

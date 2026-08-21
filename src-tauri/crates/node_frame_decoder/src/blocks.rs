@@ -22,6 +22,7 @@ impl FrameParser {
     /// - `data`: 完整字节切片
     /// - `start`: 帧起始 (Header 开头) 在 data 中的索引
     /// - `frame_start`: Header 末尾 (= 字段起始) 在 data 中的索引
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub(super) fn try_parse_frame_from(
         &self,
         data: &[u8],
@@ -41,7 +42,6 @@ impl FrameParser {
             match block {
                 DecoderBlockDef::Header { .. } => {
                     // Header 已匹配, 跳过
-                    continue;
                 }
                 DecoderBlockDef::Length {
                     field_type,
@@ -105,19 +105,18 @@ impl FrameParser {
                     // 确定读取字节数
                     let n = if *field_type == FieldType::Bytes {
                         // Bytes 类型: 用 length_ref 引用的 length_value
-                        if let Some(ref_id) = length_ref {
-                            length_values.get(ref_id).map(|&v| v as usize)
-                        } else {
-                            // 无 length_ref, 默认 0 字节
-                            Some(0)
-                        }
+                        // 无 length_ref 时默认 0 字节; 未找到 ref 时跳过块 (返回 None)
+                        length_ref
+                            .as_ref()
+                            .map_or(Some(0), |ref_id| {
+                                length_values.get(ref_id).map(|&v| v as usize)
+                            })
                     } else {
                         field_type.byte_len()
                     };
 
-                    let n = match n {
-                        Some(n) => n,
-                        None => continue, // 无法确定长度, 跳过
+                    let Some(n) = n else {
+                        continue; // 无法确定长度, 跳过
                     };
 
                     if cursor + n > data.len() {
@@ -249,9 +248,7 @@ impl FrameParser {
                 // FrameDecoder 的 FrameParser 暂不支持, 跳过 (不消耗字节)
                 DecoderBlockDef::Csv { .. }
                 | DecoderBlockDef::AsciiField { .. }
-                | DecoderBlockDef::Samples { .. } => {
-                    continue;
-                }
+                | DecoderBlockDef::Samples { .. } => {}
             }
         }
 
@@ -274,15 +271,14 @@ impl FrameParser {
 // ============ 工具函数 ============
 
 /// 判断块是否应执行 (基于 match_id 与 id_value)
-pub(super) fn block_should_execute(match_id: Option<i64>, id_value: Option<i64>) -> bool {
-    match match_id {
-        None => true,                   // 无 match_id → 始终执行
-        Some(v) => id_value == Some(v), // 有 match_id → 仅当 id_value 匹配时执行
-    }
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) fn block_should_execute(match_id: Option<i64>, id_value: Option<i64>) -> bool {
+    match_id.is_none_or(|v| id_value == Some(v))
 }
 
 /// 在 buf 中查找 subsequence
-pub(super) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() {
         return Some(0);
     }
@@ -295,6 +291,7 @@ pub(super) fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> 
 /// - `bit_offset`: 起始位偏移 (0-7, MSB first)
 /// - `bit_length`: 位长度 (1-32)
 /// - `is_signed`: 是否带符号 (true=最高位为符号位, 二补码)
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap)]
 fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bool) -> f32 {
     if bit_length == 0 || bytes.is_empty() {
         return 0.0;
@@ -310,7 +307,7 @@ fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bool) 
             break;
         }
         let bit = (bytes[byte_idx] >> bit_in_byte) & 1;
-        value = (value << 1) | bit as u32;
+        value = (value << 1) | u32::from(bit);
     }
 
     // 符号扩展
@@ -331,7 +328,8 @@ fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bool) 
 }
 
 /// 获取校验算法输出的字节长度 (实现已迁移至 core::schema)
-pub(super) fn checksum_byte_len(algo: ChecksumAlgorithm) -> usize {
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) const fn checksum_byte_len(algo: ChecksumAlgorithm) -> usize {
     algo.byte_len()
 }
 

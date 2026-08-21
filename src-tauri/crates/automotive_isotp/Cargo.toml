@@ -7,8 +7,10 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
-vofa-next-transport = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+diagnostic = { workspace = true }
+transport_core = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }

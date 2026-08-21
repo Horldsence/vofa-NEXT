@@ -8,11 +8,9 @@
 use parking_lot::Mutex;
 use pipeline_stream::StreamSource;
 use std::sync::Arc;
-use vofa_next_buffer::{DirectionFilter, RawDataBatch, RawDataCollector, RawDrain, SearchPattern};
-use vofa_next_core::{
-    CanBuffer, CanFrameBatch, CanFrameFilter, DecodedBuffer, DecodedEventBatch, DecodedEventFilter,
-    LogicBuffer, LogicSampleBatch, LogicSampleFilter,
-};
+use buffer_raw::{DirectionFilter, RawDataBatch, RawDataCollector, RawDrain, SearchPattern};
+use can_types::{CanBuffer, CanFrameBatch, CanFrameFilter};
+use logic_types::{DecodedBuffer, DecodedEventBatch, DecodedEventFilter, LogicBuffer, LogicSampleBatch, LogicSampleFilter};
 
 /// 带方向与搜索过滤的原始字节流 — 游标增量读取
 ///

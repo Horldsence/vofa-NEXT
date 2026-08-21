@@ -102,7 +102,7 @@ impl CanBuffer {
     }
 
     /// 最大容量
-    pub fn capacity(&self) -> usize {
+    pub const fn capacity(&self) -> usize {
         self.max_size
     }
 }

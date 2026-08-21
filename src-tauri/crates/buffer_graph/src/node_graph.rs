@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use vofa_next_core::DataFrame;
+use vofa_core::DataFrame;
 
 use crate::{Edge, RoutedData};
 

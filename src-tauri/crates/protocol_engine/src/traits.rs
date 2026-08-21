@@ -78,7 +78,7 @@ impl FeedOutput {
         }
     }
     /// 按序合并另一份输出 (并行 worker 结果按块序逐个 append)
-    pub fn append(&mut self, other: FeedOutput) {
+    pub fn append(&mut self, other: Self) {
         self.frames.extend(other.frames);
         self.can_frames.extend(other.can_frames);
         self.logic_samples.extend(other.logic_samples);

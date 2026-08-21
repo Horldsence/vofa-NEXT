@@ -11,9 +11,11 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use vofa_next_buffer::RawDataCollector;
-use vofa_next_dsp::{DigitalFilter, IfftState, SpectrumAnalyzer, SpectrumResult};
-use vofa_next_nodes::{CompiledGraph, FrameParser, SourceFramesMap};
+use buffer_raw::RawDataCollector;
+use dsp_filter::DigitalFilter;
+use dsp_fft::{IfftState, SpectrumAnalyzer, SpectrumResult};
+use node_engine::{CompiledGraph, SourceFramesMap};
+use node_frame_decoder::FrameParser;
 
 /// 单个图输出快照 — 通过 Channel 推送到前端
 ///
@@ -28,8 +30,8 @@ pub struct GraphOutputSnapshot {
     /// (仅后端内部使用, 不下发前端)
     #[serde(skip)]
     pub graphs_version: u64,
-    /// widgetId -> portId -> value (FxHash 快速哈希表, 见 vofa_next_nodes::ValuesMap)
-    pub values: vofa_next_nodes::ValuesMap,
+    /// widgetId -> portId -> value (FxHash 快速哈希表, 见 node_engine::ValuesMap)
+    pub values: node_engine::ValuesMap,
 }
 
 /// Custom widget 输入批次 — 后端推送到前端 iframe

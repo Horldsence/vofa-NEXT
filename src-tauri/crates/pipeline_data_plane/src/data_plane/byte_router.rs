@@ -10,7 +10,7 @@
 //! - Transport 节点 `tx`: registry.send (协议转换回注 / 命令发送落地)
 
 use tauri::AppHandle;
-use vofa_next_nodes::{
+use node_kind::{
     NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE, TRANSPORT_TX_HANDLE,
 };
 
@@ -99,7 +99,7 @@ async fn route_inner(
                 .await;
             }
             (NodeKind::FrameDecoder { .. }, FRAME_DECODER_IN_HANDLE | LOOPBACK_IN_HANDLE) => {
-                let ts = vofa_next_core::now_us();
+                let ts = vofa_core::now_us();
                 if crate::decoder_feed::feed_decoder_by_id(
                     &plane.eval,
                     &route.target,
@@ -221,7 +221,7 @@ async fn feed_protocol(
         let mut buf = plane.can_buffer.lock();
         let mut stats = plane.can_load_stats.lock();
         for f in out.can_frames {
-            if f.direction == vofa_next_core::CanDirection::Rx {
+            if f.direction == can_types::CanDirection::Rx {
                 stats.push(&f);
             }
             buf.push(f);

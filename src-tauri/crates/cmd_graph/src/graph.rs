@@ -2,9 +2,10 @@ use app_state::{AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, 
 use pipeline_data_plane::data_plane::{byte_router, frame_dispatch};
 use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
 use tauri::{ipc::Channel, AppHandle, State};
-use vofa_next_buffer::Edge;
-use vofa_next_core::{Error, Result};
-use vofa_next_nodes::{BytePlan, NodeDef};
+use buffer_graph::Edge;
+use vofa_core::{Error, Result};
+use node_engine::BytePlan;
+use node_kind::NodeDef;
 
 // ============ 节点图 (后端化重构) ============
 
@@ -15,7 +16,7 @@ use vofa_next_nodes::{BytePlan, NodeDef};
 fn rebuild_byte_plan(
     state: &AppState,
     candidate: &std::collections::HashMap<String, NodeDef>,
-    new_tab: Option<(&str, &vofa_next_nodes::CompiledGraph)>,
+    new_tab: Option<(&str, &node_engine::CompiledGraph)>,
 ) -> Result<BytePlan> {
     let mut byte_edges: Vec<Edge> = Vec::new();
     {
@@ -50,7 +51,7 @@ pub async fn update_tab_graph(
     edges: Vec<Edge>,
 ) -> Result<()> {
     // 1. 本 tab 数值图编译
-    let compiled = vofa_next_nodes::CompiledGraph::compile(tab_id.clone(), nodes.clone(), edges)
+    let compiled = node_engine::CompiledGraph::compile(tab_id.clone(), nodes.clone(), edges)
         .map_err(|e| Error::Config(format!("{}", e)))?;
 
     // 2. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
@@ -59,7 +60,7 @@ pub async fn update_tab_graph(
     let mut candidate = state.data_plane.global_nodes.lock().clone();
     candidate.retain(|_, n| n.tab_id != tab_id);
     for n in &nodes {
-        if matches!(n.kind, vofa_next_nodes::NodeKind::ProtocolSource { .. }) {
+        if matches!(n.kind, node_kind::NodeKind::ProtocolSource { .. }) {
             continue;
         }
         candidate.insert(n.id.clone(), n.clone());
@@ -234,7 +235,7 @@ pub async fn unsubscribe_string_outputs(
     channel_id: u32,
 ) -> Result<()> {
     let mut subs = state.text_output_subscribers.lock();
-    subs.retain(|ch| {
+    subs.retain(|_ch| {
         // Channel 内部 id 通过 ChannelId 获取 — 这里按引用相等不可行,
         // 由前端在 unmount 时清空所有 subscribers 即可。
         // 此命令主要给前端对称调用, 实际清理在前端 closeTauriChannel 中完成。

@@ -9,9 +9,10 @@
 //!   取代旧 force_eval 空帧机制
 
 use crate::eval_state::GraphEvalState;
-use vofa_next_buffer::DataBuffer;
-use vofa_next_core::DataFrame;
-use vofa_next_nodes::{CompiledGraph, NodeKind, SourceFramesMap};
+use buffer_databuffer::DataBuffer;
+use vofa_core::DataFrame;
+use node_engine::{CompiledGraph, SourceFramesMap};
+use node_kind::NodeKind;
 
 /// eval 段细分耗时 (纳秒累计, 由调用方汇入数据平面指标)
 #[derive(Default)]
@@ -57,7 +58,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     let decoder_states = eval_state.decoder_states.lock();
     let mut ifft_states = eval_state.ifft_states.lock();
 
-    let mut combined: vofa_next_nodes::ValuesMap = Default::default();
+    let mut combined: node_engine::ValuesMap = Default::default();
     for (_, graph) in graphs.iter() {
         let out = graph.evaluate(
             source_frames,

@@ -14,8 +14,8 @@
 
 use parking_lot::Mutex;
 use std::sync::Arc;
-use vofa_next_core::PipelineConfig;
-use vofa_next_protocol::{FeedOutput, ProtocolEngine};
+use vofa_core::PipelineConfig;
+use protocol_engine::{FeedOutput, ProtocolEngine};
 
 /// 最大并行 worker 数 — 默认值, 实际运行由 PipelineConfig::max_feed_workers 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步, 见下方单测)

@@ -8,12 +8,24 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
-vofa-next-buffer = { workspace = true }
-vofa-next-nodes = { workspace = true }
-vofa-next-dsp = { workspace = true }
-vofa-next-protocol = { workspace = true }
-vofa-next-transport = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }
+buffer_databuffer = { workspace = true }
+buffer_raw = { workspace = true }
+node_engine = { workspace = true }
+node_kind = { workspace = true }
+node_frame_decoder = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_window = { workspace = true }
+protocol_engine = { workspace = true }
+protocol_float = { workspace = true }
+protocol_can_bridge = { workspace = true }
+logic_decoder = { workspace = true }
+schema_engine = { workspace = true }
+schema_types = { workspace = true }
+transport_core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }

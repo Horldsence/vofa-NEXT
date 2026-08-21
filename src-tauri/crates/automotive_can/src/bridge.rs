@@ -6,9 +6,11 @@ use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{CanDirection, CanFrame, Error, Result};
-use vofa_next_protocol::{CandleEngine, ProtocolEngine, SlcanEngine};
-use vofa_next_transport::CanBackend;
+use can_types::{CanDirection, CanFrame};
+use vofa_core::{Error, Result};
+use protocol_can_bridge::{CandleEngine, SlcanEngine};
+use protocol_engine::ProtocolEngine;
+use transport_core::CanBackend;
 
 /// 桥接器配置 — 选择底层 CAN 协议编解码引擎
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

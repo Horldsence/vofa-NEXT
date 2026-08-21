@@ -1,9 +1,0 @@
-[package]
-name = "vofa-next-dsp"
-edition = "2021"
-version = "0.1.2"
-
-[dependencies]
-dsp_window = { workspace = true }
-dsp_filter = { workspace = true }
-dsp_fft = { workspace = true }

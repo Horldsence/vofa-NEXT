@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{Error, Result, UdpConfig};
+use vofa_core::{Error, Result, UdpConfig};
 
 /// 启动 UDP 传输
 pub async fn spawn(

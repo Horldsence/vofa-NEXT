@@ -5,8 +5,8 @@
 //! - 前端 `Trigger.tsx` 在手动模式按 Fire / 自动模式 trigger 跳变时调用
 //! - 返回 `{ value, matched, text, output_type }` 给前端写入 `graphOutputs` 与 `customTextOutputs`
 
-use vofa_next_core::Result;
-use vofa_next_nodes::{TriggerMatchResult, TriggerMatcher, TriggerRuleDef};
+use vofa_core::Result;
+use node_trigger::{TriggerMatchResult, TriggerMatcher, TriggerRuleDef};
 
 /// 执行一次触发器匹配
 ///

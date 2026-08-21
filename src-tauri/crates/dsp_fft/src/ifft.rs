@@ -74,7 +74,7 @@ pub struct IfftState {
 
 impl IfftState {
     /// 读取下一个采样 (环形播放; 空缓冲返回 0.0)
-    pub fn next(&mut self) -> f32 {
+    pub fn next_sample(&mut self) -> f32 {
         if self.buffer.is_empty() {
             return 0.0;
         }
@@ -158,7 +158,7 @@ mod tests {
     fn test_ifft_state_playback() {
         let mut state = IfftState::default();
         // 空缓冲读出 0
-        assert!((state.next() - 0.0).abs() < 1e-6);
+        assert!((state.next_sample() - 0.0).abs() < 1e-6);
         // 合成一个简单缓冲
         let n = 8;
         let mut synth = IfftSynth::new(n);
@@ -172,7 +172,7 @@ mod tests {
         state.pos = 0;
         // 环形播放应持续读出 1.0
         for _ in 0..(n * 3) {
-            assert!((state.next() - 1.0).abs() < 1e-3);
+            assert!((state.next_sample() - 1.0).abs() < 1e-3);
         }
     }
 }

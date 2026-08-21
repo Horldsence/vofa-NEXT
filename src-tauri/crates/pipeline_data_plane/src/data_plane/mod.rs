@@ -27,17 +27,36 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::AppHandle;
 use tokio::task::JoinHandle;
-use vofa_next_buffer::{DataBuffer, RawDataCollector};
-use vofa_next_core::{
-    CanBuffer, CanLoadStats, DecodedBuffer, LogicBuffer, PipelineConfig, ProtocolConfig,
-    ProtocolSchema,
-};
-use vofa_next_nodes::{BytePlan, NodeDef, NodeKind, SourceFramesMap};
-use vofa_next_protocol::ProtocolEngine;
-use vofa_next_transport::TransportManager;
+use buffer_databuffer::DataBuffer;
+use buffer_raw::RawDataCollector;
+use can_types::{CanBuffer, CanLoadStats};
+use logic_types::{DecodedBuffer, LogicBuffer};
+use schema_types::{ProtocolConfig, ProtocolSchema};
+use vofa_core::PipelineConfig;
+use node_engine::{BytePlan, SourceFramesMap};
+use node_kind::{NodeDef, NodeKind};
+use protocol_engine::ProtocolEngine;
+use transport_core::TransportManager;
 
 use crate::eval_state::GraphEvalState;
 use crate::feed_parallel::ParallelFeeder;
+
+use logic_decoder::LogicDecoderEngine;
+use protocol_can_bridge::{CandleEngine as Candle, RawDataEngine as RawData, SlcanEngine as Slcan};
+use protocol_float::{FireWaterEngine as FireWater, JustFloatEngine as JustFloat};
+
+/// 根据配置创建协议引擎
+fn create_protocol_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
+    match config {
+        ProtocolConfig::JustFloat { channels } => Box::new(JustFloat::new(*channels)),
+        ProtocolConfig::FireWater { channels } => Box::new(FireWater::new(*channels)),
+        ProtocolConfig::RawData => Box::new(RawData::new()),
+        ProtocolConfig::Slcan => Box::new(Slcan::new()),
+        ProtocolConfig::CandleLight => Box::new(Candle::new()),
+        ProtocolConfig::LogicDecode { decoder } => Box::new(LogicDecoderEngine::new(decoder.clone())),
+        ProtocolConfig::Diagnostic { .. } => Box::new(RawData::new()),
+    }
+}
 
 /// 统计节流窗口 (TransportStats 上报间隔) — 100ms
 pub const STATS_THROTTLE_MS: u128 = 100;
@@ -75,13 +94,13 @@ impl ProtocolNodeState {
         // 有 schema 时由 compile_schema 构造引擎 (预设走 legacy 引擎, Custom 走 SchemaEngine);
         // 无 schema (旧前端) 保持原有 create_engine 路径
         let engine = match schema {
-            Some(s) => vofa_next_protocol::compile_schema(s),
-            None => vofa_next_protocol::create_engine(config),
+            Some(s) => schema_engine::compile_schema(s),
+            None => create_protocol_engine(config),
         };
         Self {
             engine: Arc::new(Mutex::new(engine)),
             convert_engine: convert_to
-                .map(|c| Arc::new(Mutex::new(vofa_next_protocol::create_engine(c)))),
+                .map(|c| Arc::new(Mutex::new(create_protocol_engine(c)))),
             config: config.clone(),
             convert_config: convert_to.cloned(),
             schema: schema.cloned(),

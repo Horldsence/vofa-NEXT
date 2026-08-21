@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{Error, Result, TcpClientConfig, TcpServerConfig};
+use vofa_core::{Error, Result, TcpClientConfig, TcpServerConfig};
 
 /// 启动 TCP 客户端
 pub async fn spawn_client(

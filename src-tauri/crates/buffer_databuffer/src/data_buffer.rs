@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use buffer_ring::RingBuffer;
-use vofa_next_core::DataFrame;
+use vofa_core::DataFrame;
 
 use crate::derived::DerivedEntry;
 

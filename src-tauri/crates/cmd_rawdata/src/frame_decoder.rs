@@ -1,5 +1,5 @@
-use vofa_next_core::Result;
-use vofa_next_protocol::{detect_format, parse_ascii, parse_hex, InputFormat};
+use vofa_core::Result;
+use protocol_engine::{detect_format, parse_ascii, parse_hex, InputFormat};
 
 /// 帧解码器手动测试结果 (与前端 FrameDecoderManualResult 对应)
 #[derive(Debug, Clone, serde::Serialize)]
@@ -21,7 +21,7 @@ pub struct FrameDecoderManualResult {
 /// 返回 outputs + valid + consumed_bytes + 可选 error
 #[tauri::command]
 pub async fn parse_frame_decoder_input(
-    blocks: Vec<vofa_next_nodes::DecoderBlockDef>,
+    blocks: Vec<node_kind::DecoderBlockDef>,
     input: String,
     format: InputFormat,
     enable_valid: bool,
@@ -29,7 +29,7 @@ pub async fn parse_frame_decoder_input(
     enable_last_timestamp: bool,
     enable_fps: bool,
 ) -> Result<FrameDecoderManualResult> {
-    use vofa_next_nodes::FrameParser;
+    use node_frame_decoder::FrameParser;
 
     // 1. 解析输入字符串为字节
     let actual_format = match format {

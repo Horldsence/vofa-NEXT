@@ -7,7 +7,7 @@
 
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
-use vofa_next_core::TransportConfig;
+use vofa_core::TransportConfig;
 
 const APP_TITLE: &str = "VOFA-Next";
 

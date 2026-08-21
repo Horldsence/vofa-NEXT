@@ -11,7 +11,8 @@
 
 use async_trait::async_trait;
 use tokio::sync::broadcast;
-use vofa_next_core::{CanFrame, Result};
+use can_types::CanFrame;
+use vofa_core::Result;
 
 /// CAN 后端 — 给诊断引擎提供 CanFrame 收发能力的抽象
 ///

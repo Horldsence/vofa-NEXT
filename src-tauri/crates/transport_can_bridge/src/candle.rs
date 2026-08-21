@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{CandleConfig, CandleDeviceInfo, Error, Result};
+use can_types::CandleDeviceInfo;
+use vofa_core::{CandleConfig, Error, Result};
 
 /// candleLight USB VID/PID
 const CANDLE_VID: u16 = 0x1209;

@@ -1,7 +1,7 @@
 //! 数值平面求值测试 — evaluate (慢路径) 与 CompiledEval::run (槽位快路径)
 
 use node_kind::MathOp;
-use vofa_next_dsp::{DigitalFilter, FilterKind};
+use dsp_filter::{DigitalFilter, FilterKind};
 
 use super::*;
 use crate::compile::CompiledGraph;
@@ -318,8 +318,8 @@ fn test_filter_lowpass_preserves_dc() {
             "f1",
             "t1",
             FilterKind::IIR {
-                b: vofa_next_dsp::lowpass_biquad(100.0, 1000.0).0,
-                a: vofa_next_dsp::lowpass_biquad(100.0, 1000.0).1,
+                b: dsp_filter::$1(100.0, 1000.0).0,
+                a: dsp_filter::$1(100.0, 1000.0).1,
             },
         ),
     ];

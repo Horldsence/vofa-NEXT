@@ -4,8 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::{sleep, timeout};
-use vofa_next_core::{CanDirection, CanFrame, IsoTpConfig};
-use vofa_next_transport::CanBackend;
+use can_types::{CanDirection, CanFrame};
+use diagnostic::IsoTpConfig;
+use transport_core::CanBackend;
 
 use crate::constants::{CF_DATA_LEN, FF_DATA_LEN, FF_DL_MAX, PCI_CF, PCI_FF, PCI_SF, SF_MAX_DATA};
 use crate::error::{AutomotiveError, AutomotiveResult};

@@ -3,7 +3,7 @@
 use std::time::Duration;
 use tokio::sync::broadcast;
 use transport_core::TransportManager;
-use vofa_next_core::{
+use vofa_core::{
     ConnectionState, Error, ProtocolConfig, TestDataConfig, TestDataLink, TestSignal,
     TransportConfig,
 };
@@ -198,7 +198,7 @@ async fn test_data_protocol_hot_update() {
 /// TestData 经 schema 热更新: Custom encode 块改变输出格式
 #[tokio::test]
 async fn test_data_schema_hot_update() {
-    use vofa_next_core::{
+    use vofa_core::{
         DecoderBlockDef, EncodeBlockDef, FieldType, ProtocolSchema, SchemaPreset,
     };
 

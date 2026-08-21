@@ -3,8 +3,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use vofa_next_core::{CanDirection, CanFrame};
-use vofa_next_transport::CanBackend;
+use can_types::{CanDirection, CanFrame};
+use transport_core::CanBackend;
 
 use crate::constants::{
     pci_type, FC_CTS, FC_OVERFLOW, FC_WAIT, FF_DATA_LEN, FF_DL_MAX, PCI_CF, PCI_FF, PCI_FC,

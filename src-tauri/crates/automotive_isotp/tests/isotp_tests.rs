@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use vofa_next_core::{CanDirection, CanFrame, IsoTpAddressMode, IsoTpConfig, Result};
-use vofa_next_transport::CanBackend;
+use vofa_core::{CanDirection, CanFrame, IsoTpAddressMode, IsoTpConfig, Result};
+use transport_core::CanBackend;
 
 use automotive_isotp::IsoTpSession;
 
@@ -13,7 +13,7 @@ struct DummyBackend {
 }
 
 #[async_trait::async_trait]
-impl vofa_next_transport::CanBackend for DummyBackend {
+impl transport_core::CanBackend for DummyBackend {
     async fn send_frame(&self, _frame: &CanFrame) -> Result<()> {
         Ok(())
     }
@@ -72,7 +72,7 @@ fn flow_status_constants() {
 #[tokio::test]
 async fn handle_clone_is_cheap() {
     let (rx, _) = broadcast::channel::<CanFrame>(16);
-    let backend: Arc<dyn vofa_next_transport::CanBackend> = Arc::new(DummyBackend { rx });
+    let backend: Arc<dyn transport_core::CanBackend> = Arc::new(DummyBackend { rx });
     let session = IsoTpSession::new(backend, dummy_cfg());
     let h1 = session.handle();
     let h2 = h1.clone();
@@ -84,7 +84,7 @@ async fn handle_clone_is_cheap() {
 #[tokio::test]
 async fn session_can_be_constructed_and_dropped() {
     let (rx, _) = broadcast::channel::<CanFrame>(16);
-    let backend: Arc<dyn vofa_next_transport::CanBackend> = Arc::new(DummyBackend { rx });
+    let backend: Arc<dyn transport_core::CanBackend> = Arc::new(DummyBackend { rx });
     let session = IsoTpSession::new(backend, dummy_cfg());
     drop(session.handle());
     session.shutdown().await;

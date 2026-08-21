@@ -9,13 +9,13 @@
 use crate::eval_state::GraphEvalState;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
-use vofa_next_buffer::RawDataDirection;
-use vofa_next_nodes::FrameParser;
+use buffer_raw::RawDataDirection;
+use node_frame_decoder::FrameParser;
 
 /// FrameDecoder 解析配置 (blocks + 附加端口开关)
 /// 元组: (blocks, enable_valid, enable_frame_count, enable_last_timestamp, enable_fps)
 pub type DecoderParseConfig = (
-    Vec<vofa_next_nodes::DecoderBlockDef>,
+    Vec<node_kind::DecoderBlockDef>,
     bool,
     bool,
     bool,

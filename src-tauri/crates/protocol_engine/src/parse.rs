@@ -45,7 +45,7 @@ pub fn parse_hex(input: &str) -> Result<Vec<u8>, String> {
     let chars: Vec<char> = clean.chars().collect();
     for i in (0..chars.len()).step_by(2) {
         let s: String = chars[i..i + 2].iter().collect();
-        let b = u8::from_str_radix(&s, 16).map_err(|_| format!("无效的 HEX 字节: {}", s))?;
+        let b = u8::from_str_radix(&s, 16).map_err(|_| format!("无效的 HEX 字节: {s}"))?;
         bytes.push(b);
     }
     Ok(bytes)

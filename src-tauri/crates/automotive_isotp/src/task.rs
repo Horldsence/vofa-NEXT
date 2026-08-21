@@ -4,8 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_next_core::{CanFrame, IsoTpConfig};
-use vofa_next_transport::CanBackend;
+use can_types::CanFrame;
+use diagnostic::IsoTpConfig;
+use transport_core::CanBackend;
 
 use crate::constants::{DEFAULT_N_AR_MS, DEFAULT_N_AS_MS, DEFAULT_N_BS_MS, DEFAULT_N_CR_MS};
 use crate::rx::handle_received_frame;

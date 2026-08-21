@@ -1,7 +1,9 @@
 //! 图编译测试 — 拓扑序 / 循环检测 / 端口域分类 / 字节平面集成
 
 use node_kind::{MathOp, NodeDef, NodeKind};
-use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
+use dsp_filter::FilterKind;
+use dsp_fft::SpectrumOutput;
+use dsp_window::WindowType;
 
 use super::*;
 use crate::test_helpers::*;

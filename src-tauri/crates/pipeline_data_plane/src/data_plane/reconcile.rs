@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 use std::sync::atomic::Ordering;
 
-use vofa_next_nodes::NodeKind;
+use node_kind::NodeKind;
 
 use super::DataPlaneState;
 

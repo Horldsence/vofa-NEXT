@@ -72,6 +72,7 @@ impl FrameDecoderTestData {
     }
 
     /// 编码一帧, 返回 (字节流, 各 Checksum 块的字节位置 (buf_pos, cs_len))
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, clippy::items_after_statements)]
     fn encode_frame_inner(
         blocks: &[DecoderBlockDef],
         field_values: &HashMap<String, f32>,
@@ -249,9 +250,7 @@ impl FrameDecoderTestData {
                 // schema 扩展块由协议引擎 SchemaEngine 消费, FrameDecoder 测试数据生成跳过
                 DecoderBlockDef::Csv { .. }
                 | DecoderBlockDef::AsciiField { .. }
-                | DecoderBlockDef::Samples { .. } => {
-                    continue;
-                }
+                | DecoderBlockDef::Samples { .. } => {}
             }
         }
 
@@ -299,6 +298,7 @@ impl FrameDecoderTestData {
     /// 编码一帧, 强制设置 Id 块的值为 `id_val`
     ///
     /// 便捷方法: 设置端口名为 "id_value" 的字段值。
+    #[allow(clippy::cast_precision_loss)]
     pub fn encode_frame_with_id(
         blocks: &[DecoderBlockDef],
         id_val: i64,
@@ -333,6 +333,7 @@ impl FrameDecoderTestData {
 }
 
 /// 按 field_type 将 u64 整数编码为字节, 追加到 buf
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn encode_int(buf: &mut Vec<u8>, ft: FieldType, val: u64) {
     match ft {
         FieldType::UInt8 | FieldType::Int8 => {
@@ -358,6 +359,7 @@ fn encode_int(buf: &mut Vec<u8>, ft: FieldType, val: u64) {
 }
 
 /// 按 field_type 将 f32 值编码为字节, 追加到 buf
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn encode_float(buf: &mut Vec<u8>, ft: FieldType, val: f32) {
     match ft {
         FieldType::UInt8 | FieldType::Int8 => {

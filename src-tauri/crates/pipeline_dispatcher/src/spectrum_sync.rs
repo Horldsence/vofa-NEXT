@@ -1,6 +1,6 @@
 use pipeline_data_plane::GraphEvalState;
 use std::collections::HashMap;
-use vofa_next_dsp::SpectrumAnalyzer;
+use dsp_fft::SpectrumAnalyzer;
 
 /// 同步 spectrum_analyzers 与 graphs 中的 SpectrumSink 节点
 ///
@@ -20,8 +20,8 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
         String,
         (
             usize,
-            vofa_next_dsp::WindowType,
-            vofa_next_dsp::SpectrumOutput,
+            dsp_window::WindowType,
+            dsp_fft::SpectrumOutput,
             f32,
         ),
     > = HashMap::new();
@@ -61,10 +61,10 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
                 sink_id,
                 window_size,
                 match output {
-                    vofa_next_dsp::SpectrumOutput::Magnitude => "Magnitude",
-                    vofa_next_dsp::SpectrumOutput::Power => "Power",
-                    vofa_next_dsp::SpectrumOutput::PSD => "PSD",
-                    vofa_next_dsp::SpectrumOutput::Decibel => "Decibel",
+                    dsp_fft::SpectrumOutput::Magnitude => "Magnitude",
+                    dsp_fft::SpectrumOutput::Power => "Power",
+                    dsp_fft::SpectrumOutput::PSD => "PSD",
+                    dsp_fft::SpectrumOutput::Decibel => "Decibel",
                 },
                 sample_rate
             );

@@ -1,0 +1,14 @@
+[package]
+name = "menu_shell"
+description = "VOFA-NEXT 原生菜单栏构建 + 菜单事件路由 (macOS/Windows/Linux)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+log = "0.4"
+serde = { workspace = true }

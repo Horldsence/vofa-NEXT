@@ -13,7 +13,12 @@ rustc-hash = { workspace = true }
 schema_types = { workspace = true }
 thiserror = { workspace = true }
 vofa_core = { workspace = true }
-vofa_next_buffer = { workspace = true }
-vofa_next_dsp = { path = "../vofa-next-dsp", package = "vofa-next-dsp" }
+buffer_ring = { workspace = true }
+buffer_databuffer = { workspace = true }
+buffer_graph = { workspace = true }
+buffer_raw = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_window = { workspace = true }
 node_kind = { workspace = true }
 node_frame_decoder = { workspace = true }

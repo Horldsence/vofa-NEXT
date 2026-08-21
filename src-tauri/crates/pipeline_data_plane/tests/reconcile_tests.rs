@@ -7,8 +7,8 @@
 
 use app_state::AppState;
 use pipeline_data_plane::DataPlaneState;
-use vofa_next_core::{ProtocolConfig, TransportConfig};
-use vofa_next_nodes::{NodeDef, NodeKind};
+use vofa_core::{ProtocolConfig, TransportConfig};
+use node_kind::{NodeDef, NodeKind};
 
 fn transport_node(id: &str, tab: &str) -> NodeDef {
     NodeDef {
@@ -40,7 +40,7 @@ async fn open_test_data(state: &AppState, id: &str, plane: &DataPlaneState) {
         .open(
             id,
             TransportConfig::TestData(Default::default()),
-            vofa_next_core::TestDataLink::new(ProtocolConfig::RawData),
+            vofa_core::TestDataLink::new(ProtocolConfig::RawData),
         )
         .await
         .unwrap();

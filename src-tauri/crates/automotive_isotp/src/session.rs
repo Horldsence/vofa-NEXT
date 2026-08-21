@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use vofa_next_core::IsoTpConfig;
-use vofa_next_transport::CanBackend;
+use diagnostic::IsoTpConfig;
+use transport_core::CanBackend;
 
 use crate::error::AutomotiveError;
 use crate::state::IsoTpCmd;

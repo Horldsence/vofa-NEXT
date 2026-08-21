@@ -1,11 +1,4 @@
-//! 按通道 (stable/beta) 检查应用更新。
-//!
-//! 两个通道各对应一个静态 manifest URL, 不经 GitHub API, 避免未认证
-//! 请求 60 次/小时/出口 IP 的限流 (超额返回 403):
-//! - stable: GitHub 最新正式 release 的 latest.json
-//! - beta:   滚动 tag `beta` 上的 beta-latest.json, 由 release CI 在
-//!           每次发布 (含正式版) 时更新, 语义等同"所有 release 中取最新"
-//! 拿到 manifest 后交给 tauri-plugin-updater 完成版本比较与更新下载。
+//! # update — 更新检查与下载命令
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -43,7 +36,7 @@ pub struct CheckUpdateResult {
 pub struct PendingUpdate(pub Mutex<Option<Update>>);
 
 /// 通道对应的更新 manifest URL。
-fn manifest_url(channel: Channel) -> &'static str {
+const fn manifest_url(channel: Channel) -> &'static str {
     match channel {
         Channel::Stable => STABLE_MANIFEST,
         Channel::Beta => BETA_MANIFEST,

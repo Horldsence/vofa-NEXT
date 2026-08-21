@@ -3,8 +3,8 @@ use pipeline_dispatcher::filtered_sources::FilteredRawDataSource;
 use pipeline_stream::{join_or_create_group, leave_group, sharded_stream_loop, RawDataSource};
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use vofa_next_buffer::{DirectionFilter, RawDataBatch};
-use vofa_next_core::Result;
+use buffer_raw::{DirectionFilter, RawDataBatch};
+use vofa_core::Result;
 
 // ============ 原始数据命令 ============
 

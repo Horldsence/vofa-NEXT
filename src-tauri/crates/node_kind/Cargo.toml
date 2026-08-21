@@ -11,6 +11,8 @@ workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 vofa_core = { workspace = true }
-vofa_next_dsp = { path = "../vofa-next-dsp", package = "vofa-next-dsp" }
+dsp_filter = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_window = { workspace = true }
 node_trigger = { workspace = true }
 schema_types = { workspace = true }

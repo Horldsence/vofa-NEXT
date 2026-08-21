@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use rustc_hash::FxBuildHasher;
-use vofa_next_buffer::Edge;
+use buffer_graph::Edge;
 
 use node_kind::{port_domain, NodeDef, NodeKind, PortDomain, RAW_DATA_PORT_PREFIX};
 

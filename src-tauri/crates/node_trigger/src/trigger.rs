@@ -143,7 +143,7 @@ impl TriggerMatcher {
         match rule.match_type {
             TriggerMatchType::Exact => command == rule.pattern,
             TriggerMatchType::Prefix => command.starts_with(&rule.pattern),
-            TriggerMatchType::Contains => command.contains(&rule.pattern.as_str()),
+            TriggerMatchType::Contains => command.contains(&rule.pattern),
             TriggerMatchType::Regex => self
                 .get_or_compile_regex(&rule.id, &rule.pattern, rule.flags.as_deref().unwrap_or(""))
                 .is_some_and(|re| re.is_match(command)),

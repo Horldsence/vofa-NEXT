@@ -34,7 +34,8 @@ members = [
   "crates/logic_decoder",
   "crates/logic_types",
   "crates/notify_events",
-  "crates/pipeline_data_plane",
+  "crates/menu_shell",
+  "crates/update_flow",
   "crates/pipeline_dispatcher",
   "crates/pipeline_stream",
   "crates/app_state",
@@ -52,13 +53,6 @@ members = [
   "crates/transport_core",
   "crates/transport_net",
   "crates/transport_serial",
-  "crates/vofa-next-core",
-  "crates/vofa-next-transport",
-  "crates/vofa-next-protocol",
-  "crates/vofa-next-buffer",
-  "crates/vofa-next-nodes",
-  "crates/vofa-next-dsp",
-  "crates/vofa-next-automotive",
 ]
 
 [workspace.package]
@@ -120,6 +114,7 @@ too_many_lines = "allow"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
 log = "0.4"
@@ -139,7 +134,6 @@ cmd_debug = { path = "crates/cmd_debug" }
 cmd_graph = { path = "crates/cmd_graph" }
 cmd_pipeline = { path = "crates/cmd_pipeline" }
 cmd_rawdata = { path = "crates/cmd_rawdata" }
-vofa-next-core = { path = "crates/vofa-next-core" }
 vofa_core = { path = "crates/core" }
 can_types = { path = "crates/can_types" }
 logic_types = { path = "crates/logic_types" }
@@ -158,16 +152,9 @@ transport_can_bridge = { path = "crates/transport_can_bridge" }
 transport_core = { path = "crates/transport_core" }
 transport_net = { path = "crates/transport_net" }
 transport_serial = { path = "crates/transport_serial" }
-vofa-next-transport = { path = "crates/vofa-next-transport" }
-vofa-next-protocol = { path = "crates/vofa-next-protocol" }
-vofa-next-buffer = { path = "crates/vofa-next-buffer" }
-vofa_next_buffer = { path = "crates/vofa-next-buffer", package = "vofa-next-buffer" }
-vofa-next-nodes = { path = "crates/vofa-next-nodes" }
-vofa-next-dsp = { path = "crates/vofa-next-dsp" }
 dsp_window = { path = "crates/dsp_window" }
 dsp_filter = { path = "crates/dsp_filter" }
 dsp_fft = { path = "crates/dsp_fft" }
-vofa-next-automotive = { path = "crates/vofa-next-automotive" }
 automotive_isotp = { path = "crates/automotive_isotp" }
 automotive_diag = { path = "crates/automotive_diag" }
 automotive_can = { path = "crates/automotive_can" }
@@ -176,6 +163,8 @@ pipeline_dispatcher = { path = "crates/pipeline_dispatcher" }
 pipeline_stream = { path = "crates/pipeline_stream" }
 notify_events = { path = "crates/notify_events" }
 app_state = { path = "crates/app_state" }
+menu_shell = { path = "crates/menu_shell" }
+update_flow = { path = "crates/update_flow" }
 subscription = { path = "crates/subscription" }
 libautomotive = "0.1"
 
@@ -183,19 +172,14 @@ libautomotive = "0.1"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-vofa-next-core = { workspace = true }
-vofa-next-transport = { workspace = true }
-vofa-next-protocol = { workspace = true }
-vofa-next-buffer = { workspace = true }
-vofa-next-nodes = { workspace = true }
-vofa-next-dsp = { workspace = true }
-vofa-next-automotive = { workspace = true }
 pipeline_data_plane = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
 notify_events = { workspace = true }
 app_state = { workspace = true }
 subscription = { workspace = true }
+menu_shell = { workspace = true }
+update_flow = { workspace = true }
 cmd_buffer = { workspace = true }
 cmd_can_load = { workspace = true }
 cmd_can_transport = { workspace = true }

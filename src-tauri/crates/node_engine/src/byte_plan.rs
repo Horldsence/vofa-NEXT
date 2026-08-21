@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use vofa_next_buffer::Edge;
+use buffer_graph::Edge;
 
 use crate::CompileError;
 use node_kind::{NodeDef, NodeKind};

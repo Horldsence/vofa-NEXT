@@ -20,11 +20,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
-use vofa_next_buffer::{DataBuffer, RawDataBatch, RawDataCollector, RawDrain, WaveformWindow};
-use vofa_next_core::{
-    CanBuffer, CanFrameBatch, DecodedBuffer, DecodedEventBatch, Error, LogicBuffer,
-    LogicSampleBatch, Result,
-};
+use buffer_databuffer::{DataBuffer, WaveformWindow};
+use buffer_raw::{RawDataBatch, RawDataCollector, RawDrain};
+use can_types::{CanBuffer, CanFrameBatch};
+use logic_types::{DecodedBuffer, DecodedEventBatch, LogicBuffer, LogicSampleBatch};
+use vofa_core::{Error, Result};
 
 /// 每个订阅组的最大分片数 — 默认值, 实际由 PipelineConfig::max_stream_shards 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步)
@@ -145,7 +145,7 @@ where
         Some(key) => {
             let g = map
                 .get_mut(&key)
-                .ok_or_else(|| vofa_next_core::Error::Config(format!("流订阅组不存在: {}", key)))?;
+                .ok_or_else(|| vofa_core::Error::Config(format!("流订阅组不存在: {}", key)))?;
             if g.shards >= max_shards {
                 return Err(Error::Config(format!(
                     "流订阅组 {} 已满 ({} 个分片)",

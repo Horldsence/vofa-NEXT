@@ -7,5 +7,5 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
+vofa_core = { workspace = true }
 libautomotive = { workspace = true }

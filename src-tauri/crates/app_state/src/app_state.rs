@@ -11,10 +11,12 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
-use vofa_next_buffer::RawDataCollector;
-use vofa_next_core::{CanBuffer, CanLoadStats, DecodedBuffer, LogicBuffer, PipelineConfig};
-use vofa_next_nodes::{CompiledGraph, SourceFramesMap};
-use vofa_next_transport::TransportManager;
+use buffer_raw::RawDataCollector;
+use can_types::{CanBuffer, CanLoadStats};
+use logic_types::{DecodedBuffer, LogicBuffer};
+use vofa_core::PipelineConfig;
+use node_engine::{CompiledGraph, SourceFramesMap};
+use transport_core::TransportManager;
 
 /// 应用全局状态
 pub struct AppState {
@@ -105,7 +107,7 @@ impl AppState {
         let output_snapshot = Arc::new(Mutex::new(pipeline_data_plane::GraphOutputSnapshot {
             tick: 0,
             graphs_version: 0,
-            values: vofa_next_nodes::ValuesMap::default(),
+            values: node_engine::ValuesMap::default(),
         }));
         let output_subscribers = Arc::new(Mutex::new(Vec::new()));
         let custom_input_subscribers = Arc::new(Mutex::new(Vec::new()));

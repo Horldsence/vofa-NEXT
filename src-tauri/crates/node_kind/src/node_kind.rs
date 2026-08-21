@@ -12,7 +12,9 @@
 use serde::{Deserialize, Serialize};
 use schema_types::{DecoderBlockDef, ProtocolConfig, ProtocolSchema};
 use vofa_core::config::TransportConfig;
-use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
+use dsp_filter::FilterKind;
+use dsp_fft::SpectrumOutput;
+use dsp_window::WindowType;
 
 use node_trigger::TriggerRuleDef;
 

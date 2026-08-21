@@ -1,10 +1,12 @@
 //! 测试共享辅助 — 各模块测试共用的节点/边/帧源构造器
 
-use vofa_next_buffer::Edge;
+use buffer_graph::Edge;
 use schema_types::ProtocolConfig;
 use vofa_core::{DataFrame};
 use vofa_core::config::TransportConfig;
-use vofa_next_dsp::{FilterKind, SpectrumOutput, WindowType};
+use dsp_filter::FilterKind;
+use dsp_fft::SpectrumOutput;
+use dsp_window::WindowType;
 
 use node_kind::{MathOp, NodeDef, NodeKind};
 

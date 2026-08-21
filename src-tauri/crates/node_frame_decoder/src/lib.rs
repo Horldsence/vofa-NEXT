@@ -74,6 +74,7 @@ enum ParseState {
 ///    - 未找到: 保留最后 header.len()-1 字节 (避免跨包截断), 等待更多数据
 /// 2. ParseFields: 按 blocks 顺序解析 (跳过 Header, 逐块求值见 blocks.rs)
 /// 3. 解析完成: 丢弃 consumed_bytes, 回到 WaitForHeader
+#[allow(clippy::struct_excessive_bools)]
 pub struct FrameParser {
     /// 块配置
     pub blocks: Vec<DecoderBlockDef>,
@@ -98,6 +99,7 @@ pub struct FrameParser {
 }
 
 impl FrameParser {
+    #[allow(clippy::fn_params_excessive_bools)]
     pub fn new(
         blocks: Vec<DecoderBlockDef>,
         enable_valid: bool,
@@ -221,6 +223,7 @@ impl FrameParser {
     }
 
     /// 计算最近 fps (帧/秒)
+    #[allow(clippy::cast_precision_loss)]
     pub fn fps(&self) -> f32 {
         if self.recent_timestamps.len() < 2 {
             return 0.0;
@@ -236,6 +239,7 @@ impl FrameParser {
     }
 
     /// blocks 配置是否与当前一致 (用于检测配置变化时重建)
+    #[allow(clippy::fn_params_excessive_bools)]
     pub fn matches_config(
         &self,
         blocks: &[DecoderBlockDef],

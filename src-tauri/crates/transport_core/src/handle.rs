@@ -1,7 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, watch, Notify};
-use vofa_next_core::{ConnectionState, Error, Result, TestDataLink, TransportConfig, TransportStats};
+use schema_types::TestDataLink;
+use vofa_core::{ConnectionState, Error, Result, TransportConfig, TransportStats};
 
 /// 单连接句柄 — 一个传输节点实例的全部运行时状态
 ///

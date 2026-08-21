@@ -4,8 +4,8 @@
 
 use app_state::AppState;
 use pipeline_data_plane::{frame_dispatch, DataPlaneState};
-use vofa_next_core::DataFrame;
-use vofa_next_nodes::{CompiledGraph, NodeDef, NodeKind};
+use vofa_core::DataFrame;
+use node_engine::{CompiledGraph}, node_kind::{NodeDef, NodeKind};
 
 /// 数值平面端到端: ProtocolSource 引用 pt 源, on_frames 后快照/缓冲应有值
 #[test]

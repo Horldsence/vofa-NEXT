@@ -3,12 +3,12 @@ use notify_events::emit_transport_state;
 use notify_events::notify;
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use vofa_next_buffer::RawDataDirection;
-use vofa_next_core::{
-    ConnectionState, Error, PortInfo, ProtocolConfig, ProtocolSchema, Result, TestDataLink,
-    TransportConfig, TransportStats, WidgetBinding,
+use buffer_raw::RawDataDirection;
+use schema_types::{ProtocolConfig, ProtocolSchema, TestDataLink};
+use vofa_core::{
+    ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats, WidgetBinding,
 };
-use vofa_next_transport::TransportManager;
+use transport_core::TransportManager;
 
 /// 列出所有可用串口
 #[tauri::command]
@@ -74,7 +74,7 @@ pub async fn send_raw(state: State<'_, AppState>, node_id: String, data: Vec<u8>
         .data_plane
         .raw_collector_for(&node_id)
         .lock()
-        .push_chunk(vofa_next_core::now_us(), RawDataDirection::Tx, &data);
+        .push_chunk(vofa_core::now_us(), RawDataDirection::Tx, &data);
     Ok(())
 }
 

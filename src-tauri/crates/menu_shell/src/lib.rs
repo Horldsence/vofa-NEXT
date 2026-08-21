@@ -204,7 +204,7 @@ pub fn on_menu_event(app: &tauri::AppHandle, id: &str) {
                 "https://github.com/Horldsence/vofa-NEXT",
                 None::<&str>,
             ) {
-                log::warn!("打开 GitHub 失败: {}", e);
+                log::warn!("打开 GitHub 失败: {e}");
             }
         }
         ids::DOCS => {
@@ -212,7 +212,7 @@ pub fn on_menu_event(app: &tauri::AppHandle, id: &str) {
                 "https://github.com/Horldsence/vofa-NEXT#readme",
                 None::<&str>,
             ) {
-                log::warn!("打开文档失败: {}", e);
+                log::warn!("打开文档失败: {e}");
             }
         }
         ids::RELOAD => {
@@ -238,7 +238,7 @@ pub fn on_menu_event(app: &tauri::AppHandle, id: &str) {
         // 其它菜单项统一转发到前端, 由前端处理
         _ => {
             if let Err(e) = app.emit("menu-event", id) {
-                log::warn!("转发菜单事件失败: {}", e);
+                log::warn!("转发菜单事件失败: {e}");
             }
         }
     }

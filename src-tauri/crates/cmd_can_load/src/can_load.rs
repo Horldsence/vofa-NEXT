@@ -1,7 +1,8 @@
 use app_state::AppState;
 use std::time::Duration;
 use tauri::{ipc::Channel, AppHandle, Manager, State};
-use vofa_next_core::{CanLoadSnapshot, Result};
+use can_types::CanLoadSnapshot;
+use vofa_core::Result;
 
 /// 从指定 Transport 节点的 TransportConfig 提取 CAN 波特率 (bps)
 ///
@@ -9,8 +10,8 @@ use vofa_next_core::{CanLoadSnapshot, Result};
 async fn extract_can_bitrate_from_transport(state: &AppState, node_id: &str) -> Option<u32> {
     let manager = state.transport.lock().await;
     match manager.config(node_id) {
-        Some(vofa_next_core::TransportConfig::Slcan(s)) => Some(s.can_bitrate.bps()),
-        Some(vofa_next_core::TransportConfig::CandleLight(c)) => Some(c.can_bitrate.bps()),
+        Some(vofa_core::TransportConfig::Slcan(s)) => Some(s.can_bitrate.bps()),
+        Some(vofa_core::TransportConfig::CandleLight(c)) => Some(c.can_bitrate.bps()),
         _ => None,
     }
 }
@@ -143,10 +144,10 @@ pub async fn get_current_can_bitrate(
     let manager = state.transport.lock().await;
     if let Some(cfg) = manager.config(&node_id) {
         match cfg {
-            vofa_next_core::TransportConfig::Slcan(s) => {
+            vofa_core::TransportConfig::Slcan(s) => {
                 return Ok((s.can_bitrate.bps(), "slcan".to_string()));
             }
-            vofa_next_core::TransportConfig::CandleLight(c) => {
+            vofa_core::TransportConfig::CandleLight(c) => {
                 return Ok((c.can_bitrate.bps(), "candle".to_string()));
             }
             _ => {}
@@ -200,7 +201,7 @@ pub async fn export_can_load_csv(
         Ok(d) => d.join(&filename),
         Err(_) => std::env::current_dir()
             .map(|d| d.join(&filename))
-            .map_err(|e| vofa_next_core::Error::Config(format!("无法确定下载目录: {}", e)))?,
+            .map_err(|e| vofa_core::Error::Config(format!("无法确定下载目录: {}", e)))?,
     };
 
     let mut file = std::fs::File::create(&path)?;

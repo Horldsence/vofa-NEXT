@@ -14,12 +14,17 @@ pipeline_data_plane = { workspace = true }
 pipeline_stream = { workspace = true }
 # 频谱/Ifft 同步 sync_spectrum_analyzers / sync_ifft_buffers 由 pipeline_dispatcher 提供
 pipeline_dispatcher = { workspace = true }
-# 拆分后依赖: vofa-next-* 业务类型 (transport / buffer / core / nodes / dsp)
-vofa-next-core = { workspace = true }
-vofa-next-buffer = { workspace = true }
-vofa-next-nodes = { workspace = true }
-vofa-next-dsp = { workspace = true }
-vofa-next-transport = { workspace = true }
+
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }
+buffer_databuffer = { workspace = true }
+buffer_raw = { workspace = true }
+node_engine = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_window = { workspace = true }
+transport_core = { workspace = true }
 
 # runtime
 parking_lot = "0.12"
@@ -30,5 +35,5 @@ log = { workspace = true }
 tauri = { version = "2", features = [] }
 
 [dev-dependencies]
-vofa-next-core = { workspace = true }
-vofa-next-protocol = { workspace = true }
+vofa_core = { workspace = true }
+protocol_engine = { workspace = true }

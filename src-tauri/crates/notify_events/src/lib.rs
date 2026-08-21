@@ -10,7 +10,7 @@
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
-use vofa_next_core::{ConnectionState, TransportStats};
+use vofa_core::{ConnectionState, TransportStats};
 
 /// `transport:state` 事件名
 pub const TRANSPORT_STATE_EVENT: &str = "transport:state";

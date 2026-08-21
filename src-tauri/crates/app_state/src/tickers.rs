@@ -10,7 +10,7 @@ use pipeline_dispatcher::{sync_ifft_buffers, sync_spectrum_analyzers};
 use pipeline_stream::AdaptiveRate;
 use std::collections::HashMap;
 use std::time::Duration;
-use vofa_next_dsp::SpectrumResult;
+use dsp_fft::SpectrumResult;
 
 /// 字符串输出推送循环 — 自适应速率推送 custom_text_outputs 到所有订阅者
 ///

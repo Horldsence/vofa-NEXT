@@ -1,5 +1,5 @@
 use buffer_databuffer::{DataBuffer, WaveformWindow};
-use vofa_next_core::DataFrame;
+use vofa_core::DataFrame;
 
 #[test]
 fn get_window_with_derived() {

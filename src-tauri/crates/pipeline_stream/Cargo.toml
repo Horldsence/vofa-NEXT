@@ -8,8 +8,11 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
-vofa-next-buffer = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }
+buffer_databuffer = { workspace = true }
+buffer_raw = { workspace = true }
 # StreamGroupState 定义在 pipeline_data_plane (与服务 app_state/data_plane 共享)
 pipeline_data_plane = { workspace = true }
 serde = { workspace = true }

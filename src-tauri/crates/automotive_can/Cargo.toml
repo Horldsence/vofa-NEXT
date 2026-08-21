@@ -7,9 +7,11 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
-vofa-next-transport = { workspace = true }
-vofa-next-protocol = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+transport_core = { workspace = true }
+protocol_engine = { workspace = true }
+protocol_can_bridge = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
 async-trait = "0.1"

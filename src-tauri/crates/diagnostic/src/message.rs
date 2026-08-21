@@ -111,11 +111,11 @@ impl DiagnosticMessageBatch {
         self.messages.push(msg);
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.messages.len()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.messages.is_empty()
     }
 }

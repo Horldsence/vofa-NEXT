@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 
 use node_kind::{DecoderBlockDef, MathOp, NodeDef, NodeKind};
-use vofa_next_dsp::{FilterKind, IfftState, SpectrumOutput, WindowType};
+use dsp_filter::FilterKind;
+use dsp_fft::{IfftState, SpectrumOutput};
+use dsp_window::WindowType;
 
 use super::SourceFramesMap;
 use crate::compile::CompiledGraph;

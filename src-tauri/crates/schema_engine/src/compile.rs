@@ -25,7 +25,7 @@ pub fn default_legacy_config(preset: SchemaPreset) -> Option<ProtocolConfig> {
 ///   完整保留自动检测 / 并行 split / CAN / 逻辑事件能力;
 /// - `Custom`: 构造 [`SchemaEngine`] (流式帧解码 + encode 块编码)。
 ///
-/// 注: 旧实现通过 `vofa_next_protocol::create_engine` 派发; 当前 crate 已拆分为
+/// 注: 旧实现通过 `create_engine` 派发; 当前 crate 已拆分为
 /// 4 个子 crate (protocol_float / protocol_can_bridge / logic_decoder), 故本 crate
 /// 只覆盖 Custom 路径。Preset 路径应由调用方 (app shell) 调度。
 pub fn compile_schema(schema: &ProtocolSchema) -> Box<dyn ProtocolEngine> {

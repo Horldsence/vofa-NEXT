@@ -5,7 +5,7 @@
 
 use app_state::AppState;
 use tauri::State;
-use vofa_next_core::{PipelineConfig, Result};
+use vofa_core::{PipelineConfig, Result};
 
 /// 设置流水线参数
 ///

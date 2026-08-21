@@ -8,7 +8,9 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
-vofa-next-core = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+schema_types = { workspace = true }
 transport_serial = { workspace = true }
 transport_net = { workspace = true }
 transport_can_bridge = { workspace = true }

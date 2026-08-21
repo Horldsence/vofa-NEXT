@@ -1,8 +1,7 @@
 use std::collections::HashMap;
 use tokio::sync::broadcast;
-use vofa_next_core::{
-    ConnectionState, Error, PortInfo, Result, TestDataLink, TransportConfig, TransportStats,
-};
+use schema_types::TestDataLink;
+use vofa_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats};
 
 use crate::handle::TransportHandle;
 

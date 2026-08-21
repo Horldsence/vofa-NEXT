@@ -1,5 +1,5 @@
 use buffer_databuffer::DataBuffer;
-use vofa_next_core::DataFrame;
+use vofa_core::DataFrame;
 
 #[test]
 fn push_derived_aligned_with_timestamps() {

@@ -28,6 +28,7 @@ impl CanFrame {
     /// 构造给定时间戳、ID、方向与数据的 CAN 帧
     ///
     /// `data` 超过 8 字节时自动截断,以匹配 CAN DLC 上限。
+    #[allow(clippy::cast_possible_truncation)]
     pub fn new(timestamp: u64, id: u32, data: Vec<u8>, direction: CanDirection) -> Self {
         let dlc = data.len().min(8) as u8;
         let data = data.into_iter().take(dlc as usize).collect();
@@ -102,9 +103,9 @@ impl CanFilter {
             return true;
         }
         if frame.extended {
-            (frame.id & self.id_mask_ext) == (frame.id & self.id_mask_ext)
+            (frame.id & self.id_mask_ext) != 0
         } else {
-            ((frame.id as u16) & self.id_mask_std) == ((frame.id as u16) & self.id_mask_std)
+            (frame.id & self.id_mask_std as u32) != 0
         }
     }
 }
@@ -150,7 +151,7 @@ pub struct CanFrameBatch {
 
 impl CanFrameBatch {
     /// 构造空批次
-    pub fn new(seq: u64) -> Self {
+    pub const fn new(seq: u64) -> Self {
         Self {
             seq,
             frames: Vec::new(),
@@ -158,12 +159,12 @@ impl CanFrameBatch {
     }
 
     /// 帧数
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.frames.len()
     }
 
     /// 是否空批
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.frames.is_empty()
     }
 }

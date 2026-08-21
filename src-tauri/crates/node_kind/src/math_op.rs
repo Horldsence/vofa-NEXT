@@ -28,6 +28,7 @@ pub enum MathOp {
 impl MathOp {
     /// 评估算术运算 — 输入数组, 输出单值
     /// 与前端 computeMathResult 保持一致的语义
+    #[allow(clippy::cast_precision_loss)]
     pub fn evaluate(&self, inputs: &[f32]) -> f32 {
         // 过滤 NaN
         let vals: Vec<f32> = inputs.iter().copied().filter(|v| !v.is_nan()).collect();
@@ -35,32 +36,32 @@ impl MathOp {
             return 0.0;
         }
         match self {
-            MathOp::Add => vals.iter().sum(),
-            MathOp::Sub => vals.iter().copied().reduce(|a, b| a - b).unwrap_or(0.0),
-            MathOp::Mul => vals.iter().copied().reduce(|a, b| a * b).unwrap_or(1.0),
-            MathOp::Div => {
+            Self::Add => vals.iter().sum(),
+            Self::Sub => vals.iter().copied().reduce(|a, b| a - b).unwrap_or(0.0),
+            Self::Mul => vals.iter().copied().reduce(|a, b| a * b).unwrap_or(1.0),
+            Self::Div => {
                 vals.iter()
                     .copied()
                     .skip(1)
                     .fold(vals[0], |a, b| if b == 0.0 { 0.0 } else { a / b })
             }
-            MathOp::Avg => vals.iter().sum::<f32>() / vals.len() as f32,
-            MathOp::Min => vals.iter().copied().fold(f32::INFINITY, f32::min),
-            MathOp::Max => vals.iter().copied().fold(f32::NEG_INFINITY, f32::max),
-            MathOp::Abs => vals[0].abs(),
-            MathOp::Neg => -vals[0],
-            MathOp::Square => vals[0] * vals[0],
-            MathOp::Sqrt => {
+            Self::Avg => vals.iter().sum::<f32>() / vals.len() as f32,
+            Self::Min => vals.iter().copied().fold(f32::INFINITY, f32::min),
+            Self::Max => vals.iter().copied().fold(f32::NEG_INFINITY, f32::max),
+            Self::Abs => vals[0].abs(),
+            Self::Neg => -vals[0],
+            Self::Square => vals[0] * vals[0],
+            Self::Sqrt => {
                 if vals[0] < 0.0 {
                     0.0
                 } else {
                     vals[0].sqrt()
                 }
             }
-            MathOp::Sin => vals[0].sin(),
-            MathOp::Cos => vals[0].cos(),
-            MathOp::Tan => vals[0].tan(),
-            MathOp::Log => {
+            Self::Sin => vals[0].sin(),
+            Self::Cos => vals[0].cos(),
+            Self::Tan => vals[0].tan(),
+            Self::Log => {
                 if vals[0] <= 0.0 {
                     0.0
                 } else {

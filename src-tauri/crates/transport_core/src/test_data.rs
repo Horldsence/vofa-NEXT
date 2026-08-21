@@ -2,9 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc, watch, Notify};
-use vofa_next_core::{
-    ProtocolConfig, SchemaPreset, TestDataConfig, TestDataLink, TestSignal,
-};
+use schema_types::{encode_by_blocks, ProtocolConfig, SchemaPreset, TestDataLink};
+use vofa_core::{TestDataConfig, TestSignal};
 
 /// 启动测试数据生成器
 ///
@@ -23,7 +22,7 @@ use vofa_next_core::{
 pub async fn spawn(
     config: TestDataConfig,
     link: TestDataLink,
-) -> vofa_next_core::Result<(
+) -> vofa_core::Result<(
     mpsc::Sender<Vec<u8>>,
     broadcast::Sender<Vec<u8>>,
     Arc<AtomicBool>,
@@ -123,7 +122,7 @@ fn generate_link_bytes(
         if schema.preset == SchemaPreset::Custom {
             if let Some(encode) = &schema.encode {
                 let frame = generate_frame(channels, signal, t);
-                return vofa_next_core::encode_by_blocks(encode, &schema.port_names(), &frame);
+                return encode_by_blocks(encode, &schema.port_names(), &frame);
             }
         }
     }

@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 
-use vofa_next_dsp::{DigitalFilter, IfftState, SpectrumOutput, WindowType};
+use dsp_filter::DigitalFilter;
+use dsp_fft::{IfftState, SpectrumOutput};
+use dsp_window::WindowType;
 
 use node_frame_decoder::FrameParser;
 use node_kind::{DecoderBlockDef, NodeKind};
@@ -209,7 +211,7 @@ impl CompiledGraph {
                     // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
                     let v = ifft_states
                         .get_mut(node_id)
-                        .map(IfftState::next)
+                        .map(|s| s.next_sample())
                         .unwrap_or(0.0);
                     let m = node_out_entry(out, node_id);
                     set_port(m, "out0", v);

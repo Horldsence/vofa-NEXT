@@ -8,7 +8,7 @@
 //! 某源来帧 → 评估"引用了该源的 tab 图"与"无 ProtocolSource 的纯本地图"
 //! (后者沿用旧行为: 单源时代任意来帧都评估); 同 tab 多源时其他源用缓存最新帧。
 
-use vofa_next_core::DataFrame;
+use vofa_core::DataFrame;
 
 use super::DataPlaneState;
 use crate::graph_eval::{evaluate_snapshot_now, process_source_batch, EvalBreakdown};

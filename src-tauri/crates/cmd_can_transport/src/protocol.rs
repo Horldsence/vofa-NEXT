@@ -1,8 +1,26 @@
 use app_state::AppState;
+use logic_decoder::LogicDecoderEngine;
 use notify_events::emit_transport_state;
 use pipeline_data_plane::feed_parallel::ParallelFeeder;
+use protocol_can_bridge::{CandleEngine as Candle, RawDataEngine as RawData, SlcanEngine as Slcan};
+use protocol_engine::ProtocolEngine;
+use protocol_float::{FireWaterEngine as FireWater, JustFloatEngine as JustFloat};
+use schema_types::ProtocolConfig;
 use tauri::{AppHandle, State};
-use vofa_next_core::{ConnectionState, Error, ProtocolConfig, Result, TransportConfig};
+use vofa_core::{ConnectionState, Error, Result, TransportConfig};
+
+/// 根据配置创建协议引擎
+pub fn create_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
+    match config {
+        ProtocolConfig::JustFloat { channels } => Box::new(JustFloat::new(*channels)),
+        ProtocolConfig::FireWater { channels } => Box::new(FireWater::new(*channels)),
+        ProtocolConfig::RawData => Box::new(RawData::new()),
+        ProtocolConfig::Slcan => Box::new(Slcan::new()),
+        ProtocolConfig::CandleLight => Box::new(Candle::new()),
+        ProtocolConfig::LogicDecode { decoder } => Box::new(LogicDecoderEngine::new(decoder.clone())),
+        ProtocolConfig::Diagnostic { .. } => Box::new(RawData::new()),
+    }
+}
 
 /// 设置指定 Protocol 节点的协议配置 (运行时覆盖, 重建解析引擎)
 ///
@@ -49,7 +67,7 @@ pub async fn set_protocol(
         .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", node_id)))?;
     {
         let mut s = st.lock();
-        s.engine = std::sync::Arc::new(parking_lot::Mutex::new(vofa_next_protocol::create_engine(
+        s.engine = std::sync::Arc::new(parking_lot::Mutex::new(create_engine(
             &config,
         )));
         s.config = config;

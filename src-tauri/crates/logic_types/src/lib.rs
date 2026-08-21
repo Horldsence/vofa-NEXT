@@ -3,8 +3,9 @@
 //! 逻辑分析仪(Logic Analyzer)数据类型。
 //!
 //! 模块:
-//! - [`types`]: 采样 (`LogicSample`)、事件 (`DecodedEvent`)、过滤条件、解码器配置
-//! - [`buffers`]: 环形缓冲区 (`LogicBuffer`、`DecodedBuffer`)
+//!
+//! - `types`: 采样 (`LogicSample`)、事件 (`DecodedEvent`)、过滤条件、解码器配置
+//! - `buffers`: 环形缓冲区 (`LogicBuffer`、`DecodedBuffer`)
 //!
 //! ## 设计原则
 //!

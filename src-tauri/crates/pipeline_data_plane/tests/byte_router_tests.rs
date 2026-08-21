@@ -13,9 +13,9 @@ use app_state::AppState;
 use pipeline_data_plane::byte_router::route_bytes;
 use pipeline_data_plane::decoder_feed::DecoderFeedCache;
 use pipeline_data_plane::DataPlaneState;
-use vofa_next_buffer::Edge;
-use vofa_next_core::{ProtocolConfig, TransportConfig};
-use vofa_next_nodes::{BytePlan, DecoderBlockDef, FieldType, NodeDef, NodeKind};
+use buffer_graph::Edge;
+use vofa_core::{ProtocolConfig, TransportConfig};
+use node_engine::BytePlan, node_kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 
 fn node(id: &str, kind: NodeKind) -> NodeDef {
     NodeDef {
@@ -188,7 +188,7 @@ async fn inject_routes_to_multiple_downstreams() {
     );
     // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
     let graph =
-        vofa_next_nodes::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
+        node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
             .unwrap();
     plane.eval.graphs.lock().insert("t1".into(), graph);
     plane

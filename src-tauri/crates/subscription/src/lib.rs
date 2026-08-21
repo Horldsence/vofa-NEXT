@@ -35,7 +35,8 @@ pub fn register_cancel(manager: &SubscriptionManager, channel_id: u32) -> onesho
 
 /// 发起订阅取消
 pub fn cancel_subscription(manager: &SubscriptionManager, channel_id: u32) {
-    if let Some(tx) = manager.tasks.lock().remove(&channel_id) {
+    let tx = manager.tasks.lock().remove(&channel_id);
+    if let Some(tx) = tx {
         let _ = tx.send(());
     }
 }

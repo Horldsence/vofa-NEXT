@@ -12,4 +12,5 @@ app_state = { workspace = true }
 log = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
-vofa-next-core = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }

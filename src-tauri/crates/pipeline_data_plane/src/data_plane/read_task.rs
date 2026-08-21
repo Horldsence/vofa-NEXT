@@ -8,8 +8,8 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tauri::AppHandle;
 use tokio::sync::broadcast;
-use vofa_next_buffer::RawDataDirection;
-use vofa_next_core::{ConnectionState, TransportStats};
+use buffer_raw::RawDataDirection;
+use vofa_core::{ConnectionState, TransportStats};
 
 use super::{byte_router, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
 
@@ -64,7 +64,7 @@ pub(super) async fn read_task(
 
         // 按源原始字节收集 (不随解析积压丢失 — 收集在路由之前完成)
         plane.raw_collector_for(&node_id).lock().push_chunk(
-            vofa_next_core::now_us(),
+            vofa_core::now_us(),
             RawDataDirection::Rx,
             &data,
         );

@@ -8,7 +8,8 @@ use std::collections::HashMap;
 
 use rustc_hash::FxBuildHasher;
 use vofa_core::DataFrame;
-use vofa_next_dsp::{DigitalFilter, FilterKind, IfftState};
+use dsp_filter::{DigitalFilter, FilterKind};
+use dsp_fft::IfftState;
 
 use node_frame_decoder::FrameParser;
 use node_kind::MathOp;
@@ -205,7 +206,7 @@ impl CompiledEval {
                     // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
                     slots[*out] = ifft_states
                         .get_mut(node_id)
-                        .map(IfftState::next)
+                        .map(|s| s.next_sample())
                         .unwrap_or(0.0);
                     written[*out] = true;
                 }
