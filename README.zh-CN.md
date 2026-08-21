@@ -84,7 +84,7 @@ VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基�
 ### 节点编辑器与数据流
 
 - 基于 **React Flow** —— 从侧边栏拖拽控件到画布并连接数据流。
-- 后端 **DAG 引擎**（`vofa-next-nodes`）将图编译为拓扑序，逐帧评估所有节点输出，含循环检测。
+- 后端 **DAG 引擎**（`node_engine`）将图编译为拓扑序，逐帧评估所有节点输出，含循环检测。
 - 节点类型：`ChannelSource`、`Input`、`Math`、`Filter`、`SpectrumSink`、`FrameDecoder`、`Custom`（JS）、`Sink`。
 - **算术节点**：加 / 减 / 乘 / 除 / 均值 / 最小 / 最大 / 绝对值 / 取反 / 平方 / 开方 / sin / cos / tan / log。
 - **滤波器节点**：低通 / 高通 / 带通 / 带阻（FIR 系数或 IIR biquad），跨帧状态持久化。
@@ -208,13 +208,18 @@ VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基�
 
 | Crate | 职责 |
 | --- | --- |
-| `vofa-next-core` | 核心类型与配置（传输 / 协议 / 控件 / CAN / 逻辑 / 诊断） |
-| `vofa-next-transport` | 传输层（串口 / TCP / UDP / Slcan / CandleLight / 测试数据）+ 管理器 |
-| `vofa-next-protocol` | 协议引擎（JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode） |
-| `vofa-next-buffer` | 环形缓冲区、多通道 `DataBuffer`、原始数据收集器、节点图路由 |
-| `vofa-next-nodes` | DAG 编译器与评估器（Math / Filter / SpectrumSink / FrameDecoder / Custom） |
-| `vofa-next-dsp` | 数字信号处理（FIR/IIR 滤波器、FFT 频谱、窗函数） |
-| `vofa-next-automotive` | 诊断引擎（ISO-TP / UDS / OBD-II / J1939），桥接 CAN 后端 |
+| `vofa_core` | 核心类型与配置（传输 / 控件 / 流水线配置、错误类型） |
+| `schema_types` / `schema_engine` | 协议帧 schema 类型与 schema 驱动的协议引擎 |
+| `can_types` / `logic_types` / `logic_decoder` / `diagnostic` | CAN / 逻辑 / 诊断类型与解码器 |
+| `transport_core` / `transport_serial` / `transport_net` / `transport_can_bridge` | 传输层（串口 / TCP / UDP / Slcan / CandleLight / 测试数据） |
+| `protocol_engine` / `protocol_float` / `protocol_can_bridge` | 协议引擎（JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode） |
+| `buffer_ring` / `buffer_databuffer` / `buffer_raw` / `buffer_graph` | 环形缓冲区、多通道 `DataBuffer`、原始数据收集器、图路由 |
+| `node_kind` / `node_engine` / `node_frame_decoder` / `node_trigger` | DAG 节点定义、编译与求值、帧解码器、触发器匹配 |
+| `dsp_window` / `dsp_fft` / `dsp_filter` | 数字信号处理（窗函数、FFT 频谱、FIR/IIR 滤波器） |
+| `automotive_isotp` / `automotive_can` / `automotive_diag` | 诊断引擎（ISO-TP / UDS / OBD-II / J1939），桥接 CAN 后端 |
+| `pipeline_data_plane` / `pipeline_stream` / `pipeline_dispatcher` / `subscription` | 数据平面：字节路由、分片流分发、订阅注册表 |
+| `app_state` / `notify_events` / `menu_shell` / `update_flow` | 应用状态与 ticker、前端事件契约与通知、菜单、更新器 |
+| `cmd_*`（7 个 crate） | Tauri 命令（buffer / can_load / can_transport / debug / graph / pipeline / rawdata） |
 
 ## 目录结构
 

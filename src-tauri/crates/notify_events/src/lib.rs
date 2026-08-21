@@ -1,8 +1,7 @@
 //! `notify_events` — 前端事件契约 + 系统通知封装
 //!
-//! Stage H 拆分: 由 `src-tauri/src/events.rs` (前端事件契约) +
+//! 由原 `src-tauri/src/events.rs` (前端事件契约) 与
 //! `src-tauri/src/notify.rs` (tauri-plugin-notification 封装) 合并而成。
-//! 后续 Stage 还会并入菜单 / 更新器相关 emit 助手。
 //!
 //! 数据平面读任务 ([`emit_transport_state`] / [`emit_transport_rx`]) 通过本 crate
 //! 向前端发送传输连接状态变化与统计节流事件; Tauri 命令 (open_transport 等)

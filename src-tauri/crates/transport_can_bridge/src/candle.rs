@@ -147,7 +147,7 @@ pub async fn spawn(
                 data = write_rx.recv() => {
                     match data {
                         Some(data) => {
-                            // TODO: 后续阶段包装为 candleLight 帧格式
+                            // TODO: 包装为 candleLight 帧格式
                             ep_out.submit(data.into());
                             if let Err(e) = ep_out.next_complete().await.into_result() {
                                 log::error!("candleLight 发送错误: {e}");

@@ -2,7 +2,7 @@
 //!
 //! `source_frames` 是两平面衔接点: 字节平面每源最新帧缓存 (key = Protocol 节点 id,
 //! latest-value 融合), 数值平面 ProtocolSource 节点求值时按源读取
-//! (CompiledOp::ProtocolSource, 见 vofa-next-nodes)。
+//! (CompiledOp::ProtocolSource, 见 node_engine)。
 //!
 //! 触发规则 (见 [`crate::pipeline::graph_eval::process_source_batch`]):
 //! 某源来帧 → 评估"引用了该源的 tab 图"与"无 ProtocolSource 的纯本地图"

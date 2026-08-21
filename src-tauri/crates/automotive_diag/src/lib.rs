@@ -1,6 +1,6 @@
 //! `automotive_diag` — 诊断协议层入口 (UDS / OBD-II / J1939)
 //!
-//! Phase 1 仅暴露 `DiagnosticEngine` 占位,具体实现将在后续接入:
+//! 当前仅暴露 `DiagnosticEngine` 占位,具体实现将在后续接入:
 //! - `IsoTpSession` (来自 `automotive_isotp`)
 //! - `UdsClient` (ISO 14229)
 //! - `ObdClient` (ISO 15031 / SAE J1979)
@@ -12,7 +12,7 @@
 
 /// 诊断引擎 — 包装 ISO-TP / UDS / OBD-II / J1939 状态机
 ///
-/// Phase 1 占位:实际字段在后续接入 `CanBackend` 时补全。
+/// 占位实现:实际字段在后续接入 `CanBackend` 时补全。
 #[derive(Debug, Default)]
 pub struct DiagnosticEngine {
     _priv: (),
@@ -24,7 +24,7 @@ impl DiagnosticEngine {
         Self { _priv: () }
     }
 
-    /// Phase 1 自检:返回引擎是否就绪
+    /// 自检:返回引擎是否就绪 (占位实现恒为 `false`)
     pub const fn is_ready(&self) -> bool {
         false
     }

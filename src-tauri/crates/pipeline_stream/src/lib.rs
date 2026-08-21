@@ -1,6 +1,6 @@
 //! `pipeline_stream` — VOFA-NEXT 数据流分发层
 //!
-//! Stage H 拆分: 由 `src-tauri/src/pipeline/{stream.rs, dispatcher.rs}` 合并而成。
+//! 由 `src-tauri/src/pipeline/{stream.rs, dispatcher.rs}` 合并而成。
 //!
 //! 两个核心组件:
 //! - [`stream`] — 统一分片流框架 (`StreamSource` trait), 大数据流与

@@ -1,4 +1,4 @@
-// ============ 协议帧 schema (与 Rust vofa-next-core schema.rs 严格对齐) ============
+// ============ 协议帧 schema (与 Rust schema_types crate 严格对齐) ============
 //
 // 协议 = 一份帧 schema: decode 块列表 (解析) + 可选 encode 块列表 (编码)。
 // 所有现有协议 kind (JustFloat/FireWater/RawData/Slcan/CandleLight/LogicDecode)

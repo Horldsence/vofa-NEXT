@@ -83,7 +83,7 @@ The UI features a **dock-style window layout**: control canvases and data views 
 ### Node Editor & Dataflow
 
 - Built on **React Flow** — drag widgets from the sidebar onto the canvas and wire up dataflows.
-- Backend **DAG engine** (`vofa-next-nodes`) compiles the graph into a topological order and evaluates all node outputs per frame, with cycle detection.
+- Backend **DAG engine** (`node_engine`) compiles the graph into a topological order and evaluates all node outputs per frame, with cycle detection.
 - Node kinds: `ChannelSource`, `Input`, `Math`, `Filter`, `SpectrumSink`, `FrameDecoder`, `Custom` (JS), `Sink`.
 - **Math nodes**: Add / Sub / Mul / Div / Avg / Min / Max / Abs / Neg / Square / Sqrt / Sin / Cos / Tan / Log.
 - **Filter nodes**: Lowpass / Highpass / Bandpass / Bandstop (FIR coefficients or IIR biquad), with cross-frame state persistence.
@@ -207,13 +207,18 @@ The default layout looks like this (all panels can be freely rearranged):
 
 | Crate | Responsibility |
 | --- | --- |
-| `vofa-next-core` | Core types & config (transports, protocols, widgets, CAN, logic, diagnostics) |
-| `vofa-next-transport` | Transport layer (serial / TCP / UDP / Slcan / CandleLight / test data) + manager |
-| `vofa-next-protocol` | Protocol engines (JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode) |
-| `vofa-next-buffer` | Ring buffer, multi-channel `DataBuffer`, raw-data collector, node-graph routing |
-| `vofa-next-nodes` | DAG compiler & evaluator (Math / Filter / SpectrumSink / FrameDecoder / Custom) |
-| `vofa-next-dsp` | Digital signal processing (FIR/IIR filters, FFT spectrum, window functions) |
-| `vofa-next-automotive` | Diagnostic engine (ISO-TP / UDS / OBD-II / J1939) bridging CAN backends |
+| `vofa_core` | Core types & config (transport / widget / pipeline configs, error types) |
+| `schema_types` / `schema_engine` | Protocol frame schema types & schema-driven protocol engine |
+| `can_types` / `logic_types` / `logic_decoder` / `diagnostic` | CAN / logic / diagnostics types & decoders |
+| `transport_core` / `transport_serial` / `transport_net` / `transport_can_bridge` | Transport layer (serial / TCP / UDP / Slcan / CandleLight / test data) |
+| `protocol_engine` / `protocol_float` / `protocol_can_bridge` | Protocol engines (JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode) |
+| `buffer_ring` / `buffer_databuffer` / `buffer_raw` / `buffer_graph` | Ring buffer, multi-channel `DataBuffer`, raw-data collector, graph routing |
+| `node_kind` / `node_engine` / `node_frame_decoder` / `node_trigger` | DAG node definitions, compiler & evaluator, frame decoder, trigger matching |
+| `dsp_window` / `dsp_fft` / `dsp_filter` | Digital signal processing (window functions, FFT spectrum, FIR/IIR filters) |
+| `automotive_isotp` / `automotive_can` / `automotive_diag` | Diagnostic engine (ISO-TP / UDS / OBD-II / J1939) bridging CAN backends |
+| `pipeline_data_plane` / `pipeline_stream` / `pipeline_dispatcher` / `subscription` | Data plane: byte routing, chunked stream dispatch, subscription registry |
+| `app_state` / `notify_events` / `menu_shell` / `update_flow` | App state & tickers, frontend event contracts & notifications, menu, updater |
+| `cmd_*` (7 crates) | Tauri commands (buffer / can_load / can_transport / debug / graph / pipeline / rawdata) |
 
 ## Project Structure
 

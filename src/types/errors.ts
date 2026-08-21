@@ -1,4 +1,4 @@
-//! 节点错误类型 — 与后端 vofa-next-core Error 枚举一一对应
+//! 节点错误类型 — 与后端 vofa_core Error 枚举一一对应
 //!
 //! 后端 Error 序列化为带标签结构 { kind, message } 跨 IPC 传递,
 //! 前端用 parseNodeError 还原为可判别的 NodeError。

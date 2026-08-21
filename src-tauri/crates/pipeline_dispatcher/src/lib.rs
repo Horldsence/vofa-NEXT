@@ -1,7 +1,6 @@
 //! `pipeline_dispatcher` — 数值平面辅助
 //!
-//! Stage H 拆分: 由 `src-tauri/src/pipeline/{spectrum_sync.rs, filtered_sources.rs}`
-//! 合并而成。
+//! 由 `src-tauri/src/pipeline/{spectrum_sync.rs, filtered_sources.rs}` 合并而成。
 //!
 //! 两个子模块:
 //! - [`spectrum_sync`] — `sync_spectrum_analyzers` (FrequencyAnalyzer 与 graphs 同步)

@@ -3,11 +3,10 @@
 //! 数据平面字节路由端到端验证: Transport.rx → Protocol.in / FrameDecoder.in /
 //! convert_to 重编码 → 下游 Protocol.in / Transport.tx 等路径。
 //!
-//! 此文件原是 byte_router.rs 内 `#[cfg(test)] mod tests` (218 行);
-//! 因 `pipeline_data_plane` 内联测试通过 dev-dep 反向依赖 `app_state`,
-//! cargo 在 dev-dep 循环下不统一 `data_plane::DataPlaneState` 与
-//! `pipeline_data_plane::DataPlaneState` 两个同源码类型, 测试编译失败 (E0308)。
-//! 按 Stage H 教训 (inline 大测试 → tests/ 集成测试) 迁出。
+//! 注: 这些测试不能作为 `pipeline_data_plane` 的内联测试 — 内联测试需通过
+//! dev-dep 反向依赖 `app_state`, cargo 在 dev-dep 循环下不统一
+//! `data_plane::DataPlaneState` 与 `pipeline_data_plane::DataPlaneState`
+//! 两个同源码类型, 测试编译失败 (E0308), 故以 tests/ 集成测试形式存在。
 
 use app_state::AppState;
 use pipeline_data_plane::byte_router::route_bytes;

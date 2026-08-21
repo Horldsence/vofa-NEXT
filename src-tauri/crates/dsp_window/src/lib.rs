@@ -3,8 +3,8 @@
 //! 提供 4 种常用窗 (Rect / Hann / Hamming / Blackman) 的系数计算与相干增益,
 //! 与 [`apply_window`] 原地应用函数。Layer 0 — 无 FFT 依赖,可独立编译。
 //!
-//! 上层 `dsp_fft` 在 FFT 前调用 [`apply_window`];`vofa-next-dsp` façade
-//! 把 [`WindowType`] 与 [`apply_window`] 暴露给节点图与状态层。
+//! 上层 `dsp_fft` 在 FFT 前调用 [`apply_window`], 节点图与状态层
+//! 直接使用 [`WindowType`] 与 [`apply_window`]。
 //!
 //! # 示例
 //! ```

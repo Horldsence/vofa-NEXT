@@ -1,8 +1,7 @@
 //! 协议配置 — schema 的 legacy_config / TestDataLink.protocol 用。
 //!
-//! 自 `vofa-next-core/src/config.rs` 迁出, 仅保留 schema 所需的最小集 (ProtocolConfig)。
-//! 传输 / 控件 / 流水线配置仍由 `vofa-next-core::config` 承担, 待 Stage H 转 façade 时
-//! 再统一迁入 `vofa_core::config`。
+//! 仅保留 schema 所需的最小集 (ProtocolConfig);
+//! 传输 / 控件 / 流水线配置由 `vofa_core::config` 承担。
 
 use diagnostic::DiagnosticConfig;
 use logic_types::LogicDecoderConfig;

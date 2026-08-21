@@ -1,4 +1,4 @@
-//! `automotive_diag` 集成测试 — Phase 1 占位 + libautomotive 链接
+//! `automotive_diag` 集成测试 — 占位引擎 + libautomotive 链接
 
 use automotive_diag::DiagnosticEngine;
 
@@ -11,7 +11,7 @@ fn libautomotive_links_and_exposes_version() {
 #[test]
 fn engine_can_be_constructed() {
     let eng = DiagnosticEngine::new();
-    assert!(!eng.is_ready(), "Phase 1 占位引擎不应就绪");
+    assert!(!eng.is_ready(), "占位引擎不应就绪");
 }
 
 #[test]

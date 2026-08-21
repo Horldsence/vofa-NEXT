@@ -1,8 +1,7 @@
 //! 帧解码块类型定义 (FrameDecoder 的块列表元素)
 //!
-//! 类型已迁移至 `vofa-next-core::schema` (协议引擎统一为帧 schema 模型,
-//! 纯数据类型集中在 core 供 nodes/protocol/transport 共用);
-//! 本模块保留 re-export, 现有 `crate::decoder_block::*` 引用不受影响。
+//! 类型定义在 `schema_types` (纯数据类型, 供 nodes / protocol / transport 共用);
+//! 本模块 re-export, 现有 `crate::decoder_block::*` 引用不受影响。
 //!
 //! serde 使用 `tag = "type"` 与前端 discriminant 字段 "type" 一致。
 //!

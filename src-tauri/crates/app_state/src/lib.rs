@@ -1,7 +1,6 @@
 //! `app_state` — VOFA-NEXT 应用全局状态 + 后台推送 ticker
 //!
-//! Stage H 拆分: 由 `src-tauri/src/state/{app_state.rs, tickers.rs, mod.rs}`
-//! 提取而成。
+//! 由 `src-tauri/src/state/{app_state.rs, tickers.rs, mod.rs}` 提取而成。
 //!
 //! `GraphEvalState` / `StreamGroupState` / 4 个 snapshot 类型
 //! (`GraphOutputSnapshot` / `CustomInputBatch` / `StringOutputSnapshot` /

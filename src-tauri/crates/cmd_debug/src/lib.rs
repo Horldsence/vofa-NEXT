@@ -1,6 +1,6 @@
 //! `cmd_debug` — 调试相关 Tauri 命令
 //!
-//! Stage H Task #7 拆分: 由 `src-tauri/src/commands/debug.rs` 提取而来。
+//! 由 `src-tauri/src/commands/debug.rs` 提取而来。
 
 mod debug;
 

@@ -1,10 +1,10 @@
 //! CAN 后端抽象 — 用于诊断层 (ISO-TP / UDS / OBD-II / J1939) 接入底层 CAN 帧流
 //!
-//! 这是 [`vofa-next-protocol`] 中 `ProtocolEngine::feed` 的对偶:
+//! 这是 [`protocol_engine`] 中 `ProtocolEngine::feed` 的对偶:
 //! - `ProtocolEngine` 把"原始字节流 → CanFrame" 的解码做掉
 //! - `CanBackend` 把"CanFrame 收发" 暴露成统一接口给上层诊断引擎使用
 //!
-//! 实现通常由 `vofa-next-automotive` crate 提供,通过桥接
+//! 实现通常由 `automotive_can` crate 提供,通过桥接
 //! `TransportManager` 的原始字节流 + `ProtocolEngine` 编解码完成。
 //!
 //! 设计为 `async_trait` + `Send + Sync`,可在 tokio task 间共享。

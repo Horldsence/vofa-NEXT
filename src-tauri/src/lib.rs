@@ -1,4 +1,4 @@
-// 直接引用 cmd_* crates — Stage H Task #7 命令拆分后的调用路径
+// 直接引用 cmd_* crates 中的 Tauri 命令
 pub use cmd_buffer::*;
 pub use cmd_can_load::*;
 pub use cmd_can_transport::*;
