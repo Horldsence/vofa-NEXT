@@ -6,9 +6,9 @@
 //!
 //! - [`DataFrame`]: 协议引擎输出的标准格式 — 时间戳 + 多通道 `f32`
 //! - [`RawData`]: 未解析的原始字节块 — 用于"原始数据"视图
-//! - [`ConnectionState`]: 离散连接状态机 (Diconnected/Connecting/Connected/Error)
-//! - [`PortInfo`]: 跨平台端口元信息 (含 `vid/pid/serial` 等)
-//! - [`TransportStats`]: 累计传输统计 (rx/tx 字节/帧)
+//! - [`ConnectionState`][]: 离散连接状态机 (Diconnected/Connecting/Connected/Error)
+//! - [`PortInfo`][]: 跨平台端口元信息 (含 `vid/pid/serial` 等)
+//! - [`TransportStats`][]: 累计传输统计 (rx/tx 字节/帧)
 //!
 //! ## 时间戳约定
 //!

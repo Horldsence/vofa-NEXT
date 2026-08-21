@@ -5,7 +5,7 @@
 use serde::{Deserialize, Serialize};
 
 /// 单个 ID 的负载统计快照
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CanIdLoadStats {
     pub id: u32,
     pub extended: bool,

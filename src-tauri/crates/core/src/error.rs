@@ -63,14 +63,14 @@ impl Error {
     /// 枚举变体名 — 跨 IPC 传递, 前端 `NodeErrorKind` 与之对应
     pub const fn kind(&self) -> &'static str {
         match self {
-            Error::Transport(_) => "Transport",
-            Error::Protocol(_) => "Protocol",
-            Error::PortNotFound(_) => "PortNotFound",
-            Error::PortAlreadyOpen(_) => "PortAlreadyOpen",
-            Error::PortNotOpen(_) => "PortNotOpen",
-            Error::Io(_) => "Io",
-            Error::Config(_) => "Config",
-            Error::Serde(_) => "Serde",
+            Self::Transport(_) => "Transport",
+            Self::Protocol(_) => "Protocol",
+            Self::PortNotFound(_) => "PortNotFound",
+            Self::PortAlreadyOpen(_) => "PortAlreadyOpen",
+            Self::PortNotOpen(_) => "PortNotOpen",
+            Self::Io(_) => "Io",
+            Self::Config(_) => "Config",
+            Self::Serde(_) => "Serde",
         }
     }
 }

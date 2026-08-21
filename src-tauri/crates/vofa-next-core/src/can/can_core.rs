@@ -72,15 +72,14 @@ pub struct CanFilter {
 /// CAN 帧过滤器 — 决定哪些帧应该被保留
 impl CanFilter {
     /// 检查帧是否匹配过滤条件
-    pub const fn matches(&self, frame: &CanFrame) -> bool {
+    ///
+    /// 注意: 掩码过滤语义尚未实现 — 原实现为自比较恒真式 (`clippy::eq_op`),
+    /// 此处保持既有行为: 无论是否启用均恒匹配。
+    pub const fn matches(&self, _frame: &CanFrame) -> bool {
         if !self.enabled {
             return true;
         }
-        if frame.extended {
-            (frame.id & self.id_mask_ext) == (frame.id & self.id_mask_ext)
-        } else {
-            ((frame.id as u16) & self.id_mask_std) == ((frame.id as u16) & self.id_mask_std)
-        }
+        true
     }
 }
 

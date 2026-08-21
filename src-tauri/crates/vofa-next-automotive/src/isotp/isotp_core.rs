@@ -160,9 +160,8 @@ impl IsoTpSession {
     pub fn new(backend: Arc<dyn CanBackend>, config: IsoTpConfig) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
         let frame_rx = backend.subscribe_frames();
-        let cfg = config.clone();
         let join_handle = tokio::spawn(async move {
-            run_session(backend, cfg, cmd_rx, frame_rx).await;
+            run_session(backend, config, cmd_rx, frame_rx).await;
         });
         Self {
             handle: IsoTpSessionHandle { cmd_tx },
@@ -190,14 +189,16 @@ impl Drop for IsoTpSession {
 
 // ============ 后台任务 ============
 
+// n_as/n_bs/n_cr/n_ar 为 ISO 15765-2 标准定时参数名, 按规范命名故允许相似
+#[allow(clippy::similar_names)]
 async fn run_session(
     backend: Arc<dyn CanBackend>,
     config: IsoTpConfig,
     mut cmd_rx: mpsc::Receiver<IsoTpCmd>,
     mut frame_rx: broadcast::Receiver<CanFrame>,
 ) {
-    let n_bs = Duration::from_millis(config.timeout_ms.max(DEFAULT_N_BS_MS as u32) as u64);
-    let n_cr = Duration::from_millis(config.timeout_ms.max(DEFAULT_N_CR_MS as u32) as u64);
+    let n_bs = Duration::from_millis(u64::from(config.timeout_ms).max(DEFAULT_N_BS_MS));
+    let n_cr = Duration::from_millis(u64::from(config.timeout_ms).max(DEFAULT_N_CR_MS));
     let n_as = Duration::from_millis(DEFAULT_N_AS_MS);
     let n_ar = Duration::from_millis(DEFAULT_N_AR_MS);
 
@@ -265,8 +266,8 @@ async fn start_send_request(
 
     if data.len() <= SF_MAX_DATA {
         let mut frame_data = vec![0u8; 8];
-        frame_data[0] = PCI_SF | (data.len() as u8);
-        frame_data[1..1 + data.len()].copy_from_slice(&data);
+        frame_data[0] = PCI_SF | u8::try_from(data.len()).expect("SF 数据长度不超过 7");
+        frame_data[1..=data.len()].copy_from_slice(&data);
         if let Some(pad) = config.padding {
             for b in &mut frame_data[1 + data.len()..] {
                 *b = pad;
@@ -287,8 +288,8 @@ async fn start_send_request(
     } else {
         let mut ff = vec![0u8; 8];
         ff[0] = PCI_FF;
-        ff[1] = ((data.len() >> 8) & 0x0F) as u8;
-        ff[2] = (data.len() & 0xFF) as u8;
+        ff[1] = u8::try_from((data.len() >> 8) & 0x0F).expect("已掩码为 4 位");
+        ff[2] = u8::try_from(data.len() & 0xFF).expect("已掩码为 8 位");
         ff[3..3 + FF_DATA_LEN].copy_from_slice(&data[..FF_DATA_LEN]);
         if let Err(e) = send_can_frame(backend, tx_id, &ff, n_as).await {
             let _ = response_tx.send(Err(e));
@@ -326,7 +327,7 @@ async fn send_consecutive_frames(
         let take = (data.len() - *offset).min(CF_DATA_LEN);
         let mut cf = vec![0u8; 8];
         cf[0] = PCI_CF | (*next_sn & 0x0F);
-        cf[1..1 + take].copy_from_slice(&data[*offset..*offset + take]);
+        cf[1..=take].copy_from_slice(&data[*offset..*offset + take]);
         send_can_frame(backend, tx_id, &cf, n_as).await?;
         *offset += take;
         *next_sn = (*next_sn + 1) & 0x0F;
@@ -372,9 +373,15 @@ async fn handle_received_frame(
 
     match pci_type {
         PCI_FC => handle_fc_frame(backend, pending, frame, n_as).await,
-        PCI_SF => handle_sf_frame(pending, frame),
+        PCI_SF => {
+            handle_sf_frame(pending, frame);
+            Ok(())
+        }
         PCI_FF => handle_ff_frame(backend, config, pending, frame, n_as).await,
-        PCI_CF => handle_cf_frame(pending, frame),
+        PCI_CF => {
+            handle_cf_frame(pending, frame);
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -386,9 +393,8 @@ async fn handle_fc_frame(
     n_as: Duration,
 ) -> AutomotiveResult<()> {
     let rx_id = frame.id;
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return Ok(());
     };
 
     let tx_id = pending_entry.tx_id;
@@ -450,26 +456,24 @@ async fn handle_fc_frame(
     Ok(())
 }
 
-fn handle_sf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) -> AutomotiveResult<()> {
+fn handle_sf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) {
     let rx_id = frame.id;
     let sf_dl = (frame.data[0] & 0x0F) as usize;
     if sf_dl == 0 || sf_dl > SF_MAX_DATA {
-        return Ok(());
+        return;
     }
-    let data = frame.data[1..1 + sf_dl].to_vec();
+    let data = frame.data[1..=sf_dl].to_vec();
 
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return;
     };
     pending_entry.complete(Ok(data));
     pending.remove(&rx_id);
-    Ok(())
 }
 
 async fn handle_ff_frame(
     backend: &Arc<dyn CanBackend>,
-    config: &IsoTpConfig,
+    _config: &IsoTpConfig,
     pending: &mut HashMap<u32, Pending>,
     frame: &CanFrame,
     n_as: Duration,
@@ -480,9 +484,8 @@ async fn handle_ff_frame(
         return Ok(());
     }
 
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return Ok(());
     };
 
     let tx_id = pending_entry.tx_id;
@@ -505,19 +508,17 @@ async fn handle_ff_frame(
     Ok(())
 }
 
-fn handle_cf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) -> AutomotiveResult<()> {
+fn handle_cf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) {
     let rx_id = frame.id;
     let sn = frame.data[0] & 0x0F;
     let data = &frame.data[1..8.min(frame.data.len())];
 
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return;
     };
 
-    let receiver = match &mut pending_entry.state {
-        PendingState::Receiving { receiver } => receiver,
-        _ => return Ok(()),
+    let PendingState::Receiving { receiver } = &mut pending_entry.state else {
+        return;
     };
 
     match receiver.push_cf(sn, data) {
@@ -531,7 +532,6 @@ fn handle_cf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) -> Aut
             pending.remove(&rx_id);
         }
     }
-    Ok(())
 }
 
 // ============ 辅助函数 ============
@@ -561,7 +561,9 @@ async fn send_can_frame(
     })
 }
 
-fn st_min_to_duration(st_min: u8) -> Duration {
+// const fn 中无法使用 From trait (非常量), 只能用 as 转换
+#[allow(clippy::cast_lossless)]
+const fn st_min_to_duration(st_min: u8) -> Duration {
     match st_min {
         0..=127 => Duration::from_millis(st_min as u64),
         241..=249 => Duration::from_micros((st_min as u64 - 240) * 100),

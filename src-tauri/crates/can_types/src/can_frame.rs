@@ -29,7 +29,7 @@ impl CanFrame {
     ///
     /// `data` 超过 8 字节时自动截断,以匹配 CAN DLC 上限。
     pub fn new(timestamp: u64, id: u32, data: Vec<u8>, direction: CanDirection) -> Self {
-        let dlc = data.len().min(8) as u8;
+        let dlc = u8::try_from(data.len().min(8)).expect("dlc 已限制为 8");
         let data = data.into_iter().take(dlc as usize).collect();
         Self {
             timestamp,
@@ -97,15 +97,15 @@ pub struct CanFilter {
 
 impl CanFilter {
     /// 检查帧是否匹配过滤条件
-    pub const fn matches(&self, frame: &CanFrame) -> bool {
+    ///
+    /// 注意: 掩码过滤语义尚未实现 — 原实现为自比较恒真式 (`clippy::eq_op`),
+    /// 此处保持既有行为: 无论是否启用均恒匹配。后续实现掩码语义时需同步更新
+    /// `can_frame_tests` 中 `filter_enabled_always_matches_with_full_mask`。
+    pub const fn matches(&self, _frame: &CanFrame) -> bool {
         if !self.enabled {
             return true;
         }
-        if frame.extended {
-            (frame.id & self.id_mask_ext) == (frame.id & self.id_mask_ext)
-        } else {
-            ((frame.id as u16) & self.id_mask_std) == ((frame.id as u16) & self.id_mask_std)
-        }
+        true
     }
 }
 
@@ -150,7 +150,7 @@ pub struct CanFrameBatch {
 
 impl CanFrameBatch {
     /// 构造空批次
-    pub fn new(seq: u64) -> Self {
+    pub const fn new(seq: u64) -> Self {
         Self {
             seq,
             frames: Vec::new(),
@@ -158,12 +158,12 @@ impl CanFrameBatch {
     }
 
     /// 帧数
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.frames.len()
     }
 
     /// 是否空批
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.frames.is_empty()
     }
 }

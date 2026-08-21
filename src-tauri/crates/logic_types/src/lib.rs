@@ -4,7 +4,7 @@
 //!
 //! 模块:
 //! - [`types`]: 采样 (`LogicSample`)、事件 (`DecodedEvent`)、过滤条件、解码器配置
-//! - [`buffers`]: 环形缓冲区 (`LogicBuffer`、`DecodedBuffer`)
+//! - [`buffers`][]: 环形缓冲区 (`LogicBuffer`、`DecodedBuffer`)
 //!
 //! ## 设计原则
 //!
