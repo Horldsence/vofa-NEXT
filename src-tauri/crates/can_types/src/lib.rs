@@ -1,22 +1,22 @@
 //! # can_types
 //!
-//! CAN 总线相关数据类型 + 缓冲区 + 负载统计。
+//! CAN bus data types, buffer, and load statistics.
 //!
-//! 模块拆分:
+//! Module breakdown:
 //!
-//! - [`can_frame`]: 帧/方向/波特率/过滤/批次/candle 设备
-//! - [`can_buffer`]: CAN 帧环形缓冲区
-//! - [`can_load_types`][]: 负载统计快照与历史采样类型
-//! - [`can_load_stats`][]: 滑动时间窗负载统计器
-//! - [`test_data`][]: 测试数据生成工具
+//! - [`can_frame`]: frame / direction / bitrate / filter / batch / candle device
+//! - [`can_buffer`]: CAN frame ring buffer
+//! - [`can_load_types`]: load statistic snapshot and history sampling types
+//! - [`can_load_stats`]: sliding time-window load statistics
+//! - [`test_data`]: test data generation utilities
 //!
-//! ## 设计原则
+//! ## Design Principles
 //!
-//! 1. **零依赖外部 crate**:仅依赖 `serde` / `serde_json`(无 `vofa_core` 依赖,
-//!    以打破与 `vofa_core::config::SlcanConfig` 的 Cargo 循环 — `vofa_core` Layer 0
-//!    需要本 crate 的 `CanBitrate` 用于传输层配置)。
-//! 2. **serde 优先**:所有 wire 类型派生 `Serialize`/`Deserialize`,与前端 IPC。
-//! 3. **单职责**:本 crate 不引入 `tokio` / `serialport` 等 I/O 依赖。
+//! 1. **Zero external crate dependencies**: only `serde` / `serde_json` (no `vofa_core` dependency,
+//!    to break the Cargo cycle with `vofa_core::config::SlcanConfig` — `vofa_core` Layer 0
+//!    needs `CanBitrate` from this crate for transport layer config).
+//! 2. **serde first**: all wire types derive `Serialize`/`Deserialize`, for IPC with the frontend.
+//! 3. **Single responsibility**: this crate does not depend on `tokio` / `serialport` or other I/O crates.
 
 pub mod can_buffer;
 pub mod can_frame;

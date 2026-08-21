@@ -1,10 +1,10 @@
-//! CAN 帧、方向、波特率、过滤、批次与 candleLight 设备信息
+//! CAN frame, direction, bitrate, filter, batch, and candleLight device info
 
 use serde::{Deserialize, Serialize};
 
-// ============ CAN 帧基础类型 ============
+// ============ CAN Frame Base Types ============
 
-/// CAN 帧方向
+/// CAN frame direction
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum CanDirection {
     #[default]
@@ -12,7 +12,7 @@ pub enum CanDirection {
     Tx,
 }
 
-/// CAN 帧 — 标准化 CAN 数据模型
+/// CAN frame — normalized CAN data model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanFrame {
     pub timestamp: u64,
@@ -25,12 +25,12 @@ pub struct CanFrame {
 }
 
 impl CanFrame {
-    /// 构造给定时间戳、ID、方向与数据的 CAN 帧
+    /// Construct a CAN frame with given timestamp, ID, direction and data.
     ///
-    /// `data` 超过 8 字节时自动截断,以匹配 CAN DLC 上限。
+    /// `data` exceeding 8 bytes is truncated to match the CAN DLC limit.
     #[allow(clippy::cast_possible_truncation)]
     pub fn new(timestamp: u64, id: u32, data: Vec<u8>, direction: CanDirection) -> Self {
-        let dlc = u8::try_from(data.len().min(8)).expect("dlc 已限制为 8");
+        let dlc = u8::try_from(data.len().min(8)).expect("dlc is capped at 8");
         let data = data.into_iter().take(dlc as usize).collect();
         Self {
             timestamp,
@@ -43,13 +43,13 @@ impl CanFrame {
         }
     }
 
-    /// 数据字节数 (基于 DLC)
+    /// Number of data bytes (based on DLC)
     pub const fn data_len(&self) -> usize {
         self.dlc as usize
     }
 }
 
-/// CAN 波特率
+/// CAN bitrate
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CanBitrate {
     Bps100k,
@@ -60,7 +60,7 @@ pub enum CanBitrate {
 }
 
 impl CanBitrate {
-    /// 返回波特率数值 (bps)
+    /// Returns the bitrate value in bps
     pub const fn bps(&self) -> u32 {
         match self {
             Self::Bps100k => 100_000,
@@ -71,7 +71,7 @@ impl CanBitrate {
         }
     }
 
-    /// slcan 波特率命令字符 (Lawicel 协议)
+    /// slcan baudrate command character (Lawicel protocol)
     pub const fn slcan_cmd(&self) -> &'static str {
         match self {
             Self::Bps100k => "S3",
@@ -83,24 +83,24 @@ impl CanBitrate {
     }
 }
 
-// ============ CAN 过滤与批次 ============
+// ============ CAN Filter and Batch ============
 
-/// CAN 过滤器配置 — 通过 ID 位掩码控制哪些帧通过
+/// CAN filter configuration — controls which frames pass through via ID bitmask
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanFilter {
-    /// 是否启用
+    /// Whether the filter is enabled
     pub enabled: bool,
-    /// 标准帧 ID 掩码 (只保留低 11 位中掩码为 1 的位)
+    /// Standard frame ID mask (only keeps bits where the mask is 1 in the lower 11 bits)
     pub id_mask_std: u16,
-    /// 扩展帧 ID 掩码 (只保留低 29 位中掩码为 1 的位)
+    /// Extended frame ID mask (only keeps bits where the mask is 1 in the lower 29 bits)
     pub id_mask_ext: u32,
 }
 
 impl CanFilter {
-    /// 检查帧是否匹配过滤条件
+    /// Check if a frame matches the filter conditions
     ///
-    /// 未启用时恒匹配;启用后按标准/扩展帧分别应用 ID 掩码,
-    /// `(frame.id & mask) != 0` 即视为匹配。
+    /// When disabled, always matches; when enabled, applies ID mask separately for standard/extended frames.
+    /// Frames with `(frame.id & mask) != 0` are considered a match.
     pub const fn matches(&self, frame: &CanFrame) -> bool {
         if !self.enabled {
             return true;
@@ -113,21 +113,21 @@ impl CanFilter {
     }
 }
 
-/// CAN 帧过滤器匹配器 — 方向 + 白/黑名单
+/// CAN frame filter matcher — direction + whitelist/blacklist
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CanFrameFilter {
-    /// 是否只接收 Rx 帧
+    /// Whether to receive Rx frames only
     pub rx_only: bool,
-    /// 是否只接收 Tx 帧
+    /// Whether to receive Tx frames only
     pub tx_only: bool,
-    /// ID 白名单 (空表示不限制)
+    /// ID whitelist (empty means no restriction)
     pub id_whitelist: Vec<u32>,
-    /// ID 黑名单
+    /// ID blacklist
     pub id_blacklist: Vec<u32>,
 }
 
 impl CanFrameFilter {
-    /// 检查帧是否匹配过滤条件
+    /// Check if a frame matches the filter conditions
     pub fn matches(&self, frame: &CanFrame) -> bool {
         if self.rx_only && frame.direction != CanDirection::Rx {
             return false;
@@ -145,7 +145,7 @@ impl CanFrameFilter {
     }
 }
 
-/// CAN 帧批次 (用于批量传输) — 单调递增 `seq`
+/// CAN frame batch (for bulk transfer) — monotonically increasing `seq`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CanFrameBatch {
     pub seq: u64,
@@ -153,7 +153,7 @@ pub struct CanFrameBatch {
 }
 
 impl CanFrameBatch {
-    /// 构造空批次
+    /// Construct an empty batch
     pub const fn new(seq: u64) -> Self {
         Self {
             seq,
@@ -161,18 +161,18 @@ impl CanFrameBatch {
         }
     }
 
-    /// 帧数
+    /// Number of frames
     pub const fn len(&self) -> usize {
         self.frames.len()
     }
 
-    /// 是否空批
+    /// Whether the batch is empty
     pub const fn is_empty(&self) -> bool {
         self.frames.is_empty()
     }
 }
 
-/// candleLight 设备信息
+/// candleLight device information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CandleDeviceInfo {
     pub bus: u8,

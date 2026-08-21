@@ -1,18 +1,18 @@
-//! CAN 帧测试数据生成器 — 用于单元/集成测试构造 CAN 帧流
+//! CAN frame test data generator — for constructing CAN frame streams in unit/integration tests
 
 use crate::can_frame::{CanDirection, CanFrame};
 
-/// CAN 帧测试数据生成器
+/// CAN frame test data generator
 ///
-/// 提供各种模式生成 [`CanFrame`] 序列,用于测试 CAN 缓冲区、负载统计和帧过滤。
+/// Provides various patterns for generating [`CanFrame`] sequences, used for testing CAN buffer, load statistics and frame filtering.
 pub struct CanFrameTestData;
 
 #[allow(clippy::cast_possible_truncation)]
 impl CanFrameTestData {
-    /// 生成指定数量的标准帧,ID 从 `base_id` 开始递增
+    /// Generate the specified number of standard frames, IDs starting from `base_id` and incrementing
     ///
-    /// 每帧携带 8 字节数据,第一个字节等于帧序号(0..count),其余为 0。
-    /// 时间戳从 0 开始,每帧间隔 1000 微秒。
+    /// Each frame carries 8 bytes of data, the first byte equals the frame sequence number (0..count), rest are 0.
+    /// Timestamp starts at 0, with 1000 microseconds between each frame.
     pub fn standard_frames(base_id: u32, count: usize) -> Vec<CanFrame> {
         (0..count)
             .map(|i| CanFrame {
@@ -31,7 +31,7 @@ impl CanFrameTestData {
             .collect()
     }
 
-    /// 生成指定数量的扩展帧,ID 从 `base_id` 开始递增
+    /// Generate the specified number of extended frames, IDs starting from `base_id` and incrementing
     pub fn extended_frames(base_id: u32, count: usize) -> Vec<CanFrame> {
         (0..count)
             .map(|i| CanFrame {
@@ -50,10 +50,10 @@ impl CanFrameTestData {
             .collect()
     }
 
-    /// 生成具有相同 ID 和数据模式的重复帧
+    /// Generate repeating frames with the same ID and data pattern
     ///
-    /// 所有帧共享相同的 `id`、`data` 和 `extended` 标志,
-    /// 时间戳从 0 开始每帧间隔 1000 微秒。
+    /// All frames share the same `id`, `data` and `extended` flag.
+    /// Timestamp starts at 0 with 1000 microseconds between each frame.
     pub fn repeating(id: u32, data: Vec<u8>, extended: bool, count: usize) -> Vec<CanFrame> {
         let dlc = data.len().min(8) as u8;
         let payload = data[..dlc as usize].to_vec();
@@ -70,10 +70,10 @@ impl CanFrameTestData {
             .collect()
     }
 
-    /// 生成多 ID 循环帧
+    /// Generate cycling frames across multiple IDs
     ///
-    /// 反复遍历 `ids` 列表生成帧,每帧携带 `data_len` 字节数据。
-    /// 时间戳从 0 开始每帧间隔 1000 微秒。
+    /// Iterates over the `ids` list repeatedly to generate frames, each frame carrying `data_len` bytes of data.
+    /// Timestamp starts at 0 with 1000 microseconds between each frame.
     pub fn cycling(ids: &[u32], data_len: u8, count: usize) -> Vec<CanFrame> {
         let dlc = data_len.min(8);
         (0..count)

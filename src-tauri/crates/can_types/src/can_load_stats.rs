@@ -1,15 +1,15 @@
-//! CAN 负载统计器 — 滑动时间窗 + 位填充估算 + 按 ID 分布
+//! CAN load statistics — sliding time window + bit-stuffing estimate + per-ID distribution
 //!
-//! 主要 API:
-//! - [`CanLoadStats::new`] 创建统计器
-//! - [`CanLoadStats::push`] 推入一帧
-//! - [`CanLoadStats::sample_history`] 采样历史
-//! - [`CanLoadStats::snapshot`] 生成快照
+//! Main API:
+//! - [`CanLoadStats::new`] — create the stats collector
+//! - [`CanLoadStats::push`] — push a frame
+//! - [`CanLoadStats::sample_history`] — sample history
+//! - [`CanLoadStats::snapshot`] — generate snapshot
 //!
-//! ## 位数估算公式(含 1.2 倍位填充因子)
+//! ## Bit Count Estimation Formula (with 1.2x bit-stuffing factor)
 //!
-//! - 标准帧: `(47 + 8×DLC) × 1.2`
-//! - 扩展帧: `(67 + 8×DLC) × 1.2`
+//! - Standard frame: `(47 + 8×DLC) × 1.2`
+//! - Extended frame: `(67 + 8×DLC) × 1.2`
 
 use std::cmp::Reverse;
 use std::collections::{HashMap, VecDeque};
@@ -19,12 +19,12 @@ use crate::can_load_types::{
     CanIdLoadHistory, CanIdLoadStats, CanLoadHistoryPoint, CanLoadSnapshot,
 };
 
-/// CAN 负载统计器 — 基于滑动时间窗
+/// CAN load statistics — based on sliding time window
 ///
-/// 每次推入一帧时,自动剔除窗口外的旧样本,并维护:
-/// - 窗口内总位数(用于负载率计算)
-/// - 按 ID 的帧数 / 位数 / 字节数统计
-/// - 最近 N 个采样点的负载率历史(供前端绘制时序图)
+/// On each frame push, automatically evicts expired samples outside the window and maintains:
+/// - Total bits within window (for load ratio calculation)
+/// - Per-ID frame count / bit count / byte count statistics
+/// - Recent N sample points of load ratio history (for frontend timeline rendering)
 pub struct CanLoadStats {
     samples: VecDeque<(u64, u32, u32, bool, u8)>,
     window_us: u64,
@@ -37,10 +37,10 @@ pub struct CanLoadStats {
 }
 
 impl CanLoadStats {
-    /// 创建负载统计器
+    /// Create a load statistics collector
     ///
-    /// - `window_us`: 滑动窗口大小(微秒),例如 `1_000_000` = 1 秒
-    /// - `history_capacity`: 历史采样点最大保留数(用于时序图)
+    /// - `window_us`: sliding window size in microseconds, e.g. `1_000_000` = 1 second
+    /// - `history_capacity`: maximum number of historical sample points to retain (for timeline)
     pub fn new(window_us: u64, history_capacity: usize) -> Self {
         Self {
             samples: VecDeque::with_capacity(4096),
@@ -54,7 +54,7 @@ impl CanLoadStats {
         }
     }
 
-    /// 设置滑动窗口大小(微秒) — 窗口缩小后,主动剔除超期样本
+    /// Set sliding window size in microseconds — actively evicts expired samples after shrinking
     pub fn set_window_us(&mut self, window_us: u64) {
         self.window_us = window_us.max(1);
         if let Some(&(ts, _, _, _, _)) = self.samples.back() {
@@ -62,12 +62,12 @@ impl CanLoadStats {
         }
     }
 
-    /// 当前窗口大小(微秒)
+    /// Current window size in microseconds
     pub const fn window_us(&self) -> u64 {
         self.window_us
     }
 
-    /// 推入一帧,更新窗口内统计
+    /// Push a frame, update window statistics
     pub fn push(&mut self, frame: &CanFrame) {
         let bits = frame_bits(frame);
         self.evict_expired(frame.timestamp);
@@ -90,8 +90,8 @@ impl CanLoadStats {
         entry.total_bytes += u64::from(frame.dlc);
     }
 
-    /// 采样当前负载率,推入历史(前端按固定间隔调用)
-    /// 同时为每个当前窗口内的 ID 采样其独立负载率
+    /// Sample current load ratio and push to history (called by frontend at fixed interval).
+    /// Also samples per-ID load ratio for each ID currently in the window.
     #[allow(clippy::cast_precision_loss)]
     pub fn sample_history(&mut self, bitrate: u32, now_us: u64) {
         self.evict_expired(now_us);
@@ -138,7 +138,7 @@ impl CanLoadStats {
         }
     }
 
-    /// 当前负载率(0.0 - 1.0+,可超过 1.0 表示过载)
+    /// Current load ratio (0.0 - 1.0+, can exceed 1.0 indicating overload)
     #[allow(clippy::cast_precision_loss)]
     pub fn load_ratio(&self, bitrate: u32) -> f64 {
         if self.window_us == 0 || bitrate == 0 {
@@ -151,7 +151,7 @@ impl CanLoadStats {
         self.total_bits as f64 / window_bits
     }
 
-    /// 当前帧率(帧/秒)
+    /// Current frame rate (frames per second)
     #[allow(clippy::cast_precision_loss)]
     pub fn fps(&self) -> f64 {
         if self.window_us == 0 {
@@ -160,7 +160,7 @@ impl CanLoadStats {
         (self.samples.len() as f64) * 1_000_000.0 / self.window_us as f64
     }
 
-    /// 生成当前快照(含历史采样 + per_id 排序 + per_id_history)
+    /// Generate current snapshot (includes history samples + per-id sorting + per_id_history)
     pub fn snapshot(&self, bitrate: u32) -> CanLoadSnapshot {
         let mut per_id: Vec<CanIdLoadStats> = self.per_id.values().cloned().collect();
         per_id.sort_by_key(|s| Reverse(s.total_bits));
@@ -196,7 +196,7 @@ impl CanLoadStats {
         }
     }
 
-    /// 清空所有统计
+    /// Clear all statistics
     pub fn clear(&mut self) {
         self.samples.clear();
         self.total_bits = 0;
@@ -206,7 +206,7 @@ impl CanLoadStats {
         self.per_id_history.clear();
     }
 
-    /// 剔除窗口外的过期样本(以 `now_us` 为基准)
+    /// Evict expired samples outside the window (using `now_us` as reference)
     fn evict_expired(&mut self, now_us: u64) {
         let cutoff = now_us.saturating_sub(self.window_us);
         while let Some(&(ts, bits, id, ext, dlc)) = self.samples.front() {
@@ -230,10 +230,10 @@ impl CanLoadStats {
     }
 }
 
-/// CAN 帧位数估算(含 1.2 倍位填充因子)
+/// CAN frame bit count estimation (with 1.2x bit-stuffing factor)
 ///
-/// 标准帧: SOF(1) + ID(11) + RTR(1) + IDE(1) + r0(1) + DLC(4) + Data(8×DLC) + CRC(15) + CRCdel(1) + ACK(1) + ACKdel(1) + EOF(7) + IFS(3) = 47 + 8×DLC
-/// 扩展帧: SOF(1) + ID-A(11) + SRR(1) + IDE(1) + ID-B(18) + RTR(1) + r1(1) + r0(1) + DLC(4) + Data(8×DLC) + CRC(15) + CRCdel(1) + ACK(1) + ACKdel(1) + EOF(7) + IFS(3) = 67 + 8×DLC
+/// Standard frame: SOF(1) + ID(11) + RTR(1) + IDE(1) + r0(1) + DLC(4) + Data(8×DLC) + CRC(15) + CRCdel(1) + ACK(1) + ACKdel(1) + EOF(7) + IFS(3) = 47 + 8×DLC
+/// Extended frame: SOF(1) + ID-A(11) + SRR(1) + IDE(1) + ID-B(18) + RTR(1) + r1(1) + r0(1) + DLC(4) + Data(8×DLC) + CRC(15) + CRCdel(1) + ACK(1) + ACKdel(1) + EOF(7) + IFS(3) = 67 + 8×DLC
 #[allow(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss,
