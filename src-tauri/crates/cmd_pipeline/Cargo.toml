@@ -1,0 +1,15 @@
+[package]
+name = "cmd_pipeline"
+description = "VOFA-NEXT 流水线参数 + 触发器匹配 Tauri 命令 (pipeline.rs + trigger.rs)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+log = { workspace = true }
+tauri = { version = "2", features = [] }
+vofa-next-core = { workspace = true }
+vofa-next-nodes = { workspace = true }

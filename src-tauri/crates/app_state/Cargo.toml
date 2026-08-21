@@ -1,0 +1,34 @@
+[package]
+name = "app_state"
+description = "VOFA-NEXT 应用全局状态 (AppState + GraphEvalState 重导出 + 推送 ticker) — Tauri-managed state + 后台循环"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# GraphEvalState + StreamGroupState + 4 个 snapshot 类型定义在 pipeline_data_plane
+pipeline_data_plane = { workspace = true }
+# Ticker 内的 AdaptiveRate 由 pipeline_stream 提供
+pipeline_stream = { workspace = true }
+# 频谱/Ifft 同步 sync_spectrum_analyzers / sync_ifft_buffers 由 pipeline_dispatcher 提供
+pipeline_dispatcher = { workspace = true }
+# 拆分后依赖: vofa-next-* 业务类型 (transport / buffer / core / nodes / dsp)
+vofa-next-core = { workspace = true }
+vofa-next-buffer = { workspace = true }
+vofa-next-nodes = { workspace = true }
+vofa-next-dsp = { workspace = true }
+vofa-next-transport = { workspace = true }
+
+# runtime
+parking_lot = "0.12"
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+tauri = { version = "2", features = [] }
+
+[dev-dependencies]
+vofa-next-core = { workspace = true }
+vofa-next-protocol = { workspace = true }

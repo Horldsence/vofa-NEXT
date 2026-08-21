@@ -1,0 +1,17 @@
+[package]
+name = "notify_events"
+description = "VOFA-NEXT 前端事件契约 + 系统通知封装 (tauri-plugin-notification) — 供数据平面读任务 emit 事件 + 命令触发通知"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa-next-core = { workspace = true }
+serde = { workspace = true }
+tauri = { version = "2", features = [] }
+tauri-plugin-notification = "2"
+
+[dev-dependencies]
+serde_json = { workspace = true }

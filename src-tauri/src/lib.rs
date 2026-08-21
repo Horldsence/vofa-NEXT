@@ -4,7 +4,6 @@ mod menu;
 mod notify;
 mod pipeline;
 mod state;
-mod subscription;
 mod update;
 
 use state::AppState;

@@ -1,31 +1,17 @@
-//! # commands — Tauri 命令（按领域拆分）
+//! # commands — Tauri 命令 thin facade (Stage H 后)
 //!
-//! 模块根，声明子模块并通过 `pub use` 将所有命令函数重导出到 `commands::` 命名空间。
+//! 13 个子模块已迁入 7 个 `cmd_*` sub-crate (`cmd_buffer` / `cmd_can_load` /
+//! `cmd_can_transport` / `cmd_debug` / `cmd_graph` / `cmd_pipeline` / `cmd_rawdata`)。
+//! 本文件保留 `commands::function` 命名空间, 给 `lib.rs::run` 中
+//! `tauri::generate_handler![commands::xxx, ...]` 旧的调用路径,
+//! 让 src-tauri 不直接知道命令分在哪个 cmd_* crate。
+//!
+//! 新代码应直接 `use cmd_<domain>::function` 拿具体命令函数。
 
-mod buffer;
-mod can;
-mod can_load;
-mod debug;
-mod frame_decoder;
-mod graph;
-mod logic;
-mod pipeline;
-mod protocol;
-mod rawdata;
-mod transport;
-mod trigger;
-mod window;
-
-pub use buffer::*;
-pub use can::*;
-pub use can_load::*;
-pub use debug::*;
-pub use frame_decoder::*;
-pub use graph::*;
-pub use logic::*;
-pub use pipeline::*;
-pub use protocol::*;
-pub use rawdata::*;
-pub use transport::*;
-pub use trigger::*;
-pub use window::*;
+pub use cmd_buffer::*;
+pub use cmd_can_load::*;
+pub use cmd_can_transport::*;
+pub use cmd_debug::*;
+pub use cmd_graph::*;
+pub use cmd_pipeline::*;
+pub use cmd_rawdata::*;

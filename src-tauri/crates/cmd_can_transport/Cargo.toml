@@ -1,0 +1,25 @@
+[package]
+name = "cmd_can_transport"
+description = "VOFA-NEXT CAN 帧 / 传输 / 协议 Tauri 命令 (can.rs + transport.rs + protocol.rs)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+notify_events = { workspace = true }
+pipeline_data_plane = { workspace = true }
+pipeline_dispatcher = { workspace = true }
+pipeline_stream = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+parking_lot = "0.12"
+serde = { workspace = true }
+log = { workspace = true }
+vofa-next-buffer = { workspace = true }
+vofa-next-core = { workspace = true }
+vofa-next-nodes = { workspace = true }
+vofa-next-protocol = { workspace = true }
+vofa-next-transport = { workspace = true }

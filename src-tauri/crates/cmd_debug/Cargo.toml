@@ -1,0 +1,11 @@
+[package]
+name = "cmd_debug"
+description = "VOFA-NEXT Tauri 调试命令 (inspect_element)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tauri = { version = "2", features = [] }

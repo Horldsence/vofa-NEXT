@@ -1,0 +1,23 @@
+[package]
+name = "pipeline_dispatcher"
+description = "VOFA-NEXT 频谱/Ifft 同步 (spectrum_sync) + 按源过滤订阅支持 (filtered_sources)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# GraphEvalState 来自 pipeline_data_plane
+pipeline_data_plane = { workspace = true }
+# StreamSource trait 来自 pipeline_stream
+pipeline_stream = { workspace = true }
+
+vofa-next-core = { workspace = true }
+vofa-next-buffer = { workspace = true }
+vofa-next-nodes = { workspace = true }
+vofa-next-dsp = { workspace = true }
+
+parking_lot = "0.12"
+log = { workspace = true }
+serde = { workspace = true }

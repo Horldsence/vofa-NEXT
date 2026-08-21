@@ -1,0 +1,20 @@
+[package]
+name = "cmd_graph"
+description = "VOFA-NEXT 节点图 + 逻辑分析仪 / 解码事件 Tauri 命令 (graph.rs + logic.rs)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+log = { workspace = true }
+pipeline_data_plane = { workspace = true }
+pipeline_dispatcher = { workspace = true }
+pipeline_stream = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+vofa-next-buffer = { workspace = true }
+vofa-next-core = { workspace = true }
+vofa-next-nodes = { workspace = true }

@@ -1,0 +1,15 @@
+[package]
+name = "cmd_can_load"
+description = "VOFA-NEXT CAN 负载统计 Tauri 命令 (can_load.rs): 滑动窗口采样 / 订阅 / CSV 导出"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+log = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+vofa-next-core = { workspace = true }

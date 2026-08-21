@@ -1,0 +1,12 @@
+[package]
+name = "subscription"
+description = "VOFA-NEXT 订阅取消机制统一管理 — 6 种数据类型 (waveform/rawdata/can_frames/can_load/logic_samples/decoded_events) 共用"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+parking_lot = "0.12"
