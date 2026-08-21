@@ -137,6 +137,10 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Disable updater artifacts for pull requests
+        if: github.event_name == 'pull_request'
+        run: node -e "const fs=require('node:fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p,'utf8'));c.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(c,null,2)+'\n')"
+
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
