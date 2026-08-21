@@ -6,9 +6,9 @@
 //!
 //! 本模块覆盖:
 //!
-//! - `Parity`: 无/奇/偶
-//! - `StopBits`: 1/2 停止位
-//! - `FlowControl`: 无 / 软件(XON-XOFF) / 硬件(RTS/CTS)
+//! - [`Parity`][]: 无/奇/偶
+//! - [`StopBits`]: 1/2 停止位
+//! - [`FlowControl`]: 无 / 软件(XON-XOFF) / 硬件(RTS/CTS)
 
 use serde::{Deserialize, Serialize};
 

@@ -4,11 +4,11 @@
 //!
 //! 模块拆分:
 //!
-//! - `can_frame`: 帧/方向/波特率/过滤/批次/candle 设备
-//! - `can_buffer`: CAN 帧环形缓冲区
-//! - `can_load_types`: 负载统计快照与历史采样类型
-//! - `can_load_stats`: 滑动时间窗负载统计器
-//! - `test_data`: 测试数据生成工具
+//! - [`can_frame`]: 帧/方向/波特率/过滤/批次/candle 设备
+//! - [`can_buffer`]: CAN 帧环形缓冲区
+//! - [`can_load_types`][]: 负载统计快照与历史采样类型
+//! - [`can_load_stats`][]: 滑动时间窗负载统计器
+//! - [`test_data`][]: 测试数据生成工具
 //!
 //! ## 设计原则
 //!

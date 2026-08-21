@@ -149,8 +149,7 @@ impl LogicSampleFilter {
 /// 所有字段为 None 时匹配全部事件;`kind` 为协议名("uart"/"i2c"/"spi"),
 /// `byte_pattern` 对事件载荷字节(UART byte / I2C addr+data / SPI mosi+miso)
 /// 做子串匹配。
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct DecodedEventFilter {
     /// 协议类型过滤(大小写不敏感): "uart" | "i2c" | "spi"
     pub kind: Option<String>,

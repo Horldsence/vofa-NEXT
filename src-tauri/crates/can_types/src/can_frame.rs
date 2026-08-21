@@ -30,7 +30,7 @@ impl CanFrame {
     /// `data` 超过 8 字节时自动截断,以匹配 CAN DLC 上限。
     #[allow(clippy::cast_possible_truncation)]
     pub fn new(timestamp: u64, id: u32, data: Vec<u8>, direction: CanDirection) -> Self {
-        let dlc = data.len().min(8) as u8;
+        let dlc = u8::try_from(data.len().min(8)).expect("dlc 已限制为 8");
         let data = data.into_iter().take(dlc as usize).collect();
         Self {
             timestamp,
@@ -98,6 +98,9 @@ pub struct CanFilter {
 
 impl CanFilter {
     /// 检查帧是否匹配过滤条件
+    ///
+    /// 未启用时恒匹配;启用后按标准/扩展帧分别应用 ID 掩码,
+    /// `(frame.id & mask) != 0` 即视为匹配。
     pub const fn matches(&self, frame: &CanFrame) -> bool {
         if !self.enabled {
             return true;
