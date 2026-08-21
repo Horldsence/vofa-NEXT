@@ -65,6 +65,7 @@ impl SchemaEngine {
     /// 从 data[0..] 尝试解析一帧 (data 起点 = header 起点或帧起点)
     ///
     /// `frame_start`: header 末尾 (= 字段起始) 在 data 中的索引
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub(crate) fn try_parse(&self, data: &[u8], frame_start: usize) -> ParseAttempt {
         use schema_types::{
             AsciiBase, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
@@ -82,7 +83,7 @@ impl SchemaEngine {
                 continue;
             }
             match block {
-                DecoderBlockDef::Header { .. } => continue, // 已匹配
+                DecoderBlockDef::Header { .. } => {} // 已匹配
                 DecoderBlockDef::Length {
                     id,
                     field_type,
@@ -272,7 +273,6 @@ impl SchemaEngine {
                 }
                 DecoderBlockDef::Samples { .. } => {
                     // Samples 整体委托逻辑解码引擎 (见 new), 不参与二进制帧解析
-                    continue;
                 }
             }
         }

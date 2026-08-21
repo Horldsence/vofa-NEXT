@@ -93,8 +93,7 @@ impl LogicDecoderEngine {
     pub(crate) fn now_us() -> u64 {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_micros() as u64)
-            .unwrap_or(0)
+            .map_or(0, |d| u64::try_from(d.as_micros()).unwrap_or(0))
     }
 }
 
@@ -106,7 +105,7 @@ impl ProtocolEngine for LogicDecoderEngine {
             .enumerate()
             .map(|(i, &b)| LogicSample {
                 timestamp: now.saturating_add(i as u64),
-                channels: b as u32,
+                channels: u32::from(b),
                 channel_count: 8,
             })
             .collect();
@@ -133,16 +132,16 @@ impl ProtocolEngine for LogicDecoderEngine {
     fn encode_channels(&mut self, _values: &[f32]) -> Vec<u8> {
         Vec::new()
     }
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "LogicDecoder"
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(LogicDecoderEngine::new(self.config.clone()))
+        Box::new(Self::new(self.config.clone()))
     }
 }
 
 /// 仅在 UART 配置下编译; 其他配置下返回空
-pub(crate) fn _ensure_decode_uart_method_used(_e: &LogicDecoderEngine, _d: &[u8]) -> Vec<DecodedEvent> {
+pub(crate) const fn _ensure_decode_uart_method_used(_e: &LogicDecoderEngine, _d: &[u8]) -> Vec<DecodedEvent> {
     Vec::new()
 }

@@ -83,11 +83,11 @@ impl ProtocolEngine for FireWaterEngine {
         // 单通道编码: 仅发送该通道值 (其他通道不发送, 避免误用)
         // 注: FireWater 协议中, 单通道编码无标准做法, 这里采用与 encode_channels
         // 一致的行为 — 仅发一个值
-        format!("{:.6}\n", value).into_bytes()
+        format!("{value:.6}\n").into_bytes()
     }
 
     fn encode_channels(&mut self, values: &[f32]) -> Vec<u8> {
-        let s: Vec<String> = values.iter().map(|v| format!("{:.6}", v)).collect();
+        let s: Vec<String> = values.iter().map(|v| format!("{v:.6}")).collect();
         format!("{}\n", s.join(",")).into_bytes()
     }
 
@@ -99,7 +99,7 @@ impl ProtocolEngine for FireWaterEngine {
         self.encode_channels(&frame.channels)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "FireWater"
     }
 
@@ -131,6 +131,6 @@ impl ProtocolEngine for FireWaterEngine {
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(FireWaterEngine::new(self.channels))
+        Box::new(Self::new(self.channels))
     }
 }

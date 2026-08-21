@@ -13,7 +13,7 @@ use crate::error::{AutomotiveError, AutomotiveResult};
 use crate::state::{Pending, PendingState};
 
 /// 启动一次发送请求 (SF 或 FF 首帧)
-pub(super) async fn start_send_request(
+pub async fn start_send_request(
     backend: &Arc<dyn CanBackend>,
     config: &IsoTpConfig,
     pending: &mut std::collections::HashMap<u32, Pending>,
@@ -33,8 +33,8 @@ pub(super) async fn start_send_request(
 
     if data.len() <= SF_MAX_DATA {
         let mut frame_data = vec![0u8; 8];
-        frame_data[0] = PCI_SF | (data.len() as u8);
-        frame_data[1..1 + data.len()].copy_from_slice(&data);
+        frame_data[0] = PCI_SF | u8::try_from(data.len()).unwrap_or(0);
+        frame_data[1..=data.len()].copy_from_slice(&data);
         if let Some(pad) = config.padding {
             for b in &mut frame_data[1 + data.len()..] {
                 *b = pad;
@@ -55,8 +55,8 @@ pub(super) async fn start_send_request(
     } else {
         let mut ff = vec![0u8; 8];
         ff[0] = PCI_FF;
-        ff[1] = ((data.len() >> 8) & 0x0F) as u8;
-        ff[2] = (data.len() & 0xFF) as u8;
+        ff[1] = u8::try_from((data.len() >> 8) & 0x0F).unwrap_or(0);
+        ff[2] = u8::try_from(data.len() & 0xFF).unwrap_or(0);
         ff[3..3 + FF_DATA_LEN].copy_from_slice(&data[..FF_DATA_LEN]);
         if let Err(e) = send_can_frame(backend, tx_id, &ff, n_as).await {
             let _ = response_tx.send(Err(e));
@@ -81,7 +81,7 @@ pub(super) async fn start_send_request(
 ///
 /// 返回 `Ok(true)` 表示全部 CF 已发完,可等待响应;
 /// 返回 `Ok(false)` 表示 block size 到顶,需等待下一个 FC。
-pub(super) async fn send_consecutive_frames(
+pub async fn send_consecutive_frames(
     backend: &Arc<dyn CanBackend>,
     tx_id: u32,
     data: &[u8],
@@ -98,7 +98,7 @@ pub(super) async fn send_consecutive_frames(
         let take = (data.len() - *offset).min(CF_DATA_LEN);
         let mut cf = vec![0u8; 8];
         cf[0] = PCI_CF | (*next_sn & 0x0F);
-        cf[1..1 + take].copy_from_slice(&data[*offset..*offset + take]);
+        cf[1..=take].copy_from_slice(&data[*offset..*offset + take]);
         send_can_frame(backend, tx_id, &cf, n_as).await?;
         *offset += take;
         *next_sn = (*next_sn + 1) & 0x0F;
@@ -122,7 +122,7 @@ pub(super) async fn send_consecutive_frames(
 }
 
 /// 发送 CAN 帧并应用 N_As 超时
-pub(super) async fn send_can_frame(
+pub async fn send_can_frame(
     backend: &Arc<dyn CanBackend>,
     tx_id: u32,
     data: &[u8],
@@ -151,7 +151,8 @@ pub(super) async fn send_can_frame(
 /// - 0..=127: 毫秒
 /// - 241..=249: 100µs 单位
 /// - 其它: 0
-fn st_min_to_duration(st_min: u8) -> Duration {
+#[allow(clippy::cast_lossless)]
+const fn st_min_to_duration(st_min: u8) -> Duration {
     match st_min {
         0..=127 => Duration::from_millis(st_min as u64),
         241..=249 => Duration::from_micros((st_min as u64 - 240) * 100),

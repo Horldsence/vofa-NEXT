@@ -120,7 +120,7 @@ impl ProtocolNodeState {
     ) -> bool {
         serde_json::to_value(&self.config).ok() == serde_json::to_value(config).ok()
             && serde_json::to_value(&self.convert_config).ok()
-                == serde_json::to_value(&convert_to).ok()
+                == serde_json::to_value(convert_to).ok()
             && serde_json::to_value(&self.schema).ok() == serde_json::to_value(schema).ok()
     }
 }
@@ -262,7 +262,7 @@ impl DataPlaneState {
         self.detach(node_id);
         let rx = self.transport.lock().await.subscribe(node_id);
         let Some(rx) = rx else {
-            log::warn!("读任务挂载失败: 传输节点未打开: {}", node_id);
+            log::warn!("读任务挂载失败: 传输节点未打开: {node_id}");
             return;
         };
         // 确保按源 raw 收集器存在 (rx 方向)
@@ -318,9 +318,9 @@ impl DataPlaneMetrics {
             lagged,
         );
         if lagged > 0 {
-            log::warn!("{}", msg);
+            log::warn!("{msg}");
         } else {
-            log::debug!("{}", msg);
+            log::debug!("{msg}");
         }
     }
 }

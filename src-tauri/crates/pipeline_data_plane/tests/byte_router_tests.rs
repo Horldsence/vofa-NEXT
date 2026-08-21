@@ -14,8 +14,10 @@ use pipeline_data_plane::byte_router::route_bytes;
 use pipeline_data_plane::decoder_feed::DecoderFeedCache;
 use pipeline_data_plane::DataPlaneState;
 use buffer_graph::Edge;
-use vofa_core::{ProtocolConfig, TransportConfig};
-use node_engine::BytePlan, node_kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
+use schema_types::ProtocolConfig;
+use vofa_core::TransportConfig;
+use node_engine::BytePlan;
+use node_kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 
 fn node(id: &str, kind: NodeKind) -> NodeDef {
     NodeDef {

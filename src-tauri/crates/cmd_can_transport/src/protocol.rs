@@ -64,7 +64,7 @@ pub async fn set_protocol(
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", node_id)))?;
+        .ok_or_else(|| Error::Config(format!("协议节点不存在: {node_id}")))?;
     {
         let mut s = st.lock();
         s.engine = std::sync::Arc::new(parking_lot::Mutex::new(create_engine(
@@ -90,7 +90,7 @@ pub async fn get_protocol(state: State<'_, AppState>, node_id: String) -> Result
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", node_id)))?;
+        .ok_or_else(|| Error::Config(format!("协议节点不存在: {node_id}")))?;
     let config = st.lock().config.clone();
     Ok(config)
 }
@@ -107,7 +107,7 @@ pub async fn get_detected_channels(
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", node_id)))?;
+        .ok_or_else(|| Error::Config(format!("协议节点不存在: {node_id}")))?;
     let engine = st.lock().engine.clone();
     let detected = engine.lock().detected_channels();
     Ok(detected)

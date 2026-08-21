@@ -26,7 +26,7 @@ fn dev_bus_address(dev: &nusb::DeviceInfo) -> (u8, u8) {
 pub fn list_devices() -> Result<Vec<CandleDeviceInfo>> {
     let devices = nusb::list_devices()
         .wait()
-        .map_err(|e| Error::Transport(format!("列举 USB 设备失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("列举 USB 设备失败: {e}")))?;
 
     let mut result = Vec::new();
     for dev in devices {
@@ -61,7 +61,7 @@ pub async fn spawn(
     // (Linux 上 bus 字段有效; 其他平台 bus 字段被忽略, 仅按 address 匹配)
     let device_info = nusb::list_devices()
         .wait()
-        .map_err(|e| Error::Transport(format!("列举 USB 设备失败: {}", e)))?
+        .map_err(|e| Error::Transport(format!("列举 USB 设备失败: {e}")))?
         .find(|d| {
             if d.vendor_id() != CANDLE_VID || d.product_id() != CANDLE_PID {
                 return false;
@@ -79,20 +79,20 @@ pub async fn spawn(
     let device = device_info
         .open()
         .wait()
-        .map_err(|e| Error::Transport(format!("打开 candleLight 设备失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("打开 candleLight 设备失败: {e}")))?;
 
     let interface = device
         .claim_interface(0)
         .wait()
-        .map_err(|e| Error::Transport(format!("claim interface 失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("claim interface 失败: {e}")))?;
 
     // 打开 bulk 端点 (candleLight: EP1 IN=0x81, EP2 OUT=0x02)
     let mut ep_out = interface
         .endpoint::<Bulk, Out>(0x02)
-        .map_err(|e| Error::Transport(format!("打开 OUT 端点失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("打开 OUT 端点失败: {e}")))?;
     let mut ep_in = interface
         .endpoint::<Bulk, In>(0x81)
-        .map_err(|e| Error::Transport(format!("打开 IN 端点失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("打开 IN 端点失败: {e}")))?;
 
     // 发送 candleLight 设置波特率命令 (16 字节命令包)
     let bitrate_cmd = build_set_bitrate_cmd(config.can_bitrate.bps());
@@ -126,12 +126,12 @@ pub async fn spawn(
                             ep_in.submit(nusb::transfer::Buffer::new(buf_size));
                         }
                         Err(e) => {
-                            log::error!("candleLight 接收错误: {}", e);
+                            log::error!("candleLight 接收错误: {e}");
                             break;
                         }
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                () = tokio::time::sleep(Duration::from_millis(100)) => {
                     if cancel_read.load(Ordering::Relaxed) { break; }
                 }
             }
@@ -150,14 +150,14 @@ pub async fn spawn(
                             // TODO: 后续阶段包装为 candleLight 帧格式
                             ep_out.submit(data.into());
                             if let Err(e) = ep_out.next_complete().await.into_result() {
-                                log::error!("candleLight 发送错误: {}", e);
+                                log::error!("candleLight 发送错误: {e}");
                                 break;
                             }
                         }
                         None => break,
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                () = tokio::time::sleep(Duration::from_millis(100)) => {
                     if cancel_write.load(Ordering::Relaxed) { break; }
                 }
             }

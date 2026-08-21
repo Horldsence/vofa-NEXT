@@ -3236,6 +3236,7 @@ version = "0.1.2"
 dependencies = [
  "app_state",
  "buffer_databuffer",
+ "buffer_graph",
  "buffer_raw",
  "can_types",
  "dsp_fft",
@@ -5385,6 +5386,7 @@ dependencies = [
  "async-trait",
  "can_types",
  "log",
+ "logic_types",
  "parking_lot",
  "schema_types",
  "serde",

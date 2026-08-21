@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use can_types::{CanDirection, CanFrame};
@@ -27,15 +28,14 @@ impl SlcanEngine {
     }
 
     /// 当前系统时间 (微秒, 与 DataFrame::new 一致)
-    fn now_us(&self) -> u64 {
+    fn now_us() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_micros() as u64)
-            .unwrap_or(0)
+            .map_or(0, |d| u64::try_from(d.as_micros()).unwrap_or(0))
     }
 
     /// 解析一行命令, 返回 CAN 帧 (不识别的命令返回 None)
-    fn parse_line(&self, line: &[u8]) -> Option<CanFrame> {
+    fn parse_line(line: &[u8]) -> Option<CanFrame> {
         if line.is_empty() {
             return None;
         }
@@ -43,15 +43,15 @@ impl SlcanEngine {
         let rest = &line[1..];
         let rest_str = std::str::from_utf8(rest).ok()?;
         match cmd {
-            't' | 'T' => self.parse_data_frame(cmd, rest_str),
-            'r' | 'R' => self.parse_remote_frame(cmd, rest_str),
+            't' | 'T' => Self::parse_data_frame(cmd, rest_str),
+            'r' | 'R' => Self::parse_remote_frame(cmd, rest_str),
             // 忽略其他命令 (S/O/C/F/V/N 等) 及错误响应 z\r / \a (BEL)
             _ => None,
         }
     }
 
     /// 解析数据帧 (t/T 命令)
-    fn parse_data_frame(&self, cmd: char, rest: &str) -> Option<CanFrame> {
+    fn parse_data_frame(cmd: char, rest: &str) -> Option<CanFrame> {
         let extended = cmd == 'T';
         let id_len = if extended { 8 } else { 3 };
         if rest.len() < id_len + 1 {
@@ -59,7 +59,7 @@ impl SlcanEngine {
         }
         let id = u32::from_str_radix(&rest[..id_len], 16).ok()?;
         let dlc_char = rest.as_bytes()[id_len] as char;
-        let dlc = dlc_char.to_digit(16)? as u8;
+        let dlc = u8::try_from(dlc_char.to_digit(16)?).ok()?;
         if dlc > 8 {
             return None;
         }
@@ -73,7 +73,7 @@ impl SlcanEngine {
             data.push(byte);
         }
         Some(CanFrame {
-            timestamp: self.now_us(),
+            timestamp: Self::now_us(),
             id,
             extended,
             rtr: false,
@@ -84,7 +84,7 @@ impl SlcanEngine {
     }
 
     /// 解析远程帧 (r/R 命令, 无数据部分)
-    fn parse_remote_frame(&self, cmd: char, rest: &str) -> Option<CanFrame> {
+    fn parse_remote_frame(cmd: char, rest: &str) -> Option<CanFrame> {
         let extended = cmd == 'R';
         let id_len = if extended { 8 } else { 3 };
         if rest.len() < id_len + 1 {
@@ -92,12 +92,12 @@ impl SlcanEngine {
         }
         let id = u32::from_str_radix(&rest[..id_len], 16).ok()?;
         let dlc_char = rest.as_bytes()[id_len] as char;
-        let dlc = dlc_char.to_digit(16)? as u8;
+        let dlc = u8::try_from(dlc_char.to_digit(16)?).ok()?;
         if dlc > 8 {
             return None;
         }
         Some(CanFrame {
-            timestamp: self.now_us(),
+            timestamp: Self::now_us(),
             id,
             extended,
             rtr: true,
@@ -121,7 +121,7 @@ impl ProtocolEngine for SlcanEngine {
             if b == b'\r' || b == b'\n' {
                 let line = &self.line_buf[line_start..i];
                 if !line.is_empty() {
-                    if let Some(frame) = self.parse_line(line) {
+                    if let Some(frame) = Self::parse_line(line) {
                         frames.push(frame);
                     }
                 }
@@ -145,24 +145,24 @@ impl ProtocolEngine for SlcanEngine {
             // 远程帧用 r/R 命令 (无 data 部分)
             if frame.extended {
                 s.push('R');
-                s.push_str(&format!("{:08X}", frame.id));
+                let _ = write!(s, "{:08X}", frame.id);
             } else {
                 s.push('r');
-                s.push_str(&format!("{:03X}", frame.id));
+                let _ = write!(s, "{:03X}", frame.id);
             }
-            s.push_str(&format!("{:X}", frame.dlc));
+            let _ = write!(s, "{:X}", frame.dlc);
         } else {
             // 数据帧用 t/T 命令
             if frame.extended {
                 s.push('T');
-                s.push_str(&format!("{:08X}", frame.id));
+                let _ = write!(s, "{:08X}", frame.id);
             } else {
                 s.push('t');
-                s.push_str(&format!("{:03X}", frame.id));
+                let _ = write!(s, "{:03X}", frame.id);
             }
-            s.push_str(&format!("{:X}", frame.dlc));
+            let _ = write!(s, "{:X}", frame.dlc);
             for &b in &frame.data {
-                s.push_str(&format!("{:02X}", b));
+                let _ = write!(s, "{b:02X}");
             }
         }
         s.push('\r');
@@ -171,15 +171,15 @@ impl ProtocolEngine for SlcanEngine {
 
     fn encode_channel(&mut self, _channel: usize, value: f32) -> Vec<u8> {
         // slcan 引擎不直接编码通道值, 保留 FireWater 风格作为兼容
-        format!("{:.6}\n", value).into_bytes()
+        format!("{value:.6}\n").into_bytes()
     }
 
     fn encode_channels(&mut self, values: &[f32]) -> Vec<u8> {
-        let s: Vec<String> = values.iter().map(|v| format!("{:.6}", v)).collect();
+        let s: Vec<String> = values.iter().map(|v| format!("{v:.6}")).collect();
         format!("{}\n", s.join(",")).into_bytes()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "Slcan"
     }
 
@@ -204,7 +204,7 @@ impl ProtocolEngine for SlcanEngine {
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(SlcanEngine::new())
+        Box::new(Self::new())
     }
 }
 

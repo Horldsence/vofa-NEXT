@@ -103,7 +103,7 @@ pub async fn subscribe_can_load(
         loop {
             tokio::select! {
                 _ = &mut cancel_rx => {
-                    log::debug!("CAN 负载订阅被取消, channel_id={}", channel_id);
+                    log::debug!("CAN 负载订阅被取消, channel_id={channel_id}");
                     break;
                 }
                 _ = ticker.tick() => {
@@ -113,7 +113,7 @@ pub async fn subscribe_can_load(
                         s.snapshot(bitrate)
                     };
                     if on_event.send(snap).is_err() {
-                        log::debug!("CAN 负载订阅通道已关闭, channel_id={}", channel_id);
+                        log::debug!("CAN 负载订阅通道已关闭, channel_id={channel_id}");
                         break;
                     }
                 }
@@ -182,16 +182,13 @@ pub async fn export_can_load_csv(
     // 生成时间戳 (本地时间, 不依赖 chrono)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_secs());
     let (yyyy, mm, dd, hh, min, ss) = secs_to_local_components(now);
     let timestamp_str = format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}",
-        yyyy, mm, dd, hh, min, ss
+        "{yyyy:04}-{mm:02}-{dd:02}T{hh:02}:{min:02}:{ss:02}"
     );
     let filename = format!(
-        "vofa-can-load-{:04}{:02}{:02}-{:02}{:02}{:02}.csv",
-        yyyy, mm, dd, hh, min, ss
+        "vofa-can-load-{yyyy:04}{mm:02}{dd:02}-{hh:02}{min:02}{ss:02}.csv"
     );
 
     let csv = format_can_load_csv(&snap, bitrate, &timestamp_str);
@@ -201,7 +198,7 @@ pub async fn export_can_load_csv(
         Ok(d) => d.join(&filename),
         Err(_) => std::env::current_dir()
             .map(|d| d.join(&filename))
-            .map_err(|e| vofa_core::Error::Config(format!("无法确定下载目录: {}", e)))?,
+            .map_err(|e| vofa_core::Error::Config(format!("无法确定下载目录: {e}")))?,
     };
 
     let mut file = std::fs::File::create(&path)?;
@@ -217,7 +214,7 @@ fn secs_to_local_components(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     // 用 libc localtime_r 获取本地时间 (跨平台)
     #[cfg(unix)]
     {
-        use std::os::raw::*;
+        use std::os::raw::{c_long, c_int, c_char};
         extern "C" {
             fn localtime_r(time: *const c_long, result: *mut libc_tm) -> *mut libc_tm;
         }
@@ -250,7 +247,7 @@ fn secs_to_local_components(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
             tm_zone: std::ptr::null(),
         };
         unsafe {
-            localtime_r(&t, &mut tm);
+            localtime_r(&raw const t, &raw mut tm);
             (
                 (tm.tm_year + 1900) as u32,
                 (tm.tm_mon + 1) as u32,
@@ -313,8 +310,8 @@ fn format_can_load_csv(snap: &CanLoadSnapshot, bitrate: u32, export_time: &str) 
     let mut s = String::with_capacity(8192);
     // 元信息头
     s.push_str("# VOFA-Next CAN Load Stats Export\n");
-    s.push_str(&format!("# Export Time: {}\n", export_time));
-    s.push_str(&format!("# Bitrate: {} bps\n", bitrate));
+    s.push_str(&format!("# Export Time: {export_time}\n"));
+    s.push_str(&format!("# Bitrate: {bitrate} bps\n"));
     s.push_str(&format!(
         "# Window: {} us ({})\n",
         snap.window_us,
@@ -375,6 +372,5 @@ fn now_us() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_micros() as u64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_micros() as u64)
 }

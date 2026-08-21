@@ -3,7 +3,8 @@
 use async_trait::async_trait;
 use tokio::sync::broadcast;
 use transport_core::CanBackend;
-use vofa_core::{CanDirection, CanFrame, Result};
+use can_types::{CanDirection, CanFrame};
+use vofa_core::Result;
 
 /// 一个最简的内存 CanBackend,用于测试 trait 契约
 struct MockCanBackend {

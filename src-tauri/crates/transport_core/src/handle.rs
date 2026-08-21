@@ -55,11 +55,13 @@ impl TransportHandle {
     pub fn send(&self, data: &[u8]) -> Result<()> {
         self.write_tx
             .try_send(data.to_vec())
-            .map_err(|e| Error::Transport(format!("发送失败: {}", e)))?;
+            .map_err(|e| Error::Transport(format!("发送失败: {e}")))?;
         let _ = self.data_tx.send(data.to_vec());
-        let mut stats = self.stats.lock();
-        stats.tx_bytes += data.len() as u64;
-        stats.tx_frames += 1;
+        {
+            let mut stats = self.stats.lock();
+            stats.tx_bytes += data.len() as u64;
+            stats.tx_frames += 1;
+        }
         Ok(())
     }
 
@@ -86,7 +88,7 @@ impl TransportHandle {
     }
 
     /// 本连接的配置 — 供外部查询 CAN 波特率等
-    pub fn config(&self) -> &TransportConfig {
+    pub const fn config(&self) -> &TransportConfig {
         &self.config
     }
 
@@ -106,8 +108,7 @@ impl TransportHandle {
     pub fn is_test_data_running(&self) -> bool {
         self.test_data_running
             .as_ref()
-            .map(|r| r.load(Ordering::Relaxed))
-            .unwrap_or(false)
+            .is_some_and(|r| r.load(Ordering::Relaxed))
     }
 
     /// 运行时热更新链路配置 (图/协议变化后调用, 无需重连)
@@ -117,7 +118,7 @@ impl TransportHandle {
     pub fn update_link(&self, link: TestDataLink) -> Result<bool> {
         if let Some(tx) = &self.test_data_link {
             tx.send(link)
-                .map_err(|e| Error::Transport(format!("链路配置热更新失败: {}", e)))?;
+                .map_err(|e| Error::Transport(format!("链路配置热更新失败: {e}")))?;
             return Ok(true);
         }
         Ok(false)

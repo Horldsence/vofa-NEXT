@@ -22,7 +22,7 @@ pub(super) async fn read_task(
 ) {
     use tokio::sync::broadcast::error::{RecvError, TryRecvError};
 
-    log::debug!("数据读任务已启动: {}", node_id);
+    log::debug!("数据读任务已启动: {node_id}");
     let mut dec_cache = crate::decoder_feed::DecoderFeedCache::new();
     let mut last_stats = Instant::now();
     let mut acc_bytes: u64 = 0;
@@ -134,5 +134,5 @@ pub(super) async fn read_task(
     }
 
     notify_events::emit_transport_state(&app, &node_id, ConnectionState::Disconnected);
-    log::debug!("数据读任务已退出: {}", node_id);
+    log::debug!("数据读任务已退出: {node_id}");
 }

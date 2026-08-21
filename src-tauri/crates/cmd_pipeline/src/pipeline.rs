@@ -24,7 +24,7 @@ pub fn set_pipeline_config(state: State<'_, AppState>, config: PipelineConfig) -
         max_stream_shards: config.max_stream_shards.clamp(1, 8),
         parse_channel_cap: config.parse_channel_cap.clamp(16, 4096),
     };
-    log::info!("流水线参数已更新 (clamp 后): {:?}", cfg);
+    log::info!("流水线参数已更新 (clamp 后): {cfg:?}");
     *state.pipeline_config.write() = cfg;
     Ok(())
 }

@@ -24,7 +24,7 @@ pub type SourceFramesMap = HashMap<String, DataFrame, FxBuildHasher>;
 ///
 /// 不做 clear: 端口覆盖写, 稳态零分配; 过期端口清理由调用方
 /// 在图重编译时清空整个 out 保证。
-pub(crate) fn node_out_entry<'a>(
+pub fn node_out_entry<'a>(
     out: &'a mut ValuesMap,
     node_id: &str,
 ) -> &'a mut HashMap<String, f32, FxBuildHasher> {
@@ -35,7 +35,7 @@ pub(crate) fn node_out_entry<'a>(
 }
 
 /// 写端口值 — 键已存在时原位写 (零分配), 不存在才插入
-pub(crate) fn set_port(m: &mut HashMap<String, f32, FxBuildHasher>, port: &str, value: f32) {
+pub fn set_port(m: &mut HashMap<String, f32, FxBuildHasher>, port: &str, value: f32) {
     if let Some(slot) = m.get_mut(port) {
         *slot = value;
     } else {
@@ -100,7 +100,7 @@ pub struct CompiledEval {
 
 impl CompiledEval {
     /// 槽位数 (调用方据此分配 slots/written 缓冲并跨帧复用)
-    pub fn slot_count(&self) -> usize {
+    pub const fn slot_count(&self) -> usize {
         self.slot_names.len()
     }
 
@@ -121,7 +121,7 @@ impl CompiledEval {
     /// 调用方负责每帧清零 (slots 防上帧值泄漏, written 复刻 "本帧未产出 = 键不存在")。
     /// op 写槽位时置位 written — FrameDecoder 无 parser / Custom 无回传以外的
     /// 缺失都不写 (与 evaluate_into 的 map 语义一致)。
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, clippy::cast_precision_loss)]
     pub fn run(
         &self,
         source_frames: &SourceFramesMap,
@@ -171,7 +171,7 @@ impl CompiledEval {
                         &mut heap_buf
                     };
                     for (i, s) in inputs.iter().enumerate() {
-                        buf[i] = s.map(|s| slots[s]).unwrap_or(0.0);
+                        buf[i] = s.map_or(0.0, |s| slots[s]);
                     }
                     slots[*out] = op.evaluate(buf);
                     written[*out] = true;
@@ -189,12 +189,11 @@ impl CompiledEval {
                     input,
                     out,
                 } => {
-                    let input_val = input.map(|s| slots[s]).unwrap_or(0.0);
+                    let input_val = input.map_or(0.0, |s| slots[s]);
                     // 懒初始化 / kind 变化时重建滤波器状态 (与 evaluate_into 一致)
                     let need_rebuild = filter_states
                         .get(node_id)
-                        .map(|f| f.kind() != kind)
-                        .unwrap_or(true);
+                        .is_none_or(|f| f.kind() != kind);
                     if need_rebuild {
                         filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
                     }
@@ -206,8 +205,7 @@ impl CompiledEval {
                     // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
                     slots[*out] = ifft_states
                         .get_mut(node_id)
-                        .map(|s| s.next_sample())
-                        .unwrap_or(0.0);
+                        .map_or(0.0, dsp_fft::IfftState::next_sample);
                     written[*out] = true;
                 }
                 CompiledOp::FrameDecoder {

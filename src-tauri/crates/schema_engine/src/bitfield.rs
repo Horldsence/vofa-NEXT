@@ -4,6 +4,7 @@
 //! - `bit_offset`: 起始位偏移 (0-7, MSB first)
 //! - `bit_length`: 位长度 (1-32)
 //! - `is_signed`: 是否带符号 (true=最高位为符号位, 二补码)
+#[allow(clippy::cast_precision_loss)]
 pub fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bool) -> f32 {
     if bit_length == 0 || bytes.is_empty() {
         return 0.0;
@@ -17,7 +18,7 @@ pub fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bo
             break;
         }
         let bit = (bytes[byte_idx] >> bit_in_byte) & 1;
-        value = (value << 1) | bit as u32;
+        value = (value << 1) | u32::from(bit);
     }
     if is_signed && bit_length < 32 {
         let sign_bit = 1u32 << (bit_length - 1);
@@ -26,7 +27,7 @@ pub fn read_bitfield(bytes: &[u8], bit_offset: u8, bit_length: u8, is_signed: bo
         }
     }
     if is_signed {
-        (value as i32) as f32
+        value.cast_signed() as f32
     } else {
         value as f32
     }

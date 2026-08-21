@@ -7,7 +7,7 @@
 //! - [`compile`]: CompiledGraph 编译 (字节边/f32 边分类 + 拓扑排序 + 槽位表构建)
 //! - [`eval`]: 编译期槽位评估表 (CompiledEval) — f32 热路径
 //! - [`evaluate`]: 慢路径图求值 + 节点查询 — CompiledGraph::evaluate / evaluate_into / 配置访问器
-//! - [`ValuesMap`]: 输出值表类型别名 (FxHash 优化)
+//! - [`ValuesMap`][]: 输出值表类型别名 (FxHash 优化)
 //!
 //! 跨模块测试共享:
 //! - [`test_helpers`]: pub(crate) 节点/边/帧源构造器

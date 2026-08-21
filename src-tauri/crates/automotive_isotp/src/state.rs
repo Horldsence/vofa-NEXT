@@ -7,7 +7,7 @@ use crate::{AutomotiveError, AutomotiveResult};
 // ============ 命令通道 ============
 
 /// 主 task 接收的命令
-pub(super) enum IsoTpCmd {
+pub enum IsoTpCmd {
     /// 发起请求-响应 (发送 data,等待响应)
     SendRequest {
         tx_id: u32,
@@ -22,7 +22,7 @@ pub(super) enum IsoTpCmd {
 // ============ 接收状态机 ============
 
 /// 接收方状态 (收到 FF 后转入)
-pub(super) struct Receiver {
+pub struct Receiver {
     /// 期望的总字节数 (来自 FF_DL)
     pub(super) expected_len: usize,
     /// 已累积的字节缓冲
@@ -61,13 +61,13 @@ impl Receiver {
 
 // ============ Pending 状态 ============
 
-pub(super) struct Pending {
+pub struct Pending {
     pub(super) tx_id: u32,
     pub(super) response_tx: Option<oneshot::Sender<AutomotiveResult<Vec<u8>>>>,
     pub(super) state: PendingState,
 }
 
-pub(super) enum PendingState {
+pub enum PendingState {
     WaitingForFc {
         data: Vec<u8>,
         offset: usize,

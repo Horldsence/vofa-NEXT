@@ -176,7 +176,7 @@ pub fn protocol_source_port_names(port_names: Option<&[String]>, channels: usize
                 .and_then(|ps| ps.get(i))
                 .filter(|p| !p.is_empty())
                 .cloned()
-                .unwrap_or_else(|| format!("ch{}", i))
+                .unwrap_or_else(|| format!("ch{i}"))
         })
         .collect()
 }

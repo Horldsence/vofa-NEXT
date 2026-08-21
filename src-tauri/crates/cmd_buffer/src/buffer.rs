@@ -45,7 +45,7 @@ pub async fn subscribe_waveform(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("波形分片{}", shard_idx),
+            format!("波形分片{shard_idx}"),
             source,
             on_event,
             shard_idx,

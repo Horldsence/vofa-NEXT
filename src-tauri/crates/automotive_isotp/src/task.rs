@@ -14,14 +14,15 @@ use crate::state::{IsoTpCmd, Pending};
 use crate::tx::start_send_request;
 
 /// ISO-TP 会话后台任务 — 同时监听命令与 CAN 帧
-pub(super) async fn run_session(
+#[allow(clippy::similar_names)]
+pub async fn run_session(
     backend: Arc<dyn CanBackend>,
     config: IsoTpConfig,
     mut cmd_rx: mpsc::Receiver<IsoTpCmd>,
     mut frame_rx: broadcast::Receiver<CanFrame>,
 ) {
-    let n_bs = Duration::from_millis(config.timeout_ms.max(DEFAULT_N_BS_MS as u32) as u64);
-    let n_cr = Duration::from_millis(config.timeout_ms.max(DEFAULT_N_CR_MS as u32) as u64);
+    let n_bs = Duration::from_millis(u64::from(config.timeout_ms).max(DEFAULT_N_BS_MS));
+    let n_cr = Duration::from_millis(u64::from(config.timeout_ms).max(DEFAULT_N_CR_MS));
     let n_as = Duration::from_millis(DEFAULT_N_AS_MS);
     let n_ar = Duration::from_millis(DEFAULT_N_AR_MS);
 

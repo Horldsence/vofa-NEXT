@@ -5,7 +5,9 @@
 //! Slcan ASCII / CandleLight 二进制 / RawData 计数器 / LogicDecode 字节位)。
 
 use transport_core::test_data::generate_bytes;
-use vofa_core::{LogicDecoderConfig, Parity, ProtocolConfig, StopBits, TestSignal};
+use logic_types::LogicDecoderConfig;
+use schema_types::ProtocolConfig;
+use vofa_core::{Parity, StopBits, TestSignal};
 
 #[test]
 fn justfloat_format() {

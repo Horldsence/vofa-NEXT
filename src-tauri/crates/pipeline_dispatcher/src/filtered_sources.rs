@@ -89,7 +89,7 @@ pub struct FilteredCanStreamSource {
 impl FilteredCanStreamSource {
     /// 游标从 0 开始 — drain_from 自动对齐到缓冲区最旧可读位置,
     /// 即可先拉取全部历史匹配帧, 之后严格增量。
-    pub fn new(buffer: Arc<Mutex<CanBuffer>>, filter: CanFrameFilter) -> Self {
+    pub const fn new(buffer: Arc<Mutex<CanBuffer>>, filter: CanFrameFilter) -> Self {
         Self {
             buffer,
             cursor: 0,
@@ -138,7 +138,7 @@ pub struct FilteredLogicStreamSource {
 
 impl FilteredLogicStreamSource {
     /// 游标从 0 开始 — 自动对齐最旧可读位置, 先拉历史匹配采样, 之后增量
-    pub fn new(buffer: Arc<Mutex<LogicBuffer>>, filter: LogicSampleFilter) -> Self {
+    pub const fn new(buffer: Arc<Mutex<LogicBuffer>>, filter: LogicSampleFilter) -> Self {
         Self {
             buffer,
             cursor: 0,
@@ -187,7 +187,7 @@ pub struct FilteredDecodedStreamSource {
 
 impl FilteredDecodedStreamSource {
     /// 游标从 0 开始 — 自动对齐最旧可读位置, 先拉历史匹配事件, 之后增量
-    pub fn new(buffer: Arc<Mutex<DecodedBuffer>>, filter: DecodedEventFilter) -> Self {
+    pub const fn new(buffer: Arc<Mutex<DecodedBuffer>>, filter: DecodedEventFilter) -> Self {
         Self {
             buffer,
             cursor: 0,

@@ -75,9 +75,7 @@ impl DataPlaneState {
             if self.reconcile_warn_version.swap(version, Ordering::Relaxed) != version {
                 for (src, target) in &sets.dangling_sources {
                     log::warn!(
-                        "ProtocolSource 节点 {} 引用的 Protocol 节点 {} 不存在 (已悬空, 输出保持最新缓存值)",
-                        src,
-                        target
+                        "ProtocolSource 节点 {src} 引用的 Protocol 节点 {target} 不存在 (已悬空, 输出保持最新缓存值)"
                     );
                 }
             }
@@ -98,7 +96,7 @@ impl DataPlaneState {
             for id in orphans {
                 self.detach(&id);
                 manager.close(&id);
-                log::info!("图重编译: 清理孤儿传输连接 {}", id);
+                log::info!("图重编译: 清理孤儿传输连接 {id}");
             }
         }
 

@@ -6,7 +6,7 @@ use protocol_engine::{FeedOutput, ProtocolEngine};
 pub struct RawDataEngine;
 
 impl RawDataEngine {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
     }
 }
@@ -18,15 +18,15 @@ impl ProtocolEngine for RawDataEngine {
     }
 
     fn encode_channel(&mut self, _channel: usize, value: f32) -> Vec<u8> {
-        format!("{:.6}\n", value).into_bytes()
+        format!("{value:.6}\n").into_bytes()
     }
 
     fn encode_channels(&mut self, values: &[f32]) -> Vec<u8> {
-        let s: Vec<String> = values.iter().map(|v| format!("{:.6}", v)).collect();
+        let s: Vec<String> = values.iter().map(|v| format!("{v:.6}")).collect();
         format!("{}\n", s.join(",")).into_bytes()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "RawData"
     }
 
@@ -36,7 +36,7 @@ impl ProtocolEngine for RawDataEngine {
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(RawDataEngine::new())
+        Box::new(Self::new())
     }
 }
 

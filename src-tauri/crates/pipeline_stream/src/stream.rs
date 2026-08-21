@@ -145,11 +145,10 @@ where
         Some(key) => {
             let g = map
                 .get_mut(&key)
-                .ok_or_else(|| vofa_core::Error::Config(format!("流订阅组不存在: {}", key)))?;
+                .ok_or_else(|| vofa_core::Error::Config(format!("流订阅组不存在: {key}")))?;
             if g.shards >= max_shards {
                 return Err(Error::Config(format!(
-                    "流订阅组 {} 已满 ({} 个分片)",
-                    key, max_shards
+                    "流订阅组 {key} 已满 ({max_shards} 个分片)"
                 )));
             }
             g.shards += 1;
@@ -157,7 +156,7 @@ where
                 .source
                 .clone()
                 .downcast::<Mutex<S>>()
-                .map_err(|_| Error::Config(format!("流订阅组类型不匹配: {}", key)))?;
+                .map_err(|_| Error::Config(format!("流订阅组类型不匹配: {key}")))?;
             Ok((source, g.seq.clone(), g.shards - 1, key))
         }
     }
@@ -373,7 +372,7 @@ pub struct WaveformSource {
 }
 
 impl WaveformSource {
-    pub fn new(buffer: Arc<Mutex<DataBuffer>>) -> Self {
+    pub const fn new(buffer: Arc<Mutex<DataBuffer>>) -> Self {
         Self {
             buffer,
             last_version: 0,

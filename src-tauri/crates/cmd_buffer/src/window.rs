@@ -27,7 +27,6 @@ pub fn set_window_acrylic<R: Runtime>(window: WebviewWindow<R>, enabled: bool) {
                     Some(NSVisualEffectState::FollowsWindowActiveState),
                     None,
                 )
-                .map(|_| ())
             } else {
                 clear_vibrancy(&window).map(|_| ())
             };
@@ -65,7 +64,7 @@ pub fn close_splashscreen(app: tauri::AppHandle) {
         }
     }
     if let Some(main) = app.get_webview_window("main") {
-        if let Err(e) = main.show().and_then(|_| main.set_focus()) {
+        if let Err(e) = main.show().and_then(|()| main.set_focus()) {
             log::warn!("show main window failed: {e}");
         }
     }

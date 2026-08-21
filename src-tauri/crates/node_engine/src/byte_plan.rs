@@ -87,7 +87,7 @@ impl BytePlan {
 
     /// 查询某字节源节点的下游路由 (无下游返回空切片)
     pub fn routes_for(&self, source: &str) -> &[ByteRoute] {
-        self.consumers.get(source).map(Vec::as_slice).unwrap_or(&[])
+        self.consumers.get(source).map_or(&[], Vec::as_slice)
     }
 
     /// 节点是否属于字节平面

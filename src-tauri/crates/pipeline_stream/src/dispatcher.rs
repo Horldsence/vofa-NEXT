@@ -35,7 +35,7 @@ impl AdaptiveRate {
     }
 
     /// 当前间隔
-    pub fn current(&self) -> Duration {
+    pub const fn current(&self) -> Duration {
         self.current
     }
 
@@ -80,14 +80,14 @@ pub async fn adaptive_channel_loop<T, F>(
     loop {
         tokio::select! {
             _ = &mut cancel_rx => {
-                log::debug!("{} 订阅被取消, channel_id={}", name, channel_id);
+                log::debug!("{name} 订阅被取消, channel_id={channel_id}");
                 break;
             }
-            _ = tokio::time::sleep(rate.current()) => {
+            () = tokio::time::sleep(rate.current()) => {
                 match make_batch() {
                     Some(batch) => {
                         if on_event.send(batch).is_err() {
-                            log::debug!("{} 订阅通道已关闭, channel_id={}", name, channel_id);
+                            log::debug!("{name} 订阅通道已关闭, channel_id={channel_id}");
                             break;
                         }
                         rate.on_send();

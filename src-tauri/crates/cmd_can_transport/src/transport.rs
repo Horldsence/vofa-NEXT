@@ -35,14 +35,14 @@ pub async fn open_transport(
         let mut manager = state.transport.lock().await;
         let link = TestDataLink { protocol, schema };
         if let Err(e) = manager.open(&node_id, config, link).await {
-            log::error!("连接失败 ({}): {}", node_id, e);
-            notify::error(&app, format!("连接失败: {}", e));
+            log::error!("连接失败 ({node_id}): {e}");
+            notify::error(&app, format!("连接失败: {e}"));
             return Err(e);
         }
     }
 
     emit_transport_state(&app, &node_id, ConnectionState::Connected);
-    log::info!("连接已建立: {} ({})", kind, node_id);
+    log::info!("连接已建立: {kind} ({node_id})");
     notify::connected(&app, kind);
 
     // 挂载数据平面读任务 (每 Transport 节点一个)
@@ -60,7 +60,7 @@ pub async fn close_transport(
     state.data_plane.detach(&node_id);
     state.transport.lock().await.close(&node_id);
     emit_transport_state(&app, &node_id, ConnectionState::Disconnected);
-    log::info!("连接已关闭: {}", node_id);
+    log::info!("连接已关闭: {node_id}");
     notify::disconnected(&app);
     Ok(())
 }
@@ -108,13 +108,13 @@ pub async fn send_widget_value(
                 .lock()
                 .get(&pn)
                 .cloned()
-                .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", pn)))?;
+                .ok_or_else(|| Error::Config(format!("协议节点不存在: {pn}")))?;
             let engine = st.lock().engine.clone();
             let bytes = engine.lock().encode_channel(channel, value);
             bytes
         }
         WidgetBinding::Manual { template } => template
-            .replace("{value}", &format!("{}", value))
+            .replace("{value}", &format!("{value}"))
             .into_bytes(),
     };
     send_raw(state, node_id, data).await
@@ -221,7 +221,7 @@ pub async fn send_and_capture(
         .lock()
         .get(&protocol_node)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {}", protocol_node)))?;
+        .ok_or_else(|| Error::Config(format!("协议节点不存在: {protocol_node}")))?;
     let out = st.lock().engine.lock().feed(&data);
     let frames = out.frames;
     let can_count = out.can_frames.len();
@@ -229,7 +229,7 @@ pub async fn send_and_capture(
     Ok(LoopbackResult {
         sent_hex: data
             .iter()
-            .map(|b| format!("{:02X}", b))
+            .map(|b| format!("{b:02X}"))
             .collect::<Vec<_>>()
             .join(" "),
         rx_bytes: data.clone(),

@@ -50,7 +50,7 @@ impl DataBuffer {
         for e in &self.derived_list {
             // 跳过空条目 (批首注册可能尚无数据) — 保持旧语义: 只输出有过数据的键
             let rb = &e.rb;
-            if rb.len() == 0 {
+            if rb.is_empty() {
                 continue;
             }
             let m = rb.len();
@@ -86,7 +86,7 @@ impl DataBuffer {
         let mut result: HashMap<String, HashMap<String, Vec<f32>>> = HashMap::new();
         for e in &self.derived_list {
             // 跳过空条目 (批首注册可能尚无数据) — 保持旧语义: 只输出有过数据的键
-            if e.rb.len() == 0 {
+            if e.rb.is_empty() {
                 continue;
             }
             let data = e.rb.recent(count);

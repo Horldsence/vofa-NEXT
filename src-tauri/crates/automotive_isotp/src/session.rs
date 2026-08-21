@@ -54,9 +54,8 @@ impl IsoTpSession {
     pub fn new(backend: Arc<dyn CanBackend>, config: IsoTpConfig) -> Self {
         let (cmd_tx, cmd_rx) = mpsc::channel(64);
         let frame_rx = backend.subscribe_frames();
-        let cfg = config.clone();
         let join_handle = tokio::spawn(async move {
-            run_session(backend, cfg, cmd_rx, frame_rx).await;
+            run_session(backend, config, cmd_rx, frame_rx).await;
         });
         Self {
             handle: IsoTpSessionHandle { cmd_tx },

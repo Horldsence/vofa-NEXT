@@ -12,11 +12,11 @@
 //! 前端 TS 镜像见 src/lib/utils/nodeDef.ts。
 //!
 //! 模块:
-//! - [`NodeKind`]: 节点种类 (Transport/Protocol/ProtocolSource/Input/Math/Custom/
+//! - [`NodeKind`][]: 节点种类 (Transport/Protocol/ProtocolSource/Input/Math/Custom/
 //!   Filter/SpectrumSink/Ifft/FrameDecoder/Sink)
-//! - [`NodeDef`]: 节点定义 (含 id/tab_id/kind)
+//! - [`NodeDef`][]: 节点定义 (含 id/tab_id/kind)
 //! - [`PortDomain`]: 端口域 (Bytes / F32) — 用于边分类
-//! - [`MathOp`]: 算术运算种类
+//! - [`MathOp`][]: 算术运算种类
 //! - [`DecoderBlockDef`]: FrameDecoder 块定义 (re-export from schema_types)
 
 mod decoder_block;

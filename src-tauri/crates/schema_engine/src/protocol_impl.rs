@@ -99,7 +99,7 @@ impl ProtocolEngine for SchemaEngine {
         }
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CustomSchema"
     }
 
@@ -108,6 +108,6 @@ impl ProtocolEngine for SchemaEngine {
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(SchemaEngine::new(self.schema.clone()))
+        Box::new(Self::new(self.schema.clone()))
     }
 }

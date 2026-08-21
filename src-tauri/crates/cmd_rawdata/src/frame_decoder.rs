@@ -64,8 +64,7 @@ pub async fn parse_frame_decoder_input(
     // 3. 解析一帧 — 使用当前系统时间作为时间戳 (微秒)
     let now_us = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_micros() as u64)
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_micros() as u64);
 
     match parser.parse_once_with_consumed(&bytes, now_us) {
         Some((frame, consumed)) => Ok(FrameDecoderManualResult {

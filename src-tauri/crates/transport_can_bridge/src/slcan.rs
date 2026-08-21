@@ -25,20 +25,20 @@ pub fn spawn(
         .flow_control(FlowControl::None)
         .timeout(Duration::from_millis(50))
         .open()
-        .map_err(|e| Error::Transport(format!("打开 slcan 串口失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("打开 slcan 串口失败: {e}")))?;
 
     // 发送 slcan 初始化命令: 设置波特率 + 打开 CAN
     let bitrate_cmd = format!("{}\r", config.can_bitrate.slcan_cmd());
     port.write_all(bitrate_cmd.as_bytes())
-        .map_err(|e| Error::Transport(format!("设置 CAN 波特率失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("设置 CAN 波特率失败: {e}")))?;
     std::thread::sleep(Duration::from_millis(50));
     port.write_all(b"O\r")
-        .map_err(|e| Error::Transport(format!("打开 CAN 失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("打开 CAN 失败: {e}")))?;
     std::thread::sleep(Duration::from_millis(50));
 
     let mut write_port = port
         .try_clone()
-        .map_err(|e| Error::Transport(format!("克隆 slcan 串口失败: {}", e)))?;
+        .map_err(|e| Error::Transport(format!("克隆 slcan 串口失败: {e}")))?;
 
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
@@ -48,15 +48,15 @@ pub fn spawn(
     let data_tx_read = data_tx.clone();
     let cancel_read = cancel.clone();
     std::thread::spawn(move || {
-        let mut buf = [0u8; 65536];
+        let mut buf = vec![0u8; 65536].into_boxed_slice();
         while !cancel_read.load(Ordering::Relaxed) {
-            match port.read(&mut buf) {
+            match port.read(&mut buf[..]) {
                 Ok(0) => break,
                 Ok(n) => {
                     let _ = data_tx_read.send(buf[..n].to_vec());
                 }
-                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => continue,
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {}
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                 Err(_) => break,
             }
         }
@@ -72,7 +72,7 @@ pub fn spawn(
             match write_rx.blocking_recv() {
                 Some(data) => {
                     if let Err(e) = write_port.write_all(&data) {
-                        log::error!("slcan 写入失败: {}", e);
+                        log::error!("slcan 写入失败: {e}");
                         break;
                     }
                 }

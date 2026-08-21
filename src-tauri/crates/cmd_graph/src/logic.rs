@@ -44,7 +44,7 @@ pub async fn subscribe_logic_samples(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("逻辑采样分片{}", shard_idx),
+            format!("逻辑采样分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -102,7 +102,7 @@ pub async fn subscribe_logic_samples_filtered(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("过滤逻辑采样分片{}", shard_idx),
+            format!("过滤逻辑采样分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -173,7 +173,7 @@ pub async fn subscribe_decoded_events(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("解码事件分片{}", shard_idx),
+            format!("解码事件分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -231,7 +231,7 @@ pub async fn subscribe_decoded_events_filtered(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("过滤解码事件分片{}", shard_idx),
+            format!("过滤解码事件分片{shard_idx}"),
             source,
             on_event,
             shard_idx,

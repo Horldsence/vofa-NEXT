@@ -62,8 +62,9 @@ impl TransportManager {
                     (w, d, c, None, None, None)
                 }
                 TransportConfig::TestData(c) => {
-                    let (w, d, c, r, n, p) = crate::test_data::spawn(c.clone(), link).await?;
-                    (w, d, c, Some(r), Some(n), Some(p))
+                    let (write_tx, data_tx, cancel, running, notify, protocol) =
+                        crate::test_data::spawn(c.clone(), link)?;
+                    (write_tx, data_tx, cancel, Some(running), Some(notify), Some(protocol))
                 }
                 TransportConfig::Slcan(c) => {
                     let (w, d, c) = transport_can_bridge::slcan::spawn(c.clone())?;
@@ -88,7 +89,7 @@ impl TransportManager {
             ),
         );
 
-        log::info!("连接已建立: 节点 {} -> {:?}", node_id, config);
+        log::info!("连接已建立: 节点 {node_id} -> {config:?}");
         Ok(())
     }
 
@@ -110,17 +111,17 @@ impl TransportManager {
 
     /// 订阅指定节点的接收数据 (未知 id 返回 None)
     pub fn subscribe(&self, node_id: &str) -> Option<broadcast::Receiver<Vec<u8>>> {
-        self.handles.get(node_id).map(|h| h.subscribe())
+        self.handles.get(node_id).map(super::handle::TransportHandle::subscribe)
     }
 
     /// 获取指定节点的连接状态 (未知 id 返回 None)
     pub fn state(&self, node_id: &str) -> Option<ConnectionState> {
-        self.handles.get(node_id).map(|h| h.state())
+        self.handles.get(node_id).map(super::handle::TransportHandle::state)
     }
 
     /// 获取指定节点的统计信息 (未知 id 返回 None)
     pub fn stats(&self, node_id: &str) -> Option<TransportStats> {
-        self.handles.get(node_id).map(|h| h.stats())
+        self.handles.get(node_id).map(super::handle::TransportHandle::stats)
     }
 
     /// 获取指定节点的配置 (未知 id 返回 None) — 供外部查询 CAN 波特率等
@@ -156,8 +157,7 @@ impl TransportManager {
     pub fn is_test_data_running(&self, node_id: &str) -> bool {
         self.handles
             .get(node_id)
-            .map(|h| h.is_test_data_running())
-            .unwrap_or(false)
+            .is_some_and(super::handle::TransportHandle::is_test_data_running)
     }
 
     /// 运行时热更新指定节点的链路配置 (图/协议变化后调用)
@@ -172,7 +172,7 @@ impl TransportManager {
     fn get(&self, node_id: &str) -> Result<&TransportHandle> {
         self.handles
             .get(node_id)
-            .ok_or_else(|| Error::PortNotFound(format!("传输节点未打开: {}", node_id)))
+            .ok_or_else(|| Error::PortNotFound(format!("传输节点未打开: {node_id}")))
     }
 }
 

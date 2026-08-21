@@ -78,6 +78,32 @@ impl CompiledGraph {
         nodes: Vec<NodeDef>,
         edges: Vec<Edge>,
     ) -> Result<Self, CompileError> {
+        fn dfs(
+            id: &str,
+            nodes: &HashMap<String, NodeDef>,
+            edges: &[Edge],
+            visited: &mut HashMap<String, u8>,
+            order: &mut Vec<String>,
+        ) -> Result<(), CompileError> {
+            match visited.get(id) {
+                Some(&1) => return Err(CompileError::Cycle),
+                Some(&2) => return Ok(()),
+                _ => {}
+            }
+            visited.insert(id.to_string(), 1);
+
+            // 访问上游 (有 edge 指向本节点的源节点)
+            for e in edges {
+                if e.target == id && nodes.contains_key(&e.source) {
+                    dfs(&e.source, nodes, edges, visited, order)?;
+                }
+            }
+
+            visited.insert(id.to_string(), 2);
+            order.push(id.to_string());
+            Ok(())
+        }
+
         // 节点表按平面分离: 同一 id 可能同时存在全局 Protocol 定义 (字节平面)
         // 与本 tab 的 ProtocolSource 引用 (数值平面) — 后者携带 ch0..chN 槽位,
         // 若被前者覆盖会导致通道输出恒为 0。
@@ -110,8 +136,7 @@ impl CompiledGraph {
             }
             node_map
                 .get(id)
-                .map(|n| port_domain(&n.kind, handle, is_output))
-                .unwrap_or(PortDomain::F32)
+                .map_or(PortDomain::F32, |n| port_domain(&n.kind, handle, is_output))
         };
 
         // 边按两端端口域分类
@@ -171,38 +196,12 @@ impl CompiledGraph {
             })
             .max()
             .unwrap_or(0);
-        let in_names: Vec<String> = (0..max_inputs).map(|i| format!("in{}", i)).collect();
+        let in_names: Vec<String> = (0..max_inputs).map(|i| format!("in{i}")).collect();
 
         // 拓扑排序 — 仅对有 f32 输出的节点
         // 使用 DFS 后序
         let mut visited: HashMap<String, u8> = HashMap::new(); // 0=未访问, 1=访问中, 2=已完成
         let mut order: Vec<String> = Vec::new();
-
-        fn dfs(
-            id: &str,
-            nodes: &HashMap<String, NodeDef>,
-            edges: &[Edge],
-            visited: &mut HashMap<String, u8>,
-            order: &mut Vec<String>,
-        ) -> Result<(), CompileError> {
-            match visited.get(id) {
-                Some(&1) => return Err(CompileError::Cycle),
-                Some(&2) => return Ok(()),
-                _ => {}
-            }
-            visited.insert(id.to_string(), 1);
-
-            // 访问上游 (有 edge 指向本节点的源节点)
-            for e in edges {
-                if e.target == id && nodes.contains_key(&e.source) {
-                    dfs(&e.source, nodes, edges, visited, order)?;
-                }
-            }
-
-            visited.insert(id.to_string(), 2);
-            order.push(id.to_string());
-            Ok(())
-        }
 
         // 仅对有 f32 输出的节点启动 DFS:
         // - Sink: 纯消费, 无输出
@@ -242,7 +241,7 @@ impl CompiledGraph {
         })
     }
 
-    pub fn nodes(&self) -> &HashMap<String, NodeDef> {
+    pub const fn nodes(&self) -> &HashMap<String, NodeDef> {
         &self.nodes
     }
 
@@ -256,12 +255,12 @@ impl CompiledGraph {
     }
 
     /// 字节平面处理计划 (拓扑序 + 源→下游路由, 取代旧 loopback_targets_for)
-    pub fn byte_plan(&self) -> &BytePlan {
+    pub const fn byte_plan(&self) -> &BytePlan {
         &self.byte_plan
     }
 
     /// 编译期槽位评估表 (process_frames_batch 热路径用)
-    pub fn compiled(&self) -> &CompiledEval {
+    pub const fn compiled(&self) -> &CompiledEval {
         &self.compiled
     }
 }
@@ -348,7 +347,7 @@ impl CompiledEval {
                             let in_name = in_names
                                 .get(i)
                                 .cloned()
-                                .unwrap_or_else(|| format!("in{}", i));
+                                .unwrap_or_else(|| format!("in{i}"));
                             resolve_slot(input_index, &slot_index, node_id, &in_name)
                         })
                         .collect();
@@ -431,7 +430,6 @@ impl CompiledEval {
                 | NodeKind::Protocol { .. }
                 | NodeKind::Trigger { .. } => {
                     // 无 f32 输出的节点不应出现在 eval_order 中, 防御性跳过
-                    continue;
                 }
             }
         }

@@ -15,7 +15,7 @@ use crate::state::{Pending, PendingState, Receiver};
 use crate::tx::{send_can_frame, send_consecutive_frames};
 
 /// 接收帧处理 — 根据 PCI 类型分派
-pub(super) async fn handle_received_frame(
+pub async fn handle_received_frame(
     backend: &Arc<dyn CanBackend>,
     pending: &mut HashMap<u32, Pending>,
     frame: &CanFrame,
@@ -33,9 +33,15 @@ pub(super) async fn handle_received_frame(
 
     match pci_type(frame.data[0]) {
         PCI_FC => handle_fc_frame(backend, pending, frame, n_as).await,
-        PCI_SF => handle_sf_frame(pending, frame),
+        PCI_SF => {
+            handle_sf_frame(pending, frame);
+            Ok(())
+        }
         PCI_FF => handle_ff_frame(backend, pending, frame, n_as).await,
-        PCI_CF => handle_cf_frame(pending, frame),
+        PCI_CF => {
+            handle_cf_frame(pending, frame);
+            Ok(())
+        }
         _ => Ok(()),
     }
 }
@@ -48,9 +54,8 @@ async fn handle_fc_frame(
     n_as: Duration,
 ) -> AutomotiveResult<()> {
     let rx_id = frame.id;
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return Ok(());
     };
 
     let tx_id = pending_entry.tx_id;
@@ -113,21 +118,19 @@ async fn handle_fc_frame(
 }
 
 /// 处理 SF (Single Frame) — 直接交付响应
-fn handle_sf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) -> AutomotiveResult<()> {
+fn handle_sf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) {
     let rx_id = frame.id;
     let sf_dl = (frame.data[0] & 0x0F) as usize;
     if sf_dl == 0 || sf_dl > SF_MAX_DATA {
-        return Ok(());
+        return;
     }
-    let data = frame.data[1..1 + sf_dl].to_vec();
+    let data = frame.data[1..=sf_dl].to_vec();
 
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return;
     };
     pending_entry.complete(Ok(data));
     pending.remove(&rx_id);
-    Ok(())
 }
 
 /// 处理 FF (First Frame) — 回复 FC + 进入接收状态机
@@ -143,9 +146,8 @@ async fn handle_ff_frame(
         return Ok(());
     }
 
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return Ok(());
     };
 
     let tx_id = pending_entry.tx_id;
@@ -169,19 +171,17 @@ async fn handle_ff_frame(
 }
 
 /// 处理 CF (Consecutive Frame) — 累积数据,SN 不匹配则报错
-fn handle_cf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) -> AutomotiveResult<()> {
+fn handle_cf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) {
     let rx_id = frame.id;
     let sn = frame.data[0] & 0x0F;
     let data = &frame.data[1..8.min(frame.data.len())];
 
-    let pending_entry = match pending.get_mut(&rx_id) {
-        Some(p) => p,
-        None => return Ok(()),
+    let Some(pending_entry) = pending.get_mut(&rx_id) else {
+        return;
     };
 
-    let receiver = match &mut pending_entry.state {
-        PendingState::Receiving { receiver } => receiver,
-        _ => return Ok(()),
+    let PendingState::Receiving { receiver } = &mut pending_entry.state else {
+        return;
     };
 
     match receiver.push_cf(sn, data) {
@@ -195,5 +195,4 @@ fn handle_cf_frame(pending: &mut HashMap<u32, Pending>, frame: &CanFrame) -> Aut
             pending.remove(&rx_id);
         }
     }
-    Ok(())
 }

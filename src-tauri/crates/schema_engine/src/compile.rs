@@ -6,7 +6,7 @@ use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset};
 use crate::engine::SchemaEngine;
 
 /// 预设对应的缺省 legacy 配置 (legacy_config 缺失时的兜底)
-pub fn default_legacy_config(preset: SchemaPreset) -> Option<ProtocolConfig> {
+pub const fn default_legacy_config(preset: SchemaPreset) -> Option<ProtocolConfig> {
     match preset {
         SchemaPreset::JustFloat => Some(ProtocolConfig::JustFloat { channels: None }),
         SchemaPreset::FireWater => Some(ProtocolConfig::FireWater { channels: None }),

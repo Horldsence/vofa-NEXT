@@ -67,7 +67,7 @@ pub async fn subscribe_rawdata(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("原始数据分片{}", shard_idx),
+            format!("原始数据分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -139,7 +139,7 @@ pub async fn subscribe_rawdata_node(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("节点原始数据分片{}", shard_idx),
+            format!("节点原始数据分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -227,7 +227,7 @@ pub async fn subscribe_rawdata_filtered(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("过滤原始数据分片{}", shard_idx),
+            format!("过滤原始数据分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -293,7 +293,7 @@ pub async fn subscribe_rawdata_node_filtered(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("过滤节点原始数据分片{}", shard_idx),
+            format!("过滤节点原始数据分片{shard_idx}"),
             source,
             on_event,
             shard_idx,

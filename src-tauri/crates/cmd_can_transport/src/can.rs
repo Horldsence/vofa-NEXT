@@ -51,7 +51,7 @@ pub async fn send_can_frame(
             .get(&proto_id)
             .cloned()
             .ok_or_else(|| {
-                vofa_core::Error::Config(format!("协议节点不存在: {}", proto_id))
+                vofa_core::Error::Config(format!("协议节点不存在: {proto_id}"))
             })?;
         let engine = st.lock().engine.clone();
         let bytes = engine.lock().encode_can(&frame);
@@ -101,7 +101,7 @@ pub async fn subscribe_can_frames(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("CAN 帧分片{}", shard_idx),
+            format!("CAN 帧分片{shard_idx}"),
             source,
             on_event,
             shard_idx,
@@ -159,7 +159,7 @@ pub async fn subscribe_can_frames_filtered(
     let exit_key = group_key.clone();
     tokio::spawn(async move {
         sharded_stream_loop(
-            format!("过滤 CAN 帧分片{}", shard_idx),
+            format!("过滤 CAN 帧分片{shard_idx}"),
             source,
             on_event,
             shard_idx,

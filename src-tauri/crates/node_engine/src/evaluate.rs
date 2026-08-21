@@ -70,6 +70,7 @@ impl CompiledGraph {
     ///
     /// 注意: 本函数只覆盖写当前节点的端口, 不清理过期键 — 图结构变化 (重编译)
     /// 时调用方应清空 out (process_frames_batch 通过 graphs_version 检测)。
+    #[allow(clippy::cast_precision_loss)]
     pub fn evaluate_into(
         &self,
         source_frames: &SourceFramesMap,
@@ -81,9 +82,8 @@ impl CompiledGraph {
         out: &mut ValuesMap,
     ) {
         for node_id in &self.eval_order {
-            let node = match self.nodes.get(node_id) {
-                Some(n) => n,
-                None => continue,
+            let Some(node) = self.nodes.get(node_id) else {
+                continue;
             };
 
             match &node.kind {
@@ -147,8 +147,7 @@ impl CompiledGraph {
                     // 懒初始化 / kind 变化时重建滤波器状态
                     let need_rebuild = filter_states
                         .get(node_id)
-                        .map(|f| f.kind() != kind)
-                        .unwrap_or(true);
+                        .is_none_or(|f| f.kind() != kind);
                     if need_rebuild {
                         filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
                     }
@@ -211,8 +210,7 @@ impl CompiledGraph {
                     // 环形播放重建后的时域采样 (buffer 由 spectrum_ticker 合成)
                     let v = ifft_states
                         .get_mut(node_id)
-                        .map(|s| s.next_sample())
-                        .unwrap_or(0.0);
+                        .map_or(0.0, dsp_fft::IfftState::next_sample);
                     let m = node_out_entry(out, node_id);
                     set_port(m, "out0", v);
                 }
@@ -222,7 +220,6 @@ impl CompiledGraph {
                 | NodeKind::Protocol { .. }
                 | NodeKind::Trigger { .. } => {
                     // 无 f32 输出的节点不应出现在 eval_order 中, 防御性跳过
-                    continue;
                 }
             }
         }

@@ -42,11 +42,10 @@ impl CandleEngine {
     }
 
     /// 当前系统时间 (微秒)
-    fn now_us(&self) -> u64 {
+    fn now_us() -> u64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_micros() as u64)
-            .unwrap_or(0)
+            .map_or(0, |d| u64::try_from(d.as_micros()).unwrap_or(0))
     }
 }
 
@@ -77,7 +76,7 @@ impl ProtocolEngine for CandleEngine {
                 can_types::CanDirection::Rx
             };
             frames.push(CanFrame {
-                timestamp: self.now_us(),
+                timestamp: Self::now_us(),
                 id,
                 extended,
                 rtr,
@@ -113,15 +112,15 @@ impl ProtocolEngine for CandleEngine {
     }
 
     fn encode_channel(&mut self, _channel: usize, value: f32) -> Vec<u8> {
-        format!("{:.6}\n", value).into_bytes()
+        format!("{value:.6}\n").into_bytes()
     }
 
     fn encode_channels(&mut self, values: &[f32]) -> Vec<u8> {
-        let s: Vec<String> = values.iter().map(|v| format!("{:.6}", v)).collect();
+        let s: Vec<String> = values.iter().map(|v| format!("{v:.6}")).collect();
         format!("{}\n", s.join(",")).into_bytes()
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "CandleLight"
     }
 
@@ -142,7 +141,7 @@ impl ProtocolEngine for CandleEngine {
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(CandleEngine::new())
+        Box::new(Self::new())
     }
 }
 

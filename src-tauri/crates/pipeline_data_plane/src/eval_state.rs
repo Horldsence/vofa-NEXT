@@ -133,7 +133,7 @@ pub struct GraphEvalState {
 /// `source_frames` 等)。
 #[allow(clippy::too_many_arguments)]
 #[must_use]
-pub fn build_graph_eval_state(
+pub const fn build_graph_eval_state(
     graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
     graphs_version: Arc<AtomicU64>,
     input_values: Arc<Mutex<HashMap<String, f32>>>,
@@ -158,13 +158,13 @@ pub fn build_graph_eval_state(
         graphs_version,
         input_values,
         custom_outputs,
-        custom_text_outputs,
-        text_output_snapshot,
-        text_output_subscribers,
         source_frames,
         output_snapshot,
         output_subscribers,
         custom_input_subscribers,
+        custom_text_outputs,
+        text_output_snapshot,
+        text_output_subscribers,
         filter_states,
         decoder_states,
         decoder_raw_collectors,

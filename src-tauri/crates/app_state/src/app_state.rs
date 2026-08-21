@@ -137,7 +137,7 @@ impl AppState {
             text_output_subscribers.clone(),
             custom_text_outputs.clone(),
             source_frames.clone(),
-            output_snapshot.clone(),
+            output_snapshot,
             output_subscribers.clone(),
             custom_input_subscribers.clone(),
             filter_states,

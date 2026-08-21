@@ -1,7 +1,7 @@
 //! `automotive_can` 集成测试 — BridgeCanBackend 编解码桥接
 
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{CanDirection, CanFrame};
+use can_types::{CanDirection, CanFrame};
 use transport_core::CanBackend;
 
 use automotive_can::{BackendKind, BridgeCanBackend};

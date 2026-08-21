@@ -26,14 +26,14 @@ pub fn error(app: &AppHandle, body: impl AsRef<str>) {
     let _ = app
         .notification()
         .builder()
-        .title(format!("{} 错误", APP_TITLE))
+        .title(format!("{APP_TITLE} 错误"))
         .body(body.as_ref())
         .show();
 }
 
 /// 连接已建立 — 由 open_transport 成功路径调用
 pub fn connected(app: &AppHandle, kind: &str) {
-    info(app, format!("已连接: {}", kind));
+    info(app, format!("已连接: {kind}"));
 }
 
 /// 连接已断开 — 由 close_transport 或异常退出路径调用
@@ -43,11 +43,11 @@ pub fn disconnected(app: &AppHandle) {
 
 /// 自动通道检测完成
 pub fn channels_detected(app: &AppHandle, count: usize) {
-    info(app, format!("检测到 {} 个通道", count));
+    info(app, format!("检测到 {count} 个通道"));
 }
 
 /// 从 TransportConfig 提取简洁字符串 (用于通知)
-pub fn transport_kind_str(config: &TransportConfig) -> &'static str {
+pub const fn transport_kind_str(config: &TransportConfig) -> &'static str {
     match config {
         TransportConfig::Serial(_) => "Serial",
         TransportConfig::Udp(_) => "UDP",

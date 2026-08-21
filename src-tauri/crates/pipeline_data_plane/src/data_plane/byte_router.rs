@@ -153,7 +153,7 @@ async fn feed_protocol(
     depth: usize,
 ) {
     let Some(st) = plane.protocol_states.lock().get(proto_id).cloned() else {
-        log::debug!("协议节点无运行时状态, 跳过喂入: {}", proto_id);
+        log::debug!("协议节点无运行时状态, 跳过喂入: {proto_id}");
         return;
     };
     let (engine, parallel) = {

@@ -123,7 +123,7 @@ impl ProtocolEngine for JustFloatEngine {
         self.encode_channels(&frame.channels)
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "JustFloat"
     }
 
@@ -163,6 +163,6 @@ impl ProtocolEngine for JustFloatEngine {
     }
 
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(JustFloatEngine::new(self.channels))
+        Box::new(Self::new(self.channels))
     }
 }

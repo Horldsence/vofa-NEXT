@@ -2,7 +2,9 @@
 
 use std::sync::Arc;
 use tokio::sync::broadcast;
-use vofa_core::{CanDirection, CanFrame, IsoTpAddressMode, IsoTpConfig, Result};
+use can_types::{CanDirection, CanFrame};
+use diagnostic::{IsoTpAddressMode, IsoTpConfig};
+use vofa_core::Result;
 use transport_core::CanBackend;
 
 use automotive_isotp::IsoTpSession;

@@ -104,7 +104,7 @@ impl ParallelFeeder {
 
         let t_join = std::time::Instant::now();
         // 3. 尾部不完整帧存入 pending, 下一批前置拼接
-        let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+        let tail_start = ranges.last().map_or(0, |r| r.end);
         self.pending = full[tail_start..].to_vec();
 
         if ranges.is_empty() {
@@ -139,7 +139,7 @@ impl ParallelFeeder {
                     merged.append(out);
                 }
                 Err(e) => {
-                    log::warn!("并行解析 worker 任务失败: {}", e);
+                    log::warn!("并行解析 worker 任务失败: {e}");
                 }
             }
         }
