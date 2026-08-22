@@ -1005,3 +1005,83 @@ fn test_trigger_value_feeds_str_num_port_via_math() {
         "pos 应用上游值 2.0 (而非内联回退 9.0)"
     );
 }
+
+#[test]
+fn test_trigger_manual_tracks_prev_no_false_rising_on_mode_switch() {
+    // 对齐前端 useEffect: 非 auto 模式仍每帧跟踪 prevTriggerRef。
+    // manual 期间 trigger 输入 0→5; 切回 auto+rising (图重编译, 配置仅 mode 变化
+    // → 不重建 TriggerState, prev 保留) 且输入保持 5 → 不应误触发上升沿。
+    let rules = || {
+        vec![trigger_rule(
+            "r1",
+            TriggerMatchType::Range,
+            "1..10",
+            "number",
+            7.0,
+            "",
+        )]
+    };
+    let edges = || vec![edge("e1", "knob1", "value", "tr1", "trigger")];
+    let g_manual = CompiledGraph::compile(
+        "t1".into(),
+        vec![
+            make_input("knob1", "t1"),
+            make_trigger("tr1", "t1", "manual", "rising", "GO", rules()),
+        ],
+        edges(),
+    )
+    .unwrap();
+    let mut input_values = HashMap::new();
+    let mut trigger_states = HashMap::new();
+
+    let mut eval_with =
+        |g: &CompiledGraph, v: f32, ts: &mut HashMap<String, node_trigger::TriggerState>| {
+            input_values.clear();
+            input_values.insert("knob1".to_string(), v);
+            let mut out_str = StringValuesMap::default();
+            g.evaluate(
+                &empty_frames(),
+                &input_values,
+                &HashMap::new(),
+                &mut HashMap::new(),
+                &HashMap::new(),
+                &mut HashMap::new(),
+                ts,
+                &mut out_str,
+            )
+            .get("tr1")
+            .map(|m| (*m.get("value").unwrap(), *m.get("matched").unwrap()))
+        };
+
+    // manual: 输入 0 → 5, prev 被跟踪 (command "GO" 不匹配 Range, miss)
+    assert_eq!(
+        eval_with(&g_manual, 0.0, &mut trigger_states),
+        Some((-1.0, 0.0))
+    );
+    assert_eq!(
+        eval_with(&g_manual, 5.0, &mut trigger_states),
+        Some((-1.0, 0.0))
+    );
+
+    // 切回 auto+rising (仅 mode 变化, TriggerState 不重建), 输入保持 5
+    let g_auto = CompiledGraph::compile(
+        "t1".into(),
+        vec![
+            make_input("knob1", "t1"),
+            make_trigger("tr1", "t1", "auto", "rising", "GO", rules()),
+        ],
+        edges(),
+    )
+    .unwrap();
+    assert_eq!(
+        eval_with(&g_auto, 5.0, &mut trigger_states),
+        None,
+        "prev 已在 manual 期间跟踪为 5, 不应误触发上升沿"
+    );
+    // 回落到 0 后再升: 正常触发
+    assert_eq!(eval_with(&g_auto, 0.0, &mut trigger_states), None);
+    assert_eq!(
+        eval_with(&g_auto, 5.0, &mut trigger_states),
+        Some((7.0, 1.0))
+    );
+}

@@ -311,10 +311,14 @@ impl CompiledGraph {
                     let state = trigger_states.get_mut(node_id).unwrap();
                     // manual: 每帧以 command 匹配; auto: "trigger" 输入上游值边沿检测,
                     // 未激活帧不产出 (对齐前端 useEffect: 不调用 runMatch → 端口保持上次值)
+                    // 两种模式都先解析 "trigger" 输入上游值: auto 用于边沿检测;
+                    // manual 也要同步 prev (前端 useEffect 在非 auto 模式仍每帧跟踪
+                    // prevTriggerRef, 避免切回 auto+rising 时因陈旧 prev 误触发上升沿)
+                    let tv = self.resolve_input(node_id, "trigger", out);
                     let result = if mode == "auto" {
-                        let tv = self.resolve_input(node_id, "trigger", out);
                         state.eval_auto(edge, tv)
                     } else {
+                        state.record_prev(tv);
                         Some(state.eval_manual(command))
                     };
                     // 分派对齐前端 runMatch: string 规则命中 → text 写字符串平面

@@ -417,10 +417,14 @@ impl CompiledEval {
                     }
                     let state = trigger_states.get_mut(node_id).unwrap();
                     // manual: 每帧以 command 匹配; auto: 边沿检测, 未激活帧不产出
+                    // 两种模式都先取 "trigger" 输入槽位值 (与 evaluate_into 一致):
+                    // auto 用于边沿检测; manual 也要同步 prev (前端 useEffect 在非
+                    // auto 模式仍每帧跟踪 prevTriggerRef)
+                    let tv = trigger_in.map_or(0.0, |s| slots[s]);
                     let result = if mode == "auto" {
-                        let tv = trigger_in.map_or(0.0, |s| slots[s]);
                         state.eval_auto(edge, tv)
                     } else {
+                        state.record_prev(tv);
                         Some(state.eval_manual(command))
                     };
                     // 分派对齐前端 runMatch: string 命中 → text 字符串槽位 (value 不覆盖);

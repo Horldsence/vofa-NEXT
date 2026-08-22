@@ -280,6 +280,13 @@ impl TriggerState {
         self.matcher.match_input(command, numeric_of(command))
     }
 
+    /// 非 auto 模式下的 prev 跟踪 — 对齐前端 useEffect
+    /// (`mode !== 'auto'` 时仍每帧 `prevTriggerRef.current = triggerValue`):
+    /// 保证 manual 期间输入 0→正 后切回 auto+rising 不会因陈旧 prev 误触发上升沿
+    pub const fn record_prev(&mut self, trigger_value: f32) {
+        self.prev_trigger = trigger_value;
+    }
+
     /// 自动模式求值: 边沿检测 + 命中时匹配 (对齐前端 Trigger.tsx 的 useEffect)
     ///
     /// - `edge == "rising"`: 仅 `prev == 0 && value > 0` 的上升沿匹配一次
@@ -734,5 +741,20 @@ mod tests {
         assert_eq!(format_auto_command(f32::NAN), "NaN");
         assert_eq!(format_auto_command(f32::INFINITY), "Infinity");
         assert_eq!(format_auto_command(f32::NEG_INFINITY), "-Infinity");
+    }
+
+    #[test]
+    fn record_prev_prevents_false_rising_after_manual() {
+        // manual 期间输入 0→5 (record_prev 跟踪); 切回 auto+rising 且输入保持 5 → 不触发
+        let mut st = state_with_range_rule();
+        st.record_prev(0.0);
+        st.record_prev(5.0);
+        assert!(
+            st.eval_auto("rising", 5.0).is_none(),
+            "prev=5 不应误判上升沿"
+        );
+        // 回落后再升: 正常触发
+        assert!(st.eval_auto("rising", 0.0).is_none());
+        assert!(st.eval_auto("rising", 5.0).is_some());
     }
 }
