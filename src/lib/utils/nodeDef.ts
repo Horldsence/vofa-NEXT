@@ -177,9 +177,9 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     }
 
     case 'Trigger': {
-      // 触发器节点 — 后端仅占位 (类似 Sink, 不参与求值),
-      // 匹配逻辑由前端 useEffect 调用 match_trigger_command,
-      // 结果经 submitCustomOutput / submitCustomTextOutput 推回 graphOutputs / customTextOutputs
+      // 触发器节点 — 后端每帧求值 (manual 以 command 匹配, auto 按 edge 边沿检测),
+      // value/matched 写数值平面 graphOutputs, text 写字符串平面 customTextOutputs;
+      // 前端不再调用 match_trigger_command 驱动 (命令保留, 向后兼容)
       return {
         kind: 'Trigger',
         params: {

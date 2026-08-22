@@ -177,12 +177,12 @@ export interface TriggerMatchResult {
 /// 触发器控件 — 命令字符串 → 输出通道数据
 ///
 /// 模式 (manual / auto) 与 FrameDecoder 同构:
-/// - manual: 面板内文本框 + Fire 按钮触发, 一次性匹配
-/// - auto:   上游 trigger 端口 (number) 按 edge (level/rising) 持续驱动
+/// - manual: 面板内文本框编辑 command, 后端每帧以当前 command 匹配
+/// - auto:   上游 trigger 端口 (number) 按 edge (level/rising) 由后端边沿检测驱动
 ///
-/// 匹配规则由后端 `match_trigger_command` (Rust TriggerMatcher) 求值,
-/// 结果按规则的 `outputType` 回填到 `value` / `matched` (f32) 或 `text` (string) 端口
-/// 供下游消费。
+/// 匹配由后端图求值 (Rust TriggerMatcher, 见 node_engine evaluate.rs):
+/// 结果按规则的 `outputType` 写入 `value` / `matched` (f32) 或 `text` (string) 端口
+/// 供下游消费; 前端只读 store 快照展示, 不再调用 match_trigger_command 驱动。
 export interface TriggerConfig {
   id: string;
   label: string;

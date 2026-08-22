@@ -1,21 +1,22 @@
 // ============ 触发器 (Trigger) 控件 ============
 //
-// 维护「命令 → 输出值」对照表, 命中时把数字写入 value/matched 两个输出端口 (通道数据, 非字节)。
+// 维护「命令 → 输出值」对照表, 命中时后端把数字写入 value/matched 输出端口 (f32 平面),
+// 字符串规则命中写入 text 输出端口 (字符串平面)。
 //
-// UI 与状态机沿用 FrameDecoder 的 manual/auto 双面板设计:
-// - manual: 面板文本框 + Fire 按钮, 一次性调后端 match_trigger_command
-// - auto:   上游 trigger 端口 (number) 按 edge (level/rising) 触发, 调同一命令
+// 求值全部在后端 (图每帧评估, 见 node_engine evaluate.rs 的 NodeKind::Trigger 分支):
+// - manual: 每帧以当前 command 匹配 (command 改动经 update_tab_graph 同步即生效)
+// - auto:   上游 trigger 端口 (number) 按 edge (level/rising) 由后端边沿检测驱动
 //
-// 匹配逻辑全部在 Rust 后端 (TriggerMatcher), 前端只做 UI 状态机与缓存最近结果。
+// 前端只做配置编辑 (规则/mode/edge/default) 与结果展示
+// (value/matched 读 graphOutputs[自己的id], text 读 customTextOutputs[自己的id])。
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, ChevronDown, ChevronRight, Play, Radio, Zap, AlertTriangle } from 'lucide-react';
+import { useCallback, useState } from 'react';
+import { Plus, Trash2, ChevronDown, ChevronRight, Play, Radio } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useGraphInput } from '../../lib/hooks/useGraphInput';
 import { t } from '../../i18n';
-import { api } from '../../lib/tauri/tauri';
 import { nanoid } from 'nanoid';
-import type { TriggerConfig, TriggerMatchType, TriggerMatchResult, TriggerRule } from '../../types';
+import type { TriggerConfig, TriggerMatchType, TriggerRule } from '../../types';
 import type { WidgetConfig } from '../../types';
 import type { Lang } from '../../i18n';
 
@@ -170,14 +171,11 @@ function TriggerRuleRow({ rule, expanded, onToggleExpand, onUpdate, onRemove, la
 interface ManualPanelProps {
   command: string;
   onCommandChange: (s: string) => void;
-  result: TriggerMatchResult | null;
-  loading: boolean;
-  error: string | null;
-  onFire: () => void;
+  result: TriggerResultSnapshot | null;
   lang: Lang;
 }
 
-function ManualPanel({ command, onCommandChange, result, loading, error, onFire, lang }: ManualPanelProps) {
+function ManualPanel({ command, onCommandChange, result, lang }: ManualPanelProps) {
   return (
     <>
       <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, 'triggerManualInput')}</div>
@@ -188,32 +186,22 @@ function ManualPanel({ command, onCommandChange, result, loading, error, onFire,
         placeholder={t(lang, 'triggerCmdPlaceholder')}
         spellCheck={false}
         rows={3}
-        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); onFire(); } }}
       />
-      <div className="text-[10px] text-text-secondary opacity-70">{t(lang, 'triggerShortcutHint')}</div>
 
-      <button
-        className="w-full justify-center px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-        onClick={onFire}
-        disabled={loading}
-      >
-        <Zap size={12} />
-        <span>{t(lang, 'triggerFire')}</span>
-      </button>
-
-      {error && (
-        <div className="flex items-start gap-1 bg-red/10 border border-red/30 text-red px-2 py-1.5 rounded-sm text-xs">
-          <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" />
-          <span className="break-all">{error}</span>
-        </div>
-      )}
+      {/* 后端每帧以当前 command 求值, 结果为实时快照 */}
       {result && <ResultBlock result={result} titleKey="triggerMatchResult" lang={lang} />}
     </>
   );
 }
 
+/// 结果快照 — 读自后端图输出 (graphOutputs[id].value / .matched)
+interface TriggerResultSnapshot {
+  matched: boolean;
+  value: number;
+}
+
 // 复用: 结果预览 (matched + value)
-function ResultBlock({ result, titleKey, lang }: { result: TriggerMatchResult; titleKey: string; lang: Lang }) {
+function ResultBlock({ result, titleKey, lang }: { result: TriggerResultSnapshot; titleKey: string; lang: Lang }) {
   return (
     <div className="flex flex-col gap-1.5">
       <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, titleKey)}</div>
@@ -237,7 +225,7 @@ interface AutoPanelProps {
   triggerValue: number;
   edge: 'level' | 'rising';
   onEdgeChange: (e: 'level' | 'rising') => void;
-  result: TriggerMatchResult | null;
+  result: TriggerResultSnapshot | null;
   lang: Lang;
 }
 
@@ -298,23 +286,22 @@ export function Trigger({ widget }: TriggerProps) {
   const { id, mode, edge, defaultMiss, defaultMissText, command, rules } = params;
 
   const updateWidget = useAppStore((s) => s.updateWidget);
-  const submitCustomOutput = useAppStore((s) => s.submitCustomOutput);
-  const submitCustomTextOutput = useAppStore((s) => s.submitCustomTextOutput);
   const lang = useAppStore((s) => s.lang);
 
   // 块列表 UI 状态
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
-  // 触发结果缓存 (手动 / 自动面板共用)
-  const [lastResult, setLastResult] = useState<TriggerMatchResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 结果展示: 读后端图输出快照 (后端每帧求值, manual/auto 都由后端驱动)
+  // value/matched 走数值平面; 后端尚未产出 (节点未进图) 时不显示结果区
+  const resultValue = useAppStore((s) => s.graphOutputs[id]?.value);
+  const resultMatched = useAppStore((s) => s.graphOutputs[id]?.matched);
+  const lastResult: TriggerResultSnapshot | null =
+    resultValue === undefined && resultMatched === undefined
+      ? null
+      : { value: resultValue ?? 0, matched: (resultMatched ?? 0) !== 0 };
 
-  // 自动模式: 读取上游 trigger 端口
+  // 自动模式: 读取上游 trigger 端口 (仅展示; 边沿检测与匹配在后端)
   const triggerValue = useGraphInput(id, 'trigger', null, 0);
-
-  // 上升沿检测: 在 useRef 中保存上一次 triggerValue
-  const prevTriggerRef = useRef<number>(0);
 
   // 通用: 更新 widget params (注意保留其它字段)
   const updateParams = useCallback(
@@ -372,59 +359,8 @@ export function Trigger({ widget }: TriggerProps) {
     [rules, updateParams],
   );
 
-  // 触发匹配 (manual 与 auto 共用)
-  const runMatch = useCallback(
-    async (cmdOverride?: string) => {
-      const cmd = cmdOverride ?? command;
-      setLoading(true);
-      setError(null);
-      try {
-        // range 规则需要数值: 命令本身能解析为数字时作为 numeric 传给后端, 否则 null (跳过 range 规则)
-        const trimmed = cmd.trim();
-        const n = trimmed === '' ? NaN : Number(trimmed);
-        const result = await api.matchTriggerCommand(rules, defaultMiss, defaultMissText, cmd, Number.isFinite(n) ? n : null);
-        setLastResult(result);
-        // 按后端返回的 output_type 分发到数字 / 字符串通道
-        // matched 始终是数字 (1/0), 无论命中的是 number 还是 string 类型规则
-        if (result.outputType === 'string') {
-          // 字符串规则: text 走字符串平面, matched 仍走数字平面
-          void submitCustomTextOutput(id, { text: result.text });
-          void submitCustomOutput(id, { matched: result.matched ? 1 : 0 });
-        } else {
-          // number 规则 或 miss: value + matched 都走数字平面
-          void submitCustomOutput(id, { value: result.value, matched: result.matched ? 1 : 0 });
-        }
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [command, defaultMiss, id, rules, submitCustomOutput],
-  );
-
-  // 手动模式: Fire 按钮
-  const handleFire = useCallback(() => {
-    void runMatch();
-  }, [runMatch]);
-
-  // 自动模式: 检测 trigger 跳变 / 持续有效
-  useEffect(() => {
-    if (mode !== 'auto') {
-      prevTriggerRef.current = triggerValue;
-      return;
-    }
-    const prev = prevTriggerRef.current;
-    const rising = edge === 'rising' && prev === 0 && triggerValue > 0;
-    const active = edge === 'level' ? triggerValue !== 0 : rising;
-    if (active) {
-      // 自动模式: 以上游 trigger 值为匹配输入 — 字符串形式作命令, 数值形式作 range 的 numeric
-      void runMatch(String(triggerValue));
-    }
-    prevTriggerRef.current = triggerValue;
-  }, [triggerValue, mode, edge, runMatch]);
-
   // 手动模式: command 改变时实时同步到 widget.params (持久化用户最新输入)
+  // 后端图每帧以当前 command 求值 — 无需前端触发
   // 自动模式不使用该输入 — 匹配输入来自上游 trigger 端口
   const handleCommandChange = useCallback(
     (next: string) => updateParams({ command: next }),
@@ -504,8 +440,7 @@ export function Trigger({ widget }: TriggerProps) {
       {/* 右侧: 模式面板 + 全局设置 */}
       <div className="w-[320px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
         {mode === 'manual' ? (
-          <ManualPanel command={command} onCommandChange={handleCommandChange} result={lastResult}
-            loading={loading} error={error} onFire={handleFire} lang={lang} />
+          <ManualPanel command={command} onCommandChange={handleCommandChange} result={lastResult} lang={lang} />
         ) : (
           <AutoPanel triggerValue={triggerValue} edge={edge}
             onEdgeChange={(e) => updateParams({ edge: e })} result={lastResult} lang={lang} />

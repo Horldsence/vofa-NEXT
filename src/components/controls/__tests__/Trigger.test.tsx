@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, fireEvent, screen, waitFor } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 
 // 共享 mock 状态
 const mockState = vi.hoisted(() => ({
-  matchTriggerCommandCalls: [] as Array<{ defaultMiss: number; cmd: string; numeric: number | null }>,
-  submitCustomOutputCalls: [] as Array<{ id: string; outputs: unknown }>,
   updateWidgetCalls: [] as Array<{ id: string; widget: unknown }>,
   graphInputValue: 0,
+  // 后端图输出快照 (value/matched 走数值平面)
+  graphOutputs: {} as Record<string, Record<string, number>>,
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -20,11 +20,7 @@ vi.mock('../../../store/appStore', () => ({
       updateWidget: (id: string, widget: unknown) => {
         mockState.updateWidgetCalls.push({ id, widget });
       },
-      submitCustomOutput: (id: string, outputs: unknown) => {
-        mockState.submitCustomOutputCalls.push({ id, outputs });
-      },
-      submitCustomTextOutput: vi.fn(),
-      setInputValue: vi.fn(),
+      graphOutputs: mockState.graphOutputs,
       lang: 'zh' as const,
     };
     return selector(state);
@@ -33,15 +29,6 @@ vi.mock('../../../store/appStore', () => ({
 
 vi.mock('../../../lib/hooks/useGraphInput', () => ({
   useGraphInput: () => mockState.graphInputValue,
-}));
-
-vi.mock('../../../lib/tauri/tauri', () => ({
-  api: {
-    matchTriggerCommand: vi.fn(async (_rules: unknown, defaultMiss: number, _defaultMissText: string, command: string, numeric: number | null) => {
-      mockState.matchTriggerCommandCalls.push({ defaultMiss, cmd: command, numeric });
-      return { value: defaultMiss + 1, matched: true, text: '', outputType: 'number' };
-    }),
-  },
 }));
 
 import { Trigger } from '../Trigger';
@@ -69,10 +56,9 @@ function makeWidget(overrides: Record<string, unknown> = {}): Extract<WidgetConf
 }
 
 beforeEach(() => {
-  mockState.matchTriggerCommandCalls.length = 0;
-  mockState.submitCustomOutputCalls.length = 0;
   mockState.updateWidgetCalls.length = 0;
   mockState.graphInputValue = 0;
+  mockState.graphOutputs = {};
 });
 
 describe('Trigger widget', () => {
@@ -118,27 +104,30 @@ describe('Trigger widget', () => {
     expect(calls.some((c) => c.params.rules.length === 1 && c.params.rules[0]?.id === 'r2')).toBe(true);
   });
 
-  it('Fire button calls matchTriggerCommand and submitCustomOutput', async () => {
-    render(<Trigger widget={makeWidget({ defaultMiss: 7, command: 'TEST' })} onRemove={NOOP} />);
-    // 右侧 Fire 按钮是唯一的 <button> + Zap 图标 + 含 "Fire" 文本
-    const fireBtn = screen.getByRole('button', { name: /Fire/ });
-    fireEvent.click(fireBtn);
-    await waitFor(() => {
-      expect(mockState.matchTriggerCommandCalls).toContainEqual({ defaultMiss: 7, cmd: 'TEST', numeric: null });
-    });
-    await waitFor(() => {
-      expect(mockState.submitCustomOutputCalls).toContainEqual(
-        expect.objectContaining({ id: TRIGGER_ID, outputs: { value: 8, matched: 1 } }),
-      );
-    });
+  it('manual 模式: 编辑 command 经 updateWidget 同步 (后端每帧以当前 command 求值)', () => {
+    render(<Trigger widget={makeWidget({ command: 'HELLO' })} onRemove={NOOP} />);
+    const textarea = screen.getByPlaceholderText(/GET_TEMP/i);
+    fireEvent.change(textarea, { target: { value: 'PING' } });
+    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as Array<{ params: { command: string } }>;
+    expect(calls.some((c) => c.params.command === 'PING')).toBe(true);
   });
 
-  it('Fire 时把数字命令解析为 numeric 传给后端 (range 规则依赖)', async () => {
-    render(<Trigger widget={makeWidget({ command: '22' })} onRemove={NOOP} />);
-    fireEvent.click(screen.getByRole('button', { name: /Fire/ }));
-    await waitFor(() => {
-      expect(mockState.matchTriggerCommandCalls).toContainEqual({ defaultMiss: 0, cmd: '22', numeric: 22 });
-    });
+  it('不再渲染 Fire 按钮 (求值由后端驱动, 前端无触发入口)', () => {
+    render(<Trigger widget={makeWidget()} onRemove={NOOP} />);
+    expect(screen.queryByRole('button', { name: /Fire/ })).toBeNull();
+  });
+
+  it('结果区读后端图输出快照 (graphOutputs[自己id].value/matched)', () => {
+    mockState.graphOutputs = { [TRIGGER_ID]: { value: 8, matched: 1 } };
+    render(<Trigger widget={makeWidget()} onRemove={NOOP} />);
+    expect(screen.getByText('✓ YES')).toBeInTheDocument();
+    expect(screen.getByText('8.0000')).toBeInTheDocument();
+  });
+
+  it('后端尚未产出 (graphOutputs 无该节点) 时不显示结果区', () => {
+    render(<Trigger widget={makeWidget()} onRemove={NOOP} />);
+    expect(screen.queryByText('✓ YES')).toBeNull();
+    expect(screen.queryByText('✗ NO')).toBeNull();
   });
 
   it('renders AutoPanel when mode is auto', () => {
@@ -148,11 +137,9 @@ describe('Trigger widget', () => {
     expect(screen.getByText(/上升沿/)).toBeInTheDocument();
   });
 
-  it('auto 模式: 电平有效时以上游值作为命令与数值匹配, 而非手动命令文本', async () => {
+  it('auto 模式: 面板展示上游 trigger 端口实时值 (匹配本身在后端)', () => {
     mockState.graphInputValue = 143.7361;
-    render(<Trigger widget={makeWidget({ mode: 'auto', edge: 'level', command: '100.5552' })} onRemove={NOOP} />);
-    await waitFor(() => {
-      expect(mockState.matchTriggerCommandCalls).toContainEqual({ defaultMiss: 0, cmd: '143.7361', numeric: 143.7361 });
-    });
+    render(<Trigger widget={makeWidget({ mode: 'auto', edge: 'level' })} onRemove={NOOP} />);
+    expect(screen.getAllByText(/143\.7361/).length).toBeGreaterThan(0);
   });
 });
