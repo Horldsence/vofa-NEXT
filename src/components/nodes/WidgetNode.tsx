@@ -7,7 +7,7 @@ import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import type { WidgetConfig, DomainType } from '../../types';
 import type { Lang } from '../../i18n';
-import { UNARY_MATH_OPS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
+import { UNARY_MATH_OPS, STR_OP_PORTS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
 import { commandInputPortNames } from '../../lib/utils/commandFrames';
 import { widgetToTab } from '../../lib/utils/widgetTab';
@@ -190,6 +190,15 @@ export function getWidgetPorts(widget: WidgetConfig): {
         inputs: [{ id: 'text', label: 'text', domain: 'string' }],
         outputs: [],
       };
+    case 'Str': {
+      // 字符串操作: 端口表由 STR_OP_PORTS 派生 (与后端 StrOp::input_ports 一致)
+      // 输出固定为 result 口, 域按 op 决定 (len/find/contains 数值, 其余字符串)
+      const meta = STR_OP_PORTS[widget.params.op];
+      return {
+        inputs: meta.inputs.map((p) => ({ ...p })),
+        outputs: [{ id: 'result', label: 'result', domain: meta.outputDomain }],
+      };
+    }
     case 'RawData':
       // 关联端口 (ASSOCIATIVE): 端口在此仅为回退值 — 实际端口由 WidgetNode 动态派生,
       // 每个已连接的 source 节点 = 一个通道端口。边只是用户意图标记: 控件视图展示
@@ -226,14 +235,20 @@ function deriveRawDataPorts(
   return { inputs, outputs: [] };
 }
 
-/// 端口域颜色 — 频域紫色, 时域蓝色, 字节域黄色 (仅作圆点/手柄描边, 不占文字宽度, 避免遮挡)
+/// 端口域颜色 — 频域紫色, 时域蓝色, 字节域黄色, 字符串域橙色 (仅作圆点/手柄描边, 不占文字宽度, 避免遮挡)
 function domainColor(domain: DomainType): string {
-  return domain === 'freq' ? '#ba68c8' : domain === 'bytes' ? '#e5c07b' : '#75beff';
+  return domain === 'freq' ? '#ba68c8' : domain === 'bytes' ? '#e5c07b' : domain === 'string' ? '#ffa726' : '#75beff';
 }
 
 /// 端口域标注文案 (悬停提示)
 function domainLabel(lang: Lang, domain: DomainType): string {
-  return domain === 'freq' ? t(lang, 'domainFreq') : domain === 'bytes' ? t(lang, 'domainBytes') : t(lang, 'domainTime');
+  return domain === 'freq'
+    ? t(lang, 'domainFreq')
+    : domain === 'bytes'
+      ? t(lang, 'domainBytes')
+      : domain === 'string'
+        ? t(lang, 'domainString')
+        : t(lang, 'domainTime');
 }
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
@@ -372,6 +387,13 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
             widget={widget as Extract<WidgetConfig, { kind: 'TextDisplay' }>}
             onRemove={onRemove}
           />
+        );
+      case 'Str':
+        // 字符串操作控件: 节点内占位显示当前 op (节点体组件未就位, 端口/连线已可用)
+        return (
+          <div className="flex items-center justify-center px-2 py-3 text-text-secondary text-[10px]">
+            <span>Str {widget.params.op}</span>
+          </div>
         );
       case 'Model3D':
     case 'Spectrum':

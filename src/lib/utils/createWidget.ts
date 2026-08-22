@@ -285,6 +285,18 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           monospace: true,
         },
       };
+    case 'Str':
+      return {
+        kind: 'Str',
+        params: {
+          id,
+          label: 'Str',
+          op: 'len',
+          pos: 1,
+          len: 0,
+          size: 0,
+        },
+      };
   }
 }
 

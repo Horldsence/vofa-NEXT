@@ -607,10 +607,12 @@ catInput: 数据
 catDisplay: 显示
 catMath: 算术
 catCustom: 自定义
+catString: 字符串
 catInputHelp: 数据类控件用于设置参数或发送命令, 可连线到 Command 的 value 端口做模板插值
 catDisplayHelp: 显示控件用于实时展示通道数据, 拖入后从通道源连线接入
 catMathHelp: 算术控件对多通道做四则运算或数学函数, 可级联组合
 catCustomHelp: 自定义 JS 控件, 点击打开编辑器编写自己的逻辑
+catStringHelp: 字符串控件对字符串做转换或查询; len/find/contains 输出数值, 其余输出字符串
 
 # 算术控件
 mathAdd: 加法
@@ -630,6 +632,39 @@ mathTan: 正切
 mathLog: 对数
 mathUnary: 单目
 mathBinary: 双目
+
+# 字符串控件
+strLen: 长度
+strLenDesc: 输入字符串的字符数 (输出数值)
+strFind: 查找
+strFindDesc: 子串的 1-based 字符位置, 未命中返回 0 (输出数值)
+strContains: 包含
+strContainsDesc: 输入包含子串输出 1, 否则输出 0 (输出数值)
+strLeft: 左截取
+strLeftDesc: 取左侧 size 个字符; size=0 为整串
+strRight: 右截取
+strRightDesc: 取右侧 size 个字符; size=0 为整串
+strMid: 截取
+strMidDesc: 从 pos (1-based) 截取 len 个字符; len=0 到末尾
+strConcat: 拼接
+strConcatDesc: 拼接 str1 + str2
+strInsert: 插入
+strInsertDesc: 在 pos (1-based) 处插入 str2
+strDelete: 删除
+strDeleteDesc: 从 pos 删除 len 个字符; len=0 删到末尾
+strReplace: 替换
+strReplaceDesc: 从 pos 起将 len 个字符替换为 str2
+strUpper: 转大写
+strUpperDesc: 转为大写字母
+strLower: 转小写
+strLowerDesc: 转为小写字母
+strTrim: 去空白
+strTrimDesc: 去除首尾空白字符
+strReverse: 反转
+strReverseDesc: 按字符反转字符串
+strPortPos: 位置 (从 1 起)
+strPortLen: 长度 (0 = 到末尾)
+strPortSize: 字数 (0 = 全部)
 
 # 滤波器与频谱控件
 filter: 滤波器
@@ -667,6 +702,7 @@ windowHamming: 汉明
 windowBlackman: 布莱克曼
 domainTime: 时域
 domainFreq: 频域
+domainString: 字符串
 domainMismatchTitle: 域不匹配
 domainMismatchMsg: 不同域的端口不能直连 (时域 / 频域 / 字节域两两互斥)
 

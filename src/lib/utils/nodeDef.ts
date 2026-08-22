@@ -7,7 +7,7 @@
 /// - 字节平面 (全局): Transport / Protocol 节点, 边携带 Vec<u8>, 事件驱动
 /// - 数值平面 (每 tab): ProtocolSource 引用全局 Protocol 节点的最新帧, 输出 ch0..chN
 
-import type { WidgetConfig, MathOp, WindowType, SpectrumOutput, DecoderBlock, ProtocolSchema } from '../../types';
+import type { WidgetConfig, MathOp, StrOp, WindowType, SpectrumOutput, DecoderBlock, ProtocolSchema } from '../../types';
 import type { TransportConfig, ProtocolConfig } from '../../types';
 import { UNARY_MATH_OPS, biquadFromFilterConfig } from '../../types';
 import { evalCustomWidgetDef } from '../../components/displays/widgets/CustomWidget';
@@ -27,6 +27,7 @@ export type NodeKind =
   | { kind: 'ProtocolSource'; params: { node_id: string; channels: number; port_names?: string[] | null } }
   | { kind: 'Input' }
   | { kind: 'Math'; params: { op: MathOp; input_count: number } }
+  | { kind: 'Str'; params: { op: StrOp; num: { pos: number; len: number; size: number } } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
   | { kind: 'Filter'; params: { kind: { IIR: { b: [number, number, number]; a: [number, number, number] } } } }
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
@@ -65,6 +66,7 @@ export interface NodeDef {
 ///
 /// - Knob/Slider/Button/Radio/Checkbox → Input
 /// - Math → Math { op, input_count }
+/// - Str → Str { op, num: { pos, len, size } } (num = 数值端口未连接时的内联回退值)
 /// - Custom → Custom { inputs, outputs } (从代码解析)
 /// - Filter → Filter { kind: IIR { b, a } } (前端从 preset 计算 biquad 系数)
 /// - FFT → SpectrumSink { window_size, window_type, output, sample_rate } (频域求解器)
@@ -91,6 +93,20 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
         },
       };
     }
+
+    case 'Str':
+      // 字符串操作: pos/len/size 为数值端口未连接时的内联回退值 (后端 StrNumParams)
+      return {
+        kind: 'Str',
+        params: {
+          op: widget.params.op,
+          num: {
+            pos: widget.params.pos,
+            len: widget.params.len,
+            size: widget.params.size,
+          },
+        },
+      };
 
     case 'Custom': {
       const { def } = evalCustomWidgetDef(widget.params.code);

@@ -19,7 +19,7 @@ import { notify } from '../../lib/tauri/notifications';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
-import type { WidgetConfig, MathOp, FilterPresetKind, DomainType } from '../../types';
+import type { WidgetConfig, MathOp, StrOp, FilterPresetKind, DomainType } from '../../types';
 import { UNARY_MATH_OPS } from '../../types';
 import { WidgetNode, getWidgetPorts } from '../nodes/WidgetNode';
 import { TransportNode } from '../nodes/TransportNode';
@@ -143,6 +143,12 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           mathWidget.params.inputCount = 1;
         }
         mathWidget.params.label = `Math ${spec.op}`;
+      }
+      // 字符串控件: 应用拖拽时携带的 op
+      if (widget.kind === 'Str' && spec.op) {
+        const strWidget = widget as Extract<WidgetConfig, { kind: 'Str' }>;
+        strWidget.params.op = spec.op as StrOp;
+        strWidget.params.label = `Str ${spec.op}`;
       }
       // 滤波器控件: 应用拖拽时携带的 preset
       if (widget.kind === 'Filter' && spec.preset) {

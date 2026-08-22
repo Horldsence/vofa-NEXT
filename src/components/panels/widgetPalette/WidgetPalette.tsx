@@ -35,8 +35,22 @@ import {
   Search,
   X,
   FileText,
+  Type,
+  Ruler,
+  TextSearch,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  Scissors,
+  Link2,
+  TextCursorInput,
+  Delete,
+  Replace,
+  CaseUpper,
+  CaseLower,
+  Eraser,
+  ArrowLeftRight,
 } from 'lucide-react';
-import type { WidgetConfig, TransportConfig } from '../../../types';
+import type { WidgetConfig, TransportConfig, MathOp, StrOp } from '../../../types';
 import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../../types';
 import type { PaletteEntry, PaletteSection, SectionId } from './paletteModel';
 import { flattenSections, filterSections, sectionAnchors, sectionAtScroll, totalSizeOf, HEADER_SIZE, ROW_SIZE } from './paletteModel';
@@ -150,6 +164,24 @@ export function WidgetPalette() {
       { key: 'IFFT', kind: 'IFFT', icon: <Activity />, label: t(lang, 'ifft'), title: t(lang, 'ifft') },
     ];
 
+    /// 字符串操作子项 — 每种 op 一个快捷入口 (端口表见 STR_OP_PORTS)
+    const strItems: PaletteEntry[] = [
+      { key: 'str-len', kind: 'Str', op: 'len', icon: <Ruler size={14} />, label: t(lang, 'strLen'), title: `${t(lang, 'strLen')} — ${t(lang, 'strLenDesc')}` },
+      { key: 'str-find', kind: 'Str', op: 'find', icon: <TextSearch size={14} />, label: t(lang, 'strFind'), title: `${t(lang, 'strFind')} — ${t(lang, 'strFindDesc')}` },
+      { key: 'str-contains', kind: 'Str', op: 'contains', icon: <Search size={14} />, label: t(lang, 'strContains'), title: `${t(lang, 'strContains')} — ${t(lang, 'strContainsDesc')}` },
+      { key: 'str-left', kind: 'Str', op: 'left', icon: <ArrowLeftToLine size={14} />, label: t(lang, 'strLeft'), title: `${t(lang, 'strLeft')} — ${t(lang, 'strLeftDesc')}` },
+      { key: 'str-right', kind: 'Str', op: 'right', icon: <ArrowRightToLine size={14} />, label: t(lang, 'strRight'), title: `${t(lang, 'strRight')} — ${t(lang, 'strRightDesc')}` },
+      { key: 'str-mid', kind: 'Str', op: 'mid', icon: <Scissors size={14} />, label: t(lang, 'strMid'), title: `${t(lang, 'strMid')} — ${t(lang, 'strMidDesc')}` },
+      { key: 'str-concat', kind: 'Str', op: 'concat', icon: <Link2 size={14} />, label: t(lang, 'strConcat'), title: `${t(lang, 'strConcat')} — ${t(lang, 'strConcatDesc')}` },
+      { key: 'str-insert', kind: 'Str', op: 'insert', icon: <TextCursorInput size={14} />, label: t(lang, 'strInsert'), title: `${t(lang, 'strInsert')} — ${t(lang, 'strInsertDesc')}` },
+      { key: 'str-delete', kind: 'Str', op: 'delete', icon: <Delete size={14} />, label: t(lang, 'strDelete'), title: `${t(lang, 'strDelete')} — ${t(lang, 'strDeleteDesc')}` },
+      { key: 'str-replace', kind: 'Str', op: 'replace', icon: <Replace size={14} />, label: t(lang, 'strReplace'), title: `${t(lang, 'strReplace')} — ${t(lang, 'strReplaceDesc')}` },
+      { key: 'str-upper', kind: 'Str', op: 'upper', icon: <CaseUpper size={14} />, label: t(lang, 'strUpper'), title: `${t(lang, 'strUpper')} — ${t(lang, 'strUpperDesc')}` },
+      { key: 'str-lower', kind: 'Str', op: 'lower', icon: <CaseLower size={14} />, label: t(lang, 'strLower'), title: `${t(lang, 'strLower')} — ${t(lang, 'strLowerDesc')}` },
+      { key: 'str-trim', kind: 'Str', op: 'trim', icon: <Eraser size={14} />, label: t(lang, 'strTrim'), title: `${t(lang, 'strTrim')} — ${t(lang, 'strTrimDesc')}` },
+      { key: 'str-reverse', kind: 'Str', op: 'reverse', icon: <ArrowLeftRight size={14} />, label: t(lang, 'strReverse'), title: `${t(lang, 'strReverse')} — ${t(lang, 'strReverseDesc')}` },
+    ];
+
     const customItems: PaletteEntry[] = [
       {
         key: 'Custom',
@@ -200,6 +232,7 @@ export function WidgetPalette() {
       { id: 'math', header: t(lang, 'catMath'), category: 'math', entries: mathItems },
       { id: 'filter', header: t(lang, 'filter'), category: 'math', entries: filterItems },
       { id: 'fft', header: t(lang, 'fft'), category: 'math', entries: fftItems },
+      { id: 'string', header: t(lang, 'catString'), category: 'string', entries: strItems },
       { id: 'custom', header: t(lang, 'catCustom'), category: 'custom', entries: customItems },
     ];
   }, [lang, openCustomEditor]);
@@ -212,6 +245,7 @@ export function WidgetPalette() {
       { id: 'protocol', label: t(lang, 'protocolEngine'), color: WIDGET_CATEGORY_COLORS.input, icon: <Binary size={14} /> },
       { id: 'display', label: t(lang, 'catDisplay'), color: WIDGET_CATEGORY_COLORS.display, icon: <LineChart size={14} /> },
       { id: 'math', label: t(lang, 'catMath'), color: WIDGET_CATEGORY_COLORS.math, icon: <Sigma size={14} /> },
+      { id: 'string', label: t(lang, 'catString'), color: WIDGET_CATEGORY_COLORS.string, icon: <Type size={14} /> },
       { id: 'custom', label: t(lang, 'catCustom'), color: WIDGET_CATEGORY_COLORS.custom, icon: <Code2 size={14} /> },
     ],
     [lang],
@@ -364,11 +398,17 @@ export function WidgetPalette() {
       // 算术控件: 应用所选 op
       if (kind === 'Math' && item.op) {
         const mathWidget = widget as Extract<WidgetConfig, { kind: 'Math' }>;
-        mathWidget.params.op = item.op;
-        if (UNARY_MATH_OPS.includes(item.op)) {
+        mathWidget.params.op = item.op as MathOp;
+        if (UNARY_MATH_OPS.includes(item.op as MathOp)) {
           mathWidget.params.inputCount = 1;
         }
         mathWidget.params.label = `Math ${item.op}`;
+      }
+      // 字符串控件: 应用所选 op
+      if (kind === 'Str' && item.op) {
+        const strWidget = widget as Extract<WidgetConfig, { kind: 'Str' }>;
+        strWidget.params.op = item.op as StrOp;
+        strWidget.params.label = `Str ${item.op}`;
       }
       // 滤波器控件: 应用所选 preset
       if (kind === 'Filter' && item.preset) {

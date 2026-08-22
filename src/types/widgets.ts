@@ -1,7 +1,7 @@
 // ============ 控件配置 ============
 
 import type {
-  MathConfig, FilterConfig, FFTConfig, IFFTConfig, SpectrumConfig, Model3DConfig, WidgetBinding,
+  MathConfig, FilterConfig, FFTConfig, IFFTConfig, SpectrumConfig, Model3DConfig, WidgetBinding, StrOp,
 } from './common';
 import type { CommandConfig, FrameDecoderConfig, TableViewConfig } from './frameDecoder';
 
@@ -133,6 +133,21 @@ export interface TextDisplayConfig {
   monospace: boolean;
 }
 
+/// 字符串操作控件 — 对字符串输入做截取/拼接/替换等操作
+/// 端口表见 STR_OP_PORTS (与后端 StrOp::input_ports 一致);
+/// pos/len/size 为对应数值端口未连接时的内联回退值 (已连接则由后端用上游值)
+export interface StrConfig {
+  id: string;
+  label: string;
+  op: StrOp;
+  /// pos 内联回退值 (默认 1, 1-based 起点)
+  pos: number;
+  /// len 内联回退值 (默认 0 = 到末尾)
+  len: number;
+  /// size 内联回退值 (默认 0 = 全部)
+  size: number;
+}
+
 /// 触发器匹配类型 — 与后端 TriggerMatchType 对齐
 export type TriggerMatchType = 'exact' | 'prefix' | 'contains' | 'regex' | 'range' | 'glob';
 
@@ -187,6 +202,7 @@ export type WidgetCategory =
   | 'input'      // 数据类 (Knob/Button/Radio/Checkbox/Slider/Command)
   | 'display'    // 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Spectrum/Model3D)
   | 'math'       // 算术控件 (Math/Filter — 加减乘除/数学函数/滤波)
+  | 'string'     // 字符串控件 (Str — 字符串截取/拼接/查找/大小写转换)
   | 'custom';    // 自定义控件 (Custom JS)
 
 export type WidgetConfig =
@@ -214,7 +230,8 @@ export type WidgetConfig =
   | { kind: 'TableView'; params: TableViewConfig }
   | { kind: 'RawData'; params: RawDataConfig }
   | { kind: 'Trigger'; params: TriggerConfig }
-  | { kind: 'TextDisplay'; params: TextDisplayConfig };
+  | { kind: 'TextDisplay'; params: TextDisplayConfig }
+  | { kind: 'Str'; params: StrConfig };
 
 /// 获取控件所属类别 (用于 palette 分组与着色)
 export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
@@ -251,6 +268,8 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
       return 'input';
     case 'TextDisplay':
       return 'display';
+    case 'Str':
+      return 'string';
   }
 }
 
@@ -259,5 +278,6 @@ export const WIDGET_CATEGORY_COLORS: Record<WidgetCategory, string> = {
   input: '#4fc3f7',
   display: '#81c784',
   math: '#ffb74d',
+  string: '#ff8a65',
   custom: '#ba68c8',
 };

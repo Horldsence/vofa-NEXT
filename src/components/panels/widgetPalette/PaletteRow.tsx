@@ -11,6 +11,7 @@ const categoryTileClass: Record<WidgetCategory, string> = {
   input: 'bg-blue/15 text-blue group-hover:bg-blue/25',
   display: 'bg-green/15 text-green group-hover:bg-green/25',
   math: 'bg-orange/15 text-orange group-hover:bg-orange/25',
+  string: 'bg-yellow/15 text-yellow group-hover:bg-yellow/25',
   custom: 'bg-purple/15 text-purple group-hover:bg-purple/25',
 };
 

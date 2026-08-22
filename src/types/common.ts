@@ -175,6 +175,98 @@ export function computeMathResult(op: MathOp, inputs: number[]): number {
   }
 }
 
+// ============ 字符串操作控件 ============
+//
+// 与 Rust vofa_next_node_kind::StrOp 对应 (serde lowercase, 同 MathOp)。
+// 语义规范 (以后端 str_op.rs 为准):
+// - 索引 1-based (pos 从 1 开始; find 命中返回 1-based 位置, 未找到返回 0)
+// - len/size = 0 表示 "到末尾/全部"
+// - 字符串索引按字符计 (多字节字符安全)
+
+/// 字符串操作种类
+export type StrOp =
+  | 'len'      // 长度: 字符数 (输出数值)
+  | 'find'     // 查找: 子串 1-based 字符位置, 未命中 0 (输出数值)
+  | 'contains' // 包含: 命中 1 / 未命中 0 (输出数值)
+  | 'left'     // 左截取 size 个字符 (size=0 → 整串)
+  | 'right'    // 右截取 size 个字符 (size=0 → 整串)
+  | 'mid'      // 从 pos (1-based) 截取 len 个字符 (len=0 → 到末尾)
+  | 'concat'   // 拼接: str1 + str2
+  | 'insert'   // 在 pos (1-based) 处插入 str2
+  | 'delete'   // 从 pos 删除 len 个字符 (len=0 → 删到末尾)
+  | 'replace'  // 从 pos 起将 len 个字符替换为 str2
+  | 'upper'    // 转大写
+  | 'lower'    // 转小写
+  | 'trim'     // 去除首尾空白
+  | 'reverse'; // 按字符反转
+
+/// 字符串操作端口描述
+export interface StrOpPort {
+  id: string;
+  label: string;
+  domain: DomainType;
+}
+
+/// 单个字符串操作的端口表 — 与 Rust StrOp::input_ports / output_domain 完全一致 (唯一事实源)
+export interface StrOpMeta {
+  /// 输入端口 (固定顺序, 后端 evaluate 依此取参)
+  inputs: StrOpPort[];
+  /// 输出端口 (固定 id "result") 的域: len/find/contains 为数值 (time), 其余为字符串
+  outputDomain: DomainType;
+  /// 带内联数值输入框的数值端口 id — StrWidget 据此渲染内联框;
+  /// 端口未连接时回退到 StrConfig 的 pos/len/size 同名字段
+  inlineNumPorts: string[];
+}
+
+// 端口组常量 (复用以避免重复书写)
+const STR_IN_STR: StrOpPort[] = [{ id: 'str', label: 'str', domain: 'string' }];
+const STR_IN_STR_SUBSTR: StrOpPort[] = [
+  { id: 'str', label: 'str', domain: 'string' },
+  { id: 'substr', label: 'substr', domain: 'string' },
+];
+const STR_IN_STR_SIZE: StrOpPort[] = [
+  { id: 'str', label: 'str', domain: 'string' },
+  { id: 'size', label: 'size', domain: 'time' },
+];
+const STR_IN_STR_POS_LEN: StrOpPort[] = [
+  { id: 'str', label: 'str', domain: 'string' },
+  { id: 'pos', label: 'pos', domain: 'time' },
+  { id: 'len', label: 'len', domain: 'time' },
+];
+const STR_IN_STR1_STR2: StrOpPort[] = [
+  { id: 'str1', label: 'str1', domain: 'string' },
+  { id: 'str2', label: 'str2', domain: 'string' },
+];
+const STR_IN_STR1_STR2_POS: StrOpPort[] = [
+  { id: 'str1', label: 'str1', domain: 'string' },
+  { id: 'str2', label: 'str2', domain: 'string' },
+  { id: 'pos', label: 'pos', domain: 'time' },
+];
+const STR_IN_STR1_STR2_POS_LEN: StrOpPort[] = [
+  { id: 'str1', label: 'str1', domain: 'string' },
+  { id: 'str2', label: 'str2', domain: 'string' },
+  { id: 'pos', label: 'pos', domain: 'time' },
+  { id: 'len', label: 'len', domain: 'time' },
+];
+
+/// 全部字符串操作的端口元数据表
+export const STR_OP_PORTS: Record<StrOp, StrOpMeta> = {
+  len: { inputs: STR_IN_STR, outputDomain: 'time', inlineNumPorts: [] },
+  find: { inputs: STR_IN_STR_SUBSTR, outputDomain: 'time', inlineNumPorts: [] },
+  contains: { inputs: STR_IN_STR_SUBSTR, outputDomain: 'time', inlineNumPorts: [] },
+  left: { inputs: STR_IN_STR_SIZE, outputDomain: 'string', inlineNumPorts: ['size'] },
+  right: { inputs: STR_IN_STR_SIZE, outputDomain: 'string', inlineNumPorts: ['size'] },
+  mid: { inputs: STR_IN_STR_POS_LEN, outputDomain: 'string', inlineNumPorts: ['pos', 'len'] },
+  concat: { inputs: STR_IN_STR1_STR2, outputDomain: 'string', inlineNumPorts: [] },
+  insert: { inputs: STR_IN_STR1_STR2_POS, outputDomain: 'string', inlineNumPorts: ['pos'] },
+  delete: { inputs: STR_IN_STR_POS_LEN, outputDomain: 'string', inlineNumPorts: ['pos', 'len'] },
+  replace: { inputs: STR_IN_STR1_STR2_POS_LEN, outputDomain: 'string', inlineNumPorts: ['pos', 'len'] },
+  upper: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
+  lower: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
+  trim: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
+  reverse: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
+};
+
 // ============ 3D 模型显示 ============
 
 /// 3D 显示模式

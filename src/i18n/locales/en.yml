@@ -607,10 +607,12 @@ catInput: Data
 catDisplay: Display
 catMath: Math
 catCustom: Custom
+catString: String
 catInputHelp: Data widgets set parameters or send commands; connect to Command's value port for template interpolation
 catDisplayHelp: Display widgets show real-time channel data; connect from channel source after dropping
 catMathHelp: Math widgets perform arithmetic or math functions on multiple channels, can be chained
 catCustomHelp: Custom JS widgets; click to open the editor and write your own logic
+catStringHelp: String widgets transform or inspect strings; len/find/contains output numbers, the rest output strings
 
 # Math Widgets
 mathAdd: Add
@@ -630,6 +632,39 @@ mathTan: Tangent
 mathLog: Logarithm
 mathUnary: Unary
 mathBinary: Binary
+
+# String widgets
+strLen: Length
+strLenDesc: Character count of the input (number output)
+strFind: Find
+strFindDesc: 1-based character position of substring, 0 if not found (number output)
+strContains: Contains
+strContainsDesc: 1 if the input contains the substring, else 0 (number output)
+strLeft: Left
+strLeftDesc: First size chars; size 0 = whole string
+strRight: Right
+strRightDesc: Last size chars; size 0 = whole string
+strMid: Substring
+strMidDesc: len chars from pos (1-based); len 0 = to end
+strConcat: Concat
+strConcatDesc: Concatenate str1 + str2
+strInsert: Insert
+strInsertDesc: Insert str2 at pos (1-based)
+strDelete: Delete
+strDeleteDesc: Delete len chars from pos; len 0 = to end
+strReplace: Replace
+strReplaceDesc: Replace len chars from pos with str2
+strUpper: Uppercase
+strUpperDesc: Convert to uppercase
+strLower: Lowercase
+strLowerDesc: Convert to lowercase
+strTrim: Trim
+strTrimDesc: Trim leading and trailing whitespace
+strReverse: Reverse
+strReverseDesc: Reverse by character
+strPortPos: Pos (1-based)
+strPortLen: Len (0 = to end)
+strPortSize: Size (0 = all)
 
 # Filter & Spectrum widgets
 filter: Filter
@@ -667,6 +702,7 @@ windowHamming: Hamming
 windowBlackman: Blackman
 domainTime: Time
 domainFreq: Freq
+domainString: String
 domainMismatchTitle: Domain mismatch
 domainMismatchMsg: Ports of different domains cannot be connected (time / freq / bytes are mutually exclusive)
 

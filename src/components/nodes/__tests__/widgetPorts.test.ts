@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { getWidgetPorts } from '../WidgetNode';
-import type { WidgetConfig } from '../../../types';
+import type { StrOp, WidgetConfig } from '../../../types';
+import { STR_OP_PORTS } from '../../../types';
 
 /// Command 控件 (两帧, var_ref 端口有重复)
 const CMD_WIDGET: WidgetConfig = {
@@ -54,5 +55,62 @@ describe('getWidgetPorts - Command 多帧', () => {
     } as unknown as WidgetConfig;
     const { inputs } = getWidgetPorts(legacy);
     expect(inputs.map((p) => p.id)).toEqual(['dir']);
+  });
+});
+
+/// Str 控件工厂 (默认 pos/len/size, 端口仅由 op 决定)
+function strWidget(op: StrOp): WidgetConfig {
+  return { kind: 'Str', params: { id: 's1', label: 'Str', op, pos: 1, len: 0, size: 0 } };
+}
+
+const STR_OPS: StrOp[] = [
+  'len', 'find', 'contains', 'left', 'right', 'mid', 'concat',
+  'insert', 'delete', 'replace', 'upper', 'lower', 'trim', 'reverse',
+];
+
+describe('getWidgetPorts - Str 字符串操作', () => {
+  it('STR_OP_PORTS 覆盖全部 14 个 op', () => {
+    expect(Object.keys(STR_OP_PORTS).sort()).toEqual([...STR_OPS].sort());
+  });
+
+  it.each(STR_OPS)('op=%s 的输入/输出端口与 STR_OP_PORTS 一致', (op) => {
+    const meta = STR_OP_PORTS[op];
+    const { inputs, outputs } = getWidgetPorts(strWidget(op));
+    expect(inputs).toEqual(meta.inputs);
+    expect(outputs).toEqual([{ id: 'result', label: 'result', domain: meta.outputDomain }]);
+  });
+
+  it('输出域覆盖数值与字符串两类 (len → time, concat → string)', () => {
+    expect(getWidgetPorts(strWidget('len')).outputs[0].domain).toBe('time');
+    expect(getWidgetPorts(strWidget('find')).outputs[0].domain).toBe('time');
+    expect(getWidgetPorts(strWidget('contains')).outputs[0].domain).toBe('time');
+    expect(getWidgetPorts(strWidget('concat')).outputs[0].domain).toBe('string');
+    expect(getWidgetPorts(strWidget('upper')).outputs[0].domain).toBe('string');
+  });
+
+  it.each(STR_OPS)('op=%s 的内联数值端口均为输入端口表中的 time 域端口', (op) => {
+    const meta = STR_OP_PORTS[op];
+    const timePortIds = meta.inputs.filter((p) => p.domain === 'time').map((p) => p.id);
+    for (const id of meta.inlineNumPorts) {
+      expect(timePortIds).toContain(id);
+    }
+  });
+
+  it('关键 op 的端口形状与后端端口表一致', () => {
+    // mid: str (string) + pos/len (time) → result (string)
+    expect(getWidgetPorts(strWidget('mid'))).toEqual({
+      inputs: [
+        { id: 'str', label: 'str', domain: 'string' },
+        { id: 'pos', label: 'pos', domain: 'time' },
+        { id: 'len', label: 'len', domain: 'time' },
+      ],
+      outputs: [{ id: 'result', label: 'result', domain: 'string' }],
+    });
+    // replace: str1/str2 (string) + pos/len (time) → result (string)
+    expect(getWidgetPorts(strWidget('replace')).inputs.map((p) => p.id)).toEqual(['str1', 'str2', 'pos', 'len']);
+    // insert: str1/str2 (string) + pos (time)
+    expect(getWidgetPorts(strWidget('insert')).inputs.map((p) => p.id)).toEqual(['str1', 'str2', 'pos']);
+    // left: str (string) + size (time)
+    expect(getWidgetPorts(strWidget('left')).inputs.map((p) => p.id)).toEqual(['str', 'size']);
   });
 });
