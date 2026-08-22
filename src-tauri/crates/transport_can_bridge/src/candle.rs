@@ -5,7 +5,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use can_types::CandleDeviceInfo;
-use vofa_core::{CandleConfig, Error, Result};
+use vofa_core::{CandleConfig, Result};
+use error::TransportError;
 
 /// candleLight USB VID/PID
 const CANDLE_VID: u16 = 0x1209;
@@ -26,7 +27,7 @@ fn dev_bus_address(dev: &nusb::DeviceInfo) -> (u8, u8) {
 pub fn list_devices() -> Result<Vec<CandleDeviceInfo>> {
     let devices = nusb::list_devices()
         .wait()
-        .map_err(|e| Error::Transport(format!("列举 USB 设备失败: {e}")))?;
+        .map_err(|e| TransportError::CandleList(std::io::Error::other(e)))?;
 
     let mut result = Vec::new();
     for dev in devices {
@@ -61,7 +62,7 @@ pub async fn spawn(
     // (Linux 上 bus 字段有效; 其他平台 bus 字段被忽略, 仅按 address 匹配)
     let device_info = nusb::list_devices()
         .wait()
-        .map_err(|e| Error::Transport(format!("列举 USB 设备失败: {e}")))?
+        .map_err(|e| TransportError::CandleList(std::io::Error::other(e)))?
         .find(|d| {
             if d.vendor_id() != CANDLE_VID || d.product_id() != CANDLE_PID {
                 return false;
@@ -69,30 +70,31 @@ pub async fn spawn(
             let (bus, address) = dev_bus_address(d);
             address == config.address && bus == config.bus
         })
-        .ok_or_else(|| {
-            Error::Transport(format!(
-                "未找到 candleLight 设备: bus={}, address={}",
-                config.bus, config.address
-            ))
+        .ok_or_else(|| TransportError::CandleOpen {
+            port: format!("bus={},addr={}", config.bus, config.address),
+            source: std::io::Error::other("device not found"),
         })?;
 
     let device = device_info
         .open()
         .wait()
-        .map_err(|e| Error::Transport(format!("打开 candleLight 设备失败: {e}")))?;
+        .map_err(|e| TransportError::CandleOpen {
+            port: format!("bus={},addr={}", config.bus, config.address),
+            source: std::io::Error::other(e),
+        })?;
 
     let interface = device
         .claim_interface(0)
         .wait()
-        .map_err(|e| Error::Transport(format!("claim interface 失败: {e}")))?;
+        .map_err(|e| TransportError::CandleClaim(std::io::Error::other(e)))?;
 
     // 打开 bulk 端点 (candleLight: EP1 IN=0x81, EP2 OUT=0x02)
     let mut ep_out = interface
         .endpoint::<Bulk, Out>(0x02)
-        .map_err(|e| Error::Transport(format!("打开 OUT 端点失败: {e}")))?;
+        .map_err(|e| TransportError::CandleOutEndpoint(std::io::Error::other(e)))?;
     let mut ep_in = interface
         .endpoint::<Bulk, In>(0x81)
-        .map_err(|e| Error::Transport(format!("打开 IN 端点失败: {e}")))?;
+        .map_err(|e| TransportError::CandleInEndpoint(std::io::Error::other(e)))?;
 
     // 发送 candleLight 设置波特率命令 (16 字节命令包)
     let bitrate_cmd = build_set_bitrate_cmd(config.can_bitrate.bps());

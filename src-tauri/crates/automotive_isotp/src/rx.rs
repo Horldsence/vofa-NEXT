@@ -73,7 +73,7 @@ async fn handle_fc_frame(
     let st_min = frame.data.get(3).copied().unwrap_or(0);
 
     if fs == FC_OVERFLOW {
-        pending_entry.complete(Err(AutomotiveError::IsoTp("对端 FC OVERFLOW".into())));
+        pending_entry.complete(Err(AutomotiveError::IsoTpFlowControlOverflow));
         pending.remove(&rx_id);
         return Ok(());
     }

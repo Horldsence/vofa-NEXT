@@ -42,10 +42,10 @@ impl Receiver {
 
     pub(super) fn push_cf(&mut self, sn: u8, data: &[u8]) -> AutomotiveResult<Option<Vec<u8>>> {
         if sn != self.next_sn {
-            return Err(AutomotiveError::IsoTp(format!(
-                "SN 不匹配: 期望 0x{:X} 收到 0x{:X}",
-                self.next_sn, sn
-            )));
+            return Err(AutomotiveError::IsoTpSequenceMismatch {
+                expected: self.next_sn,
+                got: sn,
+            });
         }
         self.next_sn = (self.next_sn + 1) & 0x0F;
         let remaining = self.expected_len - self.buffer.len();

@@ -22,3 +22,4 @@ vofa_core = { workspace = true }
 node_engine = { workspace = true }
 node_kind = { workspace = true }
 logic_types = { workspace = true }
+error = { workspace = true }

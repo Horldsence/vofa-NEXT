@@ -13,5 +13,6 @@ can_types = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+error = { workspace = true }
 nusb = "0.2"
 serialport = "4"

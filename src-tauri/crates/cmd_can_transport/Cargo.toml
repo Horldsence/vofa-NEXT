@@ -30,3 +30,4 @@ logic_decoder = { workspace = true }
 schema_types = { workspace = true }
 transport_core = { workspace = true }
 transport_can_bridge = { workspace = true }
+error = { workspace = true }

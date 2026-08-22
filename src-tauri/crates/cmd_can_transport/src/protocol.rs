@@ -8,6 +8,7 @@ use protocol_float::{FireWaterEngine as FireWater, JustFloatEngine as JustFloat}
 use schema_types::ProtocolConfig;
 use tauri::{AppHandle, State};
 use vofa_core::{ConnectionState, Error, Result, TransportConfig};
+use error::ConfigError;
 
 /// 根据配置创建协议引擎
 pub fn create_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
@@ -64,7 +65,7 @@ pub async fn set_protocol(
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {node_id}")))?;
+        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: node_id.clone() }))?;
     {
         let mut s = st.lock();
         s.engine = std::sync::Arc::new(parking_lot::Mutex::new(create_engine(
@@ -90,7 +91,7 @@ pub async fn get_protocol(state: State<'_, AppState>, node_id: String) -> Result
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {node_id}")))?;
+        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: node_id.clone() }))?;
     let config = st.lock().config.clone();
     Ok(config)
 }
@@ -107,7 +108,7 @@ pub async fn get_detected_channels(
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {node_id}")))?;
+        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: node_id.clone() }))?;
     let engine = st.lock().engine.clone();
     let detected = engine.lock().detected_channels();
     Ok(detected)

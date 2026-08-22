@@ -104,7 +104,11 @@ fn dfs(
     order: &mut Vec<String>,
 ) -> Result<(), CompileError> {
     match visited.get(id) {
-        Some(&1) => return Err(CompileError::ByteCycle),
+        Some(&1) => {
+            return Err(CompileError::ByteCycle {
+                cycle: vec![id.to_string()],
+            })
+        }
         Some(&2) => return Ok(()),
         _ => {}
     }
@@ -203,7 +207,7 @@ use vofa_core::config::TransportConfig;
             .collect();
         let edges = vec![edge("pa", "out", "pb", "in"), edge("pb", "out", "pa", "in")];
         let result = BytePlan::build(&nodes, &edges);
-        assert!(matches!(result, Err(CompileError::ByteCycle)));
+        assert!(matches!(result, Err(CompileError::ByteCycle { .. })));
     }
 
     #[test]

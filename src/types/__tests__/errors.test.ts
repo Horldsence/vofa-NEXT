@@ -32,4 +32,20 @@ describe('parseNodeError', () => {
     expect(typeof err.message).toBe('string');
     expect(parseNodeError(undefined).kind).toBe(NodeErrorKind.Unknown);
   });
+
+  test('Graph 错误解析为 Graph kind', () => {
+    const err = parseNodeError({ kind: 'Graph', message: '数值平面检测到循环连接' });
+    expect(err.kind).toBe(NodeErrorKind.Graph);
+    expect(err.message).toBe('数值平面检测到循环连接');
+  });
+
+  test('Automotive 错误解析为 Automotive kind', () => {
+    const err = parseNodeError({ kind: 'Automotive', message: 'ISO-TP 会话已关闭' });
+    expect(err.kind).toBe(NodeErrorKind.Automotive);
+  });
+
+  test('Plugin 错误解析为 Plugin kind', () => {
+    const err = parseNodeError({ kind: 'Plugin', message: '插件错误 [updater]: net' });
+    expect(err.kind).toBe(NodeErrorKind.Plugin);
+  });
 });

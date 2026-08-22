@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{Error, Result, SlcanConfig};
+use vofa_core::{Result, SlcanConfig};
+use error::TransportError;
 
 /// 启动 slcan 传输
 ///
@@ -25,20 +26,25 @@ pub fn spawn(
         .flow_control(FlowControl::None)
         .timeout(Duration::from_millis(50))
         .open()
-        .map_err(|e| Error::Transport(format!("打开 slcan 串口失败: {e}")))?;
+        .map_err(|e| TransportError::SlcanOpen {
+            port: config.port_name.clone(),
+            source: e.into(),
+        })?;
 
     // 发送 slcan 初始化命令: 设置波特率 + 打开 CAN
     let bitrate_cmd = format!("{}\r", config.can_bitrate.slcan_cmd());
     port.write_all(bitrate_cmd.as_bytes())
-        .map_err(|e| Error::Transport(format!("设置 CAN 波特率失败: {e}")))?;
+        .map_err(TransportError::SlcanBitrate)?;
     std::thread::sleep(Duration::from_millis(50));
-    port.write_all(b"O\r")
-        .map_err(|e| Error::Transport(format!("打开 CAN 失败: {e}")))?;
+    port.write_all(b"O\r").map_err(|e| TransportError::SlcanOpen {
+        port: config.port_name.clone(),
+        source: e,
+    })?;
     std::thread::sleep(Duration::from_millis(50));
 
     let mut write_port = port
         .try_clone()
-        .map_err(|e| Error::Transport(format!("克隆 slcan 串口失败: {e}")))?;
+        .map_err(|e| TransportError::SerialClone(e.into()))?;
 
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);

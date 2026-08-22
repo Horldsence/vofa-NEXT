@@ -36,10 +36,10 @@ impl IsoTpSessionHandle {
                 response_tx: resp_tx,
             })
             .await
-            .map_err(|_| AutomotiveError::IsoTp("会话已关闭".into()))?;
+            .map_err(|_| AutomotiveError::IsoTpSessionClosed)?;
         resp_rx
             .await
-            .map_err(|_| AutomotiveError::IsoTp("会话任务崩溃".into()))?
+            .map_err(|_| AutomotiveError::IsoTpTaskCrashed)?
     }
 }
 

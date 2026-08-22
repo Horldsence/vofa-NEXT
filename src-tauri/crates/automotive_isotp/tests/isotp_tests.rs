@@ -118,26 +118,41 @@ async fn dummy_backend_round_trip() {
 #[test]
 fn automotive_error_formats_iso_variant() {
     use automotive_isotp::AutomotiveError;
-    let e = AutomotiveError::IsoTp("test".into());
+    let e = AutomotiveError::IsoTpSessionClosed;
     let s = format!("{e}");
     assert!(s.contains("ISO-TP"));
-    assert!(s.contains("test"));
+    assert!(s.contains("会话已关闭"));
 }
 
 #[test]
 fn automotive_error_formats_all_variants() {
     use automotive_isotp::{AutomotiveError, AutomotiveResult};
     let cases = [
-        (AutomotiveError::Uds("u".into()), "UDS"),
-        (AutomotiveError::Obd("o".into()), "OBD-II"),
-        (AutomotiveError::J1939("j".into()), "J1939"),
-        (AutomotiveError::Backend("b".into()), "CAN 后端"),
-        (AutomotiveError::Timeout("t".into()), "超时"),
-        (AutomotiveError::Invalid("i".into()), "参数无效"),
+        (AutomotiveError::IsoTpSessionClosed, "会话已关闭"),
+        (AutomotiveError::IsoTpTaskCrashed, "任务崩溃"),
+        (AutomotiveError::IsoTpFlowControlOverflow, "OVERFLOW"),
+        (
+            AutomotiveError::IsoTpDataTooLong {
+                length: 10,
+                max: 8,
+            },
+            "数据超长",
+        ),
+        (
+            AutomotiveError::IsoTpSequenceMismatch {
+                expected: 1,
+                got: 2,
+            },
+            "SN 不匹配",
+        ),
+        (
+            AutomotiveError::IsoTpTimeout { tx_id: 0x123 },
+            "N_As 超时",
+        ),
     ];
     for (e, prefix) in cases {
         let s = format!("{e}");
         assert!(s.contains(prefix), "期望 '{prefix}' 出现在 '{s}'");
     }
-    let _r: AutomotiveResult<()> = Err(AutomotiveError::Timeout("x".into()));
+    let _r: AutomotiveResult<()> = Err(AutomotiveError::IsoTpTimeout { tx_id: 1 });
 }

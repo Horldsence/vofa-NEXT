@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use tokio::sync::broadcast;
 use schema_types::TestDataLink;
 use vofa_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats};
+use error::PortNotFoundError;
 
 use crate::handle::TransportHandle;
 
@@ -172,7 +173,7 @@ impl TransportManager {
     fn get(&self, node_id: &str) -> Result<&TransportHandle> {
         self.handles
             .get(node_id)
-            .ok_or_else(|| Error::PortNotFound(format!("传输节点未打开: {node_id}")))
+            .ok_or_else(|| Error::PortNotFound(PortNotFoundError { port: node_id.to_string() }))
     }
 }
 

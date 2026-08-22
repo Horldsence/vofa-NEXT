@@ -271,6 +271,7 @@ version = "0.1.2"
 dependencies = [
  "async-trait",
  "can_types",
+ "error",
  "log",
  "parking_lot",
  "protocol_can_bridge",
@@ -295,6 +296,7 @@ dependencies = [
  "async-trait",
  "can_types",
  "diagnostic",
+ "error",
  "log",
  "thiserror 1.0.69",
  "tokio",
@@ -665,6 +667,7 @@ version = "0.1.2"
 dependencies = [
  "app_state",
  "can_types",
+ "error",
  "log",
  "tauri",
  "tokio",
@@ -679,6 +682,7 @@ dependencies = [
  "buffer_databuffer",
  "buffer_raw",
  "can_types",
+ "error",
  "log",
  "logic_decoder",
  "node_kind",
@@ -714,6 +718,7 @@ dependencies = [
  "buffer_databuffer",
  "buffer_graph",
  "buffer_raw",
+ "error",
  "log",
  "logic_types",
  "node_engine",
@@ -1295,6 +1300,15 @@ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "error"
+version = "0.1.2"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -2697,6 +2711,7 @@ dependencies = [
  "dsp_fft",
  "dsp_filter",
  "dsp_window",
+ "error",
  "node_frame_decoder",
  "node_kind",
  "rustc-hash",
@@ -3290,6 +3305,7 @@ dependencies = [
  "buffer_databuffer",
  "buffer_raw",
  "can_types",
+ "error",
  "log",
  "logic_types",
  "parking_lot",
@@ -5371,6 +5387,7 @@ name = "transport_can_bridge"
 version = "0.1.2"
 dependencies = [
  "can_types",
+ "error",
  "log",
  "nusb",
  "serialport",
@@ -5385,6 +5402,7 @@ version = "0.1.2"
 dependencies = [
  "async-trait",
  "can_types",
+ "error",
  "log",
  "logic_types",
  "parking_lot",
@@ -5402,6 +5420,7 @@ dependencies = [
 name = "transport_net"
 version = "0.1.2"
 dependencies = [
+ "error",
  "log",
  "thiserror 1.0.69",
  "tokio",
@@ -5412,6 +5431,7 @@ dependencies = [
 name = "transport_serial"
 version = "0.1.2"
 dependencies = [
+ "error",
  "log",
  "serialport",
  "thiserror 1.0.69",
@@ -5553,11 +5573,13 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 name = "update_flow"
 version = "0.1.2"
 dependencies = [
+ "error",
  "reqwest",
  "serde",
  "serde_json",
  "tauri",
  "tauri-plugin-updater",
+ "vofa_core",
 ]
 
 [[package]]
@@ -5659,9 +5681,9 @@ name = "vofa_core"
 version = "0.1.2"
 dependencies = [
  "can_types",
+ "error",
  "serde",
  "serde_json",
- "thiserror 1.0.69",
 ]
 
 [[package]]

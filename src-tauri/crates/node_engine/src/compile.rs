@@ -46,17 +46,40 @@ pub struct CompiledGraph {
     pub(crate) byte_plan: BytePlan,
 }
 
-/// 评估错误
+/// 图编译错误 — 强类型变体,无 `String` catch-all。
 #[derive(Debug, thiserror::Error)]
 pub enum CompileError {
-    #[error("节点 {0} 不存在于图中")]
-    NodeNotFound(String),
-    #[error("检测到循环连接")]
-    Cycle,
-    #[error("字节平面检测到循环连接")]
-    ByteCycle,
-    #[error("边两端端口域不匹配: {0}")]
-    DomainMismatch(String),
+    #[error("节点 {id} 不存在于图中")]
+    NodeNotFound { id: String },
+
+    #[error("数值平面检测到循环连接: {cycle:?}")]
+    Cycle { cycle: Vec<String> },
+
+    #[error("字节平面检测到循环连接: {cycle:?}")]
+    ByteCycle { cycle: Vec<String> },
+
+    #[error("边 {edge_id} 端口域不匹配: {source_node}.{source_port:?} ({src_domain:?}) → {target}.{target_port:?} ({tgt_domain:?})")]
+    DomainMismatch {
+        edge_id: String,
+        source_node: String,
+        source_port: String,
+        src_domain: PortDomain,
+        target: String,
+        target_port: String,
+        tgt_domain: PortDomain,
+    },
+}
+
+impl error::Error for CompileError {
+    fn kind(&self) -> &'static str {
+        "Graph"
+    }
+}
+
+impl From<CompileError> for error::AppError {
+    fn from(e: CompileError) -> Self {
+        Self::Graph(Box::new(e))
+    }
 }
 
 /// 判定边目标是否为 RawData 控件的关联通道端口 (Sink + `src:` 动态端口 id)
@@ -84,9 +107,13 @@ impl CompiledGraph {
             edges: &[Edge],
             visited: &mut HashMap<String, u8>,
             order: &mut Vec<String>,
+            cycle: &mut Vec<String>,
         ) -> Result<(), CompileError> {
             match visited.get(id) {
-                Some(&1) => return Err(CompileError::Cycle),
+                Some(&1) => {
+                    cycle.push(id.to_string());
+                    return Err(CompileError::Cycle { cycle: cycle.clone() });
+                }
                 Some(&2) => return Ok(()),
                 _ => {}
             }
@@ -95,7 +122,7 @@ impl CompiledGraph {
             // 访问上游 (有 edge 指向本节点的源节点)
             for e in edges {
                 if e.target == id && nodes.contains_key(&e.source) {
-                    dfs(&e.source, nodes, edges, visited, order)?;
+                    dfs(&e.source, nodes, edges, visited, order, cycle)?;
                 }
             }
 
@@ -159,16 +186,15 @@ impl CompiledGraph {
                     }
                 }
                 _ => {
-                    return Err(CompileError::DomainMismatch(format!(
-                        "{}: {}.{} ({:?}) → {}.{} ({:?})",
-                        e.id,
-                        e.source,
-                        e.source_handle,
+                    return Err(CompileError::DomainMismatch {
+                        edge_id: e.id.clone(),
+                        source_node: e.source.clone(),
+                        source_port: e.source_handle.clone(),
                         src_domain,
-                        e.target,
-                        e.target_handle,
-                        tgt_domain
-                    )));
+                        target: e.target.clone(),
+                        target_port: e.target_handle.clone(),
+                        tgt_domain,
+                    });
                 }
             }
         }
@@ -221,8 +247,16 @@ impl CompiledGraph {
             .map(|(id, _)| id.clone())
             .collect();
 
+        let mut cycle: Vec<String> = Vec::new();
         for id in &output_node_ids {
-            dfs(id, &node_map, &f32_edges, &mut visited, &mut order)?;
+            dfs(
+                id,
+                &node_map,
+                &f32_edges,
+                &mut visited,
+                &mut order,
+                &mut cycle,
+            )?;
         }
 
         // 编译期槽位评估表 (材料齐备: eval_order/input_index/in_names)

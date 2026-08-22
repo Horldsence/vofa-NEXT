@@ -20,6 +20,7 @@ tokio = { workspace = true }
 tauri = { version = "2", features = [] }
 log = { workspace = true }
 parking_lot = "0.12"
+error = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

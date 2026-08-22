@@ -7,6 +7,7 @@ use std::time::Duration;
 use tauri::{ipc::Channel, State};
 use can_types::{CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo};
 use vofa_core::Result;
+use error::ConfigError;
 
 // ============ CAN 帧相关 ============
 
@@ -51,7 +52,7 @@ pub async fn send_can_frame(
             .get(&proto_id)
             .cloned()
             .ok_or_else(|| {
-                vofa_core::Error::Config(format!("协议节点不存在: {proto_id}"))
+                vofa_core::Error::Config(ConfigError::ProtocolNodeNotFound { node_id: proto_id.clone() })
             })?;
         let engine = st.lock().engine.clone();
         let bytes = engine.lock().encode_can(&frame);

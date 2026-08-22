@@ -25,6 +25,7 @@ use buffer_raw::{RawDataBatch, RawDataCollector, RawDrain};
 use can_types::{CanBuffer, CanFrameBatch};
 use logic_types::{DecodedBuffer, DecodedEventBatch, LogicBuffer, LogicSampleBatch};
 use vofa_core::{Error, Result};
+use error::ConfigError;
 
 /// 每个订阅组的最大分片数 — 默认值, 实际由 PipelineConfig::max_stream_shards 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步)
@@ -143,20 +144,23 @@ where
             Ok((source, seq, 0, key))
         }
         Some(key) => {
-            let g = map
-                .get_mut(&key)
-                .ok_or_else(|| vofa_core::Error::Config(format!("流订阅组不存在: {key}")))?;
+            let g = map.get_mut(&key).ok_or_else(|| {
+                Error::Config(ConfigError::StreamGroupNotFound { key: key.clone() })
+            })?;
             if g.shards >= max_shards {
-                return Err(Error::Config(format!(
-                    "流订阅组 {key} 已满 ({max_shards} 个分片)"
-                )));
+                return Err(Error::Config(ConfigError::StreamGroupFull {
+                    key: key.clone(),
+                    max: max_shards,
+                }));
             }
             g.shards += 1;
             let source = g
                 .source
                 .clone()
                 .downcast::<Mutex<S>>()
-                .map_err(|_| Error::Config(format!("流订阅组类型不匹配: {key}")))?;
+                .map_err(|_| {
+                    Error::Config(ConfigError::StreamGroupTypeMismatch { key: key.clone() })
+                })?;
             Ok((source, g.seq.clone(), g.shards - 1, key))
         }
     }

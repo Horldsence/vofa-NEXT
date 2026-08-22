@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 use can_types::{CanDirection, CanFrame};
 use vofa_core::{Error, Result};
+use error::TransportError;
 use protocol_can_bridge::{CandleEngine, SlcanEngine};
 use protocol_engine::ProtocolEngine;
 use transport_core::CanBackend;
@@ -128,15 +129,15 @@ impl CanBackend for BridgeCanBackend {
             eng.encode_can(&tx_frame)
         };
         if encoded.is_empty() {
-            return Err(Error::Transport(format!(
-                "{:?} 引擎无法编码 CanFrame (id=0x{:X})",
-                self.kind, frame.id
-            )));
+            return Err(Error::Transport(TransportError::CanEncode {
+                id: frame.id,
+                details: format!("{:?} 引擎无法编码", self.kind),
+            }));
         }
         self.write_tx
             .send(encoded)
             .await
-            .map_err(|e| Error::Transport(format!("CAN 后端发送失败: {e}")))?;
+            .map_err(|_| TransportError::CanSend(std::io::Error::other("channel closed")))?;
         Ok(())
     }
 

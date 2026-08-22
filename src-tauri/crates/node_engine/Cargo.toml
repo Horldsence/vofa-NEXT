@@ -13,6 +13,7 @@ rustc-hash = { workspace = true }
 schema_types = { workspace = true }
 thiserror = { workspace = true }
 vofa_core = { workspace = true }
+error = { workspace = true }
 buffer_ring = { workspace = true }
 buffer_databuffer = { workspace = true }
 buffer_graph = { workspace = true }

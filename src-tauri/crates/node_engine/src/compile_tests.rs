@@ -26,7 +26,7 @@ fn test_cycle_detection() {
         edge("e2", "b", "result", "a", "in0"),
     ];
     let result = CompiledGraph::compile("t1".into(), nodes, edges);
-    assert!(matches!(result, Err(CompileError::Cycle)));
+    assert!(matches!(result, Err(CompileError::Cycle { .. })));
 }
 
 #[test]
@@ -177,13 +177,13 @@ fn test_domain_mismatch_detected() {
     let nodes = vec![make_protocol("pt"), make_math("m1", "t1", MathOp::Add, 1)];
     let edges = vec![edge("e1", "pt", "out", "m1", "in0")];
     let result = CompiledGraph::compile("t1".into(), nodes, edges);
-    assert!(matches!(result, Err(CompileError::DomainMismatch(_))));
+    assert!(matches!(result, Err(CompileError::DomainMismatch { .. })));
 
     // 反向: Math.result (F32) → Protocol.in (Bytes) 同样不匹配
     let nodes = vec![make_protocol("pt"), make_math("m1", "t1", MathOp::Add, 1)];
     let edges = vec![edge("e1", "m1", "result", "pt", "in")];
     let result = CompiledGraph::compile("t1".into(), nodes, edges);
-    assert!(matches!(result, Err(CompileError::DomainMismatch(_))));
+    assert!(matches!(result, Err(CompileError::DomainMismatch { .. })));
 }
 
 #[test]
@@ -280,5 +280,5 @@ fn test_raw_data_prefix_on_non_sink_target_still_rejected() {
     let nodes = vec![make_protocol("pt"), make_math("m1", "t1", MathOp::Add, 1)];
     let edges = vec![edge("e1", "pt", "out", "m1", "src:pt:out")];
     let result = CompiledGraph::compile("t1".into(), nodes, edges);
-    assert!(matches!(result, Err(CompileError::DomainMismatch(_))));
+    assert!(matches!(result, Err(CompileError::DomainMismatch { .. })));
 }

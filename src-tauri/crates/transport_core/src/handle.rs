@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, watch, Notify};
 use schema_types::TestDataLink;
-use vofa_core::{ConnectionState, Error, Result, TransportConfig, TransportStats};
+use vofa_core::{ConnectionState, Result, TransportConfig, TransportStats};
+use error::TransportError;
 
 /// 单连接句柄 — 一个传输节点实例的全部运行时状态
 ///
@@ -55,7 +56,7 @@ impl TransportHandle {
     pub fn send(&self, data: &[u8]) -> Result<()> {
         self.write_tx
             .try_send(data.to_vec())
-            .map_err(|e| Error::Transport(format!("发送失败: {e}")))?;
+            .map_err(|_| TransportError::Send(std::io::Error::other("channel closed")))?;
         let _ = self.data_tx.send(data.to_vec());
         {
             let mut stats = self.stats.lock();
@@ -118,7 +119,7 @@ impl TransportHandle {
     pub fn update_link(&self, link: TestDataLink) -> Result<bool> {
         if let Some(tx) = &self.test_data_link {
             tx.send(link)
-                .map_err(|e| Error::Transport(format!("链路配置热更新失败: {e}")))?;
+                .map_err(|_| TransportError::LinkUpdate(std::io::Error::other("channel closed")))?;
             return Ok(true);
         }
         Ok(false)

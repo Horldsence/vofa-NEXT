@@ -1,6 +1,6 @@
 [package]
-name = "vofa_core"
-description = "VOFA-NEXT 基础类型 — 错误、帧、配置"
+name = "error"
+description = "VOFA-NEXT 统一错误抽象 — Error trait + 强类型错误类型 + AppError 顶级枚举"
 version.workspace = true
 edition.workspace = true
 
@@ -10,5 +10,4 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-error = { workspace = true }
-can_types = { workspace = true }
+thiserror = { workspace = true }

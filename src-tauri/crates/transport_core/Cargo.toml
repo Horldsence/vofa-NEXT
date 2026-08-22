@@ -19,5 +19,6 @@ serde = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+error = { workspace = true }
 parking_lot = "0.12"
 async-trait = "0.1"

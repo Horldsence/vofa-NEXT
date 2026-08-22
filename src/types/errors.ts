@@ -13,6 +13,9 @@ export enum NodeErrorKind {
   Io = 'Io',
   Config = 'Config',
   Serde = 'Serde',
+  Automotive = 'Automotive',
+  Graph = 'Graph',
+  Plugin = 'Plugin',
   /// 兜底: 旧版纯字符串错误 / 未知 kind / 非后端错误
   Unknown = 'Unknown',
 }

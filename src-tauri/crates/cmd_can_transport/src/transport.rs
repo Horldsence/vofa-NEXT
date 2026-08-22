@@ -8,6 +8,7 @@ use schema_types::{ProtocolConfig, ProtocolSchema, TestDataLink};
 use vofa_core::{
     ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats, WidgetBinding,
 };
+use error::ConfigError;
 use transport_core::TransportManager;
 
 /// 列出所有可用串口
@@ -100,7 +101,7 @@ pub async fn send_widget_value(
         WidgetBinding::None => return Ok(()),
         WidgetBinding::Auto { channel } => {
             let pn = protocol_node.ok_or_else(|| {
-                Error::Config("Auto 绑定需要指定 protocol_node (Protocol 节点 id)".into())
+                Error::Config(ConfigError::AutoBindingMissingProtocolNode)
             })?;
             let st = state
                 .data_plane
@@ -108,7 +109,7 @@ pub async fn send_widget_value(
                 .lock()
                 .get(&pn)
                 .cloned()
-                .ok_or_else(|| Error::Config(format!("协议节点不存在: {pn}")))?;
+                .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: pn.clone() }))?;
             let engine = st.lock().engine.clone();
             let bytes = engine.lock().encode_channel(channel, value);
             bytes
@@ -221,7 +222,7 @@ pub async fn send_and_capture(
         .lock()
         .get(&protocol_node)
         .cloned()
-        .ok_or_else(|| Error::Config(format!("协议节点不存在: {protocol_node}")))?;
+        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: protocol_node.clone() }))?;
     let out = st.lock().engine.lock().feed(&data);
     let frames = out.frames;
     let can_count = out.can_frames.len();

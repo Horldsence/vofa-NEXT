@@ -198,7 +198,7 @@ pub async fn export_can_load_csv(
         Ok(d) => d.join(&filename),
         Err(_) => std::env::current_dir()
             .map(|d| d.join(&filename))
-            .map_err(|e| vofa_core::Error::Config(format!("无法确定下载目录: {e}")))?,
+            .map_err(|e| vofa_core::Error::Config(error::ConfigError::DownloadDir(e)))?,
     };
 
     let mut file = std::fs::File::create(&path)?;

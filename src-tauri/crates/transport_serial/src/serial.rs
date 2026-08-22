@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{Error, PortInfo, Result, SerialConfig};
+use vofa_core::{PortInfo, Result, SerialConfig};
+use error::TransportError;
 
 #[cfg(windows)]
 use crate::windows_ports::port_descriptions;
@@ -16,7 +17,8 @@ fn port_descriptions() -> std::collections::HashMap<String, String> {
 
 /// 列出所有可用串口
 pub fn list_ports() -> Result<Vec<PortInfo>> {
-    let ports = serialport::available_ports().map_err(|e| Error::Transport(e.to_string()))?;
+    let ports = serialport::available_ports()
+        .map_err(|e| TransportError::SerialEnumeration(e.into()))?;
     let descriptions = port_descriptions();
     Ok(ports
         .into_iter()
@@ -85,11 +87,14 @@ pub fn spawn(
         })
         .timeout(Duration::from_millis(50))
         .open()
-        .map_err(|e| Error::Transport(format!("打开串口失败: {e}")))?;
+        .map_err(|e| TransportError::SerialOpen {
+            port: config.port_name.clone(),
+            source: e.into(),
+        })?;
 
     let mut write_port = port
         .try_clone()
-        .map_err(|e| Error::Transport(format!("克隆串口失败: {e}")))?;
+        .map_err(|e| TransportError::SerialClone(e.into()))?;
 
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);

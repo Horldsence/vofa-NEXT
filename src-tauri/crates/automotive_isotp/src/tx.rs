@@ -24,10 +24,10 @@ pub async fn start_send_request(
     n_as: Duration,
 ) {
     if data.len() > FF_DL_MAX {
-        let _ = response_tx.send(Err(AutomotiveError::IsoTp(format!(
-            "数据超长: {} > {FF_DL_MAX}",
-            data.len()
-        ))));
+        let _ = response_tx.send(Err(AutomotiveError::IsoTpDataTooLong {
+            length: data.len(),
+            max: FF_DL_MAX,
+        }));
         return;
     }
 
@@ -141,9 +141,11 @@ pub async fn send_can_frame(
     };
     let result = timeout(n_as, backend.send_frame(&frame))
         .await
-        .map_err(|_| AutomotiveError::Timeout(format!("N_As 超时 (发送 CAN 帧 id=0x{tx_id:X})")))?;
+        .map_err(|_| AutomotiveError::IsoTpTimeout { tx_id })?;
     result.map_err(|e| {
-        AutomotiveError::Timeout(format!("N_As 超时 (发送 CAN 帧 id=0x{tx_id:X}): {e}"))
+        // backend.send_frame 返回 AppError, 还原为 std::io::Error
+        let io = std::io::Error::other(e.to_string());
+        AutomotiveError::BackendSend(io)
     })
 }
 

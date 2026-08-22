@@ -16,3 +16,4 @@ tokio = { workspace = true }
 log = { workspace = true }
 async-trait = "0.1"
 parking_lot = "0.12"
+error = { workspace = true }

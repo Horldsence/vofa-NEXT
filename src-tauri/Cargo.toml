@@ -11,13 +11,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
 members = [
+  "crates/app_state",
   "crates/automotive_can",
   "crates/automotive_diag",
   "crates/automotive_isotp",
-  "crates/buffer_ring",
   "crates/buffer_databuffer",
   "crates/buffer_graph",
   "crates/buffer_raw",
+  "crates/buffer_ring",
   "crates/can_types",
   "crates/cmd_buffer",
   "crates/cmd_can_load",
@@ -31,18 +32,18 @@ members = [
   "crates/dsp_filter",
   "crates/dsp_fft",
   "crates/dsp_window",
+  "crates/error",
   "crates/logic_decoder",
   "crates/logic_types",
-  "crates/notify_events",
   "crates/menu_shell",
-  "crates/update_flow",
-  "crates/pipeline_dispatcher",
-  "crates/pipeline_stream",
-  "crates/app_state",
+  "crates/notify_events",
   "crates/node_engine",
   "crates/node_frame_decoder",
   "crates/node_kind",
   "crates/node_trigger",
+  "crates/pipeline_data_plane",
+  "crates/pipeline_dispatcher",
+  "crates/pipeline_stream",
   "crates/protocol_can_bridge",
   "crates/protocol_engine",
   "crates/protocol_float",
@@ -53,6 +54,7 @@ members = [
   "crates/transport_core",
   "crates/transport_net",
   "crates/transport_serial",
+  "crates/update_flow",
 ]
 
 [workspace.package]
@@ -121,7 +123,6 @@ log = "0.4"
 thiserror = "1"
 regex = "1"
 glob = "0.3"
-anyhow = "1"
 rustc-hash = "2"
 buffer_ring = { path = "crates/buffer_ring" }
 buffer_databuffer = { path = "crates/buffer_databuffer" }
@@ -135,6 +136,7 @@ cmd_graph = { path = "crates/cmd_graph" }
 cmd_pipeline = { path = "crates/cmd_pipeline" }
 cmd_rawdata = { path = "crates/cmd_rawdata" }
 vofa_core = { path = "crates/core" }
+error = { path = "crates/error" }
 can_types = { path = "crates/can_types" }
 logic_types = { path = "crates/logic_types" }
 diagnostic = { path = "crates/diagnostic" }

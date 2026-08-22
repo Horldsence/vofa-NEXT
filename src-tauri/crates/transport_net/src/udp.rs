@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{Error, Result, UdpConfig};
+use vofa_core::{Result, UdpConfig};
+use error::TransportError;
 
 /// 启动 UDP 传输
 pub async fn spawn(
@@ -14,15 +15,16 @@ pub async fn spawn(
     Arc<AtomicBool>,
 )> {
     let local_addr = format!("{}:{}", config.local_addr, config.local_port);
-    let socket = UdpSocket::bind(&local_addr)
-        .await
-        .map_err(|e| Error::Transport(format!("UDP 绑定失败: {e}")))?;
+    let socket = UdpSocket::bind(&local_addr).await.map_err(|e| TransportError::UdpBind {
+        addr: local_addr.clone(),
+        source: e,
+    })?;
 
     let remote = format!("{}:{}", config.remote_addr, config.remote_port);
-    socket
-        .connect(&remote)
-        .await
-        .map_err(|e| Error::Transport(format!("UDP 连接失败: {e}")))?;
+    socket.connect(&remote).await.map_err(|e| TransportError::UdpConnect {
+        addr: remote.clone(),
+        source: e,
+    })?;
 
     // UdpSocket 的 send/recv 接受 &self, 用 Arc 共享
     let socket = Arc::new(socket);

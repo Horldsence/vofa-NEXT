@@ -4,6 +4,7 @@ use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
 use tauri::{ipc::Channel, AppHandle, State};
 use buffer_graph::Edge;
 use vofa_core::{Error, Result};
+use error::ConfigError;
 use node_engine::BytePlan;
 use node_kind::NodeDef;
 
@@ -32,7 +33,7 @@ fn rebuild_byte_plan(
         byte_edges.extend_from_slice(g.byte_edges());
     }
     BytePlan::build(candidate, &byte_edges)
-        .map_err(|e| Error::Config(format!("全局字节平面编译失败: {e}")))
+        .map_err(|e| Error::Config(ConfigError::BytePlanCompile(Box::new(e))))
 }
 
 /// 更新指定 tab 的节点图 (整体替换 nodes + edges)
@@ -52,7 +53,7 @@ pub async fn update_tab_graph(
 ) -> Result<()> {
     // 1. 本 tab 数值图编译
     let compiled = node_engine::CompiledGraph::compile(tab_id.clone(), nodes.clone(), edges)
-        .map_err(|e| Error::Config(format!("{e}")))?;
+        .map_err(|e| Error::Config(ConfigError::GraphCompile(Box::new(e))))?;
 
     // 2. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
     // ProtocolSource 是 tab 数值平面的帧源引用, 不参与字节平面, 不进全局表

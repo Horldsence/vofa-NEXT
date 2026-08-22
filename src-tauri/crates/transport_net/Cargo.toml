@@ -12,3 +12,4 @@ vofa_core = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+error = { workspace = true }
