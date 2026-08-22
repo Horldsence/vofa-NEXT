@@ -17,11 +17,13 @@
 //! - [`NodeDef`][]: 节点定义 (含 id/tab_id/kind)
 //! - [`PortDomain`]: 端口域 (Bytes / F32) — 用于边分类
 //! - [`MathOp`][]: 算术运算种类
+//! - [`StrOp`][]: 字符串操作种类 (含 [`StrNumParams`] 内联数值参数与 [`StrResult`] 结果)
 //! - [`DecoderBlockDef`]: FrameDecoder 块定义 (re-export from schema_types)
 
 mod decoder_block;
 mod math_op;
 mod node_kind;
+mod str_op;
 
 pub use decoder_block::{
     AsciiBase, DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
@@ -33,3 +35,4 @@ pub use node_kind::{
     FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, LOOPBACK_OUT_HANDLE, PROTOCOL_IN_HANDLE,
     PROTOCOL_OUT_HANDLE, RAW_DATA_PORT_PREFIX, TRANSPORT_RX_HANDLE, TRANSPORT_TX_HANDLE,
 };
+pub use str_op::{StrNumParams, StrOp, StrResult};

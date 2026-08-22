@@ -196,48 +196,43 @@ impl serde::Serialize for DataView<'_> {
             AppError::PortNotFound(PortNotFoundError { port })
             | AppError::PortAlreadyOpen(PortAlreadyOpenError { port })
             | AppError::PortNotOpen(PortNotOpenError { port }) => {
-                [("port", port.clone())].into_iter().collect()
+                std::collections::BTreeMap::from([("port", port.clone())])
             }
-            AppError::Transport(TransportError::SerialOpen { port, .. })
-            | AppError::Transport(TransportError::SlcanOpen { port, .. })
-            | AppError::Transport(TransportError::CandleOpen { port, .. }) => {
-                [("port", port.clone())].into_iter().collect()
-            }
+            AppError::Transport(
+                TransportError::SerialOpen { port, .. }
+                | TransportError::SlcanOpen { port, .. }
+                | TransportError::CandleOpen { port, .. },
+            ) => std::collections::BTreeMap::from([("port", port.clone())]),
             AppError::Transport(TransportError::TcpConnect { host, port, .. }) => {
-                [
+                std::collections::BTreeMap::from([
                     ("host", host.clone()),
                     ("port", port.to_string()),
-                ]
-                .into_iter()
-                .collect()
+                ])
             }
-            AppError::Transport(TransportError::TcpListen { addr, .. })
-            | AppError::Transport(TransportError::UdpBind { addr, .. })
-            | AppError::Transport(TransportError::UdpConnect { addr, .. }) => {
-                [("addr", addr.clone())].into_iter().collect()
+            AppError::Transport(
+                TransportError::TcpListen { addr, .. }
+                | TransportError::UdpBind { addr, .. }
+                | TransportError::UdpConnect { addr, .. },
+            ) => std::collections::BTreeMap::from([("addr", addr.clone())]),
+            AppError::Transport(TransportError::CanEncode { id, details }) => {
+                std::collections::BTreeMap::from([
+                    ("id", format!("{id:X}")),
+                    ("details", details.clone()),
+                ])
             }
-            AppError::Transport(TransportError::CanEncode { id, details }) => [
-                ("id", format!("{id:X}")),
-                ("details", details.clone()),
-            ]
-            .into_iter()
-            .collect(),
-            AppError::Config(ConfigError::NodeNotFound { node_id })
-            | AppError::Config(ConfigError::ProtocolNodeNotFound { node_id }) => {
-                [("node_id", node_id.clone())].into_iter().collect()
+            AppError::Config(
+                ConfigError::NodeNotFound { node_id }
+                | ConfigError::ProtocolNodeNotFound { node_id },
+            ) => std::collections::BTreeMap::from([("node_id", node_id.clone())]),
+            AppError::Config(
+                ConfigError::StreamGroupNotFound { key }
+                | ConfigError::StreamGroupTypeMismatch { key },
+            ) => std::collections::BTreeMap::from([("key", key.clone())]),
+            AppError::Config(ConfigError::StreamGroupFull { key, max }) => {
+                std::collections::BTreeMap::from([("key", key.clone()), ("max", max.to_string())])
             }
-            AppError::Config(ConfigError::StreamGroupNotFound { key })
-            | AppError::Config(ConfigError::StreamGroupTypeMismatch { key }) => {
-                [("key", key.clone())].into_iter().collect()
-            }
-            AppError::Config(ConfigError::StreamGroupFull { key, max }) => [
-                ("key", key.clone()),
-                ("max", max.to_string()),
-            ]
-            .into_iter()
-            .collect(),
             AppError::Config(ConfigError::UrlParse { url, .. }) => {
-                [("url", url.clone())].into_iter().collect()
+                std::collections::BTreeMap::from([("url", url.clone())])
             }
             _ => std::collections::BTreeMap::new(),
         };
@@ -269,17 +264,11 @@ mod tests {
             "Transport"
         );
         assert_eq!(
-            AppError::PortNotFound(PortNotFoundError {
-                port: "x".into()
-            })
-            .kind(),
+            AppError::PortNotFound(PortNotFoundError { port: "x".into() }).kind(),
             "PortNotFound"
         );
         assert_eq!(
-            AppError::PortAlreadyOpen(PortAlreadyOpenError {
-                port: "x".into()
-            })
-            .kind(),
+            AppError::PortAlreadyOpen(PortAlreadyOpenError { port: "x".into() }).kind(),
             "PortAlreadyOpen"
         );
         assert_eq!(
@@ -288,26 +277,28 @@ mod tests {
         );
         let io_err = std::io::Error::other("x");
         assert_eq!(AppError::Io(io_err).kind(), "Io");
-        assert_eq!(AppError::Serde(serde_json::from_str::<i32>("\"x\"").unwrap_err()).kind(), "Serde");
+        assert_eq!(
+            AppError::Serde(serde_json::from_str::<i32>("\"x\"").unwrap_err()).kind(),
+            "Serde"
+        );
     }
 
     #[test]
     fn app_error_status_codes() {
-        let port_err = PortNotFoundError {
-            port: "x".into(),
-        };
+        let port_err = PortNotFoundError { port: "x".into() };
         assert_eq!(AppError::PortNotFound(port_err).status(), Some(404));
-        let taken = PortAlreadyOpenError {
-            port: "x".into(),
-        };
+        let taken = PortAlreadyOpenError { port: "x".into() };
         assert_eq!(AppError::PortAlreadyOpen(taken).status(), Some(409));
         assert_eq!(AppError::Io(std::io::Error::other("x")).status(), Some(502));
-        assert_eq!(AppError::Serde(serde_json::from_str::<i32>("\"x\"").unwrap_err()).status(), None);
+        assert_eq!(
+            AppError::Serde(serde_json::from_str::<i32>("\"x\"").unwrap_err()).status(),
+            None
+        );
     }
 
     #[test]
     fn app_error_serializes_kind_message_source_data() {
-        let io_err = std::io::Error::new(std::io::ErrorKind::Other, "boom");
+        let io_err = std::io::Error::other("boom");
         let e: AppError = TransportError::SerialOpen {
             port: "COM3".into(),
             source: io_err,
@@ -316,12 +307,7 @@ mod tests {
         let v = serde_json::to_value(&e).expect("serialize");
         assert_eq!(v["kind"], "Transport");
         assert!(v["message"].as_str().unwrap().contains("COM3"));
-        assert!(
-            v["source"]["message"]
-                .as_str()
-                .unwrap()
-                .contains("boom")
-        );
+        assert!(v["source"]["message"].as_str().unwrap().contains("boom"));
         assert_eq!(v["data"]["port"], "COM3");
     }
 
@@ -331,7 +317,7 @@ mod tests {
         let boxed: Boxed = Box::new(TransportError::SerialClone(std::io::Error::other("y")));
         let other: AppError = AppError::Other(boxed);
         assert_eq!(other.kind(), "Other");
-        assert!(other.to_string().contains("y"));
+        assert!(other.to_string().contains('y'));
         assert_eq!(e.kind(), "Transport");
     }
 

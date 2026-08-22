@@ -73,6 +73,8 @@ impl MathOp {
 }
 
 #[cfg(test)]
+// 测试结果均为精确可表示的值 (小整数 f32), 直接断言相等
+#[allow(clippy::float_cmp)]
 mod tests {
     use super::*;
 

@@ -9,16 +9,17 @@
 //! serde 约定: `NodeKind` 为 `#[serde(tag = "kind", content = "params")]`,
 //! 前端 TS 镜像见 src/lib/utils/nodeDef.ts。
 
-use serde::{Deserialize, Serialize};
-use schema_types::{DecoderBlockDef, ProtocolConfig, ProtocolSchema};
-use vofa_core::config::TransportConfig;
-use dsp_filter::FilterKind;
 use dsp_fft::SpectrumOutput;
+use dsp_filter::FilterKind;
 use dsp_window::WindowType;
+use schema_types::{DecoderBlockDef, ProtocolConfig, ProtocolSchema};
+use serde::{Deserialize, Serialize};
+use vofa_core::config::TransportConfig;
 
 use node_trigger::TriggerRuleDef;
 
 use crate::math_op::MathOp;
+use crate::str_op::{StrNumParams, StrOp};
 
 // ============ 端口 handle 命名约定 ============
 
@@ -79,6 +80,12 @@ pub enum NodeKind {
     /// 算术节点
     /// 输出端口 "result"
     Math { op: MathOp, input_count: usize },
+    /// 字符串操作节点
+    /// 输出端口固定 "result" (域由 op 决定: Len/Find/Contains 为 F32, 其余为 String)
+    /// 输入端口见 StrOp::input_ports (str/str1/str2/substr 为 String, pos/len/size 为 F32)
+    /// num: 未连接数值端口 (pos/len/size) 的内联回退值, 由前端内联框编辑后同步;
+    ///      端口已连接时忽略, 求值使用上游值
+    Str { op: StrOp, num: StrNumParams },
     /// 自定义 JS 节点
     /// 输入端口由用户代码定义, 输出端口由前端 iframe 回传
     /// 后端使用 custom_outputs 中的值作为节点输出
@@ -231,6 +238,22 @@ pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain
             PortDomain::Bytes
         }
         NodeKind::Trigger { .. } if is_output && handle == "text" => PortDomain::String,
+        NodeKind::Str { op, .. } => {
+            if is_output {
+                // 输出端口统一命名 "result", 域由 op 决定; 未知端口回退 F32
+                if handle == "result" {
+                    op.output_domain()
+                } else {
+                    PortDomain::F32
+                }
+            } else {
+                // 输入端口委托给 StrOp 端口表 (单一事实源); 未知端口回退 F32
+                op.input_ports()
+                    .iter()
+                    .find(|(name, _)| *name == handle)
+                    .map_or(PortDomain::F32, |(_, domain)| *domain)
+            }
+        }
         _ => PortDomain::F32,
     }
 }
@@ -242,7 +265,7 @@ mod tests {
     #[test]
     fn test_port_domain_table() {
         let transport = NodeKind::Transport {
-            config: TransportConfig::TestData(Default::default()),
+            config: TransportConfig::TestData(vofa_core::config::TestDataConfig::default()),
         };
         assert_eq!(
             port_domain(&transport, TRANSPORT_RX_HANDLE, true),
@@ -305,6 +328,34 @@ mod tests {
         };
         assert_eq!(port_domain(&math, "in0", false), PortDomain::F32);
         assert_eq!(port_domain(&math, "result", true), PortDomain::F32);
+
+        let str_len = NodeKind::Str {
+            op: StrOp::Len,
+            num: StrNumParams::default(),
+        };
+        assert_eq!(port_domain(&str_len, "str", false), PortDomain::String);
+        assert_eq!(port_domain(&str_len, "result", true), PortDomain::F32);
+
+        let str_mid = NodeKind::Str {
+            op: StrOp::Mid,
+            num: StrNumParams::default(),
+        };
+        assert_eq!(port_domain(&str_mid, "str", false), PortDomain::String);
+        assert_eq!(port_domain(&str_mid, "pos", false), PortDomain::F32);
+        assert_eq!(port_domain(&str_mid, "len", false), PortDomain::F32);
+        assert_eq!(port_domain(&str_mid, "result", true), PortDomain::String);
+
+        let str_replace = NodeKind::Str {
+            op: StrOp::Replace,
+            num: StrNumParams::default(),
+        };
+        assert_eq!(port_domain(&str_replace, "str1", false), PortDomain::String);
+        assert_eq!(port_domain(&str_replace, "str2", false), PortDomain::String);
+        assert_eq!(port_domain(&str_replace, "pos", false), PortDomain::F32);
+        assert_eq!(
+            port_domain(&str_replace, "result", true),
+            PortDomain::String
+        );
     }
 
     #[test]
@@ -319,7 +370,7 @@ mod tests {
                 assert!(schema.is_none());
                 assert!(convert_to.is_none());
             }
-            other => panic!("expected Protocol, got {:?}", other),
+            other => panic!("expected Protocol, got {other:?}"),
         }
 
         let json = r#"{"kind":"ProtocolSource","params":{"node_id":"p1","channels":2}}"#;
@@ -327,7 +378,7 @@ mod tests {
             serde_json::from_str(json).expect("旧 ProtocolSource 数据应反序列化成功");
         match kind {
             NodeKind::ProtocolSource { port_names, .. } => assert!(port_names.is_none()),
-            other => panic!("expected ProtocolSource, got {:?}", other),
+            other => panic!("expected ProtocolSource, got {other:?}"),
         }
     }
 
