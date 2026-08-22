@@ -172,6 +172,11 @@ pub enum NodeKind {
         /// 规则列表
         rules: Vec<TriggerRuleDef>,
     },
+    /// 文本输入节点 (TextInput) — 字符串输入源
+    /// 前端文本框内容作为参数 text 经 update_tab_graph 同步;
+    /// 求值时每帧原样写入字符串平面, 供下游 Str/TextDisplay 等消费。
+    /// 输出端口固定 "str" (String), 无输入端口
+    TextInput { text: String },
 }
 
 /// 解析 ProtocolSource 的输出端口名列表 (编译/求值共用):
@@ -238,6 +243,7 @@ pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain
             PortDomain::Bytes
         }
         NodeKind::Trigger { .. } if is_output && handle == "text" => PortDomain::String,
+        NodeKind::TextInput { .. } if is_output && handle == "str" => PortDomain::String,
         NodeKind::Str { op, .. } => {
             if is_output {
                 // 输出端口统一命名 "result", 域由 op 决定; 未知端口回退 F32
@@ -356,6 +362,14 @@ mod tests {
             port_domain(&str_replace, "result", true),
             PortDomain::String
         );
+
+        let text_input = NodeKind::TextInput {
+            text: "hello".to_string(),
+        };
+        assert_eq!(port_domain(&text_input, "str", true), PortDomain::String);
+        // 未知端口/输入侧回退 F32
+        assert_eq!(port_domain(&text_input, "str", false), PortDomain::F32);
+        assert_eq!(port_domain(&text_input, "value", true), PortDomain::F32);
     }
 
     #[test]
@@ -388,5 +402,16 @@ mod tests {
         let json = r#"{"kind":"FrameDecoder","params":{"blocks":[],"enable_valid":false,"enable_frame_count":false,"enable_last_timestamp":false,"enable_fps":false}}"#;
         let kind: NodeKind = serde_json::from_str(json).expect("旧数据应反序列化成功");
         assert!(matches!(kind, NodeKind::FrameDecoder { .. }));
+    }
+
+    #[test]
+    fn test_text_input_serde_shape() {
+        // serde 表示与前端 { kind: 'TextInput'; params: { text: string } } 对齐
+        let json = r#"{"kind":"TextInput","params":{"text":"hi"}}"#;
+        let kind: NodeKind = serde_json::from_str(json).expect("TextInput 应反序列化成功");
+        match kind {
+            NodeKind::TextInput { text } => assert_eq!(text, "hi"),
+            other => panic!("expected TextInput, got {other:?}"),
+        }
     }
 }

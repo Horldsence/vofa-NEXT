@@ -211,6 +211,17 @@ pub fn make_trigger(
     }
 }
 
+/// TextInput 节点 (文本输入源, 输出端口固定 "str")
+pub fn make_text_input(id: &str, tab_id: &str, text: &str) -> NodeDef {
+    NodeDef {
+        id: id.to_string(),
+        tab_id: tab_id.to_string(),
+        kind: NodeKind::TextInput {
+            text: text.to_string(),
+        },
+    }
+}
+
 /// 构造多源最新帧缓存 (key = Protocol 节点 id)
 pub fn source_frames(frames: &[(&str, Vec<f32>)]) -> SourceFramesMap {
     let mut m = SourceFramesMap::default();

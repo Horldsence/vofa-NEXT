@@ -28,8 +28,8 @@ impl CompiledGraph {
     /// 返回所有节点的输出端口值
     ///
     /// 返回: HashMap<widgetId, HashMap<portId, f32>>
-    ///   - 包含 ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger 的输出
-    ///     (Str 与 Trigger 的 F32 域结果写入返回值, String 域结果写入 `out_str`)
+    ///   - 包含 ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger/TextInput 的输出
+    ///     (Str 与 Trigger 的 F32 域结果写入返回值, Str/Trigger/TextInput 的 String 域结果写入 `out_str`)
     ///   - 不包含 Sink / SpectrumSink / Transport / Protocol (无值平面输出)
     ///
     /// `source_frames`: 多源 latest-value 融合缓存 — 每个 Protocol 源独立缓存
@@ -334,6 +334,10 @@ impl CompiledGraph {
                         }
                         set_port(m, "matched", if r.matched { 1.0 } else { 0.0 });
                     }
+                }
+                NodeKind::TextInput { text } => {
+                    // 参数 text 每帧原样写入字符串平面 (与 CompiledOp::TextInput 一致)
+                    set_str_port(node_out_str_entry(out_str, node_id), "str", text);
                 }
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }

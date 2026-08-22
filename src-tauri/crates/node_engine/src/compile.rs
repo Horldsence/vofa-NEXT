@@ -37,7 +37,7 @@ pub struct CompiledGraph {
     /// 字符串路由边 (两端端口域均为 String) — 参与值平面拓扑排序, 供慢路径解析字符串输入
     pub(crate) string_edges: Vec<Edge>,
     /// 拓扑序 — 仅包含有 f32/String 输出的节点
-    /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger)
+    /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger/TextInput)
     /// Sink/SpectrumSink/Transport/Protocol 不参与值平面评估
     pub(crate) eval_order: Vec<String>,
     /// 反向索引: target_node → (target_handle → (source_node, source_handle))
@@ -593,6 +593,14 @@ impl CompiledEval {
                         value,
                         matched,
                         text,
+                    });
+                }
+                NodeKind::TextInput { text } => {
+                    // 输出端口固定 "str" → 字符串槽位 (TextInput.str 可被 Str 字符串输入解析)
+                    let out = alloc_slot(&mut str_slot_names, &mut str_slot_index, node_id, "str");
+                    ops.push(CompiledOp::TextInput {
+                        text: text.clone(),
+                        out,
                     });
                 }
                 NodeKind::Sink

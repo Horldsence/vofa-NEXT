@@ -145,6 +145,8 @@ pub enum CompiledOp {
         matched: usize,
         text: usize,
     },
+    /// TextInput: 文本输入源 — 参数 text 每帧原样写入 out 字符串槽位 (覆盖写)
+    TextInput { text: String, out: usize },
 }
 
 /// 编译期槽位评估表 — CompiledGraph::compile 时构建, 逐帧评估纯数组读写
@@ -440,6 +442,13 @@ impl CompiledEval {
                         slots[*matched] = if r.matched { 1.0 } else { 0.0 };
                         written[*matched] = true;
                     }
+                }
+                CompiledOp::TextInput { text, out } => {
+                    // 参数 text 原样写入字符串槽位 (复用缓冲原位写, 仿 set_str_port)
+                    let slot = &mut str_slots[*out];
+                    slot.clear();
+                    slot.push_str(text);
+                    str_written[*out] = true;
                 }
             }
         }

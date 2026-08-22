@@ -1085,3 +1085,101 @@ fn test_trigger_manual_tracks_prev_no_false_rising_on_mode_switch() {
         Some((7.0, 1.0))
     );
 }
+
+// ============ TextInput 节点测试 ============
+
+#[test]
+fn test_text_input_writes_str_port_slow_path() {
+    // 慢路径: 参数 text 原样写入 out_str[node_id]["str"];
+    // TextInput → Str(Upper) 验证字符串经 string_edges 流向下游 (拓扑序正确)
+    let nodes = vec![
+        make_text_input("ti1", "t1", "hello"),
+        make_str("up1", "t1", StrOp::Upper),
+    ];
+    let edges = vec![edge("e1", "ti1", "str", "up1", "str")];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+    // 编译期槽位: "str" 为字符串槽位, 不占数值槽位
+    assert!(g.compiled().str_slot_of("ti1", "str").is_some());
+    assert!(g.compiled().slot_of("ti1", "str").is_none());
+
+    let mut out_str = StringValuesMap::default();
+    let out = g.evaluate(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert_eq!(
+        out_str.get("ti1").and_then(|m| m.get("str")),
+        Some(&"hello".to_string())
+    );
+    // 下游 Upper 读到非空文本 → "HELLO" (否则读到缺省 "" 输出 "")
+    assert_eq!(
+        out_str.get("up1").and_then(|m| m.get("result")),
+        Some(&"HELLO".to_string())
+    );
+    // TextInput 无数值平面输出
+    assert!(!out.contains_key("ti1"));
+}
+
+#[test]
+fn test_text_input_slot_run_matches_slow_path() {
+    // 快路径 (compiled.run + materialize_str) 与慢路径同语义:
+    // TextInput("hello") → Str(Len) → 数值平面 5
+    let nodes = vec![
+        make_text_input("ti1", "t1", "hello"),
+        make_str("len1", "t1", StrOp::Len),
+    ];
+    let edges = vec![edge("e1", "ti1", "str", "len1", "str")];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+    // 慢路径
+    let mut out_str_a = StringValuesMap::default();
+    let out_a = g.evaluate(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str_a,
+    );
+
+    // 快路径
+    let compiled = g.compiled();
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
+    compiled.run(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut slots,
+        &mut written,
+        &mut str_slots,
+        &mut str_written,
+    );
+    let mut out_b = ValuesMap::default();
+    compiled.materialize(&slots, &written, &mut out_b);
+    let mut out_str_b = StringValuesMap::default();
+    compiled.materialize_str(&str_slots, &str_written, &mut out_str_b);
+
+    assert_eq!(out_a, out_b, "两路径数值输出应一致");
+    assert_eq!(out_str_a, out_str_b, "两路径字符串输出应一致");
+    // 字符串确实沿槽位流动 (非空转断言): Len("hello") = 5
+    assert_eq!(
+        out_str_b.get("ti1").and_then(|m| m.get("str")),
+        Some(&"hello".to_string())
+    );
+    assert_eq!(out_b.get("len1").and_then(|m| m.get("result")), Some(&5.0));
+}
