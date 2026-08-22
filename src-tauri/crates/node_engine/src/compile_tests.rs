@@ -1,9 +1,9 @@
 //! 图编译测试 — 拓扑序 / 循环检测 / 端口域分类 / 字节平面集成
 
-use node_kind::{MathOp, NodeDef, NodeKind};
-use dsp_filter::FilterKind;
 use dsp_fft::SpectrumOutput;
+use dsp_filter::FilterKind;
 use dsp_window::WindowType;
+use node_kind::{MathOp, NodeDef, NodeKind, StrOp};
 
 use super::*;
 use crate::test_helpers::*;
@@ -242,6 +242,7 @@ fn test_same_id_protocol_and_protocol_source_coexist() {
         &mut std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(values.get("pt").and_then(|p| p.get("ch0")), Some(&1.5));
     assert_eq!(values.get("pt").and_then(|p| p.get("ch1")), Some(&2.5));
@@ -281,4 +282,59 @@ fn test_raw_data_prefix_on_non_sink_target_still_rejected() {
     let edges = vec![edge("e1", "pt", "out", "m1", "src:pt:out")];
     let result = CompiledGraph::compile("t1".into(), nodes, edges);
     assert!(matches!(result, Err(CompileError::DomainMismatch { .. })));
+}
+
+// ============ 字符串平面编译测试 ============
+
+#[test]
+fn test_string_edge_compiles_and_orders_topologically() {
+    // 两个 Str 串联 (下游在节点表中先声明): String→String 边编译通过,
+    // eval_order 保证上游 string 节点先于下游 Str 节点求值
+    let nodes = vec![
+        make_str("up", "t1", StrOp::Upper),
+        make_str("mid", "t1", StrOp::Mid),
+    ];
+    let edges = vec![edge("e1", "mid", "result", "up", "str")];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+    // 字符串边单独分类 (不进 f32 边)
+    assert_eq!(g.string_edges().len(), 1);
+    assert_eq!(g.string_edges()[0].id, "e1");
+    let pos = |id: &str| g.eval_order.iter().position(|n| n == id).unwrap();
+    assert!(pos("mid") < pos("up"));
+}
+
+#[test]
+fn test_string_f32_domain_mismatch() {
+    // String → F32: Str(Upper).result (String) → Math.in0 (F32) → DomainMismatch
+    let nodes = vec![
+        make_str("s1", "t1", StrOp::Upper),
+        make_math("m1", "t1", MathOp::Add, 1),
+    ];
+    let edges = vec![edge("e1", "s1", "result", "m1", "in0")];
+    let result = CompiledGraph::compile("t1".into(), nodes, edges);
+    assert!(matches!(result, Err(CompileError::DomainMismatch { .. })));
+
+    // F32 → String: Math.result (F32) → Str(Upper).str (String) → DomainMismatch
+    let nodes = vec![
+        make_math("m1", "t1", MathOp::Add, 1),
+        make_str("s1", "t1", StrOp::Upper),
+    ];
+    let edges = vec![edge("e1", "m1", "result", "s1", "str")];
+    let result = CompiledGraph::compile("t1".into(), nodes, edges);
+    assert!(matches!(result, Err(CompileError::DomainMismatch { .. })));
+}
+
+#[test]
+fn test_str_f32_output_edge_is_f32_plane() {
+    // Str(Len).result 域为 F32: Len → Math 是数值边 (f32 平面), 编译通过
+    let nodes = vec![
+        make_str("len1", "t1", StrOp::Len),
+        make_math("m1", "t1", MathOp::Add, 1),
+    ];
+    let edges = vec![edge("e1", "len1", "result", "m1", "in0")];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+    assert!(g.string_edges().is_empty());
+    // Len 的 result 分配的是 f32 槽位, Math 可消费
+    assert!(g.compiled().slot_of("len1", "result").is_some());
+    assert!(g.compiled().str_slot_of("len1", "result").is_none());
 }

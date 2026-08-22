@@ -2,15 +2,15 @@
 
 use std::collections::HashMap;
 
-use node_kind::{DecoderBlockDef, MathOp, NodeDef, NodeKind};
-use dsp_filter::FilterKind;
 use dsp_fft::{IfftState, SpectrumOutput};
+use dsp_filter::FilterKind;
 use dsp_window::WindowType;
+use node_kind::{DecoderBlockDef, MathOp, NodeDef, NodeKind};
 
 use super::SourceFramesMap;
 use crate::compile::CompiledGraph;
 use crate::test_helpers::*;
-use crate::ValuesMap;
+use crate::{StringValuesMap, ValuesMap};
 
 fn empty_frames() -> SourceFramesMap {
     SourceFramesMap::default()
@@ -42,6 +42,7 @@ fn test_collect_spectrum_inputs() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
 
     // collect_spectrum_inputs 应返回 s1 → 42.0
@@ -73,6 +74,7 @@ fn test_spectrum_sink_no_output_in_evaluate() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     // s1 不应在 evaluate 输出中
     assert!(!out.contains_key("s1"));
@@ -113,6 +115,7 @@ fn test_ifft_node_reads_playback_buffer() {
             &mut HashMap::new(),
             &HashMap::new(),
             &mut ifft_states,
+            &mut StringValuesMap::default(),
         );
         assert_eq!(out.get("ifft1").and_then(|m| m.get("out0")), Some(&1.0));
     }
@@ -125,6 +128,7 @@ fn test_ifft_node_reads_playback_buffer() {
 /// 覆盖: ProtocolSource(4ch) / 链式 Math×2 / Filter(FIR, 跨帧状态) / Input /
 /// FrameDecoder 无 parser (默认 0 端口) — 100 帧伪随机数据逐帧比对
 #[test]
+#[allow(clippy::cast_precision_loss, clippy::suboptimal_flops)] // 伪随机输入生成, 精度无关
 fn test_compiled_eval_equivalence() {
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 4),
@@ -173,6 +177,8 @@ fn test_compiled_eval_equivalence() {
     let n = compiled.slot_count();
     let mut slots = vec![0.0f32; n];
     let mut written = vec![false; n];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
 
     // 确定性伪随机 (LCG)
     let mut seed = 0x12345678u32;
@@ -185,6 +191,7 @@ fn test_compiled_eval_equivalence() {
         let frames = source_frames(&[("proto1", vec![next_f(), next_f(), next_f(), next_f()])]);
         // 老路径: evaluate_into
         let mut out_a = ValuesMap::default();
+        let mut out_str_a = StringValuesMap::default();
         g.evaluate_into(
             &frames,
             &input_values,
@@ -193,10 +200,13 @@ fn test_compiled_eval_equivalence() {
             &decoder_states,
             &mut HashMap::new(),
             &mut out_a,
+            &mut out_str_a,
         );
         // 新路径: compiled.run + materialize (每帧清零 slots/written)
         slots.fill(0.0);
         written.fill(false);
+        str_slots.iter_mut().for_each(String::clear);
+        str_written.fill(false);
         compiled.run(
             &frames,
             &input_values,
@@ -206,10 +216,15 @@ fn test_compiled_eval_equivalence() {
             &mut HashMap::new(),
             &mut slots,
             &mut written,
+            &mut str_slots,
+            &mut str_written,
         );
         let mut out_b = ValuesMap::default();
         compiled.materialize(&slots, &written, &mut out_b);
-        assert_eq!(out_a, out_b, "帧 {} 输出不一致", frame_idx);
+        let mut out_str_b = StringValuesMap::default();
+        compiled.materialize_str(&str_slots, &str_written, &mut out_str_b);
+        assert_eq!(out_a, out_b, "帧 {frame_idx} 输出不一致");
+        assert_eq!(out_str_a, out_str_b, "帧 {frame_idx} 字符串输出不一致");
     }
 
     // FrameDecoder 无 parser: 两边都输出默认 0 端口 (value/valid/frame_count)
@@ -223,10 +238,98 @@ fn test_compiled_eval_equivalence() {
         &decoder_states,
         &mut HashMap::new(),
         &mut out_a,
+        &mut StringValuesMap::default(),
     );
     let d1 = out_a.get("d1").expect("d1 应输出默认端口");
     assert_eq!(d1.get("value"), Some(&0.0));
     assert_eq!(d1.get("valid"), Some(&0.0));
     assert_eq!(d1.get("frame_count"), Some(&0.0));
     assert!(!d1.contains_key("last_timestamp")); // enable_last_timestamp = false
+}
+
+/// 字符串图等价性: 混合链 Str(Mid) → Str(Upper) (字符串平面) +
+/// Str(Len) → Math (字符串→数值平面), 覆盖 "未连接数值端口走 num_defaults"
+/// 与 "已连接走上游" 两种情形 — 100 帧逐帧断言 ValuesMap 与 StringValuesMap 都一致
+#[test]
+fn test_compiled_eval_str_equivalence() {
+    let nodes = vec![
+        make_input("knob1", "t1"),
+        // mid: pos 已连接 (knob1), len 未连接 (走 num_defaults 回退 2.0)
+        make_str_num(
+            "mid1",
+            "t1",
+            node_kind::StrOp::Mid,
+            node_kind::StrNumParams {
+                pos: 1.0,
+                len: 2.0,
+                size: 0.0,
+            },
+        ),
+        make_str("up1", "t1", node_kind::StrOp::Upper),
+        make_str("len1", "t1", node_kind::StrOp::Len),
+        make_math("m1", "t1", MathOp::Add, 2),
+    ];
+    let edges = vec![
+        edge("e1", "knob1", "value", "mid1", "pos"), // F32: 已连接数值端口
+        edge("e2", "mid1", "result", "up1", "str"),  // String → String
+        edge("e3", "up1", "result", "len1", "str"),  // String → String
+        edge("e4", "len1", "result", "m1", "in0"),   // F32 (Len 输出)
+        edge("e5", "knob1", "value", "m1", "in1"),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+    let custom_outputs = HashMap::new();
+    let decoder_states = HashMap::new();
+    let mut fs_a = HashMap::new();
+    let mut fs_b = HashMap::new();
+
+    let compiled = g.compiled();
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
+
+    for frame_idx in 0..100u16 {
+        let mut input_values = HashMap::new();
+        input_values.insert("knob1".to_string(), f32::from(frame_idx) * 0.5);
+        // 老路径: evaluate_into
+        let mut out_a = ValuesMap::default();
+        let mut out_str_a = StringValuesMap::default();
+        g.evaluate_into(
+            &empty_frames(),
+            &input_values,
+            &custom_outputs,
+            &mut fs_a,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut out_a,
+            &mut out_str_a,
+        );
+        // 新路径: compiled.run + materialize / materialize_str (每帧清零)
+        slots.fill(0.0);
+        written.fill(false);
+        str_slots.iter_mut().for_each(String::clear);
+        str_written.fill(false);
+        compiled.run(
+            &empty_frames(),
+            &input_values,
+            &custom_outputs,
+            &mut fs_b,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut slots,
+            &mut written,
+            &mut str_slots,
+            &mut str_written,
+        );
+        let mut out_b = ValuesMap::default();
+        compiled.materialize(&slots, &written, &mut out_b);
+        let mut out_str_b = StringValuesMap::default();
+        compiled.materialize_str(&str_slots, &str_written, &mut out_str_b);
+        assert_eq!(out_a, out_b, "帧 {frame_idx} 数值输出不一致");
+        assert_eq!(out_str_a, out_str_b, "帧 {frame_idx} 字符串输出不一致");
+        // 字符串平面确实参与了求值 (非空 map 保证测试不是空转)
+        assert!(out_str_a.contains_key("mid1"));
+        assert!(out_str_a.contains_key("up1"));
+    }
 }

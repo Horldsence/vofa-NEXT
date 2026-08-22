@@ -127,14 +127,14 @@ fn dfs(
 mod tests {
     use super::*;
     use schema_types::ProtocolConfig;
-use vofa_core::config::TransportConfig;
+    use vofa_core::config::{TestDataConfig, TransportConfig};
 
     fn transport(id: &str) -> NodeDef {
         NodeDef {
             id: id.into(),
             tab_id: "t1".into(),
             kind: NodeKind::Transport {
-                config: TransportConfig::TestData(Default::default()),
+                config: TransportConfig::TestData(TestDataConfig::default()),
             },
         }
     }
@@ -168,7 +168,7 @@ use vofa_core::config::TransportConfig;
 
     fn edge(src: &str, src_h: &str, tgt: &str, tgt_h: &str) -> Edge {
         Edge {
-            id: format!("{}-{}", src, tgt),
+            id: format!("{src}-{tgt}"),
             source: src.into(),
             source_handle: src_h.into(),
             target: tgt.into(),
@@ -213,8 +213,7 @@ use vofa_core::config::TransportConfig;
     #[test]
     fn test_byte_plan_includes_isolated_transport() {
         // 无字节边的 Transport 节点也应在字节平面内 (事件驱动 dispatch 的起点)
-        let nodes: HashMap<String, NodeDef> = [transport("tp")]
-            .into_iter()
+        let nodes: HashMap<String, NodeDef> = std::iter::once(transport("tp"))
             .map(|n| (n.id.clone(), n))
             .collect();
         let plan = BytePlan::build(&nodes, &[]).expect("应编译成功");

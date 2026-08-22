@@ -1,7 +1,7 @@
 //! 数值平面求值测试 — evaluate (慢路径) 与 CompiledEval::run (槽位快路径)
 
-use node_kind::MathOp;
 use dsp_filter::{DigitalFilter, FilterKind};
+use node_kind::{MathOp, StrNumParams, StrOp};
 
 use super::*;
 use crate::compile::CompiledGraph;
@@ -23,6 +23,7 @@ fn test_evaluate_protocol_source() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch0")), Some(&10.0));
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch1")), Some(&20.0));
@@ -49,6 +50,7 @@ fn test_protocol_source_multi_source() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("ps_a").and_then(|m| m.get("ch0")), Some(&3.0));
     assert_eq!(out.get("ps_b").and_then(|m| m.get("ch0")), Some(&4.0));
@@ -68,6 +70,7 @@ fn test_protocol_source_missing_source_writes_zero() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch0")), Some(&0.0));
     // 源存在但通道数不足 → 越界通道 0.0
@@ -79,6 +82,7 @@ fn test_protocol_source_missing_source_writes_zero() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch0")), Some(&9.0));
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch2")), Some(&0.0));
@@ -97,6 +101,7 @@ fn test_evaluate_input_node() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("knob1").and_then(|m| m.get("value")), Some(&42.0));
 }
@@ -120,6 +125,7 @@ fn test_evaluate_math_add() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     // m1.result = 10 + 20 = 30
     assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&30.0));
@@ -148,6 +154,7 @@ fn test_evaluate_math_chain() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     // m1 = 3 + 4 = 7, m2 = 7 * 7 = 49
     assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&7.0));
@@ -175,6 +182,7 @@ fn test_evaluate_custom_node() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("c1").and_then(|m| m.get("out")), Some(&99.0));
 
@@ -202,6 +210,7 @@ fn test_unary_math() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&5.0));
 }
@@ -226,6 +235,7 @@ fn test_filter_fir_passthrough() {
         &mut filter_states,
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("f1").and_then(|m| m.get("result")), Some(&7.5));
     // filter_states 应包含 f1
@@ -253,6 +263,7 @@ fn test_filter_fir_delay_state_persistence() {
             fs,
             &HashMap::new(),
             &mut HashMap::new(),
+            &mut StringValuesMap::default(),
         );
         out.get("f1").and_then(|m| m.get("result")).copied()
     };
@@ -286,6 +297,7 @@ fn test_filter_kind_change_rebuilds_state() {
         &mut filter_states,
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert!(filter_states.contains_key("f1"));
 
@@ -305,6 +317,7 @@ fn test_filter_kind_change_rebuilds_state() {
         &mut filter_states,
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out2.get("f1").and_then(|m| m.get("result")), Some(&6.0));
 }
@@ -338,6 +351,7 @@ fn test_filter_lowpass_preserves_dc() {
             &mut filter_states,
             &HashMap::new(),
             &mut HashMap::new(),
+            &mut StringValuesMap::default(),
         );
         last_y = out
             .get("f1")
@@ -347,8 +361,7 @@ fn test_filter_lowpass_preserves_dc() {
     }
     assert!(
         (last_y - 1.0).abs() < 0.01,
-        "低通滤波器直流稳态应接近 1.0, 实际 {}",
-        last_y
+        "低通滤波器直流稳态应接近 1.0, 实际 {last_y}"
     );
 }
 
@@ -374,6 +387,7 @@ fn test_protocol_source_named_ports_evaluate() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("ps1").and_then(|m| m.get("temp")), Some(&36.5));
     assert_eq!(out.get("ps1").and_then(|m| m.get("humi")), Some(&60.0));
@@ -384,9 +398,15 @@ fn test_protocol_source_named_ports_evaluate() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)] // 通道值原样写入槽位, 为精确可表示的小整数
 fn test_protocol_source_named_ports_slot_run() {
     // 命名端口: 槽位快路径 (CompiledEval::run) 与慢路径语义一致
-    let nodes = vec![make_protocol_source_named("ps1", "t1", "proto1", &["a", "b", "c"])];
+    let nodes = vec![make_protocol_source_named(
+        "ps1",
+        "t1",
+        "proto1",
+        &["a", "b", "c"],
+    )];
     let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
     let frames = source_frames(&[("proto1", vec![1.0, 2.0])]); // 第 3 通道越界 → 0
 
@@ -408,6 +428,8 @@ fn test_protocol_source_named_ports_slot_run() {
         &mut HashMap::new(),
         &mut slots,
         &mut written,
+        &mut [],
+        &mut [],
     );
     assert_eq!(slots[compiled.slot_of("ps1", "a").unwrap()], 1.0);
     assert_eq!(slots[compiled.slot_of("ps1", "b").unwrap()], 2.0);
@@ -419,13 +441,196 @@ fn test_protocol_source_port_names_fallback() {
     // port_names 越界/空名回退 "ch{i}"; None 保持 ch0..chN (旧前端兼容)
     use node_kind::protocol_source_port_names;
     assert_eq!(protocol_source_port_names(None, 2), vec!["ch0", "ch1"]);
-    assert_eq!(
-        protocol_source_port_names(Some(&[]), 2),
-        vec!["ch0", "ch1"]
-    );
+    assert_eq!(protocol_source_port_names(Some(&[]), 2), vec!["ch0", "ch1"]);
     let names = vec!["x".to_string(), String::new()];
     assert_eq!(
         protocol_source_port_names(Some(&names), 3),
         vec!["x", "ch1", "ch2"]
     );
+}
+
+// ============ Str 节点测试 (慢路径) ============
+
+#[test]
+fn test_str_len_outputs_f32_to_values_map() {
+    // Len 输出域为 F32: 写入 ValuesMap, 不写 StringValuesMap;
+    // 未连接字符串输入按 "" → 长度 0
+    let nodes = vec![make_str("len1", "t1", StrOp::Len)];
+    let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+    let mut out_str = StringValuesMap::default();
+    let out = g.evaluate(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert_eq!(out.get("len1").and_then(|m| m.get("result")), Some(&0.0));
+    assert!(!out_str.contains_key("len1"));
+}
+
+#[test]
+fn test_str_find_contains_on_empty_defaults() {
+    // Find/Contains 输出 F32; 未连接输入按 "": "".find("") 命中位置 1, "".contains("") 为真
+    let nodes = vec![
+        make_str("find1", "t1", StrOp::Find),
+        make_str("contains1", "t1", StrOp::Contains),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+    let out = g.evaluate(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut StringValuesMap::default(),
+    );
+    assert_eq!(out.get("find1").and_then(|m| m.get("result")), Some(&1.0));
+    assert_eq!(
+        out.get("contains1").and_then(|m| m.get("result")),
+        Some(&1.0)
+    );
+}
+
+#[test]
+fn test_str_text_output_written_to_str_map() {
+    // Mid/Replace 输出 String: 写入 out_str[node]["result"], 不写 ValuesMap;
+    // 未连接字符串输入按 "" → 输出 ""
+    let nodes = vec![
+        make_str_num(
+            "mid1",
+            "t1",
+            StrOp::Mid,
+            StrNumParams {
+                pos: 2.0,
+                len: 1.0,
+                size: 0.0,
+            },
+        ),
+        make_str("rep1", "t1", StrOp::Replace),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+    let mut out_str = StringValuesMap::default();
+    let out = g.evaluate(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert_eq!(
+        out_str.get("mid1").and_then(|m| m.get("result")),
+        Some(&String::new())
+    );
+    assert_eq!(
+        out_str.get("rep1").and_then(|m| m.get("result")),
+        Some(&String::new())
+    );
+    assert!(!out.contains_key("mid1"));
+    assert!(!out.contains_key("rep1"));
+}
+
+#[test]
+fn test_str_num_port_fallback_vs_connected() {
+    // Mid 的 pos/len 端口:
+    // - 未连接 (len) → 编译期捕获 num 内联回退值, num_inputs 为 None
+    // - 已连接 (pos ← Input.value) → num_inputs 为 Some (走上游值)
+    let nodes = vec![
+        make_input("knob1", "t1"),
+        make_str_num(
+            "mid1",
+            "t1",
+            StrOp::Mid,
+            StrNumParams {
+                pos: 9.0,
+                len: 3.0,
+                size: 0.0,
+            },
+        ),
+    ];
+    let edges = vec![edge("e1", "knob1", "value", "mid1", "pos")];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+    // 编译期结构断言: num_inputs/num_defaults 与端口表 F32 端口 (pos, len) 紧凑对齐
+    let str_op = g
+        .compiled()
+        .ops
+        .iter()
+        .find_map(|op| match op {
+            CompiledOp::Str {
+                num_inputs,
+                num_defaults,
+                ..
+            } => Some((num_inputs, num_defaults)),
+            _ => None,
+        })
+        .expect("应有 Str op");
+    assert_eq!(str_op.0.len(), 2);
+    assert!(str_op.0[0].is_some(), "pos 已连接应解析到上游槽位");
+    assert!(str_op.0[1].is_none(), "len 未连接应为 None");
+    assert_eq!(
+        str_op.1,
+        &[9.0, 3.0],
+        "回退值应按端口名映射 num.pos/num.len"
+    );
+
+    // 行为: 求值不崩溃, 输出写入 out_str (输入为 "" 故结果 "")
+    let mut input_values = HashMap::new();
+    input_values.insert("knob1".to_string(), 2.0_f32);
+    let mut out_str = StringValuesMap::default();
+    g.evaluate(
+        &empty_frames(),
+        &input_values,
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert!(out_str.contains_key("mid1"));
+}
+
+#[test]
+fn test_str_chain_two_nodes() {
+    // 两个 Str 串联: Concat(str1,str2 未连接 → "") → Upper → 字符串值沿边路由
+    // 再经 Len (String→F32) 验证字符串平面结果可被数值平面消费
+    let nodes = vec![
+        make_str("concat1", "t1", StrOp::Concat),
+        make_str("up1", "t1", StrOp::Upper),
+        make_str("len1", "t1", StrOp::Len),
+    ];
+    let edges = vec![
+        edge("e1", "concat1", "result", "up1", "str"),
+        edge("e2", "up1", "result", "len1", "str"),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+    let mut out_str = StringValuesMap::default();
+    let out = g.evaluate(
+        &empty_frames(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert_eq!(
+        out_str.get("concat1").and_then(|m| m.get("result")),
+        Some(&String::new())
+    );
+    assert_eq!(
+        out_str.get("up1").and_then(|m| m.get("result")),
+        Some(&String::new())
+    );
+    // Len("".to_uppercase()) = 0 — 证明字符串沿 string_edges 路由且拓扑序正确
+    // (若顺序错误, Len 读到上游未求值的缺省 "" 也是 0, 故另断言 eval_order)
+    assert_eq!(out.get("len1").and_then(|m| m.get("result")), Some(&0.0));
+    let pos = |id: &str| g.eval_order.iter().position(|n| n == id).unwrap();
+    assert!(pos("concat1") < pos("up1"));
+    assert!(pos("up1") < pos("len1"));
 }
