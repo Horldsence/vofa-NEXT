@@ -73,7 +73,8 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
   const rfEdges = useAppStore((s) => s.rfEdges);
   const updateWidget = useAppStore((s) => s.updateWidget);
 
-  const viewEndSec = axisConfig.running ? 0 : -axisConfig.hPosition;
+  // hPosition=0 即实时 (end=0); 运行中也可 >0 回看历史
+  const viewEndSec = -axisConfig.hPosition;
   const timeWindowSec = timeBaseToWindowSec(axisConfig.timeBase);
 
   axisConfigRef.current = axisConfig;

@@ -490,6 +490,8 @@ settingCrosshairVisible: Show Crosshair
 settingCrosshairVisibleDesc: Show the horizontal/vertical crosshair lines that follow the mouse
 settingHoverPointsVisible: Show Hover Points
 settingHoverPointsVisibleDesc: Show the nearest-sample markers on the curve on hover (auto-hidden when cursor snap is on)
+settingPauseOnInteract: Auto-pause on Interact
+settingPauseOnInteractDesc: Pause live refresh when zooming or dragging the waveform; when off, interactions never pause and you can drag back through history while running (drag back to the right edge to resume live follow)
 
 # Setting items - Data Cache
 settingWaveformBufferPoints: Waveform Buffer Points

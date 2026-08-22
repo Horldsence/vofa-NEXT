@@ -54,6 +54,8 @@ export interface AppSettings {
     crosshairVisible: boolean;
     /// 鼠标悬停采样点标记可见性 (曲线上跟随鼠标的数据点圆点)
     hoverPointsVisible: boolean;
+    /// 交互时自动暂停: 缩放/拖动波形时自动停止实时刷新 (关闭后交互不打断刷新, 运行中也可拖动回看历史)
+    pauseOnInteract: boolean;
   };
   data: {
     waveformBufferPoints: number;
@@ -124,6 +126,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     cursorSnap: true,
     crosshairVisible: true,
     hoverPointsVisible: true,
+    pauseOnInteract: false,
   },
   data: {
     waveformBufferPoints: 100_000,

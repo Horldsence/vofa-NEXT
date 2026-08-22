@@ -490,6 +490,8 @@ settingCrosshairVisible: 显示十字线
 settingCrosshairVisibleDesc: 显示鼠标跟随的横竖十字辅助线
 settingHoverPointsVisible: 显示悬停采样点
 settingHoverPointsVisibleDesc: 显示鼠标悬停时曲线上最近采样点的标记 (光标吸附开启时自动隐藏)
+settingPauseOnInteract: 交互时自动暂停
+settingPauseOnInteractDesc: 缩放或拖动波形时自动暂停实时刷新; 关闭后交互不打断刷新, 运行中也可水平拖动回看历史 (拖回最右端恢复实时跟随)
 
 # 设置项 - Data Cache
 settingWaveformBufferPoints: 波形缓存点数

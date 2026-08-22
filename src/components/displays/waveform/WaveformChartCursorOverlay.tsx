@@ -24,7 +24,7 @@ export function CursorOverlay({
 
   return useMemo(() => {
     if (cursors.type === 'vertical') {
-      const viewEnd = running ? 0 : -hPosition;
+      const viewEnd = -hPosition;
       const viewStart = viewEnd - timeWindowSec;
       const range = timeWindowSec || 1;
       const c1R = (cursors.c1 - viewStart) / range;

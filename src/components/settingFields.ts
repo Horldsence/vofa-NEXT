@@ -213,6 +213,14 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
     control: { kind: 'toggle' },
     keywords: ['hover', 'points', '采样点', 'uplot'],
   },
+  {
+    category: 'editor',
+    field: 'pauseOnInteract',
+    labelKey: 'settingPauseOnInteract',
+    descKey: 'settingPauseOnInteractDesc',
+    control: { kind: 'toggle' },
+    keywords: ['pause', 'interact', 'zoom', 'pan', '暂停', '缩放', '拖动'],
+  },
   // Data
   {
     category: 'data',

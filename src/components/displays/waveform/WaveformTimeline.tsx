@@ -3,6 +3,7 @@ import { waveformWindow, type WaveformWindowCache } from '../../../lib/buffers/d
 import { TIME_BASES_SEC, formatTimeBase, getEffectiveChannel, type ScopeAxisConfig } from '../../../types';
 import { timeBaseToWindowSec, HORIZONTAL_DIVS, VERTICAL_DIVS, applyCoupling } from '../../../lib/utils/scopeUtils';
 import { TIMELINE_PAD } from './waveformConstants';
+import { useSettingsStore } from '../../../store/settingsStore';
 import {
   resolveInputArray, type FrozenWaveformData, type TimelineSeriesSpec,
 } from './waveformSeries';
@@ -262,7 +263,7 @@ export function WaveformTimeline({
     if (totalDurSec <= 0) return null;
 
     const cfg = axisConfigRef.current;
-    const vEnd = cfg.running ? 0 : -cfg.hPosition;
+    const vEnd = -cfg.hPosition;
     const vWin = timeBaseToWindowSec(cfg.timeBase);
     const { winX, winW } = computeWindowGeom(plotW, pad, totalDurSec, vEnd, vWin);
 
@@ -345,7 +346,9 @@ export function WaveformTimeline({
         // hPosition >= 0 (0=实时, 正数=查看历史); 向右拖→窗口右移→接近最新→hPosition 减小
         const newHPos = ds.startHPos - dxSec;
         const clamped = Math.max(0, Math.min(totalDurSec, newHPos));
-        onConfigChange?.({ ...cfg, hPosition: clamped, running: false });
+        // 「交互时自动暂停」开启时才停止刷新
+        const pauseOnInteract = useSettingsStore.getState().settings.editor.pauseOnInteract;
+        onConfigChange?.({ ...cfg, hPosition: clamped, ...(pauseOnInteract ? { running: false } : {}) });
       } else {
         // 左右柄 → 改变窗口大小 (timeBase)
         // startVEnd: 起始右端点 (相对最新数据, 0=最新, 负数=过去)
@@ -372,11 +375,13 @@ export function WaveformTimeline({
         // 限制 viewEndSec 在数据范围内 [-totalDurSec, 0]
         newVEnd = Math.max(-totalDurSec, Math.min(0, newVEnd));
         const newTimeBase = newWinSec / HORIZONTAL_DIVS;
+        // 「交互时自动暂停」开启时才停止刷新
+        const pauseOnInteract = useSettingsStore.getState().settings.editor.pauseOnInteract;
         onConfigChange?.({
           ...cfg,
           timeBase: newTimeBase,
           hPosition: -newVEnd,
-          running: false,
+          ...(pauseOnInteract ? { running: false } : {}),
         });
       }
     };
@@ -407,7 +412,7 @@ export function WaveformTimeline({
 
   const timeWindowLabel = formatTimeBase(axisConfig.timeBase).replace('/div', '') + ' ×10';
   const statusLabel = axisConfig.running
-    ? 'LIVE'
+    ? axisConfig.hPosition === 0 ? 'LIVE' : `LIVE -${axisConfig.hPosition.toFixed(2)}s`
     : axisConfig.hPosition === 0 ? 'STOP' : axisConfig.hPosition.toFixed(2) + 's';
 
   return (

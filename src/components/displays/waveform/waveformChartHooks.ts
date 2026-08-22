@@ -176,7 +176,8 @@ export function useUplotInit(
             time: false,
             range: () => {
               const c = axisConfigRef.current;
-              const end = c.running ? 0 : -c.hPosition;
+              // hPosition=0 即实时跟随 (end=0); 运行中 hPosition>0 时偏移回看历史, 数据继续刷新
+              const end = -c.hPosition;
               const win = timeBaseToWindowSec(c.timeBase);
               return [end - win, end];
             },
@@ -446,7 +447,9 @@ export function usePanDrag(
       } else {
         newChannels[ps.chIdx] = { ...newChannels[ps.chIdx], position: newPos };
       }
-      onConfigChange?.({ ...cfg, running: false, hPosition: Math.max(0, newHPos), channels: newChannels });
+      // 「交互时自动暂停」开启时才停止刷新; 关闭时运行中也可拖动 (含垂直拖动) 不打断刷新
+      const pauseOnInteract = useSettingsStore.getState().settings.editor.pauseOnInteract;
+      onConfigChange?.({ ...cfg, ...(pauseOnInteract ? { running: false } : {}), hPosition: Math.max(0, newHPos), channels: newChannels });
     };
     const onMouseUp = () => {
       if (panRef.current) {
