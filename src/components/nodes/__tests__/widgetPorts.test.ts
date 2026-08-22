@@ -114,3 +114,19 @@ describe('getWidgetPorts - Str 字符串操作', () => {
     expect(getWidgetPorts(strWidget('left')).inputs.map((p) => p.id)).toEqual(['str', 'size']);
   });
 });
+
+/// TextInput 控件 (文本输入源, 无输入端口)
+const TEXT_INPUT_WIDGET: WidgetConfig = {
+  kind: 'TextInput',
+  params: { id: 'ti-1', label: 'TextInput', text: 'hello', placeholder: '' },
+};
+
+describe('getWidgetPorts - TextInput 文本输入', () => {
+  it('无输入端口, 输出恰为 str (string 域)', () => {
+    const { inputs, outputs } = getWidgetPorts(TEXT_INPUT_WIDGET);
+    expect(inputs).toEqual([]);
+    expect(outputs.map((p) => ({ id: p.id, domain: p.domain }))).toEqual([
+      { id: 'str', domain: 'string' },
+    ]);
+  });
+});

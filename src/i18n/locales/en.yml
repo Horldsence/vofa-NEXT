@@ -1094,6 +1094,7 @@ triggerMissText: Default miss text
 triggerMatchGlob: Glob
 triggerHintGlob: Standard shell glob (supports * ? [abc] {a,b,c})
 textDisplay: Text Display
+textInput: Text Input
 fdCoverEnd: Cover end
 fdMatchId: Match ID
 fdMatchIdPlaceholder: Only executes when id_value equals this (optional)

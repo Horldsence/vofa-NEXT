@@ -1091,6 +1091,7 @@ triggerMissText: 默认未命中文本
 triggerMatchGlob: Glob
 triggerHintGlob: 标准 shell glob 模式, 支持 * ? [abc] {a,b,c}
 textDisplay: 文本显示
+textInput: 文本框
 fdSignedNo: 无符号
 fdChecksumCover: 校验范围
 fdCoverStart: 起始字节

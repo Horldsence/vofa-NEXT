@@ -26,6 +26,7 @@ export type NodeKind =
   | { kind: 'Protocol'; params: { config: ProtocolConfig; convert_to?: ProtocolConfig | null; schema?: ProtocolSchema | null } }
   | { kind: 'ProtocolSource'; params: { node_id: string; channels: number; port_names?: string[] | null } }
   | { kind: 'Input' }
+  | { kind: 'TextInput'; params: { text: string } }
   | { kind: 'Math'; params: { op: MathOp; input_count: number } }
   | { kind: 'Str'; params: { op: StrOp; num: { pos: number; len: number; size: number } } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
@@ -65,6 +66,7 @@ export interface NodeDef {
 /// 从 WidgetConfig 推导 NodeKind (供 syncTabGraph 使用)
 ///
 /// - Knob/Slider/Button/Radio/Checkbox → Input
+/// - TextInput → TextInput { text } (文本输入源, 输出端口 str 写字符串平面)
 /// - Math → Math { op, input_count }
 /// - Str → Str { op, num: { pos, len, size } } (num = 数值端口未连接时的内联回退值)
 /// - Custom → Custom { inputs, outputs } (从代码解析)
@@ -82,6 +84,10 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     case 'Radio':
     case 'Checkbox':
       return { kind: 'Input' };
+
+    case 'TextInput':
+      // 文本输入源: 参数 text 经 update_tab_graph 同步, 后端每帧写入字符串平面 str 口
+      return { kind: 'TextInput', params: { text: widget.params.text } };
 
     case 'Math': {
       const isUnary = UNARY_MATH_OPS.includes(widget.params.op);

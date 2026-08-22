@@ -28,6 +28,7 @@ import { FilterWidget } from '../displays/widgets/FilterWidget';
 import { FFTWidget } from '../displays/widgets/FFTWidget';
 import { IFFTWidget } from '../displays/widgets/IFFTWidget';
 import { TextDisplay } from '../displays/widgets/TextDisplay';
+import { TextInput } from '../controls/TextInput';
 import { StrWidget } from '../displays/widgets/StrWidget';
 
 /// 端口定义 — domain 标注该端口承载的是时域还是频域信号
@@ -184,6 +185,12 @@ export function getWidgetPorts(widget: WidgetConfig): {
           { id: 'matched', label: 'matched', domain: 'time' },
           { id: 'text', label: 'text', domain: 'string' },
         ],
+      };
+    case 'TextInput':
+      // 文本输入: 无输入端口, 唯一输出 str (字符串域, 供 Str/TextDisplay 消费)
+      return {
+        inputs: [],
+        outputs: [{ id: 'str', label: 'str', domain: 'string' }],
       };
     case 'TextDisplay':
       // 文本展示: 1 个字符串输入端口
@@ -386,6 +393,13 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
         return (
           <TextDisplay
             widget={widget as Extract<WidgetConfig, { kind: 'TextDisplay' }>}
+            onRemove={onRemove}
+          />
+        );
+      case 'TextInput':
+        return (
+          <TextInput
+            widget={widget as Extract<WidgetConfig, { kind: 'TextInput' }>}
             onRemove={onRemove}
           />
         );

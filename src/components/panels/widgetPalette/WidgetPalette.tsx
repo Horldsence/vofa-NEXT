@@ -114,6 +114,7 @@ export function WidgetPalette() {
       { key: 'Command', kind: 'Command', icon: <Send size={14} />, label: t(lang, 'command'), title: t(lang, 'command') },
       { key: 'FrameDecoder', kind: 'FrameDecoder', icon: <ScanText size={14} />, label: t(lang, 'frameDecoder'), title: t(lang, 'frameDecoder') },
       { key: 'Trigger', kind: 'Trigger', icon: <Zap size={14} />, label: t(lang, 'trigger'), title: t(lang, 'trigger') },
+      { key: 'TextInput', kind: 'TextInput', icon: <TextCursorInput size={14} />, label: t(lang, 'textInput'), title: t(lang, 'textInput') },
     ];
 
     const displayItems: PaletteEntry[] = [

@@ -36,3 +36,38 @@ describe('widgetToNodeKind - Str', () => {
     });
   });
 });
+
+describe('widgetToNodeKind - TextInput', () => {
+  it('TextInputConfig 的 text 映射为 NodeKind::TextInput.params.text', () => {
+    const widget: WidgetConfig = {
+      kind: 'TextInput',
+      params: { id: 'ti-1', label: 'TextInput', text: 'hello', placeholder: '' },
+    };
+    expect(widgetToNodeKind(widget)).toEqual({
+      kind: 'TextInput',
+      params: { text: 'hello' },
+    });
+  });
+
+  it('JSON 序列化形状与后端 serde (tag=kind, content=params) 一致', () => {
+    const widget: WidgetConfig = {
+      kind: 'TextInput',
+      params: { id: 'ti-1', label: 'TextInput', text: 'hi', placeholder: '' },
+    };
+    // 镜像后端: {"kind":"TextInput","params":{"text":"hi"}}
+    expect(JSON.parse(JSON.stringify(widgetToNodeKind(widget)))).toEqual({
+      kind: 'TextInput',
+      params: { text: 'hi' },
+    });
+  });
+
+  it('createWidget 默认值: label=TextInput, text/placeholder 为空串', () => {
+    const widget = createWidget('TextInput');
+    expect(widget.kind).toBe('TextInput');
+    expect(widget.params).toMatchObject({ label: 'TextInput', text: '', placeholder: '' });
+    expect(widgetToNodeKind(widget)).toEqual({
+      kind: 'TextInput',
+      params: { text: '' },
+    });
+  });
+});

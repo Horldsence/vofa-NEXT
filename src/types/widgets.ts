@@ -133,6 +133,15 @@ export interface TextDisplayConfig {
   monospace: boolean;
 }
 
+/// 文本输入控件 — 节点内文本框, 内容作为参数 text 经 update_tab_graph 同步到后端,
+/// 后端每帧原样写入字符串平面 out_str[id]["str"] (唯一输出端口 str, string 域)
+export interface TextInputConfig {
+  id: string;
+  label: string;
+  text: string;
+  placeholder: string;
+}
+
 /// 字符串操作控件 — 对字符串输入做截取/拼接/替换等操作
 /// 端口表见 STR_OP_PORTS (与后端 StrOp::input_ports 一致);
 /// pos/len/size 为对应数值端口未连接时的内联回退值 (已连接则由后端用上游值)
@@ -231,6 +240,7 @@ export type WidgetConfig =
   | { kind: 'RawData'; params: RawDataConfig }
   | { kind: 'Trigger'; params: TriggerConfig }
   | { kind: 'TextDisplay'; params: TextDisplayConfig }
+  | { kind: 'TextInput'; params: TextInputConfig }
   | { kind: 'Str'; params: StrConfig };
 
 /// 获取控件所属类别 (用于 palette 分组与着色)
@@ -265,6 +275,8 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'FrameDecoder':
       return 'input';
     case 'Trigger':
+      return 'input';
+    case 'TextInput':
       return 'input';
     case 'TextDisplay':
       return 'display';

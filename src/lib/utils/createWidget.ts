@@ -285,6 +285,16 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           monospace: true,
         },
       };
+    case 'TextInput':
+      return {
+        kind: 'TextInput',
+        params: {
+          id,
+          label: 'TextInput',
+          text: '',
+          placeholder: '',
+        },
+      };
     case 'Str':
       return {
         kind: 'Str',
