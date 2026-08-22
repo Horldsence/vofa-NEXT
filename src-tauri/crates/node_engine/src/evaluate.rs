@@ -9,24 +9,27 @@
 
 use std::collections::HashMap;
 
-use dsp_filter::DigitalFilter;
 use dsp_fft::{IfftState, SpectrumOutput};
+use dsp_filter::DigitalFilter;
 use dsp_window::WindowType;
 
 use node_frame_decoder::FrameParser;
-use node_kind::{DecoderBlockDef, NodeKind};
+use node_kind::{DecoderBlockDef, NodeKind, PortDomain, StrResult};
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, set_port, SourceFramesMap};
-use crate::ValuesMap;
+use crate::eval::{
+    node_out_entry, node_out_str_entry, set_port, set_str_port, str_num_default, SourceFramesMap,
+};
+use crate::{StringValuesMap, ValuesMap};
 
 impl CompiledGraph {
     /// 评估图 — 给定多源最新帧 + 输入值 + Custom 回传值 + Filter 状态 + Decoder 状态,
     /// 返回所有节点的输出端口值
     ///
     /// 返回: HashMap<widgetId, HashMap<portId, f32>>
-    ///   - 包含 ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft 的输出
-    ///   - 不包含 Sink / SpectrumSink / Transport / Protocol (无 f32 输出)
+    ///   - 包含 ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str 的输出
+    ///     (Str 的 F32 域结果写入返回值, String 域结果写入 `out_str`)
+    ///   - 不包含 Sink / SpectrumSink / Transport / Protocol (无值平面输出)
     ///
     /// `source_frames`: 多源 latest-value 融合缓存 — 每个 Protocol 源独立缓存
     ///   最近一帧, ProtocolSource 求值时按 node_id 从对应源读取通道值。
@@ -47,6 +50,7 @@ impl CompiledGraph {
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
         ifft_states: &mut HashMap<String, IfftState>,
+        out_str: &mut StringValuesMap,
     ) -> ValuesMap {
         let mut out = ValuesMap::default();
         self.evaluate_into(
@@ -57,6 +61,7 @@ impl CompiledGraph {
             decoder_states,
             ifft_states,
             &mut out,
+            out_str,
         );
         out
     }
@@ -70,7 +75,8 @@ impl CompiledGraph {
     ///
     /// 注意: 本函数只覆盖写当前节点的端口, 不清理过期键 — 图结构变化 (重编译)
     /// 时调用方应清空 out (process_frames_batch 通过 graphs_version 检测)。
-    #[allow(clippy::cast_precision_loss)]
+    /// `out_str` 同理: Str 节点 String 域结果写入 (未连接字符串输入按 "" 处理)。
+    #[allow(clippy::too_many_arguments, clippy::cast_precision_loss)]
     pub fn evaluate_into(
         &self,
         source_frames: &SourceFramesMap,
@@ -80,6 +86,7 @@ impl CompiledGraph {
         decoder_states: &HashMap<String, FrameParser>,
         ifft_states: &mut HashMap<String, IfftState>,
         out: &mut ValuesMap,
+        out_str: &mut StringValuesMap,
     ) {
         for node_id in &self.eval_order {
             let Some(node) = self.nodes.get(node_id) else {
@@ -145,9 +152,7 @@ impl CompiledGraph {
                     // 取输入 "in0" 的上游值
                     let input_val = self.resolve_input(node_id, "in0", out);
                     // 懒初始化 / kind 变化时重建滤波器状态
-                    let need_rebuild = filter_states
-                        .get(node_id)
-                        .is_none_or(|f| f.kind() != kind);
+                    let need_rebuild = filter_states.get(node_id).is_none_or(|f| f.kind() != kind);
                     if need_rebuild {
                         filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
                     }
@@ -214,12 +219,70 @@ impl CompiledGraph {
                     let m = node_out_entry(out, node_id);
                     set_port(m, "out0", v);
                 }
+                NodeKind::Str { op, num } => {
+                    // 输入按 StrOp::input_ports() 端口表顺序紧凑拆分收集
+                    // (与 CompiledOp::Str 的对齐约定一致):
+                    // - String 端口 → str_inputs: 经 string_input_index 查上游, 无边/上游无值 = ""
+                    // - F32 端口 → num_inputs: 有边走上游值, 无边用 num 内联回退 (按端口名映射)
+                    // 端口表最大 arity: str ≤ 2 / num ≤ 2, 栈数组覆盖, 超出走堆 (防御)
+                    let ports = op.input_ports();
+                    let n_str = ports.iter().filter(|p| p.1 == PortDomain::String).count();
+                    let n_num = ports.len() - n_str;
+                    let mut stack_str: [&str; 2] = ["", ""];
+                    let mut heap_str;
+                    let str_inputs: &mut [&str] = if n_str <= 2 {
+                        &mut stack_str[..n_str]
+                    } else {
+                        heap_str = vec![""; n_str];
+                        &mut heap_str
+                    };
+                    let mut stack_num = [0.0f32; 2];
+                    let mut heap_num;
+                    let num_inputs: &mut [f32] = if n_num <= 2 {
+                        &mut stack_num[..n_num]
+                    } else {
+                        heap_num = vec![0.0; n_num];
+                        &mut heap_num
+                    };
+                    let (mut si, mut ni) = (0, 0);
+                    for (name, domain) in ports {
+                        match domain {
+                            PortDomain::String => {
+                                str_inputs[si] = self.resolve_str_input(node_id, name, out_str);
+                                si += 1;
+                            }
+                            PortDomain::F32 => {
+                                num_inputs[ni] = if self
+                                    .input_index
+                                    .get(node_id)
+                                    .is_some_and(|p| p.contains_key(*name))
+                                {
+                                    self.resolve_input(node_id, name, out)
+                                } else {
+                                    str_num_default(num, name)
+                                };
+                                ni += 1;
+                            }
+                            PortDomain::Bytes => {} // Str 端口表无 Bytes, 防御
+                        }
+                    }
+                    match op.evaluate(str_inputs, num_inputs) {
+                        StrResult::Text(t) => {
+                            let m = node_out_str_entry(out_str, node_id);
+                            set_str_port(m, "result", &t);
+                        }
+                        StrResult::Num(v) => {
+                            let m = node_out_entry(out, node_id);
+                            set_port(m, "result", v);
+                        }
+                    }
+                }
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }
                 | NodeKind::Transport { .. }
                 | NodeKind::Protocol { .. }
                 | NodeKind::Trigger { .. } => {
-                    // 无 f32 输出的节点不应出现在 eval_order 中, 防御性跳过
+                    // 无值平面输出的节点不应出现在 eval_order 中, 防御性跳过
                 }
             }
         }
@@ -240,6 +303,28 @@ impl CompiledGraph {
                 .unwrap_or(0.0)
         } else {
             0.0
+        }
+    }
+
+    /// 解析某节点某字符串输入端口的上游输出值
+    /// (经 string_input_index; 无边 / 上游未产出 (如 Trigger.text 尚无后端输出) → "")
+    fn resolve_str_input<'a>(
+        &self,
+        node_id: &str,
+        port_id: &str,
+        computed_str: &'a StringValuesMap,
+    ) -> &'a str {
+        if let Some((src_node, src_port)) = self
+            .string_input_index
+            .get(node_id)
+            .and_then(|ports| ports.get(port_id))
+        {
+            computed_str
+                .get(src_node)
+                .and_then(|m| m.get(src_port))
+                .map_or("", String::as_str)
+        } else {
+            ""
         }
     }
 

@@ -6,15 +6,15 @@
 
 use std::collections::HashMap;
 
+use dsp_fft::IfftState;
+use dsp_filter::{DigitalFilter, FilterKind};
 use rustc_hash::FxBuildHasher;
 use vofa_core::DataFrame;
-use dsp_filter::{DigitalFilter, FilterKind};
-use dsp_fft::IfftState;
 
 use node_frame_decoder::FrameParser;
-use node_kind::MathOp;
+use node_kind::{MathOp, StrNumParams, StrOp, StrResult};
 
-use crate::ValuesMap;
+use crate::{StringValuesMap, ValuesMap};
 
 /// 多源最新帧缓存 — key = 全局 Protocol 节点 id, value = 该源最近一帧
 /// (latest-value 融合: 每个源独立缓存, 求值时按源读取)
@@ -40,6 +40,37 @@ pub fn set_port(m: &mut HashMap<String, f32, FxBuildHasher>, port: &str, value: 
         *slot = value;
     } else {
         m.insert(port.to_string(), value);
+    }
+}
+
+/// 取节点的字符串输出 map (不存在则创建) — 仿 [`node_out_entry`]
+pub fn node_out_str_entry<'a>(
+    out: &'a mut StringValuesMap,
+    node_id: &str,
+) -> &'a mut HashMap<String, String, FxBuildHasher> {
+    if out.get_mut(node_id).is_none() {
+        out.insert(node_id.to_string(), HashMap::default());
+    }
+    out.get_mut(node_id).unwrap()
+}
+
+/// 写字符串端口值 — 键已存在时原位写 (复用缓冲, 稳态低分配), 不存在才插入
+pub fn set_str_port(m: &mut HashMap<String, String, FxBuildHasher>, port: &str, value: &str) {
+    if let Some(slot) = m.get_mut(port) {
+        slot.clear();
+        slot.push_str(value);
+    } else {
+        m.insert(port.to_string(), value.to_owned());
+    }
+}
+
+/// Str 数值端口的内联回退值 (端口未连接时使用): 端口名 → [`StrNumParams`] 字段
+pub fn str_num_default(num: &StrNumParams, port: &str) -> f32 {
+    match port {
+        "pos" => num.pos,
+        "len" => num.len,
+        "size" => num.size,
+        _ => 0.0,
     }
 }
 
@@ -81,6 +112,20 @@ pub enum CompiledOp {
     },
     /// Ifft: 读 ifft_states[node_id] 的下一个重建采样 → out 槽位 (环形播放, 时域)
     Ifft { node_id: String, out: usize },
+    /// Str: 按 StrOp::input_ports() 端口表紧凑拆分输入 (只含同 domain 端口, 按端口表顺序):
+    /// - str_inputs[i] = 第 i 个 String 端口的上游字符串槽位 (None = 未连接/上游无槽位 → "")
+    /// - num_inputs[i] = 第 i 个 F32 端口的上游数值槽位 (None → num_defaults[i])
+    /// - num_defaults[i] = 第 i 个 F32 端口的内联回退值 (编译期从 StrNumParams 捕获)
+    ///
+    /// 输出按 StrOp::output_domain(): String → text_out 字符串槽位, F32 → num_out 数值槽位
+    Str {
+        op: StrOp,
+        str_inputs: Vec<Option<usize>>,
+        num_inputs: Vec<Option<usize>>,
+        num_defaults: Vec<f32>,
+        text_out: Option<usize>,
+        num_out: Option<usize>,
+    },
 }
 
 /// 编译期槽位评估表 — CompiledGraph::compile 时构建, 逐帧评估纯数组读写
@@ -96,6 +141,10 @@ pub struct CompiledEval {
     /// ProtocolSource 引用的全局 Protocol 节点 id 表 (去重, 编译期预排;
     /// 逐帧评估时每源一次字符串查找解析为帧引用, op 用下标直读)
     pub(crate) frame_sources: Vec<String>,
+    /// 字符串槽位 i 对应的 (node_id, port) — Str 节点 String 域输出, 仿 slot_names
+    pub(crate) str_slot_names: Vec<(String, String)>,
+    /// (node_id, port) → 字符串槽位下标
+    pub(crate) str_slot_index: HashMap<(String, String), usize, FxBuildHasher>,
 }
 
 impl CompiledEval {
@@ -104,9 +153,21 @@ impl CompiledEval {
         self.slot_names.len()
     }
 
+    /// 字符串槽位数 (调用方据此分配 str_slots/str_written 缓冲并跨帧复用)
+    pub const fn str_slot_count(&self) -> usize {
+        self.str_slot_names.len()
+    }
+
     /// (node_id, port) → 槽位 (派生边批首解析用)
     pub fn slot_of(&self, node: &str, port: &str) -> Option<usize> {
         self.slot_index
+            .get(&(node.to_string(), port.to_string()))
+            .copied()
+    }
+
+    /// (node_id, port) → 字符串槽位 (字符串输出发布解析用)
+    pub fn str_slot_of(&self, node: &str, port: &str) -> Option<usize> {
+        self.str_slot_index
             .get(&(node.to_string(), port.to_string()))
             .copied()
     }
@@ -118,7 +179,9 @@ impl CompiledEval {
     ///   语义为 latest-value 融合 — 每个源独立缓存最近一帧, 本函数逐源读取;
     ///   源缺失或通道越界时对应端口写 0.0 (与未连接语义一致)。
     /// `slots` / `written` 由调用方分配 (长度 == slot_count) 并跨帧复用;
-    /// 调用方负责每帧清零 (slots 防上帧值泄漏, written 复刻 "本帧未产出 = 键不存在")。
+    /// `str_slots` / `str_written` 同理 (长度 == str_slot_count, 字符串缓冲跨帧复用分配)。
+    /// 调用方负责每帧清零 (slots/str_slots 防上帧值泄漏, written/str_written 复刻
+    /// "本帧未产出 = 键不存在")。
     /// op 写槽位时置位 written — FrameDecoder 无 parser / Custom 无回传以外的
     /// 缺失都不写 (与 evaluate_into 的 map 语义一致)。
     #[allow(clippy::too_many_arguments, clippy::cast_precision_loss)]
@@ -132,6 +195,8 @@ impl CompiledEval {
         ifft_states: &mut HashMap<String, IfftState>,
         slots: &mut [f32],
         written: &mut [bool],
+        str_slots: &mut [String],
+        str_written: &mut [bool],
     ) {
         // 帧源预解析: 每源每帧一次字符串哈希, 之后 op 用下标零开销直读
         // (8 源以内走栈数组, 避免逐帧堆分配)
@@ -191,9 +256,7 @@ impl CompiledEval {
                 } => {
                     let input_val = input.map_or(0.0, |s| slots[s]);
                     // 懒初始化 / kind 变化时重建滤波器状态 (与 evaluate_into 一致)
-                    let need_rebuild = filter_states
-                        .get(node_id)
-                        .is_none_or(|f| f.kind() != kind);
+                    let need_rebuild = filter_states.get(node_id).is_none_or(|f| f.kind() != kind);
                     if need_rebuild {
                         filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
                     }
@@ -255,6 +318,54 @@ impl CompiledEval {
                         }
                     }
                 }
+                CompiledOp::Str {
+                    op,
+                    str_inputs,
+                    num_inputs,
+                    num_defaults,
+                    text_out,
+                    num_out,
+                } => {
+                    // 输入收集: None 字符串槽位 = "" (未连接/上游无值),
+                    // None 数值槽位 = num_defaults[i] (内联回退) — 与 evaluate_into 一致。
+                    // 端口表最大 arity: str ≤ 2 / num ≤ 2, 栈数组覆盖, 超出走堆 (防御)
+                    let mut stack_str: [&str; 2] = ["", ""];
+                    let mut heap_str;
+                    let str_buf: &mut [&str] = if str_inputs.len() <= 2 {
+                        &mut stack_str[..str_inputs.len()]
+                    } else {
+                        heap_str = vec![""; str_inputs.len()];
+                        &mut heap_str
+                    };
+                    for (i, s) in str_inputs.iter().enumerate() {
+                        str_buf[i] = s.map_or("", |s| str_slots[s].as_str());
+                    }
+                    let mut stack_num = [0.0f32; 2];
+                    let mut heap_num;
+                    let num_buf: &mut [f32] = if num_inputs.len() <= 2 {
+                        &mut stack_num[..num_inputs.len()]
+                    } else {
+                        heap_num = vec![0.0; num_inputs.len()];
+                        &mut heap_num
+                    };
+                    for (i, s) in num_inputs.iter().enumerate() {
+                        num_buf[i] = s.map_or(num_defaults[i], |s| slots[s]);
+                    }
+                    match op.evaluate(str_buf, num_buf) {
+                        StrResult::Text(t) => {
+                            if let Some(o) = text_out {
+                                str_slots[*o] = t;
+                                str_written[*o] = true;
+                            }
+                        }
+                        StrResult::Num(v) => {
+                            if let Some(o) = num_out {
+                                slots[*o] = v;
+                                written[*o] = true;
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -267,6 +378,23 @@ impl CompiledEval {
             if written[i] {
                 let m = node_out_entry(out, node_id);
                 set_port(m, port, slots[i]);
+            }
+        }
+    }
+
+    /// 字符串快照物化: str_slots + str_written → StringValuesMap (仅快照发布点调用)
+    ///
+    /// 只物化 written 置位的槽位, 不清理过期键 (与 materialize / evaluate_into 语义一致)
+    pub fn materialize_str(
+        &self,
+        str_slots: &[String],
+        str_written: &[bool],
+        out_str: &mut StringValuesMap,
+    ) {
+        for (i, (node_id, port)) in self.str_slot_names.iter().enumerate() {
+            if str_written[i] {
+                let m = node_out_str_entry(out_str, node_id);
+                set_str_port(m, port, &str_slots[i]);
             }
         }
     }

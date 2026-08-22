@@ -2,22 +2,25 @@
 //!
 //! 编译流程:
 //! 1. 边按两端端口域分类: 均 Bytes → byte_edges; 均 F32 → f32_edges;
-//!    不匹配 → [`CompileError::DomainMismatch`] (取代旧 LOOPBACK_IN_HANDLE 字符串特判);
+//!    均 String → string_edges; 不匹配 → [`CompileError::DomainMismatch`]
+//!    (取代旧 LOOPBACK_IN_HANDLE 字符串特判);
 //!    例外: RawData 关联通道边 (Sink 的 src: 动态端口) 按源端域归类放行, 见
 //!    [`is_raw_data_channel_target`]
 //! 2. 字节平面: [`BytePlan::build`] 独立拓扑排序 (字节平面内循环 → ByteCycle;
-//!    跨平面不构成循环 — f32 平面 DFS 只看 f32_edges)
-//! 3. 数值平面: 对 f32_edges 三色 DFS 拓扑排序, 构建 input_index + 槽位评估表
+//!    跨平面不构成循环 — 值平面 DFS 只看 f32_edges + string_edges)
+//! 3. 值平面: 对 f32_edges + string_edges 三色 DFS 拓扑排序 (保证上游 string
+//!    节点先于下游 Str 节点求值; 字符串槽位分配独立于 f32 槽位),
+//!    构建 input_index + string_input_index + 槽位评估表
 
 use std::collections::HashMap;
 
-use rustc_hash::FxBuildHasher;
 use buffer_graph::Edge;
+use rustc_hash::FxBuildHasher;
 
 use node_kind::{port_domain, NodeDef, NodeKind, PortDomain, RAW_DATA_PORT_PREFIX};
 
 use crate::byte_plan::BytePlan;
-use crate::eval::{CompiledEval, CompiledOp};
+use crate::eval::{str_num_default, CompiledEval, CompiledOp};
 
 /// 编译后的图 — 包含拓扑序的评估计划
 pub struct CompiledGraph {
@@ -28,16 +31,20 @@ pub struct CompiledGraph {
     pub(crate) nodes: HashMap<String, NodeDef>,
     /// 边集合 (全部边, 含字节边)
     pub(crate) edges: Vec<Edge>,
-    /// 字节路由边 (两端端口域均为 Bytes) — 不参与 f32 拓扑排序/求值
+    /// 字节路由边 (两端端口域均为 Bytes) — 不参与值平面拓扑排序/求值
     /// (字节不经 evaluate 流动; 若参与 DFS, Command var_ref 输入回连解码器输出会误判循环)
     pub(crate) byte_edges: Vec<Edge>,
-    /// 拓扑序 — 仅包含有 f32 输出的节点
-    /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft)
-    /// Sink/SpectrumSink/Transport/Protocol 不参与 f32 评估
+    /// 字符串路由边 (两端端口域均为 String) — 参与值平面拓扑排序, 供慢路径解析字符串输入
+    pub(crate) string_edges: Vec<Edge>,
+    /// 拓扑序 — 仅包含有 f32/String 输出的节点
+    /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str)
+    /// Sink/SpectrumSink/Transport/Protocol 不参与值平面评估
     pub(crate) eval_order: Vec<String>,
     /// 反向索引: target_node → (target_handle → (source_node, source_handle))
     /// 嵌套结构支持 &str 零分配查询 (evaluate_into 热路径)
     pub(crate) input_index: HashMap<String, HashMap<String, (String, String)>>,
+    /// 字符串输入反向索引 (结构同 input_index, 来自 string_edges)
+    pub(crate) string_input_index: HashMap<String, HashMap<String, (String, String)>>,
     /// 编译期缓存: Math 输入端口名 in0..inN (避免每帧 format! 分配)
     pub(crate) in_names: Vec<String>,
     /// 编译期槽位评估表 (逐帧评估零字符串哈希, process_frames_batch 热路径用)
@@ -112,7 +119,9 @@ impl CompiledGraph {
             match visited.get(id) {
                 Some(&1) => {
                     cycle.push(id.to_string());
-                    return Err(CompileError::Cycle { cycle: cycle.clone() });
+                    return Err(CompileError::Cycle {
+                        cycle: cycle.clone(),
+                    });
                 }
                 Some(&2) => return Ok(()),
                 _ => {}
@@ -169,12 +178,14 @@ impl CompiledGraph {
         // 边按两端端口域分类
         let mut byte_edges: Vec<Edge> = Vec::new();
         let mut f32_edges: Vec<Edge> = Vec::new();
+        let mut string_edges: Vec<Edge> = Vec::new();
         for e in &edges {
             let src_domain = domain_of(&e.source, &e.source_handle, true);
             let tgt_domain = domain_of(&e.target, &e.target_handle, false);
             match (src_domain, tgt_domain) {
                 (PortDomain::Bytes, PortDomain::Bytes) => byte_edges.push(e.clone()),
                 (PortDomain::F32, PortDomain::F32) => f32_edges.push(e.clone()),
+                (PortDomain::String, PortDomain::String) => string_edges.push(e.clone()),
                 // RawData 关联通道边 (Sink 的 src:<source>:<handle> 动态端口):
                 // 边只是用户意图标记, 字节/数值都不经 evaluate 流入 — 按源端域归类放行,
                 // 字节边进 BytePlan 后由字节路由的默认分支忽略 (RawData 视图走订阅旁路)
@@ -185,6 +196,7 @@ impl CompiledGraph {
                         PortDomain::String => {} // 字符串平面不进 f32/byte 边
                     }
                 }
+                // 其余组合 (String↔F32 / String↔Bytes 等跨域) 一律域不匹配
                 _ => {
                     return Err(CompileError::DomainMismatch {
                         edge_id: e.id.clone(),
@@ -213,6 +225,19 @@ impl CompiledGraph {
             );
         }
 
+        // 字符串输入反向索引 (结构同 input_index, 来自 string_edges)
+        let mut string_input_index: HashMap<String, HashMap<String, (String, String)>> =
+            HashMap::new();
+        for e in &string_edges {
+            string_input_index
+                .entry(e.target.clone())
+                .or_default()
+                .insert(
+                    e.target_handle.clone(),
+                    (e.source.clone(), e.source_handle.clone()),
+                );
+        }
+
         // 编译期端口名缓存 (evaluate 热路径避免 format! 分配)
         let max_inputs = node_map
             .values()
@@ -224,15 +249,15 @@ impl CompiledGraph {
             .unwrap_or(0);
         let in_names: Vec<String> = (0..max_inputs).map(|i| format!("in{i}")).collect();
 
-        // 拓扑排序 — 仅对有 f32 输出的节点
+        // 拓扑排序 — 仅对有值平面输出的节点
         // 使用 DFS 后序
         let mut visited: HashMap<String, u8> = HashMap::new(); // 0=未访问, 1=访问中, 2=已完成
         let mut order: Vec<String> = Vec::new();
 
-        // 仅对有 f32 输出的节点启动 DFS:
+        // 仅对有值平面输出的节点启动 DFS:
         // - Sink: 纯消费, 无输出
         // - SpectrumSink: 块运算, 无输出端口, 由独立 30 FPS ticker 触发 FFT
-        // - Transport/Protocol: 字节平面节点, 无 f32 输出
+        // - Transport/Protocol: 字节平面节点, 无值平面输出
         let output_node_ids: Vec<String> = node_map
             .iter()
             .filter(|(_, n)| {
@@ -247,28 +272,41 @@ impl CompiledGraph {
             .map(|(id, _)| id.clone())
             .collect();
 
+        // 值平面依赖边 = f32 边 + 字符串边: 字符串槽位分配独立于 f32 槽位,
+        // 但拓扑序必须保证上游 string 节点先于下游 Str 节点求值 (慢/快路径同序)
+        let mut dep_edges = f32_edges.clone();
+        dep_edges.extend(string_edges.iter().cloned());
+
         let mut cycle: Vec<String> = Vec::new();
         for id in &output_node_ids {
             dfs(
                 id,
                 &node_map,
-                &f32_edges,
+                &dep_edges,
                 &mut visited,
                 &mut order,
                 &mut cycle,
             )?;
         }
 
-        // 编译期槽位评估表 (材料齐备: eval_order/input_index/in_names)
-        let compiled = CompiledEval::build(&node_map, &order, &input_index, &in_names);
+        // 编译期槽位评估表 (材料齐备: eval_order/input_index/string_input_index/in_names)
+        let compiled = CompiledEval::build(
+            &node_map,
+            &order,
+            &input_index,
+            &string_input_index,
+            &in_names,
+        );
 
         Ok(Self {
             tab_id,
             nodes: node_map,
             edges,
             byte_edges,
+            string_edges,
             eval_order: order,
             input_index,
+            string_input_index,
             in_names,
             compiled,
             byte_plan,
@@ -286,6 +324,11 @@ impl CompiledGraph {
     /// 字节路由边 (两端端口域均为 Bytes 的边)
     pub fn byte_edges(&self) -> &[Edge] {
         &self.byte_edges
+    }
+
+    /// 字符串路由边 (两端端口域均为 String 的边)
+    pub fn string_edges(&self) -> &[Edge] {
+        &self.string_edges
     }
 
     /// 字节平面处理计划 (拓扑序 + 源→下游路由, 取代旧 loopback_targets_for)
@@ -336,10 +379,14 @@ impl CompiledEval {
         nodes: &HashMap<String, NodeDef>,
         eval_order: &[String],
         input_index: &HashMap<String, HashMap<String, (String, String)>>,
+        string_input_index: &HashMap<String, HashMap<String, (String, String)>>,
         in_names: &[String],
     ) -> Self {
         let mut slot_names: Vec<(String, String)> = Vec::new();
         let mut slot_index: HashMap<(String, String), usize, FxBuildHasher> = HashMap::default();
+        let mut str_slot_names: Vec<(String, String)> = Vec::new();
+        let mut str_slot_index: HashMap<(String, String), usize, FxBuildHasher> =
+            HashMap::default();
         let mut ops: Vec<CompiledOp> = Vec::new();
         // ProtocolSource 帧源表 (去重): node_id → frame_sources 下标
         let mut frame_sources: Vec<String> = Vec::new();
@@ -378,10 +425,8 @@ impl CompiledEval {
                 NodeKind::Math { op, input_count } => {
                     let inputs = (0..*input_count)
                         .map(|i| {
-                            let in_name = in_names
-                                .get(i)
-                                .cloned()
-                                .unwrap_or_else(|| format!("in{i}"));
+                            let in_name =
+                                in_names.get(i).cloned().unwrap_or_else(|| format!("in{i}"));
                             resolve_slot(input_index, &slot_index, node_id, &in_name)
                         })
                         .collect();
@@ -458,12 +503,75 @@ impl CompiledEval {
                         out,
                     });
                 }
+                NodeKind::Str { op, num } => {
+                    // 输入按 StrOp::input_ports() 端口表顺序紧凑拆分为两个 Vec
+                    // (只含同 domain 端口, 与 StrOp::evaluate 的 str_inputs/num_inputs
+                    // 紧凑对齐约定一致; run 与 evaluate 均按此解析):
+                    // - String 端口 → str_inputs: 经 string_input_index 反查上游
+                    //   (node, "result") 的字符串槽位; 查不到 (未连接, 或上游是
+                    //   Trigger.text 这类尚无字符串槽位的节点) = None ↔ 缺省 ""
+                    // - F32 端口 → num_inputs (无边 = None) + num_defaults
+                    //   (编译期从 num 捕获的内联回退值, 与 num_inputs 等长)
+                    let mut str_inputs = Vec::new();
+                    let mut num_inputs = Vec::new();
+                    let mut num_defaults = Vec::new();
+                    for (name, domain) in op.input_ports() {
+                        match domain {
+                            PortDomain::String => str_inputs.push(resolve_slot(
+                                string_input_index,
+                                &str_slot_index,
+                                node_id,
+                                name,
+                            )),
+                            PortDomain::F32 => {
+                                num_inputs.push(resolve_slot(
+                                    input_index,
+                                    &slot_index,
+                                    node_id,
+                                    name,
+                                ));
+                                num_defaults.push(str_num_default(num, name));
+                            }
+                            PortDomain::Bytes => {} // Str 端口表无 Bytes, 防御
+                        }
+                    }
+                    // 输出端口固定 "result", 域由 op 决定
+                    let (text_out, num_out) = match op.output_domain() {
+                        PortDomain::String => (
+                            Some(alloc_slot(
+                                &mut str_slot_names,
+                                &mut str_slot_index,
+                                node_id,
+                                "result",
+                            )),
+                            None,
+                        ),
+                        PortDomain::F32 => (
+                            None,
+                            Some(alloc_slot(
+                                &mut slot_names,
+                                &mut slot_index,
+                                node_id,
+                                "result",
+                            )),
+                        ),
+                        PortDomain::Bytes => (None, None), // output_domain 无 Bytes, 防御
+                    };
+                    ops.push(CompiledOp::Str {
+                        op: *op,
+                        str_inputs,
+                        num_inputs,
+                        num_defaults,
+                        text_out,
+                        num_out,
+                    });
+                }
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }
                 | NodeKind::Transport { .. }
                 | NodeKind::Protocol { .. }
                 | NodeKind::Trigger { .. } => {
-                    // 无 f32 输出的节点不应出现在 eval_order 中, 防御性跳过
+                    // 无值平面输出的节点不应出现在 eval_order 中, 防御性跳过
                 }
             }
         }
@@ -485,6 +593,8 @@ impl CompiledEval {
             ops,
             spectrum_slots,
             frame_sources,
+            str_slot_names,
+            str_slot_index,
         }
     }
 }

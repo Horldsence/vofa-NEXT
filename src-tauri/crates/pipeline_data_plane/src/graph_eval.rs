@@ -10,9 +10,9 @@
 
 use crate::eval_state::GraphEvalState;
 use buffer_databuffer::DataBuffer;
-use vofa_core::DataFrame;
 use node_engine::{CompiledGraph, SourceFramesMap};
 use node_kind::NodeKind;
+use vofa_core::DataFrame;
 
 /// eval 段细分耗时 (纳秒累计, 由调用方汇入数据平面指标)
 #[derive(Default)]
@@ -22,6 +22,9 @@ pub struct EvalBreakdown {
     pub derived_ns: u64,
     pub spectrum_ns: u64,
 }
+
+/// 每 graph 一组槽位缓冲 (slots, written, str_slots, str_written), 批内跨帧复用
+type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
 
 /// 图是否被指定源触发:
 /// - 引用了该 Protocol 源 (ProtocolSource.node_id == source_id) → 触发
@@ -59,6 +62,8 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     let mut ifft_states = eval_state.ifft_states.lock();
 
     let mut combined: node_engine::ValuesMap = Default::default();
+    // 字符串输出占位: 本任务只把签名改通, 发布接线 (text_output_snapshot) 由后续任务完成
+    let mut combined_str = node_engine::StringValuesMap::default();
     for (_, graph) in graphs.iter() {
         let out = graph.evaluate(
             source_frames,
@@ -67,6 +72,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
             &mut filter_states,
             &decoder_states,
             &mut ifft_states,
+            &mut combined_str,
         );
         for (k, v) in out {
             combined.insert(k, v);
@@ -138,12 +144,18 @@ pub fn process_source_batch(
         .filter(|g| graph_triggered_by(g, source_id))
         .collect();
 
-    // 槽位缓冲: 每 graph 一组 (slots, written), 批内跨帧复用
-    let mut slot_bufs: Vec<(Vec<f32>, Vec<bool>)> = graph_list
+    // 槽位缓冲: 每 graph 一组, 批内跨帧复用
+    let mut slot_bufs: Vec<SlotBufs> = graph_list
         .iter()
         .map(|g| {
             let n = g.compiled().slot_count();
-            (vec![0.0; n], vec![false; n])
+            let sn = g.compiled().str_slot_count();
+            (
+                vec![0.0; n],
+                vec![false; n],
+                vec![String::new(); sn],
+                vec![false; sn],
+            )
         })
         .collect();
 
@@ -189,10 +201,12 @@ pub fn process_source_batch(
         // 2. 评估被触发的图 (编译期槽位表, 纯数组读写零字符串哈希)
         let t = std::time::Instant::now();
         for (gi, g) in graph_list.iter().enumerate() {
-            let (slots, written) = &mut slot_bufs[gi];
-            // 每帧清零 (memset): slots 防上帧值泄漏, written 复刻 "本帧未产出 = 键不存在"
+            let (slots, written, str_slots, str_written) = &mut slot_bufs[gi];
+            // 每帧清零 (memset/clear): slots 防上帧值泄漏, written 复刻 "本帧未产出 = 键不存在"
             slots.fill(0.0);
             written.fill(false);
+            str_slots.iter_mut().for_each(String::clear);
+            str_written.fill(false);
             g.compiled().run(
                 source_frames,
                 &input_values,
@@ -202,6 +216,8 @@ pub fn process_source_batch(
                 &mut ifft_states,
                 slots,
                 written,
+                str_slots,
+                str_written,
             );
         }
         breakdown.graph_eval_ns += t.elapsed().as_nanos() as u64;
@@ -209,7 +225,7 @@ pub fn process_source_batch(
         // 3. 收集派生值 (批首预计算索引, 与 push_frame 时间戳对齐; 仅 written 槽位)
         let t = std::time::Instant::now();
         for &(gi, slot, buf_idx) in &derived_edges {
-            let (slots, written) = &slot_bufs[gi];
+            let (slots, written, ..) = &slot_bufs[gi];
             if written[slot] {
                 buffer.push_derived_idx(buf_idx, slots[slot]);
             }
@@ -220,7 +236,7 @@ pub fn process_source_batch(
         let t = std::time::Instant::now();
         if !analyzers.is_empty() {
             for (gi, g) in graph_list.iter().enumerate() {
-                let (slots, written) = &slot_bufs[gi];
+                let (slots, written, ..) = &slot_bufs[gi];
                 for (sink_id, value) in g.compiled().spectrum_values(slots, written) {
                     if let Some(analyzer) = analyzers.get_mut(sink_id) {
                         analyzer.push(value);
@@ -236,7 +252,7 @@ pub fn process_source_batch(
         if i & 0x3FF == 0x3FF && last_publish.elapsed() >= PUBLISH_INTERVAL {
             let mut snap = eval_state.output_snapshot.lock();
             for (gi, g) in graph_list.iter().enumerate() {
-                let (slots, written) = &slot_bufs[gi];
+                let (slots, written, ..) = &slot_bufs[gi];
                 g.compiled().materialize(slots, written, &mut snap.values);
             }
             snap.tick = snap.tick.wrapping_add(1);
@@ -253,7 +269,7 @@ pub fn process_source_batch(
         snap.graphs_version = graphs_version;
     }
     for (gi, g) in graph_list.iter().enumerate() {
-        let (slots, written) = &slot_bufs[gi];
+        let (slots, written, ..) = &slot_bufs[gi];
         g.compiled().materialize(slots, written, &mut snap.values);
     }
     snap.tick = snap.tick.wrapping_add(1);
