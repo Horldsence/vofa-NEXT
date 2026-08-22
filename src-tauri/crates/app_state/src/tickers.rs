@@ -12,7 +12,27 @@ use std::collections::HashMap;
 use std::time::Duration;
 use dsp_fft::SpectrumResult;
 
-/// 字符串输出推送循环 — 自适应速率推送 custom_text_outputs 到所有订阅者
+/// 合并自定义文本输出与后端图求值字符串输出 — 同 (widget, port) 键以后端求值为准
+///
+/// custom_text_outputs: 前端 submit_custom_text_output 写入 (Trigger/Custom JS 节点)
+/// graph_string_outputs: 后端图求值写入 (Str 节点, 见 graph_eval 发布点)
+/// 逐端口深合并: 同 widget 不同 port 并存, 同 port 时 graph 覆盖 custom
+fn merge_string_outputs(
+    custom: &HashMap<String, HashMap<String, String>>,
+    graph: &HashMap<String, HashMap<String, String>>,
+) -> HashMap<String, HashMap<String, String>> {
+    let mut merged = custom.clone();
+    for (node_id, ports) in graph {
+        let entry = merged.entry(node_id.clone()).or_default();
+        for (port, value) in ports {
+            entry.insert(port.clone(), value.clone());
+        }
+    }
+    merged
+}
+
+/// 字符串输出推送循环 — 自适应速率推送 custom_text_outputs ⊕ graph_string_outputs
+/// 合并视图 (同键以后者为准) 到所有订阅者
 ///
 /// 订阅者通过 invoke('subscribe_string_outputs', on_event: Channel) 加入
 /// Channel 关闭时自动移除
@@ -25,9 +45,11 @@ pub async fn text_output_ticker(state: GraphEvalState) {
 
     loop {
         tokio::time::sleep(rate.current()).await;
-        // 把当前 custom_text_outputs 同步到快照 (递增 tick)
+        // 把当前 custom_text_outputs ⊕ graph_string_outputs 合并视图同步到快照 (递增 tick)
         let snap = {
-            let current = state.custom_text_outputs.lock().clone();
+            let custom = state.custom_text_outputs.lock().clone();
+            let graph = state.graph_string_outputs.lock().clone();
+            let current = merge_string_outputs(&custom, &graph);
             let mut s = state.text_output_snapshot.lock();
             let changed = s.values != current;
             if !changed && s.tick > 0 {
@@ -199,3 +221,46 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
 /// 但保留 import 以确认该类型的可见性。
 #[allow(dead_code)]
 fn _force_import(_: StreamGroupState) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn str_map(entries: &[(&str, &str, &str)]) -> HashMap<String, HashMap<String, String>> {
+        let mut m: HashMap<String, HashMap<String, String>> = HashMap::new();
+        for &(node, port, value) in entries {
+            m.entry(node.to_string())
+                .or_default()
+                .insert(port.to_string(), value.to_string());
+        }
+        m
+    }
+
+    #[test]
+    fn merge_prefers_graph_on_same_key() {
+        let custom = str_map(&[("w1", "text", "custom"), ("w1", "extra", "keep")]);
+        let graph = str_map(&[("w1", "text", "graph")]);
+        let merged = merge_string_outputs(&custom, &graph);
+        // 同 (widget, port) 键: 后端求值覆盖前端提交
+        assert_eq!(merged["w1"]["text"], "graph");
+        // 同 widget 不同 port: 并存 (深合并, 非整节点覆盖)
+        assert_eq!(merged["w1"]["extra"], "keep");
+    }
+
+    #[test]
+    fn merge_keeps_disjoint_entries() {
+        let custom = str_map(&[("trig1", "text", "hit")]);
+        let graph = str_map(&[("str1", "result", "ABC")]);
+        let merged = merge_string_outputs(&custom, &graph);
+        assert_eq!(merged["trig1"]["text"], "hit");
+        assert_eq!(merged["str1"]["result"], "ABC");
+    }
+
+    #[test]
+    fn merge_handles_empty_sides() {
+        let custom = str_map(&[("trig1", "text", "hit")]);
+        assert_eq!(merge_string_outputs(&custom, &HashMap::new()), custom);
+        let graph = str_map(&[("str1", "result", "ABC")]);
+        assert_eq!(merge_string_outputs(&HashMap::new(), &graph), graph);
+    }
+}

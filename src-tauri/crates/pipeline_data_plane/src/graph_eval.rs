@@ -12,6 +12,7 @@ use crate::eval_state::GraphEvalState;
 use buffer_databuffer::DataBuffer;
 use node_engine::{CompiledGraph, SourceFramesMap};
 use node_kind::NodeKind;
+use std::collections::HashMap;
 use vofa_core::DataFrame;
 
 /// eval 段细分耗时 (纳秒累计, 由调用方汇入数据平面指标)
@@ -25,6 +26,36 @@ pub struct EvalBreakdown {
 
 /// 每 graph 一组槽位缓冲 (slots, written, str_slots, str_written), 批内跨帧复用
 type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
+
+/// StringValuesMap (FxHash) 深合并进快照 map (std hasher) — 移动语义, 字符串零 clone
+///
+/// 同 (node, port) 覆盖写; 两侧 hasher 不同 (FxHash vs SipHash) 故逐条目迁移
+fn merge_str_map(
+    src: node_engine::StringValuesMap,
+    dst: &mut HashMap<String, HashMap<String, String>>,
+) {
+    for (node_id, ports) in src {
+        dst.entry(node_id).or_default().extend(ports);
+    }
+}
+
+/// 物化当前帧各图的 str 槽位 → 合并进 graph_string_outputs (仅快照发布点调用, 稀疏)
+///
+/// 覆盖写语义同 f32 materialize: 仅 written 置位槽位物化, 未触发图旧值保留
+/// (latest-value 融合); 过期键清理由发布点侧的 graphs_version 检查负责
+fn publish_str_slots(
+    graph_list: &[&CompiledGraph],
+    slot_bufs: &[SlotBufs],
+    out: &mut HashMap<String, HashMap<String, String>>,
+) {
+    let mut buf = node_engine::StringValuesMap::default();
+    for (gi, g) in graph_list.iter().enumerate() {
+        let (_, _, str_slots, str_written) = &slot_bufs[gi];
+        g.compiled()
+            .materialize_str(str_slots, str_written, &mut buf);
+    }
+    merge_str_map(buf, out);
+}
 
 /// 图是否被指定源触发:
 /// - 引用了该 Protocol 源 (ProtocolSource.node_id == source_id) → 触发
@@ -62,7 +93,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     let mut ifft_states = eval_state.ifft_states.lock();
 
     let mut combined: node_engine::ValuesMap = Default::default();
-    // 字符串输出占位: 本任务只把签名改通, 发布接线 (text_output_snapshot) 由后续任务完成
+    // 字符串输出: 各图求值结果累积于此, 求值后全量覆盖写进 graph_string_outputs
     let mut combined_str = node_engine::StringValuesMap::default();
     for (_, graph) in graphs.iter() {
         let out = graph.evaluate(
@@ -85,6 +116,13 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
         snap.tick = snap.tick.wrapping_add(1);
         snap.values = combined.clone();
     }
+
+    // 更新后端字符串输出 (供 text_output_ticker 合并发布) —
+    // 全量覆盖写: combined_str 覆盖所有图, 先物化到本地 map 再整体 swap,
+    // 过期节点条目随 swap 清理 (同 snap.values 语义)
+    let mut str_map: HashMap<String, HashMap<String, String>> = HashMap::new();
+    merge_str_map(combined_str, &mut str_map);
+    *eval_state.graph_string_outputs.lock() = str_map;
 
     // 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口
     // analyzer 的创建/删除由 spectrum_ticker 在每 tick 开头与 graphs 同步
@@ -250,12 +288,20 @@ pub fn process_source_batch(
         //    (物化当前帧槽位直接合并进 snap.values — 覆盖写, 未触发图旧值保留)
         //    注: 快照发布 (步骤 5/6) 不计入细分耗时 (物化 + 锁, 发布点稀疏)
         if i & 0x3FF == 0x3FF && last_publish.elapsed() >= PUBLISH_INTERVAL {
-            let mut snap = eval_state.output_snapshot.lock();
-            for (gi, g) in graph_list.iter().enumerate() {
-                let (slots, written, ..) = &slot_bufs[gi];
-                g.compiled().materialize(slots, written, &mut snap.values);
+            {
+                let mut snap = eval_state.output_snapshot.lock();
+                for (gi, g) in graph_list.iter().enumerate() {
+                    let (slots, written, ..) = &slot_bufs[gi];
+                    g.compiled().materialize(slots, written, &mut snap.values);
+                }
+                snap.tick = snap.tick.wrapping_add(1);
             }
-            snap.tick = snap.tick.wrapping_add(1);
+            // 字符串输出与 f32 同点发布 (节流对齐, 仅 written 置位槽位物化)
+            publish_str_slots(
+                &graph_list,
+                &slot_bufs,
+                &mut eval_state.graph_string_outputs.lock(),
+            );
             last_publish = std::time::Instant::now();
         }
     }
@@ -263,14 +309,29 @@ pub fn process_source_batch(
     // 6. 批尾最终发布 (保证批尾帧的值一定可见) —
     //    图重编译后旧快照含过期节点 → 先清空再物化, 保证过期键不回流
     //    (清空后未触发图的键暂时消失, 待其源触发或快照评估时重建 — latest-value 语义)
-    let mut snap = eval_state.output_snapshot.lock();
-    if snap.graphs_version != graphs_version {
-        snap.values.clear();
-        snap.graphs_version = graphs_version;
+    let version_changed = {
+        let mut snap = eval_state.output_snapshot.lock();
+        let changed = snap.graphs_version != graphs_version;
+        if changed {
+            snap.values.clear();
+            snap.graphs_version = graphs_version;
+        }
+        for (gi, g) in graph_list.iter().enumerate() {
+            let (slots, written, ..) = &slot_bufs[gi];
+            g.compiled().materialize(slots, written, &mut snap.values);
+        }
+        snap.tick = snap.tick.wrapping_add(1);
+        changed
+    };
+
+    // 字符串输出批尾发布: 与 f32 快照同一生命周期 —
+    // 图重编译时同步清空 (过期节点 id 不回流), 再覆盖写本批物化结果
+    if version_changed {
+        eval_state.graph_string_outputs.lock().clear();
     }
-    for (gi, g) in graph_list.iter().enumerate() {
-        let (slots, written, ..) = &slot_bufs[gi];
-        g.compiled().materialize(slots, written, &mut snap.values);
-    }
-    snap.tick = snap.tick.wrapping_add(1);
+    publish_str_slots(
+        &graph_list,
+        &slot_bufs,
+        &mut eval_state.graph_string_outputs.lock(),
+    );
 }

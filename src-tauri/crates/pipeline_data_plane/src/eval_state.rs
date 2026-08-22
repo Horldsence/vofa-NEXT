@@ -96,6 +96,11 @@ pub struct GraphEvalState {
     pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
     /// 字符串输出 (Trigger 控件匹配字符串类型规则时写入)
     pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    /// 后端图求值字符串输出 (Str 节点等, 由 process_source_batch / evaluate_snapshot_now 写入)
+    /// 与 custom_text_outputs 合并发布 (同键以本 map 为准);
+    /// 生命周期对齐 output_snapshot: 图重编译 (graphs_version 变化) 时随批尾发布点清空重建,
+    /// 快照评估 (evaluate_snapshot_now) 为全量覆盖写
+    pub graph_string_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     /// 字符串输出快照 (与 output_snapshot 平行, 由 text_output_ticker 推送)
     pub text_output_snapshot: Arc<Mutex<StringOutputSnapshot>>,
     /// 字符串输出订阅者
@@ -131,9 +136,12 @@ pub struct GraphEvalState {
 /// `AppState::new()` 与 `DataPlaneState::new()` 都调用此函数保证两份 `GraphEvalState`
 /// (各自的字段值) 通过同一个 Arc 共享同源数据 (例如 `graphs` / `graphs_version` /
 /// `source_frames` 等)。
+///
+/// `graph_string_outputs` 仅经 `GraphEvalState` 共享 (无其他持有方), 故函数内部创建,
+/// 不占用参数位 (Arc 构造非 const, 本函数因此不是 const fn)
 #[allow(clippy::too_many_arguments)]
 #[must_use]
-pub const fn build_graph_eval_state(
+pub fn build_graph_eval_state(
     graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
     graphs_version: Arc<AtomicU64>,
     input_values: Arc<Mutex<HashMap<String, f32>>>,
@@ -163,6 +171,7 @@ pub const fn build_graph_eval_state(
         output_subscribers,
         custom_input_subscribers,
         custom_text_outputs,
+        graph_string_outputs: Arc::new(Mutex::new(HashMap::new())),
         text_output_snapshot,
         text_output_subscribers,
         filter_states,
