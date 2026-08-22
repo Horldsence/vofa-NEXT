@@ -242,6 +242,7 @@ fn test_same_id_protocol_and_protocol_source_coexist() {
         &mut std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),
+        &mut std::collections::HashMap::new(),
         &mut StringValuesMap::default(),
     );
     assert_eq!(values.get("pt").and_then(|p| p.get("ch0")), Some(&1.5));

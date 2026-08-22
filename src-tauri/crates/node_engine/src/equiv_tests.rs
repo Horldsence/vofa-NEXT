@@ -42,6 +42,7 @@ fn test_collect_spectrum_inputs() {
         &mut HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
+        &mut HashMap::new(),
         &mut StringValuesMap::default(),
     );
 
@@ -73,6 +74,7 @@ fn test_spectrum_sink_no_output_in_evaluate() {
         &HashMap::new(),
         &mut HashMap::new(),
         &HashMap::new(),
+        &mut HashMap::new(),
         &mut HashMap::new(),
         &mut StringValuesMap::default(),
     );
@@ -115,6 +117,7 @@ fn test_ifft_node_reads_playback_buffer() {
             &mut HashMap::new(),
             &HashMap::new(),
             &mut ifft_states,
+            &mut HashMap::new(),
             &mut StringValuesMap::default(),
         );
         assert_eq!(out.get("ifft1").and_then(|m| m.get("out0")), Some(&1.0));
@@ -199,6 +202,7 @@ fn test_compiled_eval_equivalence() {
             &mut fs_a,
             &decoder_states,
             &mut HashMap::new(),
+            &mut HashMap::new(),
             &mut out_a,
             &mut out_str_a,
         );
@@ -213,6 +217,7 @@ fn test_compiled_eval_equivalence() {
             &custom_outputs,
             &mut fs_b,
             &decoder_states,
+            &mut HashMap::new(),
             &mut HashMap::new(),
             &mut slots,
             &mut written,
@@ -236,6 +241,7 @@ fn test_compiled_eval_equivalence() {
         &custom_outputs,
         &mut fs_a,
         &decoder_states,
+        &mut HashMap::new(),
         &mut HashMap::new(),
         &mut out_a,
         &mut StringValuesMap::default(),
@@ -302,6 +308,7 @@ fn test_compiled_eval_str_equivalence() {
             &mut fs_a,
             &decoder_states,
             &mut HashMap::new(),
+            &mut HashMap::new(),
             &mut out_a,
             &mut out_str_a,
         );
@@ -316,6 +323,7 @@ fn test_compiled_eval_str_equivalence() {
             &custom_outputs,
             &mut fs_b,
             &decoder_states,
+            &mut HashMap::new(),
             &mut HashMap::new(),
             &mut slots,
             &mut written,
@@ -332,4 +340,167 @@ fn test_compiled_eval_str_equivalence() {
         assert!(out_str_a.contains_key("mid1"));
         assert!(out_str_a.contains_key("up1"));
     }
+}
+
+/// Trigger 等价性: auto rising (number 规则) + auto level (string 规则 → Str 链)
+/// + manual (string 规则) 混合图 — 100 帧逐帧断言 ValuesMap + StringValuesMap 一致
+///   (trigger_states 两份独立状态, 仿 fs_a/fs_b 模式; 覆盖"未激活帧不写槽位"语义)
+#[test]
+#[allow(clippy::cast_precision_loss)] // 帧号转 f32 构造确定性输入, 精度无关
+fn test_compiled_eval_trigger_equivalence() {
+    use node_trigger::{TriggerMatchType, TriggerState};
+
+    let nodes = vec![
+        make_protocol_source("ps1", "t1", "proto1", 2),
+        // auto rising: ch0 在 0/5 间交替 (5 帧高分组) → 每组只触发一次
+        make_trigger(
+            "tr_rise",
+            "t1",
+            "auto",
+            "rising",
+            "",
+            vec![trigger_rule(
+                "r1",
+                TriggerMatchType::Range,
+                "1..10",
+                "number",
+                7.0,
+                "",
+            )],
+        ),
+        // auto level: ch1 恒在 20..22 → string 规则每帧命中
+        make_trigger(
+            "tr_lvl",
+            "t1",
+            "auto",
+            "level",
+            "",
+            vec![trigger_rule(
+                "r2",
+                TriggerMatchType::Range,
+                "20..30",
+                "string",
+                0.0,
+                "HI",
+            )],
+        ),
+        // manual: 恒定 string 命中
+        make_trigger(
+            "tr_man",
+            "t1",
+            "manual",
+            "level",
+            "GO",
+            vec![trigger_rule(
+                "r3",
+                TriggerMatchType::Exact,
+                "GO",
+                "string",
+                0.0,
+                "ok",
+            )],
+        ),
+        make_str("up1", "t1", node_kind::StrOp::Upper),
+        make_math("m1", "t1", MathOp::Add, 2),
+    ];
+    let edges = vec![
+        edge("e1", "ps1", "ch0", "tr_rise", "trigger"),
+        edge("e2", "ps1", "ch1", "tr_lvl", "trigger"),
+        edge("e3", "tr_lvl", "text", "up1", "str"),
+        edge("e4", "tr_rise", "value", "m1", "in0"),
+        edge("e5", "tr_rise", "matched", "m1", "in1"),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+    let custom_outputs = HashMap::new();
+    let decoder_states = HashMap::new();
+    let mut fs_a = HashMap::new();
+    let mut fs_b = HashMap::new();
+    let mut ts_a: HashMap<String, TriggerState> = HashMap::new();
+    let mut ts_b: HashMap<String, TriggerState> = HashMap::new();
+
+    let compiled = g.compiled();
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
+
+    for frame_idx in 0..100u32 {
+        // ch0: 5 帧高 (5.0) / 5 帧低 (0.0) 交替 — rising 每组触发一次, level 持续
+        // ch1: 20 + (idx % 3) ∈ {20,21,22} — level 每帧命中 string 规则
+        let ch0 = if frame_idx % 10 < 5 { 5.0 } else { 0.0 };
+        let ch1 = 20.0 + (frame_idx % 3) as f32;
+        let frames = source_frames(&[("proto1", vec![ch0, ch1])]);
+        // 老路径: evaluate_into
+        let mut out_a = ValuesMap::default();
+        let mut out_str_a = StringValuesMap::default();
+        g.evaluate_into(
+            &frames,
+            &HashMap::new(),
+            &custom_outputs,
+            &mut fs_a,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut ts_a,
+            &mut out_a,
+            &mut out_str_a,
+        );
+        // 新路径: compiled.run + materialize / materialize_str (每帧清零)
+        slots.fill(0.0);
+        written.fill(false);
+        str_slots.iter_mut().for_each(String::clear);
+        str_written.fill(false);
+        compiled.run(
+            &frames,
+            &HashMap::new(),
+            &custom_outputs,
+            &mut fs_b,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut ts_b,
+            &mut slots,
+            &mut written,
+            &mut str_slots,
+            &mut str_written,
+        );
+        let mut out_b = ValuesMap::default();
+        compiled.materialize(&slots, &written, &mut out_b);
+        let mut out_str_b = StringValuesMap::default();
+        compiled.materialize_str(&str_slots, &str_written, &mut out_str_b);
+        assert_eq!(out_a, out_b, "帧 {frame_idx} 数值输出不一致");
+        assert_eq!(out_str_a, out_str_b, "帧 {frame_idx} 字符串输出不一致");
+    }
+
+    // 收尾行为抽查 (两路径已逐帧等价, 这里验证 Trigger 语义确实被覆盖):
+    // 帧 99: frame_idx % 10 = 9 → ch0 = 0 (tr_rise 未激活, 无输出); tr_lvl 命中
+    assert!(ts_a.contains_key("tr_rise") && ts_a.contains_key("tr_lvl"));
+    let mut out_a = ValuesMap::default();
+    let mut out_str_a = StringValuesMap::default();
+    let frames = source_frames(&[("proto1", vec![5.0, 20.0])]); // ch0 0→5 上升沿
+    g.evaluate_into(
+        &frames,
+        &HashMap::new(),
+        &custom_outputs,
+        &mut fs_a,
+        &decoder_states,
+        &mut HashMap::new(),
+        &mut ts_a,
+        &mut out_a,
+        &mut out_str_a,
+    );
+    // prev(帧99)=0 → 本帧 5.0 是上升沿: value=7, matched=1, m1 = 7+1 = 8
+    assert_eq!(
+        out_a.get("tr_rise").and_then(|m| m.get("value")),
+        Some(&7.0)
+    );
+    assert_eq!(out_a.get("m1").and_then(|m| m.get("result")), Some(&8.0));
+    // tr_lvl level 命中 string 规则 → text 经 Upper → "HI"; tr_man manual 命中
+    assert_eq!(
+        out_str_a.get("up1").and_then(|m| m.get("result")),
+        Some(&"HI".to_string())
+    );
+    assert_eq!(
+        out_str_a.get("tr_man").and_then(|m| m.get("text")),
+        Some(&"ok".to_string())
+    );
 }

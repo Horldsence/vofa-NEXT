@@ -78,7 +78,8 @@ fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
 /// 事件驱动快照评估 — 以 source_frames 现状评估所有图并发布 output_snapshot
 ///
 /// 步骤:
-/// 1. 对每个图调用 evaluate (传入 filter_states + decoder_states, 逐点滤波/解码跨帧持久化)
+/// 1. 对每个图调用 evaluate (传入 filter_states + decoder_states + trigger_states,
+///    逐点滤波/解码/触发匹配状态跨帧持久化)
 /// 2. 合并所有图输出到 output_snapshot
 /// 3. 遍历所有图的 SpectrumSink, 从 output_snapshot 取输入值, push 到对应 analyzer
 ///
@@ -91,6 +92,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     let mut filter_states = eval_state.filter_states.lock();
     let decoder_states = eval_state.decoder_states.lock();
     let mut ifft_states = eval_state.ifft_states.lock();
+    let mut trigger_states = eval_state.trigger_states.lock();
 
     let mut combined: node_engine::ValuesMap = Default::default();
     // 字符串输出: 各图求值结果累积于此, 求值后全量覆盖写进 graph_string_outputs
@@ -103,6 +105,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
             &mut filter_states,
             &decoder_states,
             &mut ifft_states,
+            &mut trigger_states,
             &mut combined_str,
         );
         for (k, v) in out {
@@ -172,6 +175,7 @@ pub fn process_source_batch(
     let mut filter_states = eval_state.filter_states.lock();
     let decoder_states = eval_state.decoder_states.lock();
     let mut ifft_states = eval_state.ifft_states.lock();
+    let mut trigger_states = eval_state.trigger_states.lock();
     // analyzer 锁整批持有 (与 spectrum_ticker 同为 graphs → analyzers 顺序, 无死锁)
     let mut analyzers = eval_state.spectrum_analyzers.lock();
 
@@ -252,6 +256,7 @@ pub fn process_source_batch(
                 &mut filter_states,
                 &decoder_states,
                 &mut ifft_states,
+                &mut trigger_states,
                 slots,
                 written,
                 str_slots,

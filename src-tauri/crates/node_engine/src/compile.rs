@@ -37,7 +37,7 @@ pub struct CompiledGraph {
     /// 字符串路由边 (两端端口域均为 String) — 参与值平面拓扑排序, 供慢路径解析字符串输入
     pub(crate) string_edges: Vec<Edge>,
     /// 拓扑序 — 仅包含有 f32/String 输出的节点
-    /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str)
+    /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger)
     /// Sink/SpectrumSink/Transport/Protocol 不参与值平面评估
     pub(crate) eval_order: Vec<String>,
     /// 反向索引: target_node → (target_handle → (source_node, source_handle))
@@ -508,8 +508,7 @@ impl CompiledEval {
                     // (只含同 domain 端口, 与 StrOp::evaluate 的 str_inputs/num_inputs
                     // 紧凑对齐约定一致; run 与 evaluate 均按此解析):
                     // - String 端口 → str_inputs: 经 string_input_index 反查上游
-                    //   (node, "result") 的字符串槽位; 查不到 (未连接, 或上游是
-                    //   Trigger.text 这类尚无字符串槽位的节点) = None ↔ 缺省 ""
+                    //   (node, port) 的字符串槽位; 查不到 (未连接) = None ↔ 缺省 ""
                     // - F32 端口 → num_inputs (无边 = None) + num_defaults
                     //   (编译期从 num 捕获的内联回退值, 与 num_inputs 等长)
                     let mut str_inputs = Vec::new();
@@ -566,11 +565,40 @@ impl CompiledEval {
                         num_out,
                     });
                 }
+                NodeKind::Trigger {
+                    mode,
+                    edge,
+                    default_miss,
+                    default_miss_text,
+                    command,
+                    rules,
+                } => {
+                    // value/matched 分配 f32 槽位, text 分配字符串槽位
+                    // (Trigger.text 由此可被 Str 字符串输入解析, 补上字符串平面缺口);
+                    // auto 模式的 "trigger" 输入端口经 input_index 解析 (无边 = None → 0.0)
+                    let trigger_in = resolve_slot(input_index, &slot_index, node_id, "trigger");
+                    let value = alloc_slot(&mut slot_names, &mut slot_index, node_id, "value");
+                    let matched = alloc_slot(&mut slot_names, &mut slot_index, node_id, "matched");
+                    let text =
+                        alloc_slot(&mut str_slot_names, &mut str_slot_index, node_id, "text");
+                    ops.push(CompiledOp::Trigger {
+                        node_id: node_id.clone(),
+                        mode: mode.clone(),
+                        edge: edge.clone(),
+                        default_miss: *default_miss,
+                        default_miss_text: default_miss_text.clone(),
+                        command: command.clone(),
+                        rules: rules.clone(),
+                        trigger_in,
+                        value,
+                        matched,
+                        text,
+                    });
+                }
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }
                 | NodeKind::Transport { .. }
-                | NodeKind::Protocol { .. }
-                | NodeKind::Trigger { .. } => {
+                | NodeKind::Protocol { .. } => {
                     // 无值平面输出的节点不应出现在 eval_order 中, 防御性跳过
                 }
             }

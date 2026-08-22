@@ -16,6 +16,7 @@ use dsp_filter::DigitalFilter;
 use dsp_fft::{IfftState, SpectrumAnalyzer, SpectrumResult};
 use node_engine::{CompiledGraph, SourceFramesMap};
 use node_frame_decoder::FrameParser;
+use node_trigger::TriggerState;
 
 /// 单个图输出快照 — 通过 Channel 推送到前端
 ///
@@ -108,6 +109,11 @@ pub struct GraphEvalState {
     /// Filter 节点状态 (跨帧持久化, 逐点滤波)
     /// key: Filter widget id, value: DigitalFilter (含 FIR 延迟线 / IIR biquad 状态)
     pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
+    /// Trigger 节点状态 (跨帧持久化: regex/glob 匹配缓存 + auto 模式边沿检测 prev 值)
+    /// key: Trigger widget id, value: TriggerState —
+    /// 生命周期仿 filter_states: 求值时懒建, 匹配器配置 (rules/default_miss*)
+    /// 变更时重建, 节点删除时由 data_plane::reconcile 清理
+    pub trigger_states: Arc<Mutex<HashMap<String, TriggerState>>>,
     /// FrameDecoder 节点状态 (跨帧持久化, 字节流解析状态机)
     /// key: FrameDecoder widget id, value: FrameParser (含 buf/state/last_frame)
     /// 由字节路由在命中 FrameDecoder 下游时经 feed_decoder_by_id 喂入
@@ -137,8 +143,8 @@ pub struct GraphEvalState {
 /// (各自的字段值) 通过同一个 Arc 共享同源数据 (例如 `graphs` / `graphs_version` /
 /// `source_frames` 等)。
 ///
-/// `graph_string_outputs` 仅经 `GraphEvalState` 共享 (无其他持有方), 故函数内部创建,
-/// 不占用参数位 (Arc 构造非 const, 本函数因此不是 const fn)
+/// `graph_string_outputs` 与 `trigger_states` 仅经 `GraphEvalState` 共享 (无其他持有方),
+/// 故函数内部创建, 不占用参数位 (Arc 构造非 const, 本函数因此不是 const fn)
 #[allow(clippy::too_many_arguments)]
 #[must_use]
 pub fn build_graph_eval_state(
@@ -175,6 +181,7 @@ pub fn build_graph_eval_state(
         text_output_snapshot,
         text_output_subscribers,
         filter_states,
+        trigger_states: Arc::new(Mutex::new(HashMap::new())),
         decoder_states,
         decoder_raw_collectors,
         spectrum_analyzers,

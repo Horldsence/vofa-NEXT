@@ -9,7 +9,9 @@ use app_state::AppState;
 use pipeline_data_plane::DataPlaneState;
 use schema_types::{ProtocolConfig, TestDataLink};
 use vofa_core::TransportConfig;
+use node_engine::CompiledGraph;
 use node_kind::{NodeDef, NodeKind};
+use node_trigger::TriggerState;
 
 fn transport_node(id: &str, tab: &str) -> NodeDef {
     NodeDef {
@@ -113,4 +115,44 @@ async fn reconcile_cleans_protocol_buffers() {
 
     assert!(plane.protocol_states.lock().is_empty());
     assert!(plane.buffers.lock().is_empty());
+}
+
+/// Trigger 节点删除 → trigger_states 清理 (存活集来自各 tab 编译图的 Trigger 节点)
+#[tokio::test]
+async fn reconcile_cleans_trigger_states() {
+    let state = AppState::new();
+    let plane = state.data_plane.clone();
+    // t1 图内含一个 Trigger 节点
+    let g = CompiledGraph::compile(
+        "t1".into(),
+        vec![NodeDef {
+            id: "tr1".into(),
+            tab_id: "t1".into(),
+            kind: NodeKind::Trigger {
+                mode: "manual".into(),
+                edge: "level".into(),
+                default_miss: 0.0,
+                default_miss_text: String::new(),
+                command: String::new(),
+                rules: vec![],
+            },
+        }],
+        vec![],
+    )
+    .unwrap();
+    plane.eval.graphs.lock().insert("t1".into(), g);
+    {
+        let mut ts = plane.eval.trigger_states.lock();
+        ts.insert("tr1".into(), TriggerState::new(vec![], 0.0, String::new()));
+        ts.insert(
+            "tr_gone".into(),
+            TriggerState::new(vec![], 0.0, String::new()),
+        );
+    }
+
+    plane.reconcile().await;
+
+    let ts = plane.eval.trigger_states.lock();
+    assert!(ts.contains_key("tr1"), "存活 Trigger 节点状态应保留");
+    assert!(!ts.contains_key("tr_gone"), "已删除 Trigger 节点状态应清理");
 }

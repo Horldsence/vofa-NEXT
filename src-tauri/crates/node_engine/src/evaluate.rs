@@ -15,6 +15,7 @@ use dsp_window::WindowType;
 
 use node_frame_decoder::FrameParser;
 use node_kind::{DecoderBlockDef, NodeKind, PortDomain, StrResult};
+use node_trigger::TriggerState;
 
 use crate::compile::CompiledGraph;
 use crate::eval::{
@@ -27,8 +28,8 @@ impl CompiledGraph {
     /// 返回所有节点的输出端口值
     ///
     /// 返回: HashMap<widgetId, HashMap<portId, f32>>
-    ///   - 包含 ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str 的输出
-    ///     (Str 的 F32 域结果写入返回值, String 域结果写入 `out_str`)
+    ///   - 包含 ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger 的输出
+    ///     (Str 与 Trigger 的 F32 域结果写入返回值, String 域结果写入 `out_str`)
     ///   - 不包含 Sink / SpectrumSink / Transport / Protocol (无值平面输出)
     ///
     /// `source_frames`: 多源 latest-value 融合缓存 — 每个 Protocol 源独立缓存
@@ -42,6 +43,11 @@ impl CompiledGraph {
     /// `decoder_states`: 帧解码器状态 (跨帧持久化), key = FrameDecoder 节点 id
     ///   由调用方 (data_loop) 喂入字节流并更新 last_frame。
     ///   evaluate 阶段仅读取 last_frame 缓存的 outputs + 附加端口 (valid/frame_count/last_timestamp/fps)。
+    ///
+    /// `trigger_states`: Trigger 节点状态 (跨帧持久化), key = Trigger 节点 id
+    ///   首次遇到 Trigger 节点时按其配置创建 TriggerState 并存入;
+    ///   匹配器相关配置 (rules/default_miss/default_miss_text) 变化时自动重建
+    ///   (同 Filter 的 kind 变化重建); mode/edge/command 求值时现读, 不触发重建。
     pub fn evaluate(
         &self,
         source_frames: &SourceFramesMap,
@@ -50,6 +56,7 @@ impl CompiledGraph {
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
         ifft_states: &mut HashMap<String, IfftState>,
+        trigger_states: &mut HashMap<String, TriggerState>,
         out_str: &mut StringValuesMap,
     ) -> ValuesMap {
         let mut out = ValuesMap::default();
@@ -60,6 +67,7 @@ impl CompiledGraph {
             filter_states,
             decoder_states,
             ifft_states,
+            trigger_states,
             &mut out,
             out_str,
         );
@@ -85,6 +93,7 @@ impl CompiledGraph {
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
         ifft_states: &mut HashMap<String, IfftState>,
+        trigger_states: &mut HashMap<String, TriggerState>,
         out: &mut ValuesMap,
         out_str: &mut StringValuesMap,
     ) {
@@ -277,11 +286,55 @@ impl CompiledGraph {
                         }
                     }
                 }
+                NodeKind::Trigger {
+                    mode,
+                    edge,
+                    default_miss,
+                    default_miss_text,
+                    command,
+                    rules,
+                } => {
+                    // 懒初始化 / 配置变更重建 (仿 Filter arm; 仅匹配器相关字段参与比较)
+                    let need_rebuild = trigger_states
+                        .get(node_id)
+                        .is_none_or(|s| !s.matches_config(rules, *default_miss, default_miss_text));
+                    if need_rebuild {
+                        trigger_states.insert(
+                            node_id.clone(),
+                            TriggerState::new(
+                                rules.clone(),
+                                *default_miss,
+                                default_miss_text.clone(),
+                            ),
+                        );
+                    }
+                    let state = trigger_states.get_mut(node_id).unwrap();
+                    // manual: 每帧以 command 匹配; auto: "trigger" 输入上游值边沿检测,
+                    // 未激活帧不产出 (对齐前端 useEffect: 不调用 runMatch → 端口保持上次值)
+                    let result = if mode == "auto" {
+                        let tv = self.resolve_input(node_id, "trigger", out);
+                        state.eval_auto(edge, tv)
+                    } else {
+                        Some(state.eval_manual(command))
+                    };
+                    // 分派对齐前端 runMatch: string 规则命中 → text 写字符串平面
+                    // (value 不覆盖); number 命中/miss → value 写数值平面
+                    // (text 不覆盖, 保持上次字符串值); matched 两种情形都写
+                    if let Some(r) = result {
+                        let m = node_out_entry(out, node_id);
+                        if r.output_type == "string" {
+                            let sm = node_out_str_entry(out_str, node_id);
+                            set_str_port(sm, "text", &r.text);
+                        } else {
+                            set_port(m, "value", r.value);
+                        }
+                        set_port(m, "matched", if r.matched { 1.0 } else { 0.0 });
+                    }
+                }
                 NodeKind::Sink
                 | NodeKind::SpectrumSink { .. }
                 | NodeKind::Transport { .. }
-                | NodeKind::Protocol { .. }
-                | NodeKind::Trigger { .. } => {
+                | NodeKind::Protocol { .. } => {
                     // 无值平面输出的节点不应出现在 eval_order 中, 防御性跳过
                 }
             }
@@ -307,7 +360,7 @@ impl CompiledGraph {
     }
 
     /// 解析某节点某字符串输入端口的上游输出值
-    /// (经 string_input_index; 无边 / 上游未产出 (如 Trigger.text 尚无后端输出) → "")
+    /// (经 string_input_index; 无边 / 上游本帧未产出 (如 auto Trigger 未激活) → "")
     fn resolve_str_input<'a>(
         &self,
         node_id: &str,

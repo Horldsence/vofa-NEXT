@@ -13,6 +13,7 @@ use vofa_core::DataFrame;
 
 use node_frame_decoder::FrameParser;
 use node_kind::{MathOp, StrNumParams, StrOp, StrResult};
+use node_trigger::{TriggerRuleDef, TriggerState};
 
 use crate::{StringValuesMap, ValuesMap};
 
@@ -126,6 +127,24 @@ pub enum CompiledOp {
         text_out: Option<usize>,
         num_out: Option<usize>,
     },
+    /// Trigger: 经 trigger_states[node_id] 求值 (懒建 / 配置变更重建, 与 evaluate_into 一致)
+    /// - manual: 每帧以 command 匹配; auto: trigger_in 槽位值边沿检测, 未激活帧不写任何槽位
+    /// - 分派 (对齐前端 runMatch): string 规则命中 → text 字符串槽位 + matched 数值槽位
+    ///   (value 不覆盖); number 命中/miss → value + matched 数值槽位 (text 不覆盖)
+    Trigger {
+        node_id: String,
+        mode: String,
+        edge: String,
+        default_miss: f32,
+        default_miss_text: String,
+        command: String,
+        rules: Vec<TriggerRuleDef>,
+        /// auto 模式 "trigger" 输入端口的上游槽位 (None = 未连接, 与缺省 0.0 对应)
+        trigger_in: Option<usize>,
+        value: usize,
+        matched: usize,
+        text: usize,
+    },
 }
 
 /// 编译期槽位评估表 — CompiledGraph::compile 时构建, 逐帧评估纯数组读写
@@ -180,6 +199,8 @@ impl CompiledEval {
     ///   源缺失或通道越界时对应端口写 0.0 (与未连接语义一致)。
     /// `slots` / `written` 由调用方分配 (长度 == slot_count) 并跨帧复用;
     /// `str_slots` / `str_written` 同理 (长度 == str_slot_count, 字符串缓冲跨帧复用分配)。
+    /// `trigger_states`: Trigger 节点状态 (跨帧持久化, key = Trigger 节点 id) —
+    ///   懒建 / 配置变更重建, 语义与 filter_states 一致 (见 evaluate_into)。
     /// 调用方负责每帧清零 (slots/str_slots 防上帧值泄漏, written/str_written 复刻
     /// "本帧未产出 = 键不存在")。
     /// op 写槽位时置位 written — FrameDecoder 无 parser / Custom 无回传以外的
@@ -193,6 +214,7 @@ impl CompiledEval {
         filter_states: &mut HashMap<String, DigitalFilter>,
         decoder_states: &HashMap<String, FrameParser>,
         ifft_states: &mut HashMap<String, IfftState>,
+        trigger_states: &mut HashMap<String, TriggerState>,
         slots: &mut [f32],
         written: &mut [bool],
         str_slots: &mut [String],
@@ -364,6 +386,55 @@ impl CompiledEval {
                                 written[*o] = true;
                             }
                         }
+                    }
+                }
+                CompiledOp::Trigger {
+                    node_id,
+                    mode,
+                    edge,
+                    default_miss,
+                    default_miss_text,
+                    command,
+                    rules,
+                    trigger_in,
+                    value,
+                    matched,
+                    text,
+                } => {
+                    // 懒初始化 / 配置变更重建 (与 evaluate_into 的 Trigger arm 一致)
+                    let need_rebuild = trigger_states
+                        .get(node_id)
+                        .is_none_or(|s| !s.matches_config(rules, *default_miss, default_miss_text));
+                    if need_rebuild {
+                        trigger_states.insert(
+                            node_id.clone(),
+                            TriggerState::new(
+                                rules.clone(),
+                                *default_miss,
+                                default_miss_text.clone(),
+                            ),
+                        );
+                    }
+                    let state = trigger_states.get_mut(node_id).unwrap();
+                    // manual: 每帧以 command 匹配; auto: 边沿检测, 未激活帧不产出
+                    let result = if mode == "auto" {
+                        let tv = trigger_in.map_or(0.0, |s| slots[s]);
+                        state.eval_auto(edge, tv)
+                    } else {
+                        Some(state.eval_manual(command))
+                    };
+                    // 分派对齐前端 runMatch: string 命中 → text 字符串槽位 (value 不覆盖);
+                    // number 命中/miss → value 数值槽位 (text 不覆盖); matched 两种情形都写
+                    if let Some(r) = result {
+                        if r.output_type == "string" {
+                            str_slots[*text] = r.text;
+                            str_written[*text] = true;
+                        } else {
+                            slots[*value] = r.value;
+                            written[*value] = true;
+                        }
+                        slots[*matched] = if r.matched { 1.0 } else { 0.0 };
+                        written[*matched] = true;
                     }
                 }
             }

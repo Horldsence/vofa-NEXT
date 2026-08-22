@@ -6,6 +6,7 @@
 //! - Protocol 节点: protocol_states / source_frames 由 `sync_protocol_states` 清理,
 //!   本模块补清 buffers (key = Protocol 节点 id)
 //! - raw_collectors (key = Transport 节点 id): 无对应 Transport 节点的键移除
+//! - trigger_states (key = Trigger 节点 id): 已不存在于任一 tab 图的键移除
 //! - 悬空 ProtocolSource (引用的 node_id 不是全局表中的 Protocol 节点):
 //!   不编译失败, 仅 log::warn (按 graphs_version 去重, 每个图版本最多警告一次)
 
@@ -17,22 +18,26 @@ use node_kind::NodeKind;
 use super::DataPlaneState;
 
 /// 全局节点表快照: Transport 节点 id 集 / Protocol 节点 id 集 /
-/// 悬空 ProtocolSource 列表 (ProtocolSource 节点 id, 引用的 node_id)
+/// 悬空 ProtocolSource 列表 (ProtocolSource 节点 id, 引用的 node_id) /
+/// 存活 Trigger 节点 id 集 (trigger_states 清理依据)
 struct NodeSets {
     transports: HashSet<String>,
     protocols: HashSet<String>,
     dangling_sources: Vec<(String, String)>,
+    triggers: HashSet<String>,
 }
 
 /// 提取 reconcile 所需的键集 (锁内一次性快照):
 /// Transport/Protocol 集合来自全局节点表; ProtocolSource 是 tab 数值平面的
-/// 帧源引用 (不进全局表), 悬空检测扫描各 tab 编译图的节点表。
+/// 帧源引用 (不进全局表), 悬空检测扫描各 tab 编译图的节点表;
+/// Trigger 同为 tab 数值平面节点, 存活集一并从编译图收集。
 fn snapshot_node_sets(plane: &DataPlaneState) -> NodeSets {
     let nodes = plane.global_nodes.lock();
     let mut sets = NodeSets {
         transports: HashSet::new(),
         protocols: HashSet::new(),
         dangling_sources: Vec::new(),
+        triggers: HashSet::new(),
     };
     for n in nodes.values() {
         match &n.kind {
@@ -48,14 +53,20 @@ fn snapshot_node_sets(plane: &DataPlaneState) -> NodeSets {
     // 悬空 ProtocolSource: 引用的 node_id 不是全局表中的 Protocol 节点
     for g in plane.eval.graphs.lock().values() {
         for n in g.nodes().values() {
-            if let NodeKind::ProtocolSource { node_id, .. } = &n.kind {
-                let target_is_protocol = matches!(
-                    nodes.get(node_id).map(|t| &t.kind),
-                    Some(NodeKind::Protocol { .. })
-                );
-                if !target_is_protocol {
-                    sets.dangling_sources.push((n.id.clone(), node_id.clone()));
+            match &n.kind {
+                NodeKind::ProtocolSource { node_id, .. } => {
+                    let target_is_protocol = matches!(
+                        nodes.get(node_id).map(|t| &t.kind),
+                        Some(NodeKind::Protocol { .. })
+                    );
+                    if !target_is_protocol {
+                        sets.dangling_sources.push((n.id.clone(), node_id.clone()));
+                    }
                 }
+                NodeKind::Trigger { .. } => {
+                    sets.triggers.insert(n.id.clone());
+                }
+                _ => {}
             }
         }
     }
@@ -108,5 +119,10 @@ impl DataPlaneState {
         self.raw_collectors
             .lock()
             .retain(|id, _| sets.transports.contains(id));
+        // trigger_states: 仅保留仍存在于任一 tab 图的 Trigger 节点键 (节点删除清理)
+        self.eval
+            .trigger_states
+            .lock()
+            .retain(|id, _| sets.triggers.contains(id));
     }
 }

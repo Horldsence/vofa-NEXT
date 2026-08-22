@@ -9,6 +9,7 @@ use vofa_core::config::TransportConfig;
 use vofa_core::DataFrame;
 
 use node_kind::{MathOp, NodeDef, NodeKind, StrNumParams, StrOp};
+use node_trigger::{TriggerMatchType, TriggerRuleDef};
 
 use crate::SourceFramesMap;
 
@@ -163,6 +164,50 @@ pub fn edge(id: &str, src: &str, src_h: &str, tgt: &str, tgt_h: &str) -> Edge {
         source_handle: src_h.to_string(),
         target: tgt.to_string(),
         target_handle: tgt_h.to_string(),
+    }
+}
+
+/// Trigger 匹配规则 (number 或 string 输出)
+pub fn trigger_rule(
+    id: &str,
+    mt: TriggerMatchType,
+    pattern: &str,
+    output_type: &str,
+    output_value: f32,
+    output_text: &str,
+) -> TriggerRuleDef {
+    TriggerRuleDef {
+        id: id.to_string(),
+        pattern: pattern.to_string(),
+        match_type: mt,
+        flags: None,
+        output_type: output_type.to_string(),
+        output_value,
+        output_text: output_text.to_string(),
+        enabled: true,
+    }
+}
+
+/// Trigger 节点 (default_miss = -1, default_miss_text = "MISS", 便于测试断言)
+pub fn make_trigger(
+    id: &str,
+    tab_id: &str,
+    mode: &str,
+    edge: &str,
+    command: &str,
+    rules: Vec<TriggerRuleDef>,
+) -> NodeDef {
+    NodeDef {
+        id: id.to_string(),
+        tab_id: tab_id.to_string(),
+        kind: NodeKind::Trigger {
+            mode: mode.to_string(),
+            edge: edge.to_string(),
+            default_miss: -1.0,
+            default_miss_text: "MISS".to_string(),
+            command: command.to_string(),
+            rules,
+        },
     }
 }
 

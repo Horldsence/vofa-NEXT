@@ -151,13 +151,13 @@ pub enum NodeKind {
     /// Command (CommandSender) 另有 "loopbackOut" 字节出口 (命令字节 → 字节平面)
     Sink,
     /// 触发器节点 (Trigger)
-    /// 匹配逻辑在前端 useEffect 中调用 `match_trigger_command`,
-    /// 结果经 `submit_custom_output` / `submit_custom_text_output` 推回 graphOutputs。
-    /// 后端仅占位使 serde 能识别 kind 字段 — 不参与后端求值 (类似 Sink)。
+    /// 由后端图求值驱动 (evaluate / CompiledEval): manual 模式每帧以 command 匹配,
+    /// auto 模式对 "trigger" 输入端口上游值做边沿检测 (level/rising) 后匹配,
+    /// 匹配状态跨帧持久于 trigger_states (regex/glob 缓存 + prev 值)。
     /// 输出端口:
-    ///   - `value` (F32)   — number 规则的 output_value
+    ///   - `value` (F32)   — number 规则的 output_value (string 规则命中时不覆盖)
     ///   - `matched` (F32) — 是否命中 (1/0)
-    ///   - `text` (String) — string 规则的 output_value
+    ///   - `text` (String) — string 规则的 output_text (number 命中/miss 时不覆盖)
     Trigger {
         /// 模式: 'manual' | 'auto'
         mode: String,
