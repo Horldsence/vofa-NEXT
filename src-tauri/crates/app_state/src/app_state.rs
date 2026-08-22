@@ -38,7 +38,8 @@ pub struct AppState {
     /// key: widget_id, value: portId -> value
     /// 由前端 invoke('submit_custom_output') 更新
     pub custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
-    /// 字符串输出 (Trigger 控件匹配字符串类型规则时写入)
+    /// 字符串输出 (Custom JS widget 字符串输出回传通道;
+    /// Trigger 的字符串规则输出已由后端图求值直接产出)
     /// key: widget_id, value: portId -> string
     /// 由前端 invoke('submit_custom_text_output') 更新
     pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,

@@ -79,7 +79,8 @@ export function submitCustomOutput(
   return invoke('submit_custom_output', { widgetId, outputs });
 }
 
-/// 提交字符串输出 — Trigger 控件命中字符串类型规则时调用
+/// 提交字符串输出 — Custom JS widget 字符串输出回传通道
+/// (Trigger 的字符串规则输出已由后端图求值直接产出, 不再走此命令; 当前前端无调用方)
 /// 后端写入 custom_text_outputs 并经 text_output_ticker 推送给订阅者 (TextDisplay)
 export function submitCustomTextOutput(
   widgetId: string,

@@ -44,7 +44,8 @@ pub struct CustomInputBatch {
 
 /// 字符串输出快照 — 与 graphOutputs 平行的字符串平面
 ///
-/// Trigger widget 命中字符串类型规则时, 通过 `submit_custom_text_output` 写入;
+/// 来源: 后端图求值的字符串输出 (Trigger/Str 节点, graph_string_outputs)
+/// 与 Custom JS 回传 (custom_text_outputs) 的合并;
 /// 后端 ticker 把最新快照推给前端 (TextDisplay 控件读取显示)。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct StringOutputSnapshot {
@@ -95,7 +96,8 @@ pub struct GraphEvalState {
     pub output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
     pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
     pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
-    /// 字符串输出 (Trigger 控件匹配字符串类型规则时写入)
+    /// 字符串输出 (Custom JS widget 字符串输出回传通道;
+    /// Trigger 的字符串规则输出已由后端图求值直接产出)
     pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     /// 后端图求值字符串输出 (Str 节点等, 由 process_source_batch / evaluate_snapshot_now 写入)
     /// 与 custom_text_outputs 合并发布 (同键以本 map 为准);

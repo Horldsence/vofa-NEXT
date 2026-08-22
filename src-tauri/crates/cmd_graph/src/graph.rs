@@ -51,6 +51,16 @@ pub async fn update_tab_graph(
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
 ) -> Result<()> {
+    apply_tab_graph(&state, tab_id, nodes, edges).await
+}
+
+/// `update_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地单测)
+async fn apply_tab_graph(
+    state: &AppState,
+    tab_id: String,
+    nodes: Vec<NodeDef>,
+    edges: Vec<Edge>,
+) -> Result<()> {
     // 1. 本 tab 数值图编译
     let compiled = node_engine::CompiledGraph::compile(tab_id.clone(), nodes.clone(), edges)
         .map_err(|e| Error::Config(ConfigError::GraphCompile(Box::new(e))))?;
@@ -68,7 +78,7 @@ pub async fn update_tab_graph(
     }
 
     // 3. 全局字节平面重建 (失败则不提交任何状态)
-    let plan = rebuild_byte_plan(&state, &candidate, Some((&tab_id, &compiled)))?;
+    let plan = rebuild_byte_plan(state, &candidate, Some((&tab_id, &compiled)))?;
 
     // 4. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号
     state.graphs.lock().insert(tab_id, compiled);
@@ -82,18 +92,28 @@ pub async fn update_tab_graph(
     state.data_plane.sync_protocol_states();
     state.data_plane.reconcile().await;
     sync_decoders_now(&state.eval_state());
+
+    // 6. 立即快照评估一次: 图结构/参数变更必须即时反映到输出,
+    //    不能依赖 transport 数据流 — 无数据流时 manual Trigger 改 command、
+    //    Str 节点内联框编辑也要立即出结果 (同 set_input_value 语义)
+    frame_dispatch::refresh_snapshot(&state.data_plane);
     Ok(())
 }
 
 /// 移除指定 tab 的节点图 (tab 删除时调用)
 #[tauri::command]
 pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Result<()> {
-    state.graphs.lock().remove(&tab_id);
+    apply_remove_tab_graph(&state, &tab_id).await
+}
+
+/// `remove_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地单测)
+async fn apply_remove_tab_graph(state: &AppState, tab_id: &str) -> Result<()> {
+    state.graphs.lock().remove(tab_id);
 
     // 全局节点表移除该 tab 节点 + 重建全局字节平面
     let mut candidate = state.data_plane.global_nodes.lock().clone();
     candidate.retain(|_, n| n.tab_id != tab_id);
-    let plan = rebuild_byte_plan(&state, &candidate, None)?;
+    let plan = rebuild_byte_plan(state, &candidate, None)?;
     *state.data_plane.global_nodes.lock() = candidate;
     *state.data_plane.byte_plan.lock() = plan;
     state
@@ -103,6 +123,10 @@ pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Res
     state.data_plane.sync_protocol_states();
     state.data_plane.reconcile().await;
     sync_decoders_now(&state.eval_state());
+
+    // 立即快照评估一次 (同 update_tab_graph): 被删 tab 节点的输出键
+    // 随全量覆盖写立即从快照清除, 不依赖 transport 数据流
+    frame_dispatch::refresh_snapshot(&state.data_plane);
     Ok(())
 }
 
@@ -139,7 +163,10 @@ pub async fn submit_custom_output(
     Ok(())
 }
 
-/// 提交字符串输出 — Trigger 控件匹配字符串类型规则时调用
+/// 提交字符串输出 — 保留给 Custom JS widget 的字符串输出回传通道
+///
+/// (Trigger 的字符串规则已由后端图求值直接产出, 不再走此命令;
+///  当前前端尚无调用方)
 ///
 /// 写入 `custom_text_outputs` map; 后端 `text_output_ticker` 自适应速率推送给
 /// 订阅了 `subscribe_string_outputs` 的前端 (TextDisplay 控件读取显示)
@@ -286,4 +313,78 @@ pub async fn unsubscribe_spectrum(state: State<'_, AppState>, channel_id: u32) -
     let mut subs = state.spectrum_subscribers.lock();
     subs.retain(|ch| ch.id() != channel_id);
     Ok(())
+}
+
+// ============ 测试 ============
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use node_kind::NodeKind;
+
+    fn input_node(id: &str, tab_id: &str) -> NodeDef {
+        NodeDef {
+            id: id.into(),
+            tab_id: tab_id.into(),
+            kind: NodeKind::Input,
+        }
+    }
+
+    /// update_tab_graph 提交后必须立即快照评估: 无 transport 数据流时,
+    /// 图/参数变更 (manual Trigger 改 command、Str 内联框编辑等) 也要即时
+    /// 反映到 output_snapshot (回归: 曾缺 refresh_snapshot 调用)
+    #[tokio::test]
+    async fn update_tab_graph_refreshes_snapshot() {
+        let state = AppState::new();
+        state.input_values.lock().insert("in1".into(), 7.0);
+
+        apply_tab_graph(&state, "tab1".into(), vec![input_node("in1", "tab1")], vec![])
+            .await
+            .expect("提交图应成功");
+
+        let got = state
+            .data_plane
+            .eval
+            .output_snapshot
+            .lock()
+            .values
+            .get("in1")
+            .and_then(|ports| ports.get("value"))
+            .copied();
+        assert_eq!(got, Some(7.0), "提交后应立即快照评估, Input 值立即可见");
+    }
+
+    /// remove_tab_graph 提交后同样立即快照评估: 快照为全量覆盖写,
+    /// 被删 tab 的节点输出键应立即从快照清除
+    #[tokio::test]
+    async fn remove_tab_graph_refreshes_snapshot() {
+        let state = AppState::new();
+        state.input_values.lock().insert("in1".into(), 3.0);
+        apply_tab_graph(&state, "tab1".into(), vec![input_node("in1", "tab1")], vec![])
+            .await
+            .expect("提交图应成功");
+        assert!(
+            state
+                .data_plane
+                .eval
+                .output_snapshot
+                .lock()
+                .values
+                .contains_key("in1"),
+            "前提: 提交后输出已可见"
+        );
+
+        apply_remove_tab_graph(&state, "tab1")
+            .await
+            .expect("移除图应成功");
+
+        let cleared = !state
+            .data_plane
+            .eval
+            .output_snapshot
+            .lock()
+            .values
+            .contains_key("in1");
+        assert!(cleared, "移除后应立即快照评估, 过期节点键立即清除");
+    }
 }
