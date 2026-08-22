@@ -173,7 +173,13 @@ impl StrOp {
                 let start = to_count(n(0)).clamp(1, len + 1) - 1;
                 let count = to_count(n(1));
                 // LEN=0 → 从 POS 到末尾
-                let end = if count == 0 { len } else { start + count };
+                // saturating_add: LEN 极端值 (f32 ~1e19 饱和到 usize::MAX) 时
+                // start + count 在 debug build 会溢出 panic
+                let end = if count == 0 {
+                    len
+                } else {
+                    start.saturating_add(count)
+                };
                 StrResult::Text(char_slice(src, start, end))
             }
             Self::Concat => {
@@ -199,7 +205,12 @@ impl StrOp {
                 } else {
                     let start = pos.max(1) - 1;
                     let count = to_count(n(1));
-                    let end = if count == 0 { len } else { start + count };
+                    // saturating_add 同 Mid: 防极端 LEN 溢出 panic
+                    let end = if count == 0 {
+                        len
+                    } else {
+                        start.saturating_add(count)
+                    };
                     let (head, tail) = (char_slice(src, 0, start), char_slice(src, end, len));
                     StrResult::Text(format!("{head}{tail}"))
                 }
@@ -214,7 +225,12 @@ impl StrOp {
                 } else {
                     let start = pos.max(1) - 1;
                     let count = to_count(n(1));
-                    let end = if count == 0 { len } else { start + count };
+                    // saturating_add 同 Mid: 防极端 LEN 溢出 panic
+                    let end = if count == 0 {
+                        len
+                    } else {
+                        start.saturating_add(count)
+                    };
                     let (head, mid, tail) =
                         (char_slice(src, 0, start), s(1), char_slice(src, end, len));
                     StrResult::Text(format!("{head}{mid}{tail}"))
@@ -409,6 +425,21 @@ mod tests {
         assert_eq!(text(StrOp::Reverse.evaluate(&["hello"], &[])), "olleh");
         // 多字节反转按字符 (非字节)
         assert_eq!(text(StrOp::Reverse.evaluate(&["你好"], &[])), "好你");
+    }
+
+    // ---- 极端 LEN 溢出防护 ----
+    // f32 1e20 超 usize::MAX → to_count 饱和到 usize::MAX,
+    // start + count 在 debug build 会溢出 panic (saturating_add 修复)
+    #[test]
+    fn test_huge_len_no_overflow() {
+        let huge = 1e20_f32;
+        // LEN 越界语义不变: 截取/删除/替换到末尾为止
+        assert_eq!(text(StrOp::Mid.evaluate(&["hello"], &[2.0, huge])), "ello");
+        assert_eq!(text(StrOp::Delete.evaluate(&["hello"], &[2.0, huge])), "h");
+        assert_eq!(
+            text(StrOp::Replace.evaluate(&["hello", "XY"], &[2.0, huge])),
+            "hXY"
+        );
     }
 
     // ---- StrNumParams ----
