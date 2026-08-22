@@ -5,6 +5,7 @@
 
 import { memo, useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
+import { resolveStringSource } from '../../../lib/utils/stringPorts';
 import type { WidgetConfig, TextDisplayConfig } from '../../../types';
 
 interface TextDisplayProps {
@@ -20,8 +21,15 @@ const FONT_SIZE_CLASS: Record<TextDisplayConfig['fontSize'], string> = {
 
 export const TextDisplay = memo(function TextDisplay({ widget, onRemove }: TextDisplayProps) {
   const { id, fontSize, monospace } = widget.params;
-  // 读字符串平面: 与 graphOutputs 平行存在的 customTextOutputs
-  const text = useAppStore((s) => s.customTextOutputs[id]?.text ?? '');
+  // 边解析 (仿 useGraphInput 数值版): 有边连到 text 口 → 读上游字符串平面;
+  // 无边 → 回退读自己 id (兼容旧图: 旧后端曾直接写 customTextOutputs[id].text)
+  const edges = useAppStore((s) => s.rfEdges);
+  const src = resolveStringSource(edges, id, 'text');
+  const source = src?.source;
+  const handle = src?.handle ?? 'text';
+  const text = useAppStore((s) =>
+    (source ? s.customTextOutputs[source]?.[handle] : s.customTextOutputs[id]?.text) ?? ''
+  );
 
   const wrapperCls = useMemo(
     () =>

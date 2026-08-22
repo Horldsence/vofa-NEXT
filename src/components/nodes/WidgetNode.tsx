@@ -28,6 +28,7 @@ import { FilterWidget } from '../displays/widgets/FilterWidget';
 import { FFTWidget } from '../displays/widgets/FFTWidget';
 import { IFFTWidget } from '../displays/widgets/IFFTWidget';
 import { TextDisplay } from '../displays/widgets/TextDisplay';
+import { StrWidget } from '../displays/widgets/StrWidget';
 
 /// 端口定义 — domain 标注该端口承载的是时域还是频域信号
 export interface WidgetPort {
@@ -389,11 +390,11 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
           />
         );
       case 'Str':
-        // 字符串操作控件: 节点内占位显示当前 op (节点体组件未就位, 端口/连线已可用)
         return (
-          <div className="flex items-center justify-center px-2 py-3 text-text-secondary text-[10px]">
-            <span>Str {widget.params.op}</span>
-          </div>
+          <StrWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'Str' }>}
+            onRemove={onRemove}
+          />
         );
       case 'Model3D':
     case 'Spectrum':
