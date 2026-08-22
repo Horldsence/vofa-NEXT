@@ -11,7 +11,9 @@ const categoryTileClass: Record<WidgetCategory, string> = {
   input: 'bg-blue/15 text-blue group-hover:bg-blue/25',
   display: 'bg-green/15 text-green group-hover:bg-green/25',
   math: 'bg-orange/15 text-orange group-hover:bg-orange/25',
-  string: 'bg-yellow/15 text-yellow group-hover:bg-yellow/25',
+  // string 主题色 #ff8a65 (橙红): 色板机制只支持既有 token, red (#f48771)
+  // 是色相最接近的既有类, 且与 math 的 orange (#ce9178) 可区分
+  string: 'bg-red/15 text-red group-hover:bg-red/25',
   custom: 'bg-purple/15 text-purple group-hover:bg-purple/25',
 };
 

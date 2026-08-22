@@ -704,7 +704,7 @@ domainTime: Time
 domainFreq: Freq
 domainString: String
 domainMismatchTitle: Domain mismatch
-domainMismatchMsg: Ports of different domains cannot be connected (time / freq / bytes are mutually exclusive)
+domainMismatchMsg: Ports of different domains cannot be connected (time / freq / bytes / string are mutually exclusive)
 
 # 3D Model widget
 model3d: 3D Model
