@@ -3,7 +3,8 @@
 //! 逐节点 map 语义求值 (相对 [`CompiledEval::run`] 的槽位快路径):
 //! - 语义参考实现, 用于单帧调试评估与槽位路径的等价性校验
 //! - 帧来源: `source_frames` 多源最新帧缓存 (key = 全局 Protocol 节点 id),
-//!   ProtocolSource 节点从对应源的 channels 读值; 源缺失/越界写 0.0
+//!   ProtocolSource 节点从对应源的 channels 读值; 源缺失/越界写 0.0;
+//!   "str" 端口 (String 域) 改从 `source_texts` 读值写 `out_str`
 //!
 //! [`CompiledEval::run`]: crate::eval::CompiledEval::run
 
@@ -20,6 +21,7 @@ use node_trigger::TriggerState;
 use crate::compile::CompiledGraph;
 use crate::eval::{
     node_out_entry, node_out_str_entry, set_port, set_str_port, str_num_default, SourceFramesMap,
+    SourceTextsMap,
 };
 use crate::{StringValuesMap, ValuesMap};
 
@@ -34,6 +36,10 @@ impl CompiledGraph {
     ///
     /// `source_frames`: 多源 latest-value 融合缓存 — 每个 Protocol 源独立缓存
     ///   最近一帧, ProtocolSource 求值时按 node_id 从对应源读取通道值。
+    ///
+    /// `source_texts`: 每源最新文本缓存 (key = Protocol 节点 id, RawData 协议写入) —
+    ///   ProtocolSource 的 "str" 端口 (String 域) 从此读取写 `out_str`;
+    ///   源无缓存时不写 (保持上次值, 对齐 Trigger 未激活帧语义)。
     ///
     /// `filter_states`: 滤波器状态 (跨帧持久化), key = Filter 节点 id
     ///   首次遇到 Filter 节点时按其 kind 创建 DigitalFilter 并存入;
@@ -51,6 +57,7 @@ impl CompiledGraph {
     pub fn evaluate(
         &self,
         source_frames: &SourceFramesMap,
+        source_texts: &SourceTextsMap,
         input_values: &HashMap<String, f32>,
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
@@ -62,6 +69,7 @@ impl CompiledGraph {
         let mut out = ValuesMap::default();
         self.evaluate_into(
             source_frames,
+            source_texts,
             input_values,
             custom_outputs,
             filter_states,
@@ -88,6 +96,7 @@ impl CompiledGraph {
     pub fn evaluate_into(
         &self,
         source_frames: &SourceFramesMap,
+        source_texts: &SourceTextsMap,
         input_values: &HashMap<String, f32>,
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
@@ -109,14 +118,24 @@ impl CompiledGraph {
                     port_names,
                 } => {
                     let frame = source_frames.get(source_id);
-                    let m = node_out_entry(out, node_id);
                     let names =
                         node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
                     for (i, name) in names.iter().enumerate() {
+                        if name == "str" {
+                            // "str" 端口 (String 域, RawData 原始字节文本): 跳过 F32 写入,
+                            // 改从 source_texts 读值写字符串平面; 源无缓存时不写
+                            // (保持上次值, 对齐 Trigger 未激活帧语义)
+                            if let Some(text) = source_texts.get(source_id) {
+                                let sm = node_out_str_entry(out_str, node_id);
+                                set_str_port(sm, "str", text);
+                            }
+                            continue;
+                        }
                         let v = frame
                             .and_then(|f| f.channels.get(i))
                             .copied()
                             .unwrap_or(0.0);
+                        let m = node_out_entry(out, node_id);
                         set_port(m, name, v);
                     }
                 }

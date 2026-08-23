@@ -88,6 +88,7 @@ fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
 pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &SourceFramesMap) {
     let input_values = eval_state.input_values.lock().clone();
     let custom_outputs = eval_state.custom_outputs.lock().clone();
+    let source_texts = eval_state.source_texts.lock();
     let graphs = eval_state.graphs.lock();
     let mut filter_states = eval_state.filter_states.lock();
     let decoder_states = eval_state.decoder_states.lock();
@@ -100,6 +101,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     for (_, graph) in graphs.iter() {
         let out = graph.evaluate(
             source_frames,
+            &source_texts,
             &input_values,
             &custom_outputs,
             &mut filter_states,
@@ -150,7 +152,8 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
 /// - 仅评估被该源触发的图 (graph_triggered_by), 派生回写进该源自己的 buffer
 /// - 每帧先把帧写入 source_frames[source_id] (clone_from 复用分配, 稳态零分配),
 ///   ProtocolSource 槽位经 CompiledEval::run 从 source_frames 直读
-/// - input_values / custom_outputs / graphs / filter_states 等锁每批只拿一次 (同旧版)
+/// - input_values / custom_outputs / source_texts / graphs / filter_states 等锁
+///   每批只拿一次 (同旧版)
 /// - 槽位缓冲批内跨帧复用, 每帧各自清零 (同旧版)
 /// - combined 输出 map 为快照物化缓冲, 图重编译 (graphs_version 变化) 时清空 (同旧版)
 ///
@@ -170,6 +173,7 @@ pub fn process_source_batch(
     }
     let input_values = eval_state.input_values.lock().clone();
     let custom_outputs = eval_state.custom_outputs.lock().clone();
+    let source_texts = eval_state.source_texts.lock();
     let graphs = eval_state.graphs.lock();
     let graphs_version = eval_state.graphs_version.load(Ordering::Relaxed);
     let mut filter_states = eval_state.filter_states.lock();
@@ -251,6 +255,7 @@ pub fn process_source_batch(
             str_written.fill(false);
             g.compiled().run(
                 source_frames,
+                &source_texts,
                 &input_values,
                 &custom_outputs,
                 &mut filter_states,

@@ -411,8 +411,17 @@ impl CompiledEval {
                     let names =
                         node_kind::protocol_source_port_names(port_names.as_deref(), *channels);
                     for (i, port) in names.iter().enumerate() {
-                        let slot = alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
-                        ops.push(CompiledOp::ProtocolSource { src, ch: i, slot });
+                        if port == "str" {
+                            // "str" 端口 (String 域, RawData 原始字节文本) → 字符串槽位,
+                            // 不占数值槽位 (与 port_domain 的域划分一致)
+                            let slot =
+                                alloc_slot(&mut str_slot_names, &mut str_slot_index, node_id, port);
+                            ops.push(CompiledOp::ProtocolSourceStr { src, slot });
+                        } else {
+                            let slot =
+                                alloc_slot(&mut slot_names, &mut slot_index, node_id, port);
+                            ops.push(CompiledOp::ProtocolSource { src, ch: i, slot });
+                        }
                     }
                 }
                 NodeKind::Input => {

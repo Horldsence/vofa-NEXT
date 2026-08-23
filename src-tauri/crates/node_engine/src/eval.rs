@@ -21,6 +21,10 @@ use crate::{StringValuesMap, ValuesMap};
 /// (latest-value 融合: 每个源独立缓存, 求值时按源读取)
 pub type SourceFramesMap = HashMap<String, DataFrame, FxBuildHasher>;
 
+/// 每源最新文本缓存 — key = 全局 Protocol 节点 id, value = 该源原始字节的
+/// UTF-8 lossy 解码文本 (RawData 协议写入, latest-value 融合, 仿 [`SourceFramesMap`])
+pub type SourceTextsMap = HashMap<String, String, FxBuildHasher>;
+
 /// 取节点的输出 map (不存在则创建) — evaluate_into 热路径用
 ///
 /// 不做 clear: 端口覆盖写, 稳态零分配; 过期端口清理由调用方
@@ -80,6 +84,10 @@ pub enum CompiledOp {
     /// ProtocolSource: source_frames[frame_sources[src]].channels[ch] → slot
     /// (源缺失/通道越界写 0.0, 与未连接语义一致)
     ProtocolSource { src: usize, ch: usize, slot: usize },
+    /// ProtocolSource 的 "str" 端口 (String 域, RawData 原始字节文本):
+    /// source_texts[frame_sources[src]] → 字符串槽位; 源无缓存时不写
+    /// (str_written 不置位 → 快照保持上次值, 对齐 Trigger 未激活帧语义)
+    ProtocolSourceStr { src: usize, slot: usize },
     /// Input: input_values[node_id] → slot (缺省 0.0)
     Input { node_id: String, slot: usize },
     /// Math: 从输入槽位收集 → op.evaluate → out 槽位 (输入槽位 None = 常量 0.0)
@@ -199,6 +207,9 @@ impl CompiledEval {
     /// `source_frames`: 多源最新帧缓存 (key = Protocol 节点 id),
     ///   语义为 latest-value 融合 — 每个源独立缓存最近一帧, 本函数逐源读取;
     ///   源缺失或通道越界时对应端口写 0.0 (与未连接语义一致)。
+    /// `source_texts`: 每源最新文本缓存 (key = Protocol 节点 id, RawData 协议写入),
+    ///   ProtocolSource 的 "str" 端口 (String 域) 从此读取; 源无缓存时对应槽位不写
+    ///   (快照保持上次值, 对齐 Trigger 未激活帧语义)。
     /// `slots` / `written` 由调用方分配 (长度 == slot_count) 并跨帧复用;
     /// `str_slots` / `str_written` 同理 (长度 == str_slot_count, 字符串缓冲跨帧复用分配)。
     /// `trigger_states`: Trigger 节点状态 (跨帧持久化, key = Trigger 节点 id) —
@@ -211,6 +222,7 @@ impl CompiledEval {
     pub fn run(
         &self,
         source_frames: &SourceFramesMap,
+        source_texts: &SourceTextsMap,
         input_values: &HashMap<String, f32>,
         custom_outputs: &HashMap<String, HashMap<String, f32>>,
         filter_states: &mut HashMap<String, DigitalFilter>,
@@ -244,6 +256,16 @@ impl CompiledEval {
                         .copied()
                         .unwrap_or(0.0);
                     written[*slot] = true;
+                }
+                CompiledOp::ProtocolSourceStr { src, slot } => {
+                    // 源有缓存文本时写字符串槽位 (复用缓冲原位写, 仿 TextInput);
+                    // 无缓存时不写 (str_written 不置位 → 快照保持上次值)
+                    if let Some(text) = source_texts.get(&self.frame_sources[*src]) {
+                        let s = &mut str_slots[*slot];
+                        s.clear();
+                        s.push_str(text);
+                        str_written[*slot] = true;
+                    }
                 }
                 CompiledOp::Input { node_id, slot } => {
                     slots[*slot] = input_values.get(node_id).copied().unwrap_or(0.0);

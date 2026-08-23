@@ -14,7 +14,7 @@ use tauri::ipc::Channel;
 use buffer_raw::RawDataCollector;
 use dsp_filter::DigitalFilter;
 use dsp_fft::{IfftState, SpectrumAnalyzer, SpectrumResult};
-use node_engine::{CompiledGraph, SourceFramesMap};
+use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use node_frame_decoder::FrameParser;
 use node_trigger::TriggerState;
 
@@ -93,6 +93,10 @@ pub struct GraphEvalState {
     /// 每源最新帧缓存 (key = Protocol 节点 id, latest-value 融合) —
     /// 与 DataPlaneState::source_frames 共享同一 Arc (两平面衔接点)
     pub source_frames: Arc<Mutex<SourceFramesMap>>,
+    /// 每源最新文本缓存 (key = Protocol 节点 id; RawData 协议原始字节 UTF-8 lossy
+    /// 解码, latest-value 融合) — 与 DataPlaneState::source_texts 共享同一 Arc;
+    /// ProtocolSource 的 "str" 端口 (String 域) 求值时读取
+    pub source_texts: Arc<Mutex<SourceTextsMap>>,
     pub output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
     pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
     pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
@@ -158,6 +162,7 @@ pub fn build_graph_eval_state(
     text_output_subscribers: Arc<Mutex<Vec<Channel<StringOutputSnapshot>>>>,
     custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     source_frames: Arc<Mutex<SourceFramesMap>>,
+    source_texts: Arc<Mutex<SourceTextsMap>>,
     output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
     output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
     custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
@@ -175,6 +180,7 @@ pub fn build_graph_eval_state(
         input_values,
         custom_outputs,
         source_frames,
+        source_texts,
         output_snapshot,
         output_subscribers,
         custom_input_subscribers,

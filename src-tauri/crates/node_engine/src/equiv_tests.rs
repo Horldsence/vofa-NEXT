@@ -37,6 +37,7 @@ fn test_collect_spectrum_inputs() {
     let frames = source_frames(&[("proto1", vec![42.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -70,6 +71,7 @@ fn test_spectrum_sink_no_output_in_evaluate() {
     let frames = source_frames(&[("proto1", vec![1.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -112,6 +114,7 @@ fn test_ifft_node_reads_playback_buffer() {
     for _ in 0..(n * 3) {
         let out = g.evaluate(
             &empty_frames(),
+            &empty_texts(),
             &HashMap::new(),
             &HashMap::new(),
             &mut HashMap::new(),
@@ -197,6 +200,7 @@ fn test_compiled_eval_equivalence() {
         let mut out_str_a = StringValuesMap::default();
         g.evaluate_into(
             &frames,
+            &empty_texts(),
             &input_values,
             &custom_outputs,
             &mut fs_a,
@@ -213,6 +217,7 @@ fn test_compiled_eval_equivalence() {
         str_written.fill(false);
         compiled.run(
             &frames,
+            &empty_texts(),
             &input_values,
             &custom_outputs,
             &mut fs_b,
@@ -237,6 +242,7 @@ fn test_compiled_eval_equivalence() {
     let frames = source_frames(&[("proto1", vec![1.0, 2.0, 3.0, 4.0])]);
     g.evaluate_into(
         &frames,
+        &empty_texts(),
         &input_values,
         &custom_outputs,
         &mut fs_a,
@@ -303,6 +309,7 @@ fn test_compiled_eval_str_equivalence() {
         let mut out_str_a = StringValuesMap::default();
         g.evaluate_into(
             &empty_frames(),
+            &empty_texts(),
             &input_values,
             &custom_outputs,
             &mut fs_a,
@@ -319,6 +326,7 @@ fn test_compiled_eval_str_equivalence() {
         str_written.fill(false);
         compiled.run(
             &empty_frames(),
+            &empty_texts(),
             &input_values,
             &custom_outputs,
             &mut fs_b,
@@ -436,6 +444,7 @@ fn test_compiled_eval_trigger_equivalence() {
         let mut out_str_a = StringValuesMap::default();
         g.evaluate_into(
             &frames,
+            &empty_texts(),
             &HashMap::new(),
             &custom_outputs,
             &mut fs_a,
@@ -452,6 +461,7 @@ fn test_compiled_eval_trigger_equivalence() {
         str_written.fill(false);
         compiled.run(
             &frames,
+            &empty_texts(),
             &HashMap::new(),
             &custom_outputs,
             &mut fs_b,
@@ -479,6 +489,7 @@ fn test_compiled_eval_trigger_equivalence() {
     let frames = source_frames(&[("proto1", vec![5.0, 20.0])]); // ch0 0→5 上升沿
     g.evaluate_into(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &custom_outputs,
         &mut fs_a,

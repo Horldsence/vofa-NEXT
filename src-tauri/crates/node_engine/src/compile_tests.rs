@@ -237,6 +237,7 @@ fn test_same_id_protocol_and_protocol_source_coexist() {
     assert!(g.compiled().slot_of("pt", "ch1").is_some());
     let values = g.evaluate(
         &source_frames(&[("pt", vec![1.5, 2.5])]),
+        &empty_texts(),
         &std::collections::HashMap::new(),
         &std::collections::HashMap::new(),
         &mut std::collections::HashMap::new(),

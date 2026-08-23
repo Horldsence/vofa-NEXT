@@ -15,7 +15,7 @@ use buffer_raw::RawDataCollector;
 use can_types::{CanBuffer, CanLoadStats};
 use logic_types::{DecodedBuffer, LogicBuffer};
 use vofa_core::PipelineConfig;
-use node_engine::{CompiledGraph, SourceFramesMap};
+use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use transport_core::TransportManager;
 
 /// 应用全局状态
@@ -105,6 +105,7 @@ impl AppState {
             Arc::new(Mutex::new(pipeline_data_plane::StringOutputSnapshot::default()));
         let text_output_subscribers = Arc::new(Mutex::new(Vec::new()));
         let source_frames = Arc::new(Mutex::new(SourceFramesMap::default()));
+        let source_texts = Arc::new(Mutex::new(SourceTextsMap::default()));
         let output_snapshot = Arc::new(Mutex::new(pipeline_data_plane::GraphOutputSnapshot {
             tick: 0,
             graphs_version: 0,
@@ -138,6 +139,7 @@ impl AppState {
             text_output_subscribers.clone(),
             custom_text_outputs.clone(),
             source_frames.clone(),
+            source_texts.clone(),
             output_snapshot,
             output_subscribers.clone(),
             custom_input_subscribers.clone(),
@@ -153,6 +155,7 @@ impl AppState {
             transport.clone(),
             eval,
             source_frames,
+            source_texts,
             can_buffer.clone(),
             can_load_stats.clone(),
             logic_buffer.clone(),

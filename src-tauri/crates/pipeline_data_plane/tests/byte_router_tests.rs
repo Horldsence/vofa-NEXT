@@ -219,3 +219,57 @@ async fn inject_routes_to_multiple_downstreams() {
     let parser = ds.get("dec").expect("dec parser 应存在");
     assert_eq!(parser.last_frame.outputs.get("v"), Some(&56.0));
 }
+
+/// RawData 协议: 不产帧; 原始字节 UTF-8 lossy 解码进 source_texts + 沿 out 边透传下游
+#[tokio::test]
+async fn rawdata_protocol_caches_text_and_passthrough_out() {
+    // tp.rx → pr.in (RawData), pr.out → dec.in (FrameDecoder)
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(Default::default()),
+                },
+            ),
+            node(
+                "pr",
+                NodeKind::Protocol {
+                    config: ProtocolConfig::RawData,
+                    convert_to: None,
+                    schema: None,
+                },
+            ),
+            u8_decoder("dec"),
+        ],
+        vec![edge("tp", "rx", "pr", "in"), edge("pr", "out", "dec", "in")],
+    );
+    // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
+    let graph = node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
+        .unwrap();
+    plane.eval.graphs.lock().insert("t1".into(), graph);
+
+    let mut cache = DecoderFeedCache::new();
+    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
+    assert_eq!(summary.frames, 0, "RawData 不产帧");
+    assert!(summary.decoders_fed, "原始字节应沿 out 边透传到 FrameDecoder");
+    // source_texts 缓存原始字节的 UTF-8 文本
+    assert_eq!(
+        plane.source_texts.lock().get("pr").map(String::as_str),
+        Some(",8")
+    );
+    // 透传字节被下游解码器消费: ',' 帧头后的字段字节 ('8' = 0x38 = 56)
+    {
+        let ds = plane.eval.decoder_states.lock();
+        let parser = ds.get("dec").expect("dec parser 应存在");
+        assert_eq!(parser.last_frame.outputs.get("v"), Some(&56.0));
+    }
+
+    // UTF-8 lossy: 非法字节序列替换为 U+FFFD (覆盖写, latest-value)
+    let summary = route_bytes(&plane, None, "tp", b"\xff", 0, &mut cache).await;
+    assert_eq!(summary.frames, 0);
+    assert_eq!(
+        plane.source_texts.lock().get("pr").map(String::as_str),
+        Some("\u{FFFD}")
+    );
+}

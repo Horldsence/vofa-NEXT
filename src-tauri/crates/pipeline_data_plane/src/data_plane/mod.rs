@@ -33,7 +33,7 @@ use can_types::{CanBuffer, CanLoadStats};
 use logic_types::{DecodedBuffer, LogicBuffer};
 use schema_types::{ProtocolConfig, ProtocolSchema};
 use vofa_core::PipelineConfig;
-use node_engine::{BytePlan, SourceFramesMap};
+use node_engine::{BytePlan, SourceFramesMap, SourceTextsMap};
 use node_kind::{NodeDef, NodeKind};
 use protocol_engine::ProtocolEngine;
 use transport_core::TransportManager;
@@ -140,6 +140,9 @@ pub struct DataPlaneState {
     pub protocol_states: Arc<Mutex<HashMap<String, Arc<Mutex<ProtocolNodeState>>>>>,
     /// 每源最新帧缓存 (key = Protocol 节点 id, latest-value 融合)
     pub source_frames: Arc<Mutex<SourceFramesMap>>,
+    /// 每源最新文本缓存 (key = Protocol 节点 id; RawData 协议原始字节 UTF-8 lossy 解码,
+    /// latest-value 融合) — ProtocolSource 的 "str" 端口 (String 域) 数据源
+    pub source_texts: Arc<Mutex<SourceTextsMap>>,
     /// 每源数据缓冲区 (key = Protocol 节点 id; 派生键随实例隔离)
     pub buffers: Arc<Mutex<HashMap<String, Arc<Mutex<DataBuffer>>>>>,
     /// 每 Transport 节点 rx 的原始字节收集器
@@ -165,6 +168,7 @@ impl DataPlaneState {
         transport: Arc<tokio::sync::Mutex<TransportManager>>,
         eval: GraphEvalState,
         source_frames: Arc<Mutex<SourceFramesMap>>,
+        source_texts: Arc<Mutex<SourceTextsMap>>,
         can_buffer: Arc<Mutex<CanBuffer>>,
         can_load_stats: Arc<Mutex<CanLoadStats>>,
         logic_buffer: Arc<Mutex<LogicBuffer>>,
@@ -177,6 +181,7 @@ impl DataPlaneState {
             byte_plan: Arc::new(Mutex::new(BytePlan::default())),
             protocol_states: Arc::new(Mutex::new(HashMap::new())),
             source_frames,
+            source_texts,
             buffers: Arc::new(Mutex::new(HashMap::new())),
             raw_collectors: Arc::new(Mutex::new(HashMap::new())),
             read_tasks: Arc::new(Mutex::new(HashMap::new())),
@@ -210,7 +215,7 @@ impl DataPlaneState {
     }
 
     /// 同步 protocol_states 与全局节点表中的 Protocol 节点 (图重编译后调用):
-    /// 新增/配置变更 → 重建引擎; 节点删除 → 移除状态并清理 source_frames 对应项
+    /// 新增/配置变更 → 重建引擎; 节点删除 → 移除状态并清理 source_frames/source_texts 对应项
     pub fn sync_protocol_states(&self) {
         let nodes = self.global_nodes.lock();
         let mut states = self.protocol_states.lock();
@@ -250,9 +255,12 @@ impl DataPlaneState {
             }
         }
         drop(states);
-        // source_frames 清理由 protocol_states 存活集决定
+        // source_frames / source_texts 清理由 protocol_states 存活集决定
         let live: Vec<String> = self.protocol_states.lock().keys().cloned().collect();
         self.source_frames
+            .lock()
+            .retain(|id, _| live.iter().any(|k| k == id));
+        self.source_texts
             .lock()
             .retain(|id, _| live.iter().any(|k| k == id));
     }

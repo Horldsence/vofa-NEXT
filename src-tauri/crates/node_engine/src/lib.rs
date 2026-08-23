@@ -9,6 +9,8 @@
 //! - [`evaluate`]: 慢路径图求值 + 节点查询 — CompiledGraph::evaluate / evaluate_into / 配置访问器
 //! - [`ValuesMap`][]: 输出值表类型别名 (FxHash 优化)
 //! - [`StringValuesMap`][]: 字符串输出值表类型别名 (Str 节点 String 域输出)
+//! - [`SourceFramesMap`][] / [`SourceTextsMap`][]: 每源最新帧/文本缓存类型别名
+//!   (ProtocolSource 的数值/字符串端口数据源)
 //!
 //! 跨模块测试共享:
 //! - [`test_helpers`]: pub(crate) 节点/边/帧源构造器
@@ -43,4 +45,4 @@ pub type StringValuesMap = HashMap<String, HashMap<String, String, FxBuildHasher
 
 pub use byte_plan::{BytePlan, ByteRoute};
 pub use compile::{CompileError, CompiledGraph};
-pub use eval::{CompiledEval, CompiledOp, SourceFramesMap};
+pub use eval::{CompiledEval, CompiledOp, SourceFramesMap, SourceTextsMap};

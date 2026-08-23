@@ -11,7 +11,7 @@ use vofa_core::DataFrame;
 use node_kind::{MathOp, NodeDef, NodeKind, StrNumParams, StrOp};
 use node_trigger::{TriggerMatchType, TriggerRuleDef};
 
-use crate::SourceFramesMap;
+use crate::{SourceFramesMap, SourceTextsMap};
 
 pub fn make_protocol_source(id: &str, tab_id: &str, node_id: &str, channels: usize) -> NodeDef {
     NodeDef {
@@ -229,4 +229,17 @@ pub fn source_frames(frames: &[(&str, Vec<f32>)]) -> SourceFramesMap {
         m.insert(id.to_string(), DataFrame::new(channels.clone()));
     }
     m
+}
+
+/// 空的每源最新文本缓存 (evaluate/run 的 source_texts 参数)
+pub fn empty_texts() -> SourceTextsMap {
+    SourceTextsMap::default()
+}
+
+/// 构造每源最新文本缓存 (key = Protocol 节点 id, RawData 原始字节文本)
+pub fn source_texts(texts: &[(&str, &str)]) -> SourceTextsMap {
+    texts
+        .iter()
+        .map(|(k, v)| (k.to_string(), (*v).to_string()))
+        .collect()
 }

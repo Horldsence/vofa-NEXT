@@ -5,11 +5,14 @@
 //! - Protocol 节点 `in`: 喂入解析引擎 (保留合批后的顺序/并行解析),
 //!   产帧 → [`super::frame_dispatch::on_frames`] 写 source_frames + 触发数值平面;
 //!   can/logic/decoded 旁路进全局缓冲; 若有 convert_to, 输出引擎 encode_frame
-//!   重编码 → 沿本节点 `out` 边递归下推 (BytePlan 拓扑序保证无环, 另有深度上限兜底)
+//!   重编码 → 沿本节点 `out` 边递归下推 (BytePlan 拓扑序保证无环, 另有深度上限兜底);
+//!   RawData 协议不产帧: 原始字节 UTF-8 lossy 解码缓存到 source_texts
+//!   (ProtocolSource "str" 端口数据源), 无 convert_to 时原始字节沿 `out` 边透传下推
 //! - FrameDecoder 节点 `in`/`loopbackIn`: 走 feed_one_decoder 语义 (按边路由)
 //! - Transport 节点 `tx`: registry.send (协议转换回注 / 命令发送落地)
 
 use tauri::AppHandle;
+use schema_types::ProtocolConfig;
 use node_kind::{
     NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE, TRANSPORT_TX_HANDLE,
 };
@@ -137,7 +140,7 @@ async fn route_inner(
     }
 }
 
-/// 喂入 Protocol 节点: 解析 → 帧分发 → 旁路缓冲 → convert 链下推
+/// 喂入 Protocol 节点: 解析 → 帧分发 → 旁路缓冲 → convert 链下推 / RawData 文本缓存+透传
 ///
 /// 并行解析 (feed_parallel) 保留: 积压高时按帧边界切分并行, 积压低走顺序路径;
 /// ParallelFeeder 按 Protocol 节点持有 (tokio mutex 跨 await)。
@@ -247,8 +250,26 @@ async fn feed_protocol(
         summary.eval_ns += super::frame_dispatch::on_frames(plane, proto_id, &out.frames);
     }
 
+    // RawData 判定 + convert 引擎 (一次锁取齐)
+    let (convert_engine, is_raw_data) = {
+        let s = st.lock();
+        (
+            s.convert_engine.clone(),
+            matches!(s.config, ProtocolConfig::RawData),
+        )
+    };
+
+    // RawData 协议不产帧: 原始字节 UTF-8 lossy 解码缓存到 source_texts
+    // (ProtocolSource "str" 端口数据源, latest-value 覆盖写)
+    if is_raw_data {
+        let text = String::from_utf8_lossy(data);
+        plane
+            .source_texts
+            .lock()
+            .insert(proto_id.to_string(), text.into_owned());
+    }
+
     // convert_to: 输出引擎重编码 → 沿本节点 out 边继续下推 (协议转换链)
-    let convert_engine = st.lock().convert_engine.clone();
     if let Some(ce) = convert_engine {
         let mut bytes = Vec::new();
         for f in &out.frames {
@@ -267,5 +288,18 @@ async fn feed_protocol(
             ))
             .await;
         }
+    } else if is_raw_data && !data.is_empty() {
+        // RawData 无 convert_to: 原始字节沿本节点 out 边透传下推 (可接 FrameDecoder 等)
+        Box::pin(route_inner(
+            plane,
+            app,
+            proto_id,
+            data,
+            0,
+            dec_cache,
+            summary,
+            depth + 1,
+        ))
+        .await;
     }
 }

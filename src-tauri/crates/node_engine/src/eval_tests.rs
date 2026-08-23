@@ -19,6 +19,7 @@ fn test_evaluate_protocol_source() {
     let frames = source_frames(&[("proto1", vec![10.0, 20.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -47,6 +48,7 @@ fn test_protocol_source_multi_source() {
     let frames = source_frames(&[("proto_a", vec![3.0]), ("proto_b", vec![4.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -68,6 +70,7 @@ fn test_protocol_source_missing_source_writes_zero() {
     // 完全缺源
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -81,6 +84,7 @@ fn test_protocol_source_missing_source_writes_zero() {
     let frames = source_frames(&[("proto_missing", vec![9.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -101,6 +105,7 @@ fn test_evaluate_input_node() {
     input_values.insert("knob1".to_string(), 42.0_f32);
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &input_values,
         &HashMap::new(),
         &mut HashMap::new(),
@@ -126,6 +131,7 @@ fn test_evaluate_math_add() {
     let frames = source_frames(&[("proto1", vec![10.0, 20.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -156,6 +162,7 @@ fn test_evaluate_math_chain() {
     let frames = source_frames(&[("proto1", vec![3.0, 4.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -185,6 +192,7 @@ fn test_evaluate_custom_node() {
 
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &custom_outputs,
         &mut HashMap::new(),
@@ -214,6 +222,7 @@ fn test_unary_math() {
     let frames = source_frames(&[("proto1", vec![-5.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -240,6 +249,7 @@ fn test_filter_fir_passthrough() {
     let mut filter_states = HashMap::new();
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut filter_states,
@@ -269,6 +279,7 @@ fn test_filter_fir_delay_state_persistence() {
         let frames = source_frames(&[("proto1", vec![x])]);
         let out = g.evaluate(
             &frames,
+            &empty_texts(),
             &HashMap::new(),
             &HashMap::new(),
             fs,
@@ -304,6 +315,7 @@ fn test_filter_kind_change_rebuilds_state() {
     let frames = source_frames(&[("proto1", vec![5.0])]);
     let _ = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut filter_states,
@@ -325,6 +337,7 @@ fn test_filter_kind_change_rebuilds_state() {
     let frames2 = source_frames(&[("proto1", vec![3.0])]);
     let out2 = g2.evaluate(
         &frames2,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut filter_states,
@@ -360,6 +373,7 @@ fn test_filter_lowpass_preserves_dc() {
         let frames = source_frames(&[("proto1", vec![1.0])]);
         let out = g.evaluate(
             &frames,
+            &empty_texts(),
             &HashMap::new(),
             &HashMap::new(),
             &mut filter_states,
@@ -397,6 +411,7 @@ fn test_protocol_source_named_ports_evaluate() {
     let frames = source_frames(&[("proto1", vec![36.5, 60.0])]);
     let out = g.evaluate(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -437,6 +452,7 @@ fn test_protocol_source_named_ports_slot_run() {
     let mut written = vec![false; compiled.slot_count()];
     compiled.run(
         &frames,
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -466,6 +482,117 @@ fn test_protocol_source_port_names_fallback() {
     );
 }
 
+// ============ ProtocolSource "str" 端口 (RawData 原始字节文本) 测试 ============
+
+#[test]
+fn test_protocol_source_str_port_slow_path() {
+    // port_names 含 "str" (String 域): 跳过 F32 写入, 改从 source_texts 读值写 out_str;
+    // 混合命名端口 (temp F32 + str String) 互不影响 (通道下标按端口位次独立)
+    let nodes = vec![make_protocol_source_named(
+        "ps1",
+        "t1",
+        "proto1",
+        &["temp", "str"],
+    )];
+    let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+    let frames = source_frames(&[("proto1", vec![36.5])]);
+    let texts = source_texts(&[("proto1", "hello")]);
+    let mut out_str = StringValuesMap::default();
+    let out = g.evaluate(
+        &frames,
+        &texts,
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert_eq!(out.get("ps1").and_then(|m| m.get("temp")), Some(&36.5));
+    // "str" 不写数值平面
+    assert!(out.get("ps1").and_then(|m| m.get("str")).is_none());
+    assert_eq!(
+        out_str.get("ps1").and_then(|m| m.get("str")),
+        Some(&"hello".to_string())
+    );
+
+    // 源无缓存文本: "str" 不写 (保持上次值, 对齐 Trigger 未激活帧语义) — out_str 无该键
+    let mut out_str = StringValuesMap::default();
+    g.evaluate(
+        &frames,
+        &empty_texts(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut out_str,
+    );
+    assert!(!out_str.contains_key("ps1"));
+}
+
+#[test]
+fn test_protocol_source_str_port_slot_run() {
+    // 快路径 (CompiledEval::run + materialize_str) 与慢路径同语义:
+    // "str" 分配字符串槽位 (不占数值槽位), run 时从 source_texts 写;
+    // 无数据时 str_written 不置位 → materialize_str 无键 (快照保持上次值)
+    let nodes = vec![make_protocol_source_named("ps1", "t1", "proto1", &["str"])];
+    let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
+    let compiled = g.compiled();
+    assert!(compiled.str_slot_of("ps1", "str").is_some());
+    assert!(compiled.slot_of("ps1", "str").is_none());
+
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
+
+    let texts = source_texts(&[("proto1", "abc")]);
+    compiled.run(
+        &empty_frames(),
+        &texts,
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut slots,
+        &mut written,
+        &mut str_slots,
+        &mut str_written,
+    );
+    let mut out_str = StringValuesMap::default();
+    compiled.materialize_str(&str_slots, &str_written, &mut out_str);
+    assert_eq!(
+        out_str.get("ps1").and_then(|m| m.get("str")),
+        Some(&"abc".to_string())
+    );
+
+    // 无数据帧: 槽位清零后重跑 (模拟跨帧), str_written 不置位 → 无键
+    str_slots.iter_mut().for_each(String::clear);
+    str_written.fill(false);
+    compiled.run(
+        &empty_frames(),
+        &empty_texts(),
+        &HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &HashMap::new(),
+        &mut HashMap::new(),
+        &mut HashMap::new(),
+        &mut slots,
+        &mut written,
+        &mut str_slots,
+        &mut str_written,
+    );
+    let mut out_str = StringValuesMap::default();
+    compiled.materialize_str(&str_slots, &str_written, &mut out_str);
+    assert!(!out_str.contains_key("ps1"));
+}
+
 // ============ Str 节点测试 (慢路径) ============
 
 #[test]
@@ -477,6 +604,7 @@ fn test_str_len_outputs_f32_to_values_map() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -499,6 +627,7 @@ fn test_str_find_contains_on_empty_defaults() {
     let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -535,6 +664,7 @@ fn test_str_text_output_written_to_str_map() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -605,6 +735,7 @@ fn test_str_num_port_fallback_vs_connected() {
     let mut out_str = StringValuesMap::default();
     g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &input_values,
         &HashMap::new(),
         &mut HashMap::new(),
@@ -633,6 +764,7 @@ fn test_str_chain_two_nodes() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -686,6 +818,7 @@ fn test_trigger_manual_number_rule_hit() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -722,6 +855,7 @@ fn test_trigger_manual_string_rule_hit_routes_text() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -764,6 +898,7 @@ fn test_trigger_manual_miss_defaults() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -809,6 +944,7 @@ fn test_trigger_auto_level_matches_every_active_frame() {
         let mut out_str = StringValuesMap::default();
         let out = g.evaluate(
             &empty_frames(),
+            &empty_texts(),
             &input_values,
             &HashMap::new(),
             &mut HashMap::new(),
@@ -859,6 +995,7 @@ fn test_trigger_auto_rising_fires_once() {
         let mut out_str = StringValuesMap::default();
         g.evaluate(
             &empty_frames(),
+            &empty_texts(),
             &input_values,
             &HashMap::new(),
             &mut HashMap::new(),
@@ -917,6 +1054,7 @@ fn test_trigger_text_flows_through_str_chain() {
     let mut out_str = StringValuesMap::default();
     g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -991,6 +1129,7 @@ fn test_trigger_value_feeds_str_num_port_via_math() {
     let mut out_str = StringValuesMap::default();
     g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -1041,6 +1180,7 @@ fn test_trigger_manual_tracks_prev_no_false_rising_on_mode_switch() {
             let mut out_str = StringValuesMap::default();
             g.evaluate(
                 &empty_frames(),
+                &empty_texts(),
                 &input_values,
                 &HashMap::new(),
                 &mut HashMap::new(),
@@ -1105,6 +1245,7 @@ fn test_text_input_writes_str_port_slow_path() {
     let mut out_str = StringValuesMap::default();
     let out = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -1141,6 +1282,7 @@ fn test_text_input_slot_run_matches_slow_path() {
     let mut out_str_a = StringValuesMap::default();
     let out_a = g.evaluate(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),
@@ -1158,6 +1300,7 @@ fn test_text_input_slot_run_matches_slow_path() {
     let mut str_written = vec![false; compiled.str_slot_count()];
     compiled.run(
         &empty_frames(),
+        &empty_texts(),
         &HashMap::new(),
         &HashMap::new(),
         &mut HashMap::new(),

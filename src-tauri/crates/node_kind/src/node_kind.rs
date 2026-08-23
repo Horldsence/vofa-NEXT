@@ -222,7 +222,8 @@ pub enum PortDomain {
 ///   (chN 帧通道不经 Protocol 本体暴露, 数值平面用 ProtocolSource)
 /// - FrameDecoder: 输入 "in" 与旧名 "loopbackIn" = Bytes, 其余输出 = F32
 /// - Sink/Custom: 输出 "loopbackOut" = Bytes (CommandSender 命令字节出口)
-/// - ProtocolSource: 输出 "ch0..chN" 或 port_names 命名端口 = F32; 其余节点按现有语义全 F32
+/// - ProtocolSource: 输出 "str" (RawData 原始字节文本) = String;
+///   其余输出 ("ch0..chN" 或 port_names 命名端口) = F32; 其余节点按现有语义全 F32
 pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain {
     match kind {
         NodeKind::Transport { .. } => match (is_output, handle) {
@@ -244,6 +245,8 @@ pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain
         }
         NodeKind::Trigger { .. } if is_output && handle == "text" => PortDomain::String,
         NodeKind::TextInput { .. } if is_output && handle == "str" => PortDomain::String,
+        // ProtocolSource 的 "str" 端口 (RawData 原始字节 UTF-8 文本) 属字符串平面
+        NodeKind::ProtocolSource { .. } if is_output && handle == "str" => PortDomain::String,
         NodeKind::Str { op, .. } => {
             if is_output {
                 // 输出端口统一命名 "result", 域由 op 决定; 未知端口回退 F32
@@ -327,6 +330,9 @@ mod tests {
             port_names: None,
         };
         assert_eq!(port_domain(&source, "ch0", true), PortDomain::F32);
+        // "str" 端口 (RawData 原始字节文本) → String 域; 输入侧/其他端口仍 F32
+        assert_eq!(port_domain(&source, "str", true), PortDomain::String);
+        assert_eq!(port_domain(&source, "str", false), PortDomain::F32);
 
         let math = NodeKind::Math {
             op: MathOp::Add,
