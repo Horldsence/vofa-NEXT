@@ -13,7 +13,7 @@ use pipeline_data_plane::byte_router::route_bytes;
 use pipeline_data_plane::decoder_feed::DecoderFeedCache;
 use pipeline_data_plane::DataPlaneState;
 use buffer_graph::Edge;
-use schema_types::ProtocolConfig;
+use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset};
 use vofa_core::TransportConfig;
 use node_engine::BytePlan;
 use node_kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
@@ -272,4 +272,60 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
         plane.source_texts.lock().get("pr").map(String::as_str),
         Some("\u{FFFD}")
     );
+}
+
+/// RawData 节点被用户编辑 decode 块后 (schema preset=Custom, config 仍为 RawData):
+/// 走 SchemaEngine 产帧, 不写 source_texts, 原始字节不沿 out 边透传
+#[tokio::test]
+async fn rawdata_custom_schema_no_text_cache_no_passthrough() {
+    // tp.rx → pr.in (RawData + custom schema), pr.out → dec.in (FrameDecoder)
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(Default::default()),
+                },
+            ),
+            node(
+                "pr",
+                NodeKind::Protocol {
+                    config: ProtocolConfig::RawData,
+                    convert_to: None,
+                    schema: Some(ProtocolSchema {
+                        preset: SchemaPreset::Custom,
+                        legacy_config: None,
+                        decode: vec![DecoderBlockDef::Field {
+                            id: "f1".into(),
+                            field_type: FieldType::UInt8,
+                            port_name: "v".into(),
+                            length_ref: None,
+                            match_id: None,
+                        }],
+                        encode: None,
+                    }),
+                },
+            ),
+            u8_decoder("dec"),
+        ],
+        vec![edge("tp", "rx", "pr", "in"), edge("pr", "out", "dec", "in")],
+    );
+    // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
+    let graph = node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
+        .unwrap();
+    plane.eval.graphs.lock().insert("t1".into(), graph);
+
+    let mut cache = DecoderFeedCache::new();
+    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
+    // custom schema 走 SchemaEngine: 无 Header 块, 每字节一帧 (',' 与 '8' 各一帧)
+    assert_eq!(summary.frames, 2, "SchemaEngine 应产帧");
+    assert!(!summary.decoders_fed, "custom schema 不应沿 out 边透传原文");
+    assert!(
+        plane.source_texts.lock().get("pr").is_none(),
+        "custom schema 不应写 source_texts"
+    );
+    // 末帧进 source_frames ('8' = 0x38 = 56)
+    let sf = plane.source_frames.lock();
+    let f = sf.get("pr").expect("pr 应有最新帧");
+    assert_eq!(f.channels, vec![56.0]);
 }

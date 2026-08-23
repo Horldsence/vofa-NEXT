@@ -12,7 +12,7 @@
 //! - Transport 节点 `tx`: registry.send (协议转换回注 / 命令发送落地)
 
 use tauri::AppHandle;
-use schema_types::ProtocolConfig;
+use schema_types::{ProtocolConfig, SchemaPreset};
 use node_kind::{
     NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE, TRANSPORT_TX_HANDLE,
 };
@@ -251,11 +251,16 @@ async fn feed_protocol(
     }
 
     // RawData 判定 + convert 引擎 (一次锁取齐)
+    // 有效预设判定: 有 schema 时按 preset (用户编辑块后 preset=Custom, 走 SchemaEngine 产帧,
+    // 不再做文本缓存/原文透传); 无 schema (旧前端) 回退按 config.kind
     let (convert_engine, is_raw_data) = {
         let s = st.lock();
         (
             s.convert_engine.clone(),
-            matches!(s.config, ProtocolConfig::RawData),
+            match &s.schema {
+                Some(schema) => schema.preset == SchemaPreset::RawData,
+                None => matches!(s.config, ProtocolConfig::RawData),
+            },
         )
     };
 
