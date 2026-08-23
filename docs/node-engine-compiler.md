@@ -73,3 +73,29 @@ Vec<NodeDef> + Vec<Edge>
   `topo` 排序) + 对应后端产物。
 - **环诊断**: `CompileError::Cycle` / `ByteCycle` 携带完整环路径
   (如 `a → b → a`), 由 `plane::extract_cycle` 三色 DFS 提取。
+
+## 派生计算归后端
+
+`NodeKind` 字段从前端的派生数据逐渐收窄为原始配置:
+
+- **Filter 节点**: `kind: FilterKind { b, a }` → `config: FilterConfig { preset, cutoff/low/high, sample_rate }`。
+  前端原样下发 `widget.params`, 后端 `dsp_filter::filter_kind_from_config` 在
+  `lower_filter` 时产出 [b, a]; `evaluate` 时按 `config` 比较决定 `filter_states` 重建。
+- **Filter 回退 FIR**: 阶段三 FilterConfig 仅含 4 类预设 (lowpass/highpass/bandpass/bandstop);
+  旧测试用了 `FilterKind::FIR` 临时造节点, 现已迁移至对应预设构造以维持现有测试。
+- **协议节点**: 自 `cmd_graph/src/derived.rs::compute_derived` 提供 `NodeDerived`
+  输出端口表与 `effective_channels`, 由 `update_tab_graph` 响应 + `graph:derived`
+  事件差分推送, 前端写入 `derivedPorts` store。preset 协议 (JustFloat/FireWater/
+  RawData/Slcan/CandleLight/LogicDecode) 的 schema 工厂与 `port_names` 已下沉,
+  前端不再下发该字段。
+
+## 命令帧字节打包 (`compute_frame_bytes`)
+
+后端 IPC 单一权威 — `crates/cmd_buffer/src/{frame_field,frame_checksum,command_frame}.rs`:
+
+- 块类型 `ConstHex` / `VarRef` / `TypedConst` / `Checksum` 序列化与前端 `CommandBlock` 对齐
+  (snake_case `port_name` / `field_type` / `custom_script`)。
+- 字段打包 (`FieldType`) 与校验 (`ChecksumKind`) 8 种算法逐字节对齐前端实现; 新增
+  `compute_command_frame_bytes` Tauri 命令, 由前端 `api.computeFrameBytes` 调用。
+- 错误按块编号: `error: "块 #N: ..."`, 前端可定位到具体块。
+- `Custom` JS 校验脚本 (前端 `new Function`) 后端不支持 — 返回错误而非尝试解析。

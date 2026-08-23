@@ -20,7 +20,7 @@ pub fn lower_node(node: &NodeDef, ctx: &mut LowerCtx) {
         NodeKind::Input => lower_input(node, ctx),
         NodeKind::Math { op, input_count } => lower_math(node, *op, *input_count, ctx),
         NodeKind::Custom { outputs, .. } => lower_custom(node, outputs, ctx),
-        NodeKind::Filter { kind } => lower_filter(node, kind, ctx),
+        NodeKind::Filter { config } => lower_filter(node, config, ctx),
         NodeKind::FrameDecoder { .. } => lower_frame_decoder(node, ctx),
         NodeKind::Ifft => lower_ifft(node, ctx),
         NodeKind::Str { op, num } => lower_str(node, *op, num, ctx),
@@ -113,12 +113,15 @@ fn lower_custom(node: &NodeDef, outputs: &[String], ctx: &mut LowerCtx) {
 }
 
 /// Filter: 读 "in0" 上游槽位 → 滤波器状态 → "result" 槽位
-fn lower_filter(node: &NodeDef, kind: &dsp_filter::FilterKind, ctx: &mut LowerCtx) {
+///
+/// filter_states 按 FilterConfig 比较变更重建; 运行期由
+/// `filter_kind_from_config` 派生 FilterKind (b/a 不经 IPC 流转)。
+fn lower_filter(node: &NodeDef, config: &dsp_filter::FilterConfig, ctx: &mut LowerCtx) {
     let input = ctx.f32_in(&node.id, "in0");
     let out = ctx.f32_slots.alloc(&node.id, "result");
     ctx.ops.push(CompiledOp::Filter {
         node_id: node.id.clone(),
-        kind: kind.clone(),
+        config: config.clone(),
         input,
         out,
     });

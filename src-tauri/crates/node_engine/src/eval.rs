@@ -221,15 +221,19 @@ impl CompiledEval {
                 }
                 CompiledOp::Filter {
                     node_id,
-                    kind,
+                    config,
                     input,
                     out,
                 } => {
                     let input_val = input.map_or(0.0, |s| slots[s]);
-                    // 懒初始化 / kind 变化时重建滤波器状态 (与 evaluate_into 一致)
-                    let need_rebuild = filter_states.get(node_id).is_none_or(|f| f.kind() != kind);
+                    // 派生 owned FilterKind (避免与 filter_states 借用重叠),
+                    // config 变化重建滤波器状态 (与原 kind 变更语义一致)。
+                    let new_kind = dsp_filter::filter_kind_from_config(config);
+                    let need_rebuild = filter_states
+                        .get(node_id)
+                        .is_none_or(|f| f.kind() != &new_kind);
                     if need_rebuild {
-                        filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
+                        filter_states.insert(node_id.clone(), DigitalFilter::new(new_kind));
                     }
                     let filter = filter_states.get_mut(node_id).unwrap();
                     slots[*out] = filter.process(input_val);

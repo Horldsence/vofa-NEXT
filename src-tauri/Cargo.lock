@@ -655,6 +655,8 @@ dependencies = [
  "buffer_databuffer",
  "log",
  "pipeline_stream",
+ "serde",
+ "serde_json",
  "tauri",
  "tokio",
  "vofa_core",
@@ -1171,6 +1173,7 @@ name = "dsp_filter"
 version = "0.1.2"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -7,7 +7,7 @@ import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import type { WidgetConfig, DomainType } from '../../types';
 import type { Lang } from '../../i18n';
-import { UNARY_MATH_OPS, STR_OP_PORTS, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
+import { STR_OP_PORTS, isUnaryMathOp, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
 import { commandInputPortNames } from '../../lib/utils/commandFrames';
 import { widgetToTab } from '../../lib/utils/widgetTab';
@@ -76,7 +76,7 @@ export function getWidgetPorts(widget: WidgetConfig): {
       };
     case 'Math': {
       // 算术控件: 多个输入端口 (单目运算固定 1 个) + 单输出
-      const isUnary = UNARY_MATH_OPS.includes(widget.params.op);
+      const isUnary = isUnaryMathOp(widget.params.op);
       const inputCount = isUnary ? 1 : widget.params.inputCount;
       return {
         inputs: Array.from({ length: inputCount }, (_, i) => ({

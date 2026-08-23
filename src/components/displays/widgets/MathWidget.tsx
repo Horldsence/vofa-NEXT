@@ -2,7 +2,7 @@ import { memo, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig, MathOp } from '../../../types';
-import { UNARY_MATH_OPS } from '../../../types';
+import { isUnaryMathOp } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
 
@@ -48,7 +48,7 @@ export const MathWidget = memo(function MathWidget({ widget, onEdit }: MathWidge
     () =>
       Array.from({ length: inputCount }, (_, i) => ({
         id: `in${i}`,
-        label: UNARY_MATH_OPS.includes(op) && i > 0 ? '' : `in${i}`,
+        label: isUnaryMathOp(op) && i > 0 ? '' : `in${i}`,
       })),
     [inputCount, op]
   );

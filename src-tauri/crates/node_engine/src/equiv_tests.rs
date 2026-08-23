@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use dsp_fft::{IfftState, SpectrumOutput};
-use dsp_filter::FilterKind;
+use dsp_filter::FilterConfig;
 use dsp_window::WindowType;
 use node_kind::{DecoderBlockDef, MathOp, NodeDef, NodeKind};
 
@@ -140,7 +140,7 @@ fn test_compiled_eval_equivalence() {
         make_protocol_source("ps1", "t1", "proto1", 4),
         make_math("m1", "t1", MathOp::Add, 2),
         make_math("m2", "t1", MathOp::Mul, 2),
-        make_filter("f1", "t1", FilterKind::FIR { b: vec![0.5, 0.5] }),
+        make_filter("f1", "t1", FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 }),
         make_input("knob1", "t1"),
         // FrameDecoder 无 parser (decoder_states 为空) — 覆盖 written 语义
         NodeDef {

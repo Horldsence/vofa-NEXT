@@ -175,13 +175,16 @@ impl CompiledGraph {
                         }
                     }
                 }
-                NodeKind::Filter { kind } => {
+                NodeKind::Filter { config } => {
                     // 取输入 "in0" 的上游值
                     let input_val = self.resolve_input(node_id, "in0", out);
-                    // 懒初始化 / kind 变化时重建滤波器状态
-                    let need_rebuild = filter_states.get(node_id).is_none_or(|f| f.kind() != kind);
+                    // 派生 owned FilterKind, 懒初始化 / config 变化时重建状态
+                    let new_kind = dsp_filter::filter_kind_from_config(config);
+                    let need_rebuild = filter_states
+                        .get(node_id)
+                        .is_none_or(|f| f.kind() != &new_kind);
                     if need_rebuild {
-                        filter_states.insert(node_id.clone(), DigitalFilter::new(kind.clone()));
+                        filter_states.insert(node_id.clone(), DigitalFilter::new(new_kind));
                     }
                     let filter = filter_states.get_mut(node_id).unwrap();
                     let result = filter.process(input_val);

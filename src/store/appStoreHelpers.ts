@@ -10,9 +10,8 @@ import {
 } from '../lib/utils/nodeDef';
 import { api } from '../lib/tauri/tauri';
 import { notify } from '../lib/tauri/notifications';
-import { nodeErrorText } from '../lib/tauri/errorGuidance';
-import { t, type Lang } from '../i18n';
-import { useSettingsStore } from './settingsStore';
+import { nodeError } from '../lib/tauri/errorGuidance';
+import { t } from '../i18n';
 import {
   getEffectiveChannels,
   schemaFromProtocolConfig,
@@ -22,12 +21,7 @@ import type { WidgetConfig, ProtocolConfig, ProtocolSchema, TransportConfig } fr
 // getEffectiveChannels 已移至 lib/utils/protocolSchema (避免循环依赖), 此处 re-export 保持既有导入路径
 export { getEffectiveChannels } from '../lib/utils/protocolSchema';
 
-/// 节点错误通知文案 — 按错误枚举解析, 每种类型首次出错时追加排查引导
-/// (遵循 settings.general.showContextualTips 开关)
-function nodeError(lang: Lang, e: unknown): string {
-  const tips = useSettingsStore.getState().settings.general.showContextualTips;
-  return nodeErrorText(lang, e, tips);
-}
+/// 节点错误通知文案 — 统一入口 (settings 开关在 errorGuidance 内读取)
 
 /// 全局节点 (Transport/Protocol) data 公共字段
 export interface GlobalNodeData {

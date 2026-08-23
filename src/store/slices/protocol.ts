@@ -1,18 +1,10 @@
 import { api } from '../../lib/tauri/tauri';
 import { notify } from '../../lib/tauri/notifications';
-import { nodeErrorText } from '../../lib/tauri/errorGuidance';
-import { t, type Lang } from '../../i18n';
-import { useSettingsStore } from '../settingsStore';
+import { nodeError } from '../../lib/tauri/errorGuidance';
+import { t } from '../../i18n';
 import type { ProtocolConfig, ProtocolSchema } from '../../types';
 import { getEffectiveChannels, type ProtocolNodeData } from '../appStoreHelpers';
 import { schemaFromProtocolConfig, schemaPortNames } from '../../lib/utils/protocolSchema';
-
-/// 节点错误通知文案 — 按错误枚举解析, 每种类型首次出错时追加排查引导
-/// (遵循 settings.general.showContextualTips 开关)
-function nodeError(lang: Lang, e: unknown): string {
-  const tips = useSettingsStore.getState().settings.general.showContextualTips;
-  return nodeErrorText(lang, e, tips);
-}
 
 export const DEFAULT_PROTOCOL: ProtocolConfig = {
   kind: 'JustFloat',

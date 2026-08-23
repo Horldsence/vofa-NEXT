@@ -141,3 +141,18 @@ pub async fn unsubscribe_waveform(state: State<'_, AppState>, channel_id: u32) -
     }
     Ok(())
 }
+
+/// 命令发送帧字节打包 — 后端单一权威 (`compute_frame_bytes` IPC)
+///
+/// `frame`: 来自前端的 `CommandFrameDto` (snake_case 序列化)
+/// `inputs`: var_ref 端口的实时输入值 (按 port_name 索引, f64 表示;
+///
+/// 返回 `ComputedFrameDto { bytes: Vec<u8> | null, error: String | null, per_block }`。
+/// 错误时 `bytes` 为 null 并附带 `块 #N: ...` 形式错误信息。
+#[tauri::command]
+pub async fn compute_command_frame_bytes(
+    frame: crate::CommandFrameDto,
+    inputs: std::collections::HashMap<String, f64>,
+) -> crate::ComputedFrameDto {
+    crate::compute_frame_bytes(&frame, &inputs)
+}

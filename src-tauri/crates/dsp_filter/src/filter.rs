@@ -277,3 +277,129 @@ pub fn bandstop_biquad(low: f32, high: f32, sample_rate: f32) -> ([f32; 3], [f32
     let a2 = 1.0 - a;
     ([b0, b1, b2], [a0, a1, a2])
 }
+
+// ============ 预设配置 DTO (IPC 唯一事实源) ============
+//
+// 前端 FilterConfig 原始形态 (preset + cutoff/low/high + sample_rate) 通过
+// `update_tab_graph` 同步到后端。后端 `filter_kind_from_config` 在编译期
+// 派生 FilterKind (biquad 系数), IIR 的 [b, a] 不再经 IPC 流转。
+//
+// 序列化约定:
+// - `preset` 与前端 FilterConfig.preset (lowercase) 对齐: "lowpass" / "highpass"
+//   / "bandpass" / "bandstop" / "fir"
+// - "fir" 走 FIR 自由系数 (b 直接传入), 与 4 预设并列; 此 DTO 同时是 FIR 的 IPC 形态
+// - snake_case 字段命名; 前端 TS DTO 用同名 (无 rename) 表示
+// - `id`/`label`/`precision` 仅为前端 UI 用, 不参与后端 biquad 计算, **不**纳入此 DTO
+
+/// 滤波器配置 — 前端 Filter widget params 直接下发, 后端派生 FilterKind
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "preset", rename_all = "lowercase")]
+pub enum FilterConfig {
+    /// 低通 — 单一截止频率
+    Lowpass {
+        cutoff: f32,
+        sample_rate: f32,
+    },
+    /// 高通 — 单一截止频率
+    Highpass {
+        cutoff: f32,
+        sample_rate: f32,
+    },
+    /// 带通 — 通带 [low, high]
+    Bandpass {
+        low: f32,
+        high: f32,
+        sample_rate: f32,
+    },
+    /// 带阻 (陷波) — 阻带 [low, high]
+    Bandstop {
+        low: f32,
+        high: f32,
+        sample_rate: f32,
+    },
+}
+
+/// FilterConfig 派生 FilterKind (biquad 系数)
+/// 低通/高通/带通/带阻 走对应预设; 未知变体走兜底低通 (防御)
+pub fn filter_kind_from_config(cfg: &FilterConfig) -> FilterKind {
+    match cfg {
+        FilterConfig::Lowpass { cutoff, sample_rate } => {
+            let (b, a) = lowpass_biquad(*cutoff, *sample_rate);
+            FilterKind::IIR { b, a }
+        }
+        FilterConfig::Highpass { cutoff, sample_rate } => {
+            let (b, a) = highpass_biquad(*cutoff, *sample_rate);
+            FilterKind::IIR { b, a }
+        }
+        FilterConfig::Bandpass { low, high, sample_rate } => {
+            let (b, a) = bandpass_biquad(*low, *high, *sample_rate);
+            FilterKind::IIR { b, a }
+        }
+        FilterConfig::Bandstop { low, high, sample_rate } => {
+            let (b, a) = bandstop_biquad(*low, *high, *sample_rate);
+            FilterKind::IIR { b, a }
+        }
+    }
+}
+
+// ============================================================
+// JSON 契约测试 (IPC): 前端 `toNodeFilterConfig` 下发 snake_case,
+// 与后端 `FilterConfig` 字段命名一致 (rename_all 仅影响 variant 名)
+// ============================================================
+
+#[cfg(test)]
+mod ipc_serde_tests {
+    use super::*;
+
+    #[test]
+    fn filter_config_lowpass_snake_case_round_trip() {
+        // 前端 IPC 形态: { "preset": "lowpass", "cutoff": ..., "sample_rate": ... }
+        let json = r#"{"preset":"lowpass","cutoff":100.0,"sample_rate":1000.0}"#;
+        let cfg: FilterConfig = serde_json::from_str(json).expect("snake_case 应反序列化");
+        match cfg {
+            FilterConfig::Lowpass { cutoff, sample_rate } => {
+                assert_eq!(cutoff, 100.0);
+                assert_eq!(sample_rate, 1000.0);
+            }
+            _ => panic!("期望 Lowpass 变体"),
+        }
+    }
+
+    #[test]
+    fn filter_config_bandpass_all_fields_snake_case() {
+        let json = r#"{"preset":"bandpass","low":50.0,"high":150.0,"sample_rate":1000.0}"#;
+        let cfg: FilterConfig = serde_json::from_str(json).expect("带通 snake_case 应反序列化");
+        assert!(matches!(cfg, FilterConfig::Bandpass { .. }));
+    }
+
+    #[test]
+    fn filter_config_camel_case_sample_rate_rejected() {
+        // 关键防御: 前端若误用 camelCase (sampleRate) 必须直接报错,
+        // 不能与 snake_case 字段名混淆 (rename_all 不影响字段名)
+        let json_camel = r#"{"preset":"lowpass","cutoff":100.0,"sampleRate":1000.0}"#;
+        let res: Result<FilterConfig, _> = serde_json::from_str(json_camel);
+        assert!(
+            res.is_err(),
+            "camelCase 不应通过反序列化: 仍能误判为有效输入时即契约漂移"
+        );
+    }
+
+    #[test]
+    fn filter_config_serializes_snake_case() {
+        let cfg = FilterConfig::Highpass { cutoff: 200.0, sample_rate: 1000.0 };
+        let j = serde_json::to_string(&cfg).unwrap();
+        assert!(j.contains("\"sample_rate\""), "字段名应为 sample_rate, 实际: {j}");
+        assert!(j.contains("\"preset\":\"highpass\""), "variant 名应小写");
+    }
+
+    #[test]
+    fn filter_kind_from_config_matches_lowpass_biquad() {
+        // IPC 派生产物与现有 lowpass_biquad 一致 (防回归)
+        let cfg = FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 };
+        let expected_kind = FilterKind::IIR {
+            b: lowpass_biquad(100.0, 1000.0).0,
+            a: lowpass_biquad(100.0, 1000.0).1,
+        };
+        assert_eq!(filter_kind_from_config(&cfg), expected_kind);
+    }
+}

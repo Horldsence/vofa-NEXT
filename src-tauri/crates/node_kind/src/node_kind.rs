@@ -10,7 +10,7 @@
 //! 前端 TS 镜像见 src/lib/utils/nodeDef.ts。
 
 use dsp_fft::SpectrumOutput;
-use dsp_filter::FilterKind;
+use dsp_filter::FilterConfig;
 use dsp_window::WindowType;
 use schema_types::{DecoderBlockDef, ProtocolConfig, ProtocolSchema};
 use serde::{Deserialize, Serialize};
@@ -99,9 +99,12 @@ pub enum NodeKind {
     /// 输入端口 "in0", 输出端口 "result"
     /// 后端维护滤波器状态 (FIR 延迟线 / IIR biquad 状态), 跨帧持久化
     /// 状态存储在 evaluate 的 filter_states 参数中, 由调用方管理生命周期
+    ///
+    /// biquad 系数 (b/a) 由后端按前端 widget.params (`FilterConfig`) 派生,
+    /// 不再经 IPC 流转 (b/a 是后端单一权威产物)。
     Filter {
-        /// 滤波器配置 (FIR coeffs 或 IIR biquad)
-        kind: FilterKind,
+        /// 滤波器配置 (低通/高通/带通/带阻的 preset + 频率参数)
+        config: FilterConfig,
     },
     /// 频谱分析节点 (块运算, 不在 eval_order)
     /// 输入端口 "in0", 无输出端口

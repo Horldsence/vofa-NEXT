@@ -116,6 +116,18 @@ export const api = {
   injectBytes: (sourceNodeId: string, data: number[]) =>
     invoke<number>('inject_bytes', { sourceNodeId, data }),
 
+  /// 命令发送帧字节打包 — 后端 `compute_command_frame_bytes` IPC 单一权威
+  /// (后端 cmd_buffer/src/command_frame.rs::compute_frame_bytes, 与前端纯预览分离)
+  computeFrameBytes: (
+    frame: import('../../types').CommandFrame,
+    inputs: Record<string, number>
+  ) =>
+    invoke<{
+      bytes: number[] | null;
+      error: string | null;
+      per_block: number[][];
+    }>('compute_command_frame_bytes', { frame, inputs }),
+
   // ===== 协议 (nodeId = 图中 Protocol 节点 id) =====
   setProtocol: (nodeId: string, config: ProtocolConfig) =>
     invoke<void>('set_protocol', { nodeId, config }),

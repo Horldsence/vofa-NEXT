@@ -4,7 +4,7 @@
 //! 定义与执行分离: 本模块只定义操作集, 构建见 `lower` 模块,
 //! 执行见 [`crate::eval::CompiledEval::run`]。
 
-use dsp_filter::FilterKind;
+use dsp_filter::FilterConfig;
 use node_kind::{MathOp, StrOp};
 use node_trigger::TriggerRuleDef;
 
@@ -30,10 +30,13 @@ pub enum CompiledOp {
         node_id: String,
         ports: Vec<(String, usize)>,
     },
-    /// Filter: 读 in 槽位 → filter_states[node_id] (懒建/kind 变更重建, 与现语义一致) → out
+    /// Filter: 读 in 槽位 → filter_states[node_id] (懒建/config 变更重建) → out
+    ///
+    /// config 透传到运行时, 每帧经 `filter_kind_from_config` 派生 FilterKind;
+    /// 比较 config 决定是否重建滤波器状态 (与原 kind 字段语义一致)。
     Filter {
         node_id: String,
-        kind: FilterKind,
+        config: FilterConfig,
         input: Option<usize>,
         out: usize,
     },

@@ -37,6 +37,7 @@ pnpm tauri dev
 - `src/i18n/locales/{zh,en}.yml` — 所有用户可见文案走 i18n,中英双语同步添加
 - `src-tauri/src/lib.rs` — Tauri 入口,命令来自 `cmd_*` crates
 - `src-tauri/crates/` — 后端 workspace,命名即职责:`transport_*` 传输、`protocol_*` 协议、`buffer_*` 缓冲、`node_*` 节点图、`dsp_*` 信号处理、`pipeline_*` 数据平面、`cmd_*` Tauri 命令
+- `src-tauri/crates/cmd_buffer/src/{frame_field,frame_checksum,command_frame}.rs` — 命令帧字节打包后端权威
 
 ## 编码约定
 

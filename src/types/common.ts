@@ -149,7 +149,17 @@ export interface MathConfig {
 }
 
 /// 单目运算集合 — 这些 op 只使用第一个输入
-export const UNARY_MATH_OPS: MathOp[] = ['abs', 'neg', 'square', 'sqrt', 'sin', 'cos', 'tan', 'log'];
+///
+/// 内部派生 (Math NodeDef `input_count` 在 widgetToNodeKind 中按 `isUnary` 强制 1);
+/// 此前以 `UNARY_MATH_OPS` 公开重导出被 NodeEditor / WidgetPalette / MathWidget 共用,
+/// 现在以 `isUnaryMathOp` 函数 + `lib/utils/nodeDef.ts` 内部使用替代,
+/// 上层应改读 `widget.params.inputCount` (用户配置 → 后端 input_count 直接透传)。
+const _UNARY_MATH_OPS: readonly MathOp[] = ['abs', 'neg', 'square', 'sqrt', 'sin', 'cos', 'tan', 'log'];
+
+/// 单目运算判定 — 与 `_UNARY_MATH_OPS` 集合一致; 替代原 `UNARY_MATH_OPS.includes(op)`
+export function isUnaryMathOp(op: MathOp): boolean {
+  return _UNARY_MATH_OPS.includes(op);
+}
 
 /// 计算数学运算结果 (输入为 number[], 输出为单 number)
 export function computeMathResult(op: MathOp, inputs: number[]): number {
@@ -250,6 +260,11 @@ const STR_IN_STR1_STR2_POS_LEN: StrOpPort[] = [
 ];
 
 /// 全部字符串操作的端口元数据表
+///
+/// 后端 `node_kind::StrOp::input_ports()` 与 `output_domain()` 是权威定义。
+/// 此处 TS 镜像仅供前端 UI 渲染节点把手 / 内联数值框使用; 输出域部分 (`outputDomain`)
+/// 在 StrWidget 中后续可改读 `derivedPorts` (后端 graph:derived 事件); 输入把手
+/// (`inputs`) 因 backend derived_ports 仅枚举输出端口, 暂时仍需本常量作为 UI 占位输入。
 export const STR_OP_PORTS: Record<StrOp, StrOpMeta> = {
   len: { inputs: STR_IN_STR, outputDomain: 'time', inlineNumPorts: [] },
   find: { inputs: STR_IN_STR_SUBSTR, outputDomain: 'time', inlineNumPorts: [] },
@@ -303,117 +318,13 @@ export interface Model3DConfig {
   modelSource: Model3DSource;
 }
 
-// ============ Biquad 滤波器系数计算 (与 Rust RBJ Audio EQ Cookbook 一致) ============
+// ============ Biquad 滤波器系数 (后端单一权威) ============
 //
-// 前端在 syncTabGraph 时将 FilterConfig (preset + cutoff + sampleRate) 转为 IIR biquad 系数,
-// 通过 IPC 同步到后端。后端 DigitalFilter::new(FilterKind::IIR { b, a }) 直接使用这些系数。
-//
-// 公式参考: https://www.musicdsp.org/en/latest/Filters/197-rbj-audio-eq-cookbook.html
-
-const PI_F32 = Math.PI;
-const DEFAULT_Q = 0.70710678; // 1/sqrt(2), Butterworth 响应
-
-function w0(cutoff: number, sampleRate: number): number {
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) return PI_F32 * 0.5;
-  return 2.0 * PI_F32 * cutoff / sampleRate;
-}
-
-function alpha(w0: number, q: number): number {
-  return Math.sin(w0) / (2.0 * q);
-}
-
-/// 将滤波器频率参数限制在 (0, Nyquist) 开区间内 (与 Rust clamp_to_nyquist 一致)。
-/// RBJ biquad 系数公式仅在 0 < w0 < π (即 freq < sampleRate/2) 时有效。
-function clampToNyquist(freq: number, sampleRate: number): number {
-  if (!Number.isFinite(sampleRate) || sampleRate <= 0) {
-    return Number.isFinite(freq) && freq > 0 ? freq : 1;
-  }
-  const nyquist = sampleRate * 0.5;
-  if (!Number.isFinite(freq)) return nyquist * 0.1;
-  return Math.min(Math.max(freq, nyquist * 0.001), nyquist * 0.999);
-}
-
-/// 低通 biquad 系数 (fc=截止频率, fs=采样率)
-export function lowpassBiquad(cutoff: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const c = clampToNyquist(cutoff, sampleRate);
-  const w = w0(c, sampleRate);
-  const a = alpha(w, DEFAULT_Q);
-  const cosW = Math.cos(w);
-  const b0 = (1.0 - cosW) / 2.0;
-  const b1 = 1.0 - cosW;
-  const b2 = (1.0 - cosW) / 2.0;
-  const a0 = 1.0 + a;
-  const a1 = -2.0 * cosW;
-  const a2 = 1.0 - a;
-  return { b: [b0, b1, b2], a: [a0, a1, a2] };
-}
-
-/// 高通 biquad 系数
-export function highpassBiquad(cutoff: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const c = clampToNyquist(cutoff, sampleRate);
-  const w = w0(c, sampleRate);
-  const a = alpha(w, DEFAULT_Q);
-  const cosW = Math.cos(w);
-  const b0 = (1.0 + cosW) / 2.0;
-  const b1 = -(1.0 + cosW);
-  const b2 = (1.0 + cosW) / 2.0;
-  const a0 = 1.0 + a;
-  const a1 = -2.0 * cosW;
-  const a2 = 1.0 - a;
-  return { b: [b0, b1, b2], a: [a0, a1, a2] };
-}
-
-/// 带通 biquad 系数 (常量 0 dB 峰值)
-/// low, high: 通带 [low, high]
-export function bandpassBiquad(low: number, high: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const lo = clampToNyquist(low, sampleRate);
-  const hi = clampToNyquist(high, sampleRate);
-  const [l, h] = lo > hi ? [hi, lo] : [lo, hi];
-  const fc = Math.sqrt(l * h);
-  const bw = h - l;
-  const w = w0(fc, sampleRate);
-  const q = bw > 0 ? fc / bw : DEFAULT_Q;
-  const a = alpha(w, q);
-  const cosW = Math.cos(w);
-  const b0 = a;
-  const b1 = 0.0;
-  const b2 = -a;
-  const a0 = 1.0 + a;
-  const a1 = -2.0 * cosW;
-  const a2 = 1.0 - a;
-  return { b: [b0, b1, b2], a: [a0, a1, a2] };
-}
-
-/// 带阻 (陷波) biquad 系数
-export function bandstopBiquad(low: number, high: number, sampleRate: number): { b: [number, number, number]; a: [number, number, number] } {
-  const lo = clampToNyquist(low, sampleRate);
-  const hi = clampToNyquist(high, sampleRate);
-  const [l, h] = lo > hi ? [hi, lo] : [lo, hi];
-  const fc = Math.sqrt(l * h);
-  const bw = h - l;
-  const w = w0(fc, sampleRate);
-  const q = bw > 0 ? fc / bw : DEFAULT_Q;
-  const a = alpha(w, q);
-  const cosW = Math.cos(w);
-  const b0 = 1.0;
-  const b1 = -2.0 * cosW;
-  const b2 = 1.0;
-  const a0 = 1.0 + a;
-  const a1 = -2.0 * cosW;
-  const a2 = 1.0 - a;
-  return { b: [b0, b1, b2], a: [a0, a1, a2] };
-}
-
-/// 根据 FilterConfig 计算对应的 IIR biquad 系数
-/// 用于 widgetToNodeKind: 将前端友好的 preset/cutoff 形式转为后端 FilterKind::IIR
-export function biquadFromFilterConfig(cfg: FilterConfig): { b: [number, number, number]; a: [number, number, number] } {
-  switch (cfg.preset) {
-    case 'Lowpass':  return lowpassBiquad(cfg.cutoff, cfg.sampleRate);
-    case 'Highpass': return highpassBiquad(cfg.cutoff, cfg.sampleRate);
-    case 'Bandpass': return bandpassBiquad(cfg.low, cfg.high, cfg.sampleRate);
-    case 'Bandstop': return bandstopBiquad(cfg.low, cfg.high, cfg.sampleRate);
-  }
-}
+// 系数派生由后端 `dsp_filter::filter_kind_from_config` 承担 — 前端 widget.params
+// (preset + cutoff/low/high + sample_rate) 原样下发, 后端编译/求值时
+// 按 RBJ Audio EQ Cookbook 在 `dsp_filter::lowpass_biquad` 等派生 [b, a]。
+// 不再需要前端 b/a 计算; 公式参考:
+// https://www.musicdsp.org/en/latest/Filters/197-rbj-audio-eq-cookbook.html
 
 // ============ 节点编辑器 ============
 

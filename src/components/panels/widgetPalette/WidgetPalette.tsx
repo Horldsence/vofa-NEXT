@@ -51,7 +51,7 @@ import {
   ArrowLeftRight,
 } from 'lucide-react';
 import type { WidgetConfig, TransportConfig, MathOp, StrOp } from '../../../types';
-import { UNARY_MATH_OPS, WIDGET_CATEGORY_COLORS } from '../../../types';
+import { isUnaryMathOp, WIDGET_CATEGORY_COLORS } from '../../../types';
 import type { PaletteEntry, PaletteSection, SectionId } from './paletteModel';
 import { flattenSections, filterSections, sectionAnchors, sectionAtScroll, totalSizeOf, HEADER_SIZE, ROW_SIZE } from './paletteModel';
 import { JumpBar, type JumpTarget } from './JumpBar';
@@ -400,7 +400,7 @@ export function WidgetPalette() {
       if (kind === 'Math' && item.op) {
         const mathWidget = widget as Extract<WidgetConfig, { kind: 'Math' }>;
         mathWidget.params.op = item.op as MathOp;
-        if (UNARY_MATH_OPS.includes(item.op as MathOp)) {
+        if (isUnaryMathOp(item.op as MathOp)) {
           mathWidget.params.inputCount = 1;
         }
         mathWidget.params.label = `Math ${item.op}`;

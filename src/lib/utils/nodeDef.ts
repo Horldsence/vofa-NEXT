@@ -9,9 +9,33 @@
 
 import type { WidgetConfig, MathOp, StrOp, WindowType, SpectrumOutput, DecoderBlock, ProtocolSchema } from '../../types';
 import type { TransportConfig, ProtocolConfig } from '../../types';
-import { UNARY_MATH_OPS, biquadFromFilterConfig } from '../../types';
+import type { FilterConfig } from '../../types/common';
+import { isUnaryMathOp } from '../../types';
 import { evalCustomWidgetDef } from '../../components/displays/widgets/CustomWidget';
 import type { Edge } from '@xyflow/react';
+
+/// 与后端 `dsp_filter::FilterConfig` 一一对应 (serde tag="preset", rename_all="lowercase" 仅影响 variant 名)
+/// 字段名对齐后端 snake_case (sample_rate / cutoff / low / high);
+/// biquad 系数 [b, a] 由后端 `filter_kind_from_config` 派生
+export type NodeFilterConfig =
+  | { preset: 'lowpass'; cutoff: number; sample_rate: number }
+  | { preset: 'highpass'; cutoff: number; sample_rate: number }
+  | { preset: 'bandpass'; low: number; high: number; sample_rate: number }
+  | { preset: 'bandstop'; low: number; high: number; sample_rate: number };
+
+/** 映射 widget.params → 后端 FilterConfig DTO (snake_case 字段, 与 Rust 字段对齐) */
+function toNodeFilterConfig(params: FilterConfig): NodeFilterConfig {
+  switch (params.preset) {
+    case 'Lowpass':
+      return { preset: 'lowpass', cutoff: params.cutoff, sample_rate: params.sampleRate };
+    case 'Highpass':
+      return { preset: 'highpass', cutoff: params.cutoff, sample_rate: params.sampleRate };
+    case 'Bandpass':
+      return { preset: 'bandpass', low: params.low, high: params.high, sample_rate: params.sampleRate };
+    case 'Bandstop':
+      return { preset: 'bandstop', low: params.low, high: params.high, sample_rate: params.sampleRate };
+  }
+}
 
 /// Rust 端 NodeKind 序列化 — serde tag="kind" content="params"
 ///
@@ -30,7 +54,7 @@ export type NodeKind =
   | { kind: 'Math'; params: { op: MathOp; input_count: number } }
   | { kind: 'Str'; params: { op: StrOp; num: { pos: number; len: number; size: number } } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
-  | { kind: 'Filter'; params: { kind: { IIR: { b: [number, number, number]; a: [number, number, number] } } } }
+  | { kind: 'Filter'; params: { config: NodeFilterConfig } }
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
   | { kind: 'Ifft' }
   | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean; loopback: boolean } }
@@ -90,7 +114,7 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
       return { kind: 'TextInput', params: { text: widget.params.text } };
 
     case 'Math': {
-      const isUnary = UNARY_MATH_OPS.includes(widget.params.op);
+      const isUnary = isUnaryMathOp(widget.params.op);
       return {
         kind: 'Math',
         params: {
@@ -126,12 +150,11 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     }
 
     case 'Filter': {
-      const { b, a } = biquadFromFilterConfig(widget.params);
+      // 原样下发 widget.params (preset + cutoff/low/high + sampleRate),
+      // 后端 dsp_filter::filter_kind_from_config 派生 FilterKind (b/a 不经 IPC)
       return {
         kind: 'Filter',
-        params: {
-          kind: { IIR: { b, a } },
-        },
+        params: { config: toNodeFilterConfig(widget.params) },
       };
     }
 

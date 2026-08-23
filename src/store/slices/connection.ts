@@ -1,8 +1,8 @@
 import { api } from '../../lib/tauri/tauri';
 import { rawDataBuffer, waveformWindow } from '../../lib/buffers/dataBuffer';
 import { notify } from '../../lib/tauri/notifications';
-import { nodeErrorText } from '../../lib/tauri/errorGuidance';
-import { t, type Lang } from '../../i18n';
+import { nodeError } from '../../lib/tauri/errorGuidance';
+import { t } from '../../i18n';
 import { downstreamProtocolOf, type TransportNodeData, type ProtocolNodeData } from '../appStoreHelpers';
 import { schemaFromProtocolConfig } from '../../lib/utils/protocolSchema';
 import { useSettingsStore } from '../settingsStore';
@@ -34,12 +34,7 @@ export const EMPTY_NODE_STATS: NodeStats = {
   rxDroppedTotal: 0,
 };
 
-/// 节点错误通知文案 — 按错误枚举解析, 每种类型首次出错时追加排查引导
-/// (遵循 settings.general.showContextualTips 开关)
-function nodeError(lang: Lang, e: unknown): string {
-  const tips = useSettingsStore.getState().settings.general.showContextualTips;
-  return nodeErrorText(lang, e, tips);
-}
+/// 节点错误通知文案 — 统一入口 (settings 开关在 errorGuidance 内读取)
 
 export interface ConnectionSlice {
   /// 连接状态 — 按 Transport 节点 id

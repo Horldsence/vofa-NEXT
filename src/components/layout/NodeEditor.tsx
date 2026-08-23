@@ -20,7 +20,7 @@ import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
 import type { WidgetConfig, MathOp, StrOp, FilterPresetKind, DomainType } from '../../types';
-import { UNARY_MATH_OPS } from '../../types';
+import { isUnaryMathOp } from '../../types';
 import { WidgetNode, getWidgetPorts } from '../nodes/WidgetNode';
 import { TransportNode } from '../nodes/TransportNode';
 import { ProtocolNode } from '../nodes/ProtocolNode';
@@ -141,7 +141,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       if (widget.kind === 'Math' && spec.op) {
         const mathWidget = widget as Extract<WidgetConfig, { kind: 'Math' }>;
         mathWidget.params.op = spec.op as MathOp;
-        if (UNARY_MATH_OPS.includes(spec.op as MathOp)) {
+        if (isUnaryMathOp(spec.op as MathOp)) {
           mathWidget.params.inputCount = 1;
         }
         mathWidget.params.label = `Math ${spec.op}`;

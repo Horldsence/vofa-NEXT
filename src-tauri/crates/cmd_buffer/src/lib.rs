@@ -4,6 +4,12 @@
 
 mod buffer;
 mod window;
+mod frame_field;
+mod frame_checksum;
+mod command_frame;
 
 pub use buffer::*;
 pub use window::*;
+pub use frame_field::*;
+pub use frame_checksum::*;
+pub use command_frame::*;

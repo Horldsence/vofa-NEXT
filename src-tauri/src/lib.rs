@@ -196,6 +196,8 @@ pub fn run() {
             parse_frame_decoder_input,
             // 触发器匹配 (Trigger 面板手动 / 自动模式)
             match_trigger_command,
+            // 命令帧字节打包 (CommandSender 发送路径)
+            compute_command_frame_bytes,
             // 调试
             inspect_element,
             // 窗口

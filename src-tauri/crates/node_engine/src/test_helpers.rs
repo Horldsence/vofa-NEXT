@@ -2,7 +2,7 @@
 
 use buffer_graph::Edge;
 use dsp_fft::SpectrumOutput;
-use dsp_filter::FilterKind;
+use dsp_filter::FilterConfig;
 use dsp_window::WindowType;
 use schema_types::ProtocolConfig;
 use vofa_core::config::TransportConfig;
@@ -115,11 +115,11 @@ pub fn make_custom(id: &str, tab_id: &str, inputs: Vec<&str>, outputs: Vec<&str>
     }
 }
 
-pub fn make_filter(id: &str, tab_id: &str, kind: FilterKind) -> NodeDef {
+pub fn make_filter(id: &str, tab_id: &str, config: FilterConfig) -> NodeDef {
     NodeDef {
         id: id.to_string(),
         tab_id: tab_id.to_string(),
-        kind: NodeKind::Filter { kind },
+        kind: NodeKind::Filter { config },
     }
 }
 

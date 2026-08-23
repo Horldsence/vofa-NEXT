@@ -35,9 +35,20 @@ function CommandFrameAutoSend({
   graphInputs: Record<string, number>;
   sendRef: React.RefObject<SendFrameFn>;
 }) {
+  // 自动发送路径走后端 IPC — 后端单一权威 (cmd_buffer::compute_frame_bytes)。
+  // 本地 `computeFrameBytes` 仅作 UI 预览用途, 不参与发送控制流。
   const computed = useMemo(() => computeFrameBytes(frame, graphInputs), [frame, graphInputs]);
-  const bytesRef = useRef(computed.bytes);
-  useEffect(() => { bytesRef.current = computed.bytes; }, [computed.bytes]);
+  const bytesRef = useRef<Uint8Array | null>(null);
+  // 重算后向后端拉取一次权威字节; 失败保留旧 bytes (沿用现有策略)
+  useEffect(() => {
+    let cancelled = false;
+    void api.computeFrameBytes(frame, graphInputs).then((res) => {
+      if (cancelled) return;
+      if (res.bytes) bytesRef.current = new Uint8Array(res.bytes);
+    });
+    return () => { cancelled = true; };
+    // 触发: graphInputs 或 frame 变化时重拉
+  }, [frame, graphInputs]);
 
   // 定时发送
   useEffect(() => {
@@ -220,6 +231,9 @@ export function CommandSender({ widget }: CommandSenderProps) {
       return false;
     }
     try {
+      // 走前端预计算的字节 (预览由本地 computeFrameBytes 计算) — 自动发送路径由
+      // CommandFrameAutoSend 后台拉取后端权威字节, 手动发送沿用预览字节 (已通过
+      // handleSend 路径内的后端校验, 见 onChange effect)。
       const arr = Array.from(bytes);
       // 沿字节边图路由注入 (含 Transport.tx 真实发送)
       await api.injectBytes(id, arr);
@@ -249,11 +263,13 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
   const handleSend = async () => {
     setError(null);
-    if (!computed.bytes || computed.bytes.length === 0 || computed.error) {
-      setError(t(lang, 'cmdErrorEmpty'));
+    // 手动发送走完后端 IPC 拿到权威字节 — 与自动发送路径同源 (避免双计算分歧)
+    const res = await api.computeFrameBytes(activeFrame, graphInputs);
+    if (!res.bytes || res.bytes.length === 0 || res.error) {
+      setError(res.error ?? t(lang, 'cmdErrorEmpty'));
       return;
     }
-    await sendFrame(activeFrame, computed.bytes);
+    await sendFrame(activeFrame, new Uint8Array(res.bytes));
   };
 
   const updateParams = (changes: Partial<CommandConfig>) => {
