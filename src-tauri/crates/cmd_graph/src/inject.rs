@@ -239,4 +239,31 @@ mod tests {
         assert_eq!(*channels, 1);
         assert_eq!(port_names.as_ref().unwrap().as_slice(), &["str".to_string()]);
     }
+
+    /// 与 derived 端 `preset_justfloat_auto_falls_back_to_default` 对齐:
+    /// `channels: None` 时 inject 也回退到默认 4 端口, 避免两侧派生不一致
+    #[test]
+    fn preset_justfloat_auto_channels_uses_default_four() {
+        let proto = protocol_node(
+            "p1",
+            ProtocolConfig::JustFloat { channels: None },
+            None,
+        );
+        let widget = NodeDef {
+            id: "w1".into(),
+            tab_id: "tab1".into(),
+            kind: NodeKind::Sink,
+        };
+        let edges = vec![edge("p1", "ch0", "w1", "in0")];
+        let sources = inject_protocol_sources(&[proto, widget], &edges);
+        assert_eq!(sources.len(), 1);
+        let NodeKind::ProtocolSource { channels, port_names, .. } = &sources[0].kind else {
+            panic!("expected ProtocolSource");
+        };
+        assert_eq!(*channels, 4);
+        assert_eq!(
+            port_names.as_ref().unwrap().as_slice(),
+            &["ch0".to_string(), "ch1".to_string(), "ch2".to_string(), "ch3".to_string()]
+        );
+    }
 }
