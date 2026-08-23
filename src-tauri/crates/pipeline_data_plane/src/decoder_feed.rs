@@ -7,20 +7,14 @@
 //! 缓存放每个 Transport 读任务内, 避免每批抢 graphs 锁 (该锁被评估路径整批持有)。
 
 use crate::eval_state::GraphEvalState;
-use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 use buffer_raw::RawDataDirection;
 use node_frame_decoder::FrameParser;
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 
 /// FrameDecoder 解析配置 (blocks + 附加端口开关)
 /// 元组: (blocks, enable_valid, enable_frame_count, enable_last_timestamp, enable_fps)
-pub type DecoderParseConfig = (
-    Vec<node_kind::DecoderBlockDef>,
-    bool,
-    bool,
-    bool,
-    bool,
-);
+pub type DecoderParseConfig = (Vec<node_kind::DecoderBlockDef>, bool, bool, bool, bool);
 
 /// 从 graphs 收集所有 FrameDecoder 配置 → (dec_id, DecoderParseConfig)
 fn collect_decoder_configs(eval_state: &GraphEvalState) -> HashMap<String, DecoderParseConfig> {
@@ -28,10 +22,10 @@ fn collect_decoder_configs(eval_state: &GraphEvalState) -> HashMap<String, Decod
     let mut configs: HashMap<String, DecoderParseConfig> = HashMap::new();
     for (_, graph) in graphs.iter() {
         for dec_id in graph.decoder_node_ids() {
-            if let Some(cfg) = graph.decoder_config(&dec_id) {
+            if let Some(cfg) = graph.decoder_config(dec_id) {
                 // cfg.5 为 deprecated 的 loopback 标志, 新语义下忽略
                 // (字节来源完全由输入字节边决定)
-                configs.insert(dec_id, (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4));
+                configs.insert(dec_id.clone(), (cfg.0.to_vec(), cfg.1, cfg.2, cfg.3, cfg.4));
             }
         }
     }

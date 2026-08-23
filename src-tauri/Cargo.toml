@@ -124,6 +124,7 @@ thiserror = "1"
 regex = "1"
 glob = "0.3"
 rustc-hash = "2"
+petgraph = { version = "0.8", default-features = false, features = ["stable_graph"] }
 buffer_ring = { path = "crates/buffer_ring" }
 buffer_databuffer = { path = "crates/buffer_databuffer" }
 buffer_graph = { path = "crates/buffer_graph" }

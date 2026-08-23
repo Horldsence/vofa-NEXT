@@ -10,12 +10,11 @@
 
 use std::collections::HashMap;
 
-use dsp_fft::{IfftState, SpectrumOutput};
+use dsp_fft::IfftState;
 use dsp_filter::DigitalFilter;
-use dsp_window::WindowType;
 
 use node_frame_decoder::FrameParser;
-use node_kind::{DecoderBlockDef, NodeKind, PortDomain, StrResult};
+use node_kind::{NodeKind, PortDomain, StrResult};
 use node_trigger::TriggerState;
 
 use crate::compile::CompiledGraph;
@@ -107,7 +106,7 @@ impl CompiledGraph {
         out_str: &mut StringValuesMap,
     ) {
         for node_id in &self.eval_order {
-            let Some(node) = self.nodes.get(node_id) else {
+            let Some(node) = self.value_def(node_id) else {
                 continue;
             };
 
@@ -415,8 +414,9 @@ impl CompiledGraph {
         computed: &ValuesMap,
     ) -> HashMap<String, HashMap<String, f32>> {
         let mut result = HashMap::new();
-        for (node_id, node) in &self.nodes {
+        for node in self.value_nodes() {
             if let NodeKind::Custom { inputs, .. } = &node.kind {
+                let node_id = &node.id;
                 let mut m = HashMap::with_capacity(inputs.len());
                 for port in inputs {
                     let val = self.resolve_input(node_id, port, computed);
@@ -436,127 +436,12 @@ impl CompiledGraph {
     /// 将值 push 到对应的 SpectrumAnalyzer 的滑动窗口。
     pub fn collect_spectrum_inputs(&self, computed: &ValuesMap) -> HashMap<String, f32> {
         let mut result = HashMap::new();
-        for (node_id, node) in &self.nodes {
+        for node in self.value_nodes() {
             if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
-                let val = self.resolve_input(node_id, "in0", computed);
-                result.insert(node_id.clone(), val);
+                let val = self.resolve_input(&node.id, "in0", computed);
+                result.insert(node.id.clone(), val);
             }
         }
         result
-    }
-}
-
-// ============ 节点查询访问器 ============
-
-impl CompiledGraph {
-    /// 获取所有 Custom 节点 id
-    pub fn custom_node_ids(&self) -> Vec<String> {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| matches!(n.kind, NodeKind::Custom { .. }))
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
-    /// 获取所有 SpectrumSink 节点 id
-    pub fn spectrum_sink_ids(&self) -> Vec<String> {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| matches!(n.kind, NodeKind::SpectrumSink { .. }))
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
-    /// 获取所有 Filter 节点 id (供状态清理: 删除节点时移除对应 filter_states)
-    pub fn filter_node_ids(&self) -> Vec<String> {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| matches!(n.kind, NodeKind::Filter { .. }))
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
-    /// 获取所有 Ifft 节点 id (供状态清理 + spectrum_ticker 合成时域缓冲)
-    pub fn ifft_node_ids(&self) -> Vec<String> {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| matches!(n.kind, NodeKind::Ifft))
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
-    /// 解析 Ifft 节点的上游 FFT (SpectrumSink) 节点 id
-    ///
-    /// 输入端口固定为 "spectrum" (频域), 编译期从 input_index 反查边:
-    /// (source 节点的 "spectrum" 输出) → source 节点 id。
-    /// 无上游边返回 None。
-    pub fn ifft_source(&self, node_id: &str) -> Option<String> {
-        self.input_index
-            .get(node_id)
-            .and_then(|ports| ports.get("spectrum"))
-            .map(|(src, _)| src.clone())
-    }
-
-    /// 获取所有 FrameDecoder 节点 id
-    /// (供 data_loop 同步 decoder_states: 创建/重建/清理 FrameParser)
-    pub fn decoder_node_ids(&self) -> Vec<String> {
-        self.nodes
-            .iter()
-            .filter(|(_, n)| matches!(n.kind, NodeKind::FrameDecoder { .. }))
-            .map(|(id, _)| id.clone())
-            .collect()
-    }
-
-    /// 获取 FrameDecoder 节点的配置 (blocks + 附加端口开关 + loopback 标志)
-    /// 用于 decoder_feed 在节点变更时重建 FrameParser
-    ///
-    /// 注意: 返回的 loopback 标志为 deprecated (见 NodeKind::FrameDecoder),
-    /// 新语义下字节来源完全由输入字节边决定 (见 byte_plan)。
-    #[allow(clippy::type_complexity)]
-    pub fn decoder_config(
-        &self,
-        node_id: &str,
-    ) -> Option<(&[DecoderBlockDef], bool, bool, bool, bool, bool)> {
-        let node = self.nodes.get(node_id)?;
-        if let NodeKind::FrameDecoder {
-            blocks,
-            enable_valid,
-            enable_frame_count,
-            enable_last_timestamp,
-            enable_fps,
-            loopback,
-        } = &node.kind
-        {
-            Some((
-                blocks.as_slice(),
-                *enable_valid,
-                *enable_frame_count,
-                *enable_last_timestamp,
-                *enable_fps,
-                *loopback,
-            ))
-        } else {
-            None
-        }
-    }
-
-    /// 获取 SpectrumSink 节点的配置 (window_size, window_type, output, sample_rate)
-    /// 用于 state.rs 在节点变更时重建 SpectrumAnalyzer
-    pub fn spectrum_sink_config(
-        &self,
-        node_id: &str,
-    ) -> Option<(usize, WindowType, SpectrumOutput, f32)> {
-        let node = self.nodes.get(node_id)?;
-        if let NodeKind::SpectrumSink {
-            window_size,
-            window_type,
-            output,
-            sample_rate,
-        } = &node.kind
-        {
-            Some((*window_size, *window_type, *output, *sample_rate))
-        } else {
-            None
-        }
     }
 }

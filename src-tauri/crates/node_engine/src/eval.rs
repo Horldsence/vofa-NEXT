@@ -1,20 +1,23 @@
 //! 编译期槽位评估表 (CompiledEval) — f32 热路径
 //!
-//! 结构: 平坦 [`CompiledOp`] 数组 + 槽位读写 + 零字符串哈希。
+//! 结构: 平坦 [`CompiledOp`] 数组 (定义见 `ops` 模块, 构建见 `lower` 模块)
+//! + 槽位读写 + 零字符串哈希。
+//!
 //! 逐帧评估时仅有的字符串查找是 ProtocolSource 的帧源解析
 //! (每源每帧一次, 编译期预排为 `frame_sources` 下标表)。
 
 use std::collections::HashMap;
 
 use dsp_fft::IfftState;
-use dsp_filter::{DigitalFilter, FilterKind};
+use dsp_filter::DigitalFilter;
 use rustc_hash::FxBuildHasher;
 use vofa_core::DataFrame;
 
 use node_frame_decoder::FrameParser;
-use node_kind::{MathOp, StrNumParams, StrOp, StrResult};
-use node_trigger::{TriggerRuleDef, TriggerState};
+use node_kind::{StrNumParams, StrResult};
+use node_trigger::TriggerState;
 
+use crate::ops::CompiledOp;
 use crate::{StringValuesMap, ValuesMap};
 
 /// 多源最新帧缓存 — key = 全局 Protocol 节点 id, value = 该源最近一帧
@@ -79,85 +82,7 @@ pub fn str_num_default(num: &StrNumParams, port: &str) -> f32 {
     }
 }
 
-/// 编译期槽位操作 — 平坦操作序列 (拓扑序 == eval_order), 逐帧评估零字符串哈希
-pub enum CompiledOp {
-    /// ProtocolSource: source_frames[frame_sources[src]].channels[ch] → slot
-    /// (源缺失/通道越界写 0.0, 与未连接语义一致)
-    ProtocolSource { src: usize, ch: usize, slot: usize },
-    /// ProtocolSource 的 "str" 端口 (String 域, RawData 原始字节文本):
-    /// source_texts[frame_sources[src]] → 字符串槽位; 源无缓存时不写
-    /// (str_written 不置位 → 快照保持上次值, 对齐 Trigger 未激活帧语义)
-    ProtocolSourceStr { src: usize, slot: usize },
-    /// Input: input_values[node_id] → slot (缺省 0.0)
-    Input { node_id: String, slot: usize },
-    /// Math: 从输入槽位收集 → op.evaluate → out 槽位 (输入槽位 None = 常量 0.0)
-    Math {
-        op: MathOp,
-        inputs: Vec<Option<usize>>,
-        out: usize,
-    },
-    /// Custom: custom_outputs[node_id][port] → 各 slot (缺省全部 0.0)
-    Custom {
-        node_id: String,
-        ports: Vec<(String, usize)>,
-    },
-    /// Filter: 读 in 槽位 → filter_states[node_id] (懒建/kind 变更重建, 与现语义一致) → out
-    Filter {
-        node_id: String,
-        kind: FilterKind,
-        input: Option<usize>,
-        out: usize,
-    },
-    /// FrameDecoder: decoder_states[node_id].last_frame → 各端口 slot
-    /// (端口列表编译期确定: blocks 的 port_name (默认名规则与 output_port_name 一致)
-    ///  + 按开关的 valid/frame_count/last_timestamp/fps)
-    FrameDecoder {
-        node_id: String,
-        ports: Vec<(String, usize)>,
-        valid: Option<usize>,
-        frame_count: Option<usize>,
-        last_timestamp: Option<usize>,
-        fps: Option<usize>,
-    },
-    /// Ifft: 读 ifft_states[node_id] 的下一个重建采样 → out 槽位 (环形播放, 时域)
-    Ifft { node_id: String, out: usize },
-    /// Str: 按 StrOp::input_ports() 端口表紧凑拆分输入 (只含同 domain 端口, 按端口表顺序):
-    /// - str_inputs[i] = 第 i 个 String 端口的上游字符串槽位 (None = 未连接/上游无槽位 → "")
-    /// - num_inputs[i] = 第 i 个 F32 端口的上游数值槽位 (None → num_defaults[i])
-    /// - num_defaults[i] = 第 i 个 F32 端口的内联回退值 (编译期从 StrNumParams 捕获)
-    ///
-    /// 输出按 StrOp::output_domain(): String → text_out 字符串槽位, F32 → num_out 数值槽位
-    Str {
-        op: StrOp,
-        str_inputs: Vec<Option<usize>>,
-        num_inputs: Vec<Option<usize>>,
-        num_defaults: Vec<f32>,
-        text_out: Option<usize>,
-        num_out: Option<usize>,
-    },
-    /// Trigger: 经 trigger_states[node_id] 求值 (懒建 / 配置变更重建, 与 evaluate_into 一致)
-    /// - manual: 每帧以 command 匹配; auto: trigger_in 槽位值边沿检测, 未激活帧不写任何槽位
-    /// - 分派 (对齐前端 runMatch): string 规则命中 → text 字符串槽位 + matched 数值槽位
-    ///   (value 不覆盖); number 命中/miss → value + matched 数值槽位 (text 不覆盖)
-    Trigger {
-        node_id: String,
-        mode: String,
-        edge: String,
-        default_miss: f32,
-        default_miss_text: String,
-        command: String,
-        rules: Vec<TriggerRuleDef>,
-        /// auto 模式 "trigger" 输入端口的上游槽位 (None = 未连接, 与缺省 0.0 对应)
-        trigger_in: Option<usize>,
-        value: usize,
-        matched: usize,
-        text: usize,
-    },
-    /// TextInput: 文本输入源 — 参数 text 每帧原样写入 out 字符串槽位 (覆盖写)
-    TextInput { text: String, out: usize },
-}
-
-/// 编译期槽位评估表 — CompiledGraph::compile 时构建, 逐帧评估纯数组读写
+/// 编译期槽位评估表 — 编译流水线后端产物 (构建见 [`crate::lower`]), 逐帧评估纯数组读写
 pub struct CompiledEval {
     /// 槽位 i 对应的 (node_id, port) — 供快照物化/派生边反查
     pub(crate) slot_names: Vec<(String, String)>,

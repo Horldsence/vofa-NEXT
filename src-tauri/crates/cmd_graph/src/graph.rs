@@ -1,12 +1,14 @@
-use app_state::{AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, StringOutputSnapshot};
-use pipeline_data_plane::data_plane::{byte_router, frame_dispatch};
-use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
-use tauri::{ipc::Channel, AppHandle, State};
+use app_state::{
+    AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, StringOutputSnapshot,
+};
 use buffer_graph::Edge;
-use vofa_core::{Error, Result};
 use error::ConfigError;
 use node_engine::BytePlan;
 use node_kind::NodeDef;
+use pipeline_data_plane::data_plane::{byte_router, frame_dispatch};
+use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
+use tauri::{ipc::Channel, AppHandle, State};
+use vofa_core::{Error, Result};
 
 // ============ 节点图 (后端化重构) ============
 
@@ -26,14 +28,16 @@ fn rebuild_byte_plan(
             if new_tab.is_some_and(|(id, _)| id == tab_id) {
                 continue; // 本 tab 用新图的边
             }
-            byte_edges.extend_from_slice(g.byte_edges());
+            byte_edges.extend(g.byte_edges());
         }
     }
     if let Some((_, g)) = new_tab {
-        byte_edges.extend_from_slice(g.byte_edges());
+        byte_edges.extend(g.byte_edges());
     }
-    BytePlan::build(candidate, &byte_edges)
-        .map_err(|e| Error::Config(ConfigError::BytePlanCompile(Box::new(e))))
+    // 合并后的全局表先建 HIR (边分类应与各 tab 编译期一致), 再投影字节平面
+    let typed = node_engine::TypedGraph::build(candidate.values().cloned(), byte_edges)
+        .map_err(|e| Error::Config(ConfigError::BytePlanCompile(Box::new(e))))?;
+    BytePlan::build(&typed).map_err(|e| Error::Config(ConfigError::BytePlanCompile(Box::new(e))))
 }
 
 /// 更新指定 tab 的节点图 (整体替换 nodes + edges)
@@ -202,15 +206,8 @@ pub async fn inject_bytes(
     let target_count = plane.byte_plan.lock().routes_for(&source_node_id).len();
 
     let mut cache = DecoderFeedCache::new();
-    let summary = byte_router::route_bytes(
-        &plane,
-        Some(&app),
-        &source_node_id,
-        &data,
-        0,
-        &mut cache,
-    )
-    .await;
+    let summary =
+        byte_router::route_bytes(&plane, Some(&app), &source_node_id, &data, 0, &mut cache).await;
 
     // FrameDecoder 被喂入 → 快照评估一次 (decoder 输出来自 last_frame 缓存)
     if summary.decoders_fed {
@@ -258,10 +255,7 @@ pub async fn subscribe_string_outputs(
 
 /// 取消字符串输出订阅
 #[tauri::command]
-pub async fn unsubscribe_string_outputs(
-    state: State<'_, AppState>,
-    channel_id: u32,
-) -> Result<()> {
+pub async fn unsubscribe_string_outputs(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
     let mut subs = state.text_output_subscribers.lock();
     subs.retain(|_ch| {
         // Channel 内部 id 通过 ChannelId 获取 — 这里按引用相等不可行,
@@ -338,9 +332,14 @@ mod tests {
         let state = AppState::new();
         state.input_values.lock().insert("in1".into(), 7.0);
 
-        apply_tab_graph(&state, "tab1".into(), vec![input_node("in1", "tab1")], vec![])
-            .await
-            .expect("提交图应成功");
+        apply_tab_graph(
+            &state,
+            "tab1".into(),
+            vec![input_node("in1", "tab1")],
+            vec![],
+        )
+        .await
+        .expect("提交图应成功");
 
         let got = state
             .data_plane
@@ -360,9 +359,14 @@ mod tests {
     async fn remove_tab_graph_refreshes_snapshot() {
         let state = AppState::new();
         state.input_values.lock().insert("in1".into(), 3.0);
-        apply_tab_graph(&state, "tab1".into(), vec![input_node("in1", "tab1")], vec![])
-            .await
-            .expect("提交图应成功");
+        apply_tab_graph(
+            &state,
+            "tab1".into(),
+            vec![input_node("in1", "tab1")],
+            vec![],
+        )
+        .await
+        .expect("提交图应成功");
         assert!(
             state
                 .data_plane

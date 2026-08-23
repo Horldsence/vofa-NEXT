@@ -1,6 +1,6 @@
+use dsp_fft::SpectrumAnalyzer;
 use pipeline_data_plane::GraphEvalState;
 use std::collections::HashMap;
-use dsp_fft::SpectrumAnalyzer;
 
 /// 同步 spectrum_analyzers 与 graphs 中的 SpectrumSink 节点
 ///
@@ -18,17 +18,12 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
     // 收集所有 graph 中当前的 SpectrumSink id → config
     let mut current_configs: HashMap<
         String,
-        (
-            usize,
-            dsp_window::WindowType,
-            dsp_fft::SpectrumOutput,
-            f32,
-        ),
+        (usize, dsp_window::WindowType, dsp_fft::SpectrumOutput, f32),
     > = HashMap::new();
     for (_, graph) in graphs.iter() {
         for sink_id in graph.spectrum_sink_ids() {
-            if let Some(cfg) = graph.spectrum_sink_config(&sink_id) {
-                current_configs.insert(sink_id, cfg);
+            if let Some(cfg) = graph.spectrum_sink_config(sink_id) {
+                current_configs.insert(sink_id.clone(), cfg);
             }
         }
     }
@@ -89,12 +84,12 @@ pub fn sync_ifft_buffers(state: &GraphEvalState) {
     let mut current: HashMap<String, Option<(String, usize)>> = HashMap::new();
     for (_, graph) in graphs.iter() {
         for node_id in graph.ifft_node_ids() {
-            let cfg = graph.ifft_source(&node_id).and_then(|sid| {
+            let cfg = graph.ifft_source(node_id).and_then(|sid| {
                 graph
                     .spectrum_sink_config(&sid)
                     .map(|(n, _, _, _)| (sid, n))
             });
-            current.insert(node_id, cfg);
+            current.insert(node_id.clone(), cfg);
         }
     }
 

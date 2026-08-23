@@ -1,6 +1,6 @@
 [package]
 name = "node_engine"
-description = "VOFA-NEXT 节点图引擎 — BytePlan + Compile + Eval + Evaluate + ValuesMap 槽位运行时"
+description = "VOFA-NEXT 节点图引擎 — HIR/平面投影/Lowering 三段式编译流水线 + 槽位运行时"
 version.workspace = true
 edition.workspace = true
 
@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 serde = { workspace = true }
 rustc-hash = { workspace = true }
+petgraph = { workspace = true }
 schema_types = { workspace = true }
 thiserror = { workspace = true }
 vofa_core = { workspace = true }

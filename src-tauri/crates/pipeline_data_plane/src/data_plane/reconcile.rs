@@ -52,7 +52,7 @@ fn snapshot_node_sets(plane: &DataPlaneState) -> NodeSets {
     }
     // 悬空 ProtocolSource: 引用的 node_id 不是全局表中的 Protocol 节点
     for g in plane.eval.graphs.lock().values() {
-        for n in g.nodes().values() {
+        for n in g.value_nodes() {
             match &n.kind {
                 NodeKind::ProtocolSource { node_id, .. } => {
                     let target_is_protocol = matches!(

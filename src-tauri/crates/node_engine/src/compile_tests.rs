@@ -168,7 +168,7 @@ fn test_transport_protocol_not_in_f32_eval_order() {
     assert!(pos("tp") < pos("pt"));
     assert!(pos("pt") < pos("dec"));
     // 字节边单独分类
-    assert_eq!(g.byte_edges().len(), 2);
+    assert_eq!(g.byte_edges().count(), 2);
 }
 
 #[test]
@@ -210,7 +210,7 @@ fn test_legacy_loopback_in_handle_is_bytes() {
     let nodes = vec![make_transport("tp"), make_decoder("dec", "t1")];
     let edges = vec![edge("e1", "tp", "rx", "dec", "loopbackIn")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
-    assert_eq!(g.byte_edges().len(), 1);
+    assert_eq!(g.byte_edges().count(), 1);
 }
 
 #[test]
@@ -273,8 +273,8 @@ fn test_raw_data_channel_edges_classified_by_source_domain() {
         edge("e-ch", "pt", "ch0", "w-raw", "src:pt:ch0"), // 数值通道 (现状)
     ];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
-    let byte_ids: Vec<_> = g.byte_edges().iter().map(|e| e.id.as_str()).collect();
-    assert_eq!(byte_ids, ["e-rx", "e-out"]);
+    let byte_ids: Vec<_> = g.byte_edges().map(|e| e.id).collect();
+    assert_eq!(byte_ids, ["e-rx".to_string(), "e-out".to_string()]);
 }
 
 #[test]
@@ -299,8 +299,8 @@ fn test_string_edge_compiles_and_orders_topologically() {
     let edges = vec![edge("e1", "mid", "result", "up", "str")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
     // 字符串边单独分类 (不进 f32 边)
-    assert_eq!(g.string_edges().len(), 1);
-    assert_eq!(g.string_edges()[0].id, "e1");
+    assert_eq!(g.string_edges().count(), 1);
+    assert_eq!(g.string_edges().next().unwrap().id, "e1");
     let pos = |id: &str| g.eval_order.iter().position(|n| n == id).unwrap();
     assert!(pos("mid") < pos("up"));
 }
@@ -335,7 +335,7 @@ fn test_str_f32_output_edge_is_f32_plane() {
     ];
     let edges = vec![edge("e1", "len1", "result", "m1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
-    assert!(g.string_edges().is_empty());
+    assert_eq!(g.string_edges().count(), 0);
     // Len 的 result 分配的是 f32 槽位, Math 可消费
     assert!(g.compiled().slot_of("len1", "result").is_some());
     assert!(g.compiled().str_slot_of("len1", "result").is_none());

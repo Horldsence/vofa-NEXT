@@ -64,7 +64,7 @@ fn publish_str_slots(
 /// - 引用了其他源 → 不触发 (该源来帧时才评估)
 fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
     let mut has_source = false;
-    for n in g.nodes().values() {
+    for n in g.value_nodes() {
         if let NodeKind::ProtocolSource { node_id, .. } = &n.kind {
             has_source = true;
             if node_id == source_id {

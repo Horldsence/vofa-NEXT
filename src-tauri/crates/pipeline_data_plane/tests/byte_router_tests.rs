@@ -9,14 +9,14 @@
 //! 两个同源码类型, 测试编译失败 (E0308), 故以 tests/ 集成测试形式存在。
 
 use app_state::AppState;
+use buffer_graph::Edge;
+use node_engine::BytePlan;
+use node_kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 use pipeline_data_plane::byte_router::route_bytes;
 use pipeline_data_plane::decoder_feed::DecoderFeedCache;
 use pipeline_data_plane::DataPlaneState;
-use buffer_graph::Edge;
 use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset};
 use vofa_core::TransportConfig;
-use node_engine::BytePlan;
-use node_kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 
 fn node(id: &str, kind: NodeKind) -> NodeDef {
     NodeDef {
@@ -82,7 +82,8 @@ fn setup_plane(nodes: Vec<NodeDef>, edges: Vec<Edge>) -> DataPlaneState {
             g.insert(n.id.clone(), n);
         }
         let node_map = g.clone();
-        *plane.byte_plan.lock() = BytePlan::build(&node_map, &edges).unwrap();
+        let typed = node_engine::TypedGraph::build(node_map.values().cloned(), edges).unwrap();
+        *plane.byte_plan.lock() = BytePlan::build(&typed).unwrap();
     }
     plane.sync_protocol_states();
     plane
@@ -181,7 +182,11 @@ async fn convert_to_chain_reencodes_downstream() {
 async fn inject_routes_to_multiple_downstreams() {
     // widget loopbackOut → pt.in (Protocol) + dec.in (FrameDecoder)
     let plane = setup_plane(
-        vec![node("cmd", NodeKind::Sink), node("pt", firewater(Some(2))), u8_decoder("dec")],
+        vec![
+            node("cmd", NodeKind::Sink),
+            node("pt", firewater(Some(2))),
+            u8_decoder("dec"),
+        ],
         vec![
             edge("cmd", "loopbackOut", "pt", "in"),
             edge("cmd", "loopbackOut", "dec", "in"),
@@ -189,8 +194,7 @@ async fn inject_routes_to_multiple_downstreams() {
     );
     // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
     let graph =
-        node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
-            .unwrap();
+        node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![]).unwrap();
     plane.eval.graphs.lock().insert("t1".into(), graph);
     plane
         .eval
@@ -245,14 +249,17 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
         vec![edge("tp", "rx", "pr", "in"), edge("pr", "out", "dec", "in")],
     );
     // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
-    let graph = node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
-        .unwrap();
+    let graph =
+        node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![]).unwrap();
     plane.eval.graphs.lock().insert("t1".into(), graph);
 
     let mut cache = DecoderFeedCache::new();
     let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
     assert_eq!(summary.frames, 0, "RawData 不产帧");
-    assert!(summary.decoders_fed, "原始字节应沿 out 边透传到 FrameDecoder");
+    assert!(
+        summary.decoders_fed,
+        "原始字节应沿 out 边透传到 FrameDecoder"
+    );
     // source_texts 缓存原始字节的 UTF-8 文本
     assert_eq!(
         plane.source_texts.lock().get("pr").map(String::as_str),
@@ -311,8 +318,8 @@ async fn rawdata_custom_schema_no_text_cache_no_passthrough() {
         vec![edge("tp", "rx", "pr", "in"), edge("pr", "out", "dec", "in")],
     );
     // FrameDecoder 配置来自 tab 图 (decoder_feed 按 graphs 收集), 注入对应编译图
-    let graph = node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![])
-        .unwrap();
+    let graph =
+        node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![]).unwrap();
     plane.eval.graphs.lock().insert("t1".into(), graph);
 
     let mut cache = DecoderFeedCache::new();
