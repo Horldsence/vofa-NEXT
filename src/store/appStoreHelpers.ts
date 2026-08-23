@@ -137,8 +137,8 @@ export function isGlobalNode(n: Node): boolean {
 /// 收集:
 /// - 本 tab 的 widget 节点 (widgetToNodeKind)
 /// - 本 tab 边引用的全局 Transport/Protocol 节点 (字节平面定义, 原样提交字节边)
-/// - ProtocolSource 转换: 本 tab 内有边从某全局 Protocol 节点的 chN 端口发出时,
-///   追加一个 ProtocolSource NodeDef (id = 全局 Protocol 节点 id)
+/// - ProtocolSource 转换: 本 tab 内有边从某全局 Protocol 节点的 chN 端口发出时
+///   (RawData 预设例外: 端口为 str), 追加一个 ProtocolSource NodeDef (id = 全局 Protocol 节点 id)
 ///
 /// 注意: ProtocolSource 定义排在全局 Transport/Protocol 定义之前 — 当前后端
 /// update_tab_graph 按 id 覆盖合并, 同 id 时后者生效, 保证字节平面 Protocol 定义存活
@@ -157,8 +157,8 @@ export async function syncTabGraphToBackend(tabId: string): Promise<void> {
   const globalById = new Map(state.rfNodes.filter(isGlobalNode).map((n) => [n.id, n]));
 
   // 本 tab 引用的 ProtocolSource (Protocol 节点 id → 端口名列表)
-  // 端口集合按 protocolPortNames 推导: 预设 = ch0..chN, custom schema = 命名端口;
-  // 边 sourceHandle 命中端口集合即计入 (不再只认 chN 正则)
+  // 端口集合按 protocolPortNames 推导: 预设 = ch0..chN (RawData 例外 → str),
+  // custom schema = 命名端口; 边 sourceHandle 命中端口集合即计入 (不再只认 chN 正则)
   const protocolSources = new Map<string, string[]>();
   for (const e of tabEdges) {
     const src = globalById.get(e.source);

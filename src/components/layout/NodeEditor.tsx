@@ -25,6 +25,8 @@ import { WidgetNode, getWidgetPorts } from '../nodes/WidgetNode';
 import { TransportNode } from '../nodes/TransportNode';
 import { ProtocolNode } from '../nodes/ProtocolNode';
 import { GlobalNodeProperties } from '../nodes/GlobalNodeProperties';
+import { isRawDataPreset } from '../../lib/utils/protocolSchema';
+import type { ProtocolNodeData } from '../../store/appStoreHelpers';
 import { Maximize, LayoutGrid } from 'lucide-react';
 
 interface NodeEditorProps {
@@ -182,8 +184,9 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       }
       if (node.type === 'protocol') {
         if (handleId === 'in' || handleId === 'out') return 'bytes';
-        // RawData 预设的 str 口是字符串域 (UTF-8 lossy 文本)
-        if (kind === 'source' && handleId === 'str') return 'string';
+        // RawData 预设的 str 口是字符串域 (UTF-8 lossy 文本); custom schema 的同名端口除外
+        if (kind === 'source' && handleId === 'str'
+          && isRawDataPreset(node.data as unknown as ProtocolNodeData)) return 'string';
         if (kind === 'source' && /^ch\d+$/.test(handleId)) return 'time';
         return null;
       }
