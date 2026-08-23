@@ -98,6 +98,22 @@ function parseChannelsDetectedEvent(
   return null;
 }
 
+/// graph:derived payload 解析 — 后端 update_tab_graph/remove_tab_graph emit;
+/// 契约为 `{ nodes: [{ node_id, ports: [{ name, domain }], effective_channels? }] }`。
+/// 与 store/slices/derived.ts 的 GraphDerivedPayload 同步 (单一契约, 双向核对)。
+function parseGraphDerivedEvent(payload: unknown): import('./derived').GraphDerivedPayload | null {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'nodes' in payload &&
+    Array.isArray((payload as { nodes: unknown }).nodes)
+  ) {
+    return payload as import('./derived').GraphDerivedPayload;
+  }
+  console.warn('[events] graph:derived payload 契约不符:', payload);
+  return null;
+}
+
 export interface EventSlice {
   initEventListeners: () => Promise<() => void>;
 }
@@ -180,7 +196,16 @@ export function createEventSlice(set: any, get: any): EventSlice {
         get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
       });
 
-      unlistenFns = [unlistenState, unlistenStats, unlistenChannels];
+      // graph:derived — 后端 update_tab_graph / remove_tab_graph 提交后 emit;
+      // 写 derivedPorts (端口表渲染单一权威); 与 update_tab_graph 响应合并写入,
+      // 后到的事件作为权威覆盖前者 (后端保证唯一来源, 重复仅幂等刷新)。
+      const unlistenDerived = await listen<unknown>('graph:derived', (event) => {
+        const parsed = parseGraphDerivedEvent(event.payload);
+        if (!parsed) return;
+        get().setDerived(parsed.nodes);
+      });
+
+      unlistenFns = [unlistenState, unlistenStats, unlistenChannels, unlistenDerived];
 
       const graphCoalescer = makeRafCoalescer<{ values: Record<string, Record<string, number>>; tick: number }>(
         (v) => set({ graphOutputs: v.values, graphOutputsTick: v.tick })

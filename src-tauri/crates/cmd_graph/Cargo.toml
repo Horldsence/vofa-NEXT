@@ -10,9 +10,13 @@ workspace = true
 [dependencies]
 app_state = { workspace = true }
 log = { workspace = true }
+notify_events = { workspace = true }
 pipeline_data_plane = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
+schema_engine = { workspace = true }
+schema_types = { workspace = true }
+serde = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
 buffer_databuffer = { workspace = true }
@@ -25,5 +29,3 @@ logic_types = { workspace = true }
 error = { workspace = true }
 
 [dev-dependencies]
-# tests/ 集成测试构造 Protocol 节点需要 ProtocolConfig
-schema_types = { workspace = true }

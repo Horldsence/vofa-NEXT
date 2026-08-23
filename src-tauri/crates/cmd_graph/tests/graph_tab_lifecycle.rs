@@ -44,6 +44,7 @@ async fn remove_tab_graph_removes_nodes_owned_by_that_tab() {
     let state = AppState::new();
     apply_tab_graph(
         &state,
+        None,
         "tab1".into(),
         vec![transport_node("tp", "tab1"), protocol_node("pt", "tab1")],
         vec![],
@@ -55,7 +56,7 @@ async fn remove_tab_graph_removes_nodes_owned_by_that_tab() {
         "前提: 提交后 protocol_states 含 pt"
     );
 
-    apply_remove_tab_graph(&state, "tab1")
+    apply_remove_tab_graph(&state, None, "tab1")
         .await
         .expect("移除图应成功");
 
@@ -77,6 +78,7 @@ async fn remove_tab_graph_keeps_nodes_rehosted_to_surviving_tab() {
     // tab1 最后提交全局节点 (归属 tab1)
     apply_tab_graph(
         &state,
+        None,
         "tab1".into(),
         vec![transport_node("tp", "tab1"), protocol_node("pt", "tab1")],
         vec![],
@@ -86,6 +88,7 @@ async fn remove_tab_graph_keeps_nodes_rehosted_to_surviving_tab() {
     // 存活 tab2 重同步: 全局节点按 id 覆盖, tab_id 改挂 tab2
     apply_tab_graph(
         &state,
+        None,
         "tab2".into(),
         vec![transport_node("tp", "tab2"), protocol_node("pt", "tab2")],
         vec![],
@@ -93,7 +96,7 @@ async fn remove_tab_graph_keeps_nodes_rehosted_to_surviving_tab() {
     .await
     .expect("提交 tab2 图应成功");
 
-    apply_remove_tab_graph(&state, "tab1")
+    apply_remove_tab_graph(&state, None, "tab1")
         .await
         .expect("移除图应成功");
 

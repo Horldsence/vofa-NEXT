@@ -249,6 +249,11 @@ export function makeTransportNodeDef(tabId: string, nodeId: string, config: Tran
 }
 
 /// 构造 Protocol 全局节点的 NodeDef (convertTo/schema 为 null 时省略序列化)
+///
+/// schema 工厂下沉后端 (阶段二): preset 协议 (preset != 'custom') 不再下发 schema,
+/// 由后端 `compile_schema` 按 `config` 工厂构造引擎。custom 块仍由前端持有并下发
+/// (用户在 UI 编辑)。`makeProtocolNodeDef(..., schema)` 接受任意 schema 时,
+/// 仅在 custom 时透传, preset 时省略 schema 字段 (与 serde `skip_serializing_if` 对齐)。
 export function makeProtocolNodeDef(
   tabId: string,
   nodeId: string,
@@ -256,10 +261,19 @@ export function makeProtocolNodeDef(
   convertTo: ProtocolConfig | null,
   schema: ProtocolSchema | null
 ): NodeDef {
+  const isCustom = schema?.preset === 'custom';
+  const params: {
+    config: ProtocolConfig;
+    convert_to?: ProtocolConfig | null;
+    schema?: ProtocolSchema;
+  } = { config, convert_to: convertTo ?? null };
+  if (isCustom && schema) {
+    params.schema = schema;
+  }
   return {
     id: nodeId,
     tab_id: tabId,
-    kind: { kind: 'Protocol', params: { config, convert_to: convertTo ?? null, schema: schema ?? null } },
+    kind: { kind: 'Protocol', params },
   };
 }
 

@@ -16,6 +16,7 @@ import type {
   WaveformWindow,
 } from '../../types';
 import type { NodeDef, GraphEdge } from '../utils/nodeDef';
+import type { GraphDerivedPayload } from '../../store/slices/derived';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
 import { makeLatestSink, subscribeSharded } from '../buffers/shardedSubscription';
 
@@ -178,12 +179,15 @@ export const api = {
   // ===== 节点图 (后端化重构) =====
   /// 更新指定 tab 的节点图 (整体替换 nodes + edges; nodes 可含全局 Transport/Protocol 节点定义)
   /// 编译失败 (循环等) 返回错误, 旧图保留
+  /// 返回 `GraphDerivedPayload` — 本次图变化涉及的全部节点派生端口表 / 通道数
+  /// (后端单一权威, 前端写入 `derivedPorts` store 后渲染 React Flow handle)
   updateTabGraph: (tabId: string, nodes: NodeDef[], edges: GraphEdge[]) =>
-    invoke<void>('update_tab_graph', { tabId, nodes, edges }),
+    invoke<GraphDerivedPayload>('update_tab_graph', { tabId, nodes, edges }),
 
   /// 移除指定 tab 的节点图 (tab 删除时调用)
+  /// 返回 `GraphDerivedPayload` — 删除后剩余全局节点的派生数据 (供前端 derivedPorts 对账)
   removeTabGraph: (tabId: string) =>
-    invoke<void>('remove_tab_graph', { tabId }),
+    invoke<GraphDerivedPayload>('remove_tab_graph', { tabId }),
 
   // ===== CAN 负载分析 =====
   /// 获取 CAN 负载统计快照

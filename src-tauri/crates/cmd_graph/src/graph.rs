@@ -5,10 +5,13 @@ use buffer_graph::Edge;
 use error::ConfigError;
 use node_engine::BytePlan;
 use node_kind::NodeDef;
+use notify_events::emit_graph_derived;
 use pipeline_data_plane::data_plane::{byte_router, frame_dispatch};
 use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
 use tauri::{ipc::Channel, AppHandle, State};
 use vofa_core::{Error, Result};
+
+use crate::{GraphDerived, compute_derived, inject_protocol_sources};
 
 // ============ 节点图 (后端化重构) ============
 
@@ -47,29 +50,39 @@ fn rebuild_byte_plan(
 /// 2. 全局字节平面: 该 tab 节点按 id 覆盖合并进全局节点表, 所有 tab 的
 ///    字节边合并重算全局 BytePlan 存入 DataPlaneState, 并同步 protocol_states
 ///
-/// 任一层编译失败 (循环/端口域不匹配等) 返回错误, 旧图与旧平面保留
+/// 任一层编译失败 (循环/端口域不匹配等) 返回错误, 旧图与旧平面保留。
+/// 提交成功后返回 [`GraphDerived`] (本次图变化涉及的全部节点派生端口表 / 通道数),
+/// 同时 emit `graph:derived` 事件给前端。
 #[tauri::command]
 pub async fn update_tab_graph(
     state: State<'_, AppState>,
+    app: AppHandle,
     tab_id: String,
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
-) -> Result<()> {
-    apply_tab_graph(&state, tab_id, nodes, edges).await
+) -> Result<GraphDerived> {
+    apply_tab_graph(&state, Some(&app), tab_id, nodes, edges).await
 }
 
 /// `update_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地测试)
+///
+/// `app`: Tauri AppHandle, 用于 emit `graph:derived` 事件; 测试时可传 None
 pub async fn apply_tab_graph(
     state: &AppState,
+    app: Option<&AppHandle>,
     tab_id: String,
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
-) -> Result<()> {
-    // 1. 本 tab 数值图编译
-    let compiled = node_engine::CompiledGraph::compile(tab_id.clone(), nodes.clone(), edges)
+) -> Result<GraphDerived> {
+    // 1. ProtocolSource 自动注入 (后端单一权威 — 前端不再下发 ProtocolSource NodeDef)
+    let mut compile_nodes = nodes.clone();
+    compile_nodes.extend(inject_protocol_sources(&nodes, &edges));
+
+    // 2. 本 tab 数值图编译
+    let compiled = node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges)
         .map_err(|e| Error::Config(ConfigError::GraphCompile(Box::new(e))))?;
 
-    // 2. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
+    // 3. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
     // ProtocolSource 是 tab 数值平面的帧源引用, 不参与字节平面, 不进全局表
     // (避免与全局 Protocol 定义同 id 冲突)
     let mut candidate = state.data_plane.global_nodes.lock().clone();
@@ -81,42 +94,62 @@ pub async fn apply_tab_graph(
         candidate.insert(n.id.clone(), n.clone());
     }
 
-    // 3. 全局字节平面重建 (失败则不提交任何状态)
+    // 4. 全局字节平面重建 (失败则不提交任何状态)
     let plan = rebuild_byte_plan(state, &candidate, Some((&tab_id, &compiled)))?;
 
-    // 4. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号
-    state.graphs.lock().insert(tab_id, compiled);
+    // 5. 派生数据计算 (本次图变化涉及的全部节点的输出端口表 / 通道数)
+    let derived_nodes = compute_derived(&candidate.values().cloned().collect::<Vec<_>>());
+
+    // 6. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号
+    state.graphs.lock().insert(tab_id.clone(), compiled);
     *state.data_plane.global_nodes.lock() = candidate;
     *state.data_plane.byte_plan.lock() = plan;
     state
         .graphs_version
         .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    // 5. 同步 Protocol 节点运行时状态 + FrameDecoder 状态清理 + 孤儿资源清理
+    // 7. 同步 Protocol 节点运行时状态 + FrameDecoder 状态清理 + 孤儿资源清理
     state.data_plane.sync_protocol_states();
     state.data_plane.reconcile().await;
     sync_decoders_now(&state.eval_state());
 
-    // 6. 立即快照评估一次: 图结构/参数变更必须即时反映到输出,
+    // 8. 立即快照评估一次: 图结构/参数变更必须即时反映到输出,
     //    不能依赖 transport 数据流 — 无数据流时 manual Trigger 改 command、
     //    Str 节点内联框编辑也要立即出结果 (同 set_input_value 语义)
     frame_dispatch::refresh_snapshot(&state.data_plane);
-    Ok(())
+
+    let derived = GraphDerived {
+        nodes: derived_nodes,
+    };
+    if let Some(app) = app {
+        emit_graph_derived(app, &derived);
+    }
+    Ok(derived)
 }
 
 /// 移除指定 tab 的节点图 (tab 删除时调用)
 #[tauri::command]
-pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Result<()> {
-    apply_remove_tab_graph(&state, &tab_id).await
+pub async fn remove_tab_graph(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    tab_id: String,
+) -> Result<GraphDerived> {
+    apply_remove_tab_graph(&state, Some(&app), &tab_id).await
 }
 
 /// `remove_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地测试)
-pub async fn apply_remove_tab_graph(state: &AppState, tab_id: &str) -> Result<()> {
+pub async fn apply_remove_tab_graph(
+    state: &AppState,
+    app: Option<&AppHandle>,
+    tab_id: &str,
+) -> Result<GraphDerived> {
     state.graphs.lock().remove(tab_id);
 
     // 全局节点表移除该 tab 节点 + 重建全局字节平面
     let mut candidate = state.data_plane.global_nodes.lock().clone();
     candidate.retain(|_, n| n.tab_id != tab_id);
+    // 在移动 candidate 前计算派生数据 (后置消费者仍需遍历)
+    let derived_nodes = compute_derived(&candidate.values().cloned().collect::<Vec<_>>());
     let plan = rebuild_byte_plan(state, &candidate, None)?;
     *state.data_plane.global_nodes.lock() = candidate;
     *state.data_plane.byte_plan.lock() = plan;
@@ -131,7 +164,14 @@ pub async fn apply_remove_tab_graph(state: &AppState, tab_id: &str) -> Result<()
     // 立即快照评估一次 (同 update_tab_graph): 被删 tab 节点的输出键
     // 随全量覆盖写立即从快照清除, 不依赖 transport 数据流
     frame_dispatch::refresh_snapshot(&state.data_plane);
-    Ok(())
+
+    let derived = GraphDerived {
+        nodes: derived_nodes,
+    };
+    if let Some(app) = app {
+        emit_graph_derived(app, &derived);
+    }
+    Ok(derived)
 }
 
 /// 设置输入控件当前值 (Knob/Slider/Button/Radio/Checkbox 拖动时调用)
@@ -334,6 +374,7 @@ mod tests {
 
         apply_tab_graph(
             &state,
+            None,
             "tab1".into(),
             vec![input_node("in1", "tab1")],
             vec![],
@@ -361,6 +402,7 @@ mod tests {
         state.input_values.lock().insert("in1".into(), 3.0);
         apply_tab_graph(
             &state,
+            None,
             "tab1".into(),
             vec![input_node("in1", "tab1")],
             vec![],
@@ -378,7 +420,7 @@ mod tests {
             "前提: 提交后输出已可见"
         );
 
-        apply_remove_tab_graph(&state, "tab1")
+        apply_remove_tab_graph(&state, None, "tab1")
             .await
             .expect("移除图应成功");
 

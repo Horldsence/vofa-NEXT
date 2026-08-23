@@ -2,7 +2,6 @@ import { type Node, type Edge } from '@xyflow/react';
 import { nanoid } from 'nanoid';
 import { useAppStore } from './appStore';
 import {
-  makeProtocolSourceNodeDef,
   makeTransportNodeDef,
   makeProtocolNodeDef,
   widgetToNodeKind,
@@ -16,7 +15,6 @@ import { t, type Lang } from '../i18n';
 import { useSettingsStore } from './settingsStore';
 import {
   getEffectiveChannels,
-  protocolPortNames,
   schemaFromProtocolConfig,
 } from '../lib/utils/protocolSchema';
 import type { WidgetConfig, ProtocolConfig, ProtocolSchema, TransportConfig } from '../types';
@@ -137,12 +135,10 @@ export function isGlobalNode(n: Node): boolean {
 /// 收集:
 /// - 本 tab 的 widget 节点 (widgetToNodeKind)
 /// - 本 tab 边引用的全局 Transport/Protocol 节点 (字节平面定义, 原样提交字节边)
-/// - ProtocolSource 转换: 本 tab 内有边从某全局 Protocol 节点的 chN 端口发出时
-///   (RawData 预设例外: 端口为 str), 追加一个 ProtocolSource NodeDef (id = 全局 Protocol 节点 id)
 ///
-/// 注意: ProtocolSource 定义排在全局 Transport/Protocol 定义之前 — 当前后端
-/// update_tab_graph 按 id 覆盖合并, 同 id 时后者生效, 保证字节平面 Protocol 定义存活
-/// (数值平面的 ch 槽位由后端 ProtocolSource 处理, 见后端 reconcile 工作)。
+/// 阶段二:ProtocolSource 注入下沉后端 (cmd_graph::inject_protocol_sources),
+/// 前端不再手工推导 ProtocolSource NodeDef, 也无需按 protocolPortNames 判定注入条件。
+/// 同步提交后端响应 GraphDerived 写入 `derivedPorts` store 作为端口渲染的单一权威。
 export async function syncTabGraphToBackend(tabId: string): Promise<void> {
   const state = useAppStore.getState();
   // 本 tab 可见节点 = 本 tab widget 节点 + 全部全局节点
@@ -156,26 +152,8 @@ export async function syncTabGraphToBackend(tabId: string): Promise<void> {
 
   const globalById = new Map(state.rfNodes.filter(isGlobalNode).map((n) => [n.id, n]));
 
-  // 本 tab 引用的 ProtocolSource (Protocol 节点 id → 端口名列表)
-  // 端口集合按 protocolPortNames 推导: 预设 = ch0..chN (RawData 例外 → str),
-  // custom schema = 命名端口; 边 sourceHandle 命中端口集合即计入 (不再只认 chN 正则)
-  const protocolSources = new Map<string, string[]>();
-  for (const e of tabEdges) {
-    const src = globalById.get(e.source);
-    if (src?.type !== 'protocol') continue;
-    const data = src.data as ProtocolNodeData;
-    const ports = protocolPortNames(data, state.detectedChannels?.[e.source] ?? null);
-    const handle = e.sourceHandle ?? '';
-    if (!ports.includes(handle)) continue;
-    protocolSources.set(e.source, ports);
-  }
-
   const nodes: NodeDef[] = [];
-  // 1. ProtocolSource 定义 (须在全局定义之前, 见函数头注释)
-  for (const [pid, ports] of protocolSources) {
-    nodes.push(makeProtocolSourceNodeDef(tabId, pid, ports.length, ports));
-  }
-  // 2. widget 节点
+  // 1. widget 节点
   for (const n of state.rfNodes) {
     if (n.data?.tabId !== tabId) continue;
     const widget = n.data?.widget as WidgetConfig | undefined;
@@ -186,7 +164,7 @@ export async function syncTabGraphToBackend(tabId: string): Promise<void> {
       kind: widgetToNodeKind(widget),
     });
   }
-  // 3. 全局节点定义 — 全部提交 (任何 tab 的 sync 都刷新全局表, 配置变更即时生效)
+  // 2. 全局节点定义 — 全部提交 (任何 tab 的 sync 都刷新全局表, 配置变更即时生效)
   for (const n of globalById.values()) {
     if (n.type === 'transport') {
       const data = n.data as TransportNodeData;
@@ -195,13 +173,16 @@ export async function syncTabGraphToBackend(tabId: string): Promise<void> {
       const data = n.data as ProtocolNodeData;
       // 旧数据缺 schema 时按 config 回退构造 (快照迁移会补齐, 此处防御)
       const schema = data.schema ?? schemaFromProtocolConfig(data.config);
+      // makeProtocolNodeDef 内部已强制 preset 时 schema=null (后端 schema 工厂下沉)
       nodes.push(makeProtocolNodeDef(tabId, n.id, data.config, data.convertTo ?? null, schema));
     }
   }
 
   const edges = tabEdges.map(edgeToGraphEdge);
   try {
-    await api.updateTabGraph(tabId, nodes, edges);
+    const derived = await api.updateTabGraph(tabId, nodes, edges);
+    // 后端单一权威: 写入本次图变化涉及的节点派生数据
+    if (derived?.nodes) state.setDerived(derived.nodes);
     // 图已变化 — 向所有已连接 Transport 推送最新下游协议 (热更新, 无需重连)
     refreshTransportProtocols();
   } catch (err) {

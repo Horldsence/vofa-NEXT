@@ -17,6 +17,8 @@ pub const TRANSPORT_STATE_EVENT: &str = "transport:state";
 pub const TRANSPORT_RX_EVENT: &str = "transport:rx";
 /// `protocol:channels-detected` 事件名 (自动通道检测值变化推送)
 pub const PROTOCOL_CHANNELS_DETECTED_EVENT: &str = "protocol:channels-detected";
+/// `graph:derived` 事件名 (图编译派生数据 — 节点输出端口表 / 生效通道数, 差分推送)
+pub const GRAPH_DERIVED_EVENT: &str = "graph:derived";
 
 /// `transport:state` payload — 连接状态变化 (携带来源 Transport 节点 id)
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -72,6 +74,15 @@ pub fn emit_protocol_channels_detected(app: &AppHandle, node_id: &str, channels:
             channels,
         },
     );
+}
+
+/// `graph:derived` payload — 图编译派生数据 (节点输出端口表 / 生效通道数)
+///
+/// payload 结构由调用方 (`cmd_graph::derived::GraphDerived`) 提供 — 本 crate
+/// 不依赖 cmd_graph 以避免循环依赖; emit 函数接受任意可序列化的 payload。
+/// 调用方约定 payload 形如 `{ "nodes": [{ "node_id": "...", "ports": [...], "effective_channels": N }] }`。
+pub fn emit_graph_derived<P: Serialize + Clone>(app: &AppHandle, payload: &P) {
+    let _ = app.emit(GRAPH_DERIVED_EVENT, payload.clone());
 }
 
 pub mod notify;

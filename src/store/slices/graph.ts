@@ -19,6 +19,7 @@ import {
   DEFAULT_PROTOCOL_CONFIG,
 } from '../appStoreHelpers';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
+import { useAppStore } from '../appStore';
 import type { ProtocolConfig, TransportConfig, WidgetConfig } from '../../types';
 
 export interface GraphSlice {
@@ -75,7 +76,14 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
     },
 
     removeTabGraph: (tabId) => {
-      void api.removeTabGraph(tabId);
+      void (async () => {
+        try {
+          const derived = await api.removeTabGraph(tabId);
+          if (derived?.nodes) useAppStore.getState().setDerived(derived.nodes);
+        } catch {
+          // 错误由 update_tab_graph 失败处理统一覆盖; 此处不打扰用户
+        }
+      })();
     },
 
     setInputValue: (widgetId, value) => {
@@ -111,6 +119,9 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
         rfNodes: s.rfNodes.filter((n: Node) => n.id !== nodeId),
         rfEdges: s.rfEdges.filter((e: Edge) => e.source !== nodeId && e.target !== nodeId),
       }));
+      // 同步清理派生端口表 (后端 remove_tab_graph 也会发新的 GraphDerived,
+      // 但全局节点删除不会触发 remove_tab_graph, 需前端本地清理)
+      get().removeDerived([nodeId]);
       get().syncAllTabGraphs();
     },
 
@@ -159,7 +170,9 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
           ? s.rfEdges.filter((e: Edge) => !removedGlobalIds.includes(e.source) && !removedGlobalIds.includes(e.target))
           : s.rfEdges,
       }));
+      // 同步清理被删节点的派生端口表
       if (removedGlobalIds.length) {
+        get().removeDerived(removedGlobalIds);
         for (const id of removedTransportIds) {
           void api.closeTransport(id).catch(() => {});
         }

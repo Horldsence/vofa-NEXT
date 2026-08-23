@@ -24,15 +24,19 @@ const protocolLabelKey: Record<string, string> = {
 /// 协议引擎 (Protocol) 全局节点 — 字节平面 + 数值帧源
 /// 输入端口 in (字节), 输出端口 out (字节) + ch0..chN (数值, 各 tab 数值图的帧源);
 /// RawData 预设不产数值帧, 数值口为单个 str (字符串域)
+///
+/// 端口表读取顺序: derivedPorts (后端 graph:derived 单一权威) → protocolPortNames (UI 兜底,
+/// 用于 derived 尚未到达或节点尚未 sync 时的瞬间)。derived 一旦到达即覆盖, 不再本地推导。
 export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) {
   const lang = useAppStore((s) => s.lang);
   const removeGlobalNode = useAppStore((s) => s.removeGlobalNode);
   const rfEdges = useAppStore((s) => s.rfEdges);
+  const derivedPorts = useAppStore((s) => s.derivedPorts[id]);
+  const detectedChannels = useAppStore((s) => s.detectedChannels[id] ?? null);
   const nodeData = data as unknown as ProtocolNodeData;
   const config = nodeData.config;
-  const detectedChannels = useAppStore((s) => s.detectedChannels[id] ?? null);
-  // 输出口: 预设 = ch0..chN (RawData = str), custom schema = 命名端口
-  const ports = protocolPortNames(nodeData, detectedChannels);
+  // 优先读后端 derived; 兜底用 protocolPortNames (节点刚创建/连接瞬间 derived 未到)
+  const ports = derivedPorts?.ports.map((p) => p.name) ?? protocolPortNames(nodeData, detectedChannels);
   const rawData = isRawDataPreset(nodeData);
   const channels = ports.length;
   const portsKey = ports.join('');

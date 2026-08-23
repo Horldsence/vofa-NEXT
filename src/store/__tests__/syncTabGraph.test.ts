@@ -107,11 +107,14 @@ function lastGraphArgs(): {
 describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
   beforeEach(() => {
     tauriMock.invoke.mockClear();
+    // 模拟后端响应: 派生端口表按节点返回
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({ nodes: [] });
     useAppStore.setState({
       controlTabs: [{ id: 'default', name: 'Tab 1', widgets: ['w-gauge'] }],
       activeControlTabId: 'default',
       rfNodes: [TRANSPORT_NODE, PROTOCOL_NODE, GAUGE_NODE],
       rfEdges: [],
+      derivedPorts: {},
     } as never);
   });
 
@@ -141,7 +144,7 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     expect(args.nodes.some((n) => n.id === 'w-gauge' && n.kind.kind === 'Sink')).toBe(true);
   });
 
-  it('chN 数值边触发 ProtocolSource 定义 (id = 全局 Protocol 节点 id)', async () => {
+  it('前端不再下发 ProtocolSource NodeDef (后端 cmd_graph::inject_protocol_sources 接管)', async () => {
     useAppStore.setState({
       rfEdges: [
         { id: 'e-ch', source: 'protocol-1', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
@@ -151,15 +154,15 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     await syncTabGraphToBackend('default');
 
     const args = lastGraphArgs();
-    const ps = args.nodes.find((n) => n.kind.kind === 'ProtocolSource');
-    expect(ps).toBeDefined();
-    expect(ps!.id).toBe('protocol-1');
-    expect(ps!.kind.params).toMatchObject({ node_id: 'protocol-1', channels: 2, port_names: ['ch0', 'ch1'] });
-    // 边原样提交 (source = 全局 Protocol 节点 id)
+    // 关键契约: 前端下发的 nodes 不含 ProtocolSource — 后端按边自动注入
+    expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
+    // 全局 Protocol 定义仍存在 (id = protocol-1)
+    expect(args.nodes.some((n) => n.id === 'protocol-1' && n.kind.kind === 'Protocol')).toBe(true);
+    // 数值边原样提交 (后端据其派生 ProtocolSource)
     expect(args.edges.some((e) => e.source === 'protocol-1' && e.source_handle === 'ch0')).toBe(true);
   });
 
-  it('custom schema 命名端口边触发 ProtocolSource (port_names = 命名端口)', async () => {
+  it('custom schema 节点仍透传 schema; preset 节点 schema 强制省略 (后端 schema 工厂下沉)', async () => {
     useAppStore.setState({
       rfNodes: [TRANSPORT_NODE, CUSTOM_PROTOCOL_NODE, GAUGE_NODE],
       rfEdges: [
@@ -170,73 +173,50 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     await syncTabGraphToBackend('default');
 
     const args = lastGraphArgs();
-    const ps = args.nodes.find((n) => n.kind.kind === 'ProtocolSource');
-    expect(ps).toBeDefined();
-    expect(ps!.id).toBe('protocol-custom');
-    expect(ps!.kind.params).toMatchObject({
-      node_id: 'protocol-custom',
-      channels: 2,
-      port_names: ['speed', 'temp'],
+    // custom schema 节点: schema 仍携带 (后端走 Custom 路径)
+    const customProto = args.nodes.find((n) => n.id === 'protocol-custom' && n.kind.kind === 'Protocol');
+    expect(customProto?.kind.params?.schema).toMatchObject({ preset: 'custom' });
+  });
+
+  it('preset (JustFloat/FireWater/RawData/Slcan/CandleLight/LogicDecode) schema 一律省略', async () => {
+    useAppStore.setState({
+      rfNodes: [TRANSPORT_NODE, PROTOCOL_NODE, RAWDATA_PROTOCOL_NODE, GAUGE_NODE],
+      rfEdges: [
+        { id: 'e-byte', source: 'transport-1', sourceHandle: 'rx', target: 'protocol-1', targetHandle: 'in' },
+      ] as Edge[],
+    } as never);
+
+    await syncTabGraphToBackend('default');
+
+    const args = lastGraphArgs();
+    // 两个 preset 节点的 schema 字段均为 null (serde 省略)
+    const justFloat = args.nodes.find((n) => n.id === 'protocol-1' && n.kind.kind === 'Protocol');
+    expect(justFloat?.kind.params?.schema).toBeUndefined();
+    const rawData = args.nodes.find((n) => n.id === 'protocol-raw' && n.kind.kind === 'Protocol');
+    expect(rawData?.kind.params?.schema).toBeUndefined();
+  });
+
+  it('后端响应 GraphDerived 自动写入 derivedPorts store', async () => {
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({
+      nodes: [
+        { node_id: 'protocol-1', ports: [{ name: 'ch0', domain: 'F32' }, { name: 'ch1', domain: 'F32' }], effective_channels: 2 },
+      ],
     });
-    // 命名端口边原样提交 (后端槽位支持命名)
-    expect(args.edges.some((e) => e.source === 'protocol-custom' && e.source_handle === 'speed')).toBe(true);
-    // Protocol 节点定义携带 schema
-    const protocol = args.nodes.find((n) => n.id === 'protocol-custom' && n.kind.kind === 'Protocol');
-    expect(protocol?.kind.params?.schema).toMatchObject({ preset: 'custom' });
-  });
-
-  it('RawData 协议节点 str 边触发 ProtocolSource (port_names = ["str"])', async () => {
     useAppStore.setState({
-      rfNodes: [TRANSPORT_NODE, RAWDATA_PROTOCOL_NODE, GAUGE_NODE],
       rfEdges: [
-        { id: 'e-str', source: 'protocol-raw', sourceHandle: 'str', target: 'w-gauge', targetHandle: 'value' },
+        { id: 'e-ch', source: 'protocol-1', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
       ] as Edge[],
     } as never);
 
     await syncTabGraphToBackend('default');
 
-    const args = lastGraphArgs();
-    const ps = args.nodes.find((n) => n.kind.kind === 'ProtocolSource');
-    expect(ps).toBeDefined();
-    expect(ps!.id).toBe('protocol-raw');
-    expect(ps!.kind.params).toMatchObject({
-      node_id: 'protocol-raw',
-      channels: 1,
-      port_names: ['str'],
-    });
-    // str 边原样提交 (后端 ProtocolSource str 端口写入字符串平面)
-    expect(args.edges.some((e) => e.source === 'protocol-raw' && e.source_handle === 'str')).toBe(true);
+    const derived = useAppStore.getState().derivedPorts;
+    expect(derived['protocol-1']?.ports.map((p) => p.name)).toEqual(['ch0', 'ch1']);
+    expect(derived['protocol-1']?.effective_channels).toBe(2);
   });
 
-  it('RawData 协议节点不再产 chN 口 — chN 边不触发 ProtocolSource', async () => {
+  it('其他 tab 的边不混入', async () => {
     useAppStore.setState({
-      rfNodes: [TRANSPORT_NODE, RAWDATA_PROTOCOL_NODE, GAUGE_NODE],
-      rfEdges: [
-        { id: 'e-ch', source: 'protocol-raw', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
-      ] as Edge[],
-    } as never);
-
-    await syncTabGraphToBackend('default');
-
-    const args = lastGraphArgs();
-    expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
-  });
-
-  it('custom schema 下 chN 等未知端口边不触发 ProtocolSource', async () => {
-    useAppStore.setState({
-      rfNodes: [TRANSPORT_NODE, CUSTOM_PROTOCOL_NODE, GAUGE_NODE],
-      rfEdges: [
-        { id: 'e-ch', source: 'protocol-custom', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
-      ] as Edge[],
-    } as never);
-
-    await syncTabGraphToBackend('default');
-
-    const args = lastGraphArgs();
-    expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
-  });
-
-  it('无 chN 边时不产生 ProtocolSource; 其他 tab 的边不混入', async () => {    useAppStore.setState({
       controlTabs: [
         { id: 'default', name: 'Tab 1', widgets: ['w-gauge'] },
         { id: 'tab2', name: 'Tab 2', widgets: [] },
@@ -259,7 +239,6 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     await syncTabGraphToBackend('default');
 
     const args = lastGraphArgs();
-    expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
     expect(args.edges.some((e) => e.id === 'e-other')).toBe(false);
     expect(args.nodes.some((n) => n.id === 'w-other')).toBe(false);
   });
@@ -268,6 +247,7 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
 describe('seedInitialGraph (初始图: 设备→协议→RawData)', () => {
   beforeEach(() => {
     tauriMock.invoke.mockClear();
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({ nodes: [] });
     useAppStore.setState({
       controlTabs: [{ id: 'default', name: 'Tab 1', widgets: ['w-raw'] }],
       activeControlTabId: 'default',
@@ -278,6 +258,7 @@ describe('seedInitialGraph (初始图: 设备→协议→RawData)', () => {
         } as Node,
       ],
       rfEdges: [],
+      derivedPorts: {},
     } as never);
   });
 
@@ -308,6 +289,7 @@ describe('seedInitialGraph (初始图: 设备→协议→RawData)', () => {
 describe('图删除操作触发后端同步 (remove change 无 source/target)', () => {
   beforeEach(() => {
     tauriMock.invoke.mockClear();
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({ nodes: [] });
     useAppStore.setState({
       controlTabs: [{ id: 'default', name: 'Tab 1', widgets: ['w-gauge'] }],
       activeControlTabId: 'default',
@@ -316,6 +298,7 @@ describe('图删除操作触发后端同步 (remove change 无 source/target)', 
         { id: 'e-byte', source: 'transport-1', sourceHandle: 'rx', target: 'protocol-1', targetHandle: 'in' },
         { id: 'e-ch', source: 'protocol-1', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
       ] as Edge[],
+      derivedPorts: {},
     } as never);
   });
 
