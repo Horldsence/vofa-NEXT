@@ -75,9 +75,16 @@ pub async fn set_protocol(
         s.parallel_supported = None;
         s.in_parallel = false;
         s.detection_notified = false;
+        s.last_detected_pushed = None;
         s.parallel = std::sync::Arc::new(tokio::sync::Mutex::new(
             ParallelFeeder::new(),
         ));
+    }
+    // 手动通道数: 直接在后端对齐该源 buffer 通道数
+    // (自动模式无需处理: 检测推送记录已重置, 重新检测到值后按变化推送时对齐)
+    let manual_channels = st.lock().config.manual_channels();
+    if let Some(n) = manual_channels {
+        state.data_plane.buffer_for(&node_id).lock().set_channels(n);
     }
     Ok(())
 }

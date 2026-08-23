@@ -81,8 +81,10 @@ pub struct ProtocolNodeState {
     pub in_parallel: bool,
     /// 协议是否支持并行解析 (None = 未探测, 空数据 split_aligned 探测一次)
     pub parallel_supported: Option<bool>,
-    /// 自动通道检测通知是否已发 (一次性)
+    /// 自动通道检测通知是否已发 (一次性, 系统通知)
     pub detection_notified: bool,
+    /// 上次已推送前端的自动通道检测值 (变化即推 `protocol:channels-detected`; None = 尚未推送)
+    pub last_detected_pushed: Option<usize>,
 }
 
 impl ProtocolNodeState {
@@ -108,6 +110,7 @@ impl ProtocolNodeState {
             in_parallel: false,
             parallel_supported: None,
             detection_notified: false,
+            last_detected_pushed: None,
         }
     }
 
@@ -124,6 +127,9 @@ impl ProtocolNodeState {
             && serde_json::to_value(&self.schema).ok() == serde_json::to_value(schema).ok()
     }
 }
+
+/// 数据缓冲区默认通道数 (buffer_for 懒建 / 自动模式引擎重建后待重新检测时的回退值)
+pub const DEFAULT_BUFFER_CHANNELS: usize = 4;
 
 /// 数据平面共享状态 (Arc 共享, 仿 GraphEvalState 模式)
 ///
@@ -196,12 +202,17 @@ impl DataPlaneState {
         }
     }
 
-    /// 取指定源的数据缓冲区 (不存在则按默认容量创建: 100k 点 × 4 通道)
+    /// 取指定源的数据缓冲区 (不存在则按默认容量创建: 100k 点 × 默认通道数)
     pub fn buffer_for(&self, source: &str) -> Arc<Mutex<DataBuffer>> {
         self.buffers
             .lock()
             .entry(source.to_string())
-            .or_insert_with(|| Arc::new(Mutex::new(DataBuffer::new(100_000, 4))))
+            .or_insert_with(|| {
+                Arc::new(Mutex::new(DataBuffer::new(
+                    100_000,
+                    DEFAULT_BUFFER_CHANNELS,
+                )))
+            })
             .clone()
     }
 
@@ -227,6 +238,7 @@ impl DataPlaneState {
             )
         });
         // 新增 / 配置变更重建
+        let mut rebuilt: Vec<(String, ProtocolConfig)> = Vec::new();
         for n in nodes.values() {
             if let NodeKind::Protocol {
                 config,
@@ -238,7 +250,12 @@ impl DataPlaneState {
                     Some(st) => {
                         let mut st = st.lock();
                         if !st.matches(config, convert_to.as_ref(), schema.as_ref()) {
-                            *st = ProtocolNodeState::new(config, convert_to.as_ref(), schema.as_ref());
+                            *st = ProtocolNodeState::new(
+                                config,
+                                convert_to.as_ref(),
+                                schema.as_ref(),
+                            );
+                            rebuilt.push((n.id.clone(), config.clone()));
                         }
                     }
                     None => {
@@ -250,11 +267,18 @@ impl DataPlaneState {
                                 schema.as_ref(),
                             ))),
                         );
+                        rebuilt.push((n.id.clone(), config.clone()));
                     }
                 }
             }
         }
         drop(states);
+        // 引擎 (重) 建后对齐该源 buffer 通道数: 手动 = 配置值;
+        // 自动 = 检测值随引擎重置失效, 回默认通道数待重新检测 (set_channels 会清空已有数据)
+        for (id, cfg) in rebuilt {
+            let effective = cfg.manual_channels().unwrap_or(DEFAULT_BUFFER_CHANNELS);
+            self.buffer_for(&id).lock().set_channels(effective);
+        }
         // source_frames / source_texts 清理由 protocol_states 存活集决定
         let live: Vec<String> = self.protocol_states.lock().keys().cloned().collect();
         self.source_frames

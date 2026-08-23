@@ -24,6 +24,15 @@ use crate::feed_parallel::workers_needed;
 /// convert 链递归深度上限 (BytePlan 已保证 DAG, 此为防御性兜底)
 const MAX_ROUTE_DEPTH: usize = 16;
 
+/// 通道检测推送判定: 当前检测值与上次已推送值不同则返回本次应推送的通道数
+/// (None = 尚未检测到或与上次同值, 不推; 首次检测到 None→Some(n) 视为变化)
+fn channels_detection_change(last_pushed: Option<usize>, current: Option<usize>) -> Option<usize> {
+    match current {
+        Some(n) if last_pushed != Some(n) => Some(n),
+        _ => None,
+    }
+}
+
 /// 路由结果摘要 (统计 + 触发决策)
 #[derive(Default)]
 pub struct RouteSummary {
@@ -39,7 +48,8 @@ pub struct RouteSummary {
 ///
 /// - `source_id`: 字节源节点 (Transport 节点 id / widget loopbackOut 所在 widget id)
 /// - `depth_hint`: 源端积压深度 (并行解析判定用; 命令注入路径传 0)
-/// - `app`: 自动通道检测通知用 (测试/无界面路径传 None)
+/// - `app`: 自动通道检测的系统通知与 `protocol:channels-detected` 事件推送用
+///   (测试/无界面路径传 None, 跳过 emit 但 buffer 通道数对齐仍生效)
 pub async fn route_bytes(
     plane: &DataPlaneState,
     app: Option<&AppHandle>,
@@ -203,20 +213,42 @@ async fn feed_protocol(
         let o = {
             let mut p = engine.lock();
             let o = p.feed(data);
-            // 自动通道检测 (一次性), 与顺序路径共用同一锁 guard
-            let notified = st.lock().detection_notified;
-            if !notified && p.is_auto_mode() {
+            // 自动通道检测: 自动模式下每次读取检测值, 变化即推 (见下方检测值处理)
+            if p.is_auto_mode() {
                 detection = p.detected_channels();
             }
             o
         };
         out = o;
     }
-    if detection.is_some() {
-        st.lock().detection_notified = true;
-    }
-    if let (Some(app), Some(n)) = (app, detection) {
+    // 通道检测处理 (单次锁内取齐决策):
+    // - 系统通知保持一次性语义 (detection_notified 闸)
+    // - 前端事件 protocol:channels-detected 按变化推送 (last_detected_pushed 记录上次已推送值),
+    //   同一点位把该源 buffer 通道数对齐到检测值 (自动模式下 config.channels 必为 None,
+    //   effective 即 detected)
+    let (notify_once, push) = {
+        let mut s = st.lock();
+        let notify_once = if detection.is_some() && !s.detection_notified {
+            s.detection_notified = true;
+            detection
+        } else {
+            None
+        };
+        let push = channels_detection_change(s.last_detected_pushed, detection);
+        if push.is_some() {
+            s.last_detected_pushed = push;
+        }
+        drop(s);
+        (notify_once, push)
+    };
+    if let (Some(app), Some(n)) = (app, notify_once) {
         notify_events::notify::channels_detected(app, n);
+    }
+    if let Some(n) = push {
+        if let Some(app) = app {
+            notify_events::emit_protocol_channels_detected(app, proto_id, n);
+        }
+        plane.buffer_for(proto_id).lock().set_channels(n);
     }
 
     // CAN 帧旁路 (slcan/candleLight) — 全局缓冲 + 负载统计 (仅 Rx 计入)
@@ -306,5 +338,36 @@ async fn feed_protocol(
             depth + 1,
         ))
         .await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 变化推送判定: None 不推; 同值不推; None→Some(n) 与 Some(a)→Some(b) 推
+    #[test]
+    fn channels_detection_change_semantics() {
+        assert_eq!(channels_detection_change(None, None), None, "未检测不推");
+        assert_eq!(
+            channels_detection_change(Some(3), None),
+            None,
+            "本次未检测不推"
+        );
+        assert_eq!(
+            channels_detection_change(None, Some(3)),
+            Some(3),
+            "首次检测即变化"
+        );
+        assert_eq!(
+            channels_detection_change(Some(3), Some(3)),
+            None,
+            "同值不重复推"
+        );
+        assert_eq!(
+            channels_detection_change(Some(3), Some(5)),
+            Some(5),
+            "检测值变化推新值"
+        );
     }
 }

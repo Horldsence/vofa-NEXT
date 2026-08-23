@@ -15,6 +15,8 @@ use vofa_core::{ConnectionState, TransportStats};
 pub const TRANSPORT_STATE_EVENT: &str = "transport:state";
 /// `transport:rx` 事件名 (统计节流推送)
 pub const TRANSPORT_RX_EVENT: &str = "transport:rx";
+/// `protocol:channels-detected` 事件名 (自动通道检测值变化推送)
+pub const PROTOCOL_CHANNELS_DETECTED_EVENT: &str = "protocol:channels-detected";
 
 /// `transport:state` payload — 连接状态变化 (携带来源 Transport 节点 id)
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -43,6 +45,13 @@ pub fn emit_transport_state(app: &AppHandle, node_id: &str, state: ConnectionSta
     );
 }
 
+/// `protocol:channels-detected` payload — 自动通道检测值变化 (携带来源 Protocol 节点 id)
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ProtocolChannelsDetectedEvent {
+    pub node_id: String,
+    pub channels: usize,
+}
+
 /// emit `transport:rx` (失败安全: 忽略 emit 错误)
 pub fn emit_transport_rx(app: &AppHandle, node_id: &str, stats: TransportStats) {
     let _ = app.emit(
@@ -50,6 +59,17 @@ pub fn emit_transport_rx(app: &AppHandle, node_id: &str, stats: TransportStats) 
         TransportRxEvent {
             node_id: node_id.to_string(),
             stats,
+        },
+    );
+}
+
+/// emit `protocol:channels-detected` (失败安全: 忽略 emit 错误)
+pub fn emit_protocol_channels_detected(app: &AppHandle, node_id: &str, channels: usize) {
+    let _ = app.emit(
+        PROTOCOL_CHANNELS_DETECTED_EVENT,
+        ProtocolChannelsDetectedEvent {
+            node_id: node_id.to_string(),
+            channels,
         },
     );
 }
@@ -72,6 +92,16 @@ mod tests {
             v,
             serde_json::json!({"node_id": "tp1", "state": "Connected"})
         );
+    }
+
+    #[test]
+    fn protocol_channels_detected_event_json_shape() {
+        let v = serde_json::to_value(ProtocolChannelsDetectedEvent {
+            node_id: "pt1".into(),
+            channels: 3,
+        })
+        .unwrap();
+        assert_eq!(v, serde_json::json!({"node_id": "pt1", "channels": 3}));
     }
 
     #[test]

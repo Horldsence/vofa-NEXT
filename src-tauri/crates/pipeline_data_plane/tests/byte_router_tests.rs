@@ -336,3 +336,194 @@ async fn rawdata_custom_schema_no_text_cache_no_passthrough() {
     let f = sf.get("pr").expect("pr 应有最新帧");
     assert_eq!(f.channels, vec![56.0]);
 }
+
+/// 自动通道检测 (顺序路径): 首帧检测到通道数后, 后端直接把该源 buffer 通道数
+/// 对齐到检测值并记录已推送值; 检测值不变时不重复应用
+/// (set_channels 会清空数据, 点数持续增长证明未重复清空)
+#[tokio::test]
+async fn auto_detection_applies_buffer_channels_on_change_only() {
+    // tp.rx → pt.in (FireWater 自动检测)
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(Default::default()),
+                },
+            ),
+            node("pt", firewater(None)),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+    // 节点创建即按默认通道数对齐 buffer (自动模式待检测)
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 4);
+
+    let mut cache = DecoderFeedCache::new();
+    let summary = route_bytes(
+        &plane,
+        None,
+        "tp",
+        &firewater_bytes(&[1.0, 2.0, 3.0]),
+        0,
+        &mut cache,
+    )
+    .await;
+    assert_eq!(summary.frames, 1);
+    let buf = plane.buffer_for("pt");
+    assert_eq!(buf.lock().channel_count(), 3, "检测值应直接应用到 buffer");
+    assert_eq!(buf.lock().point_count(), 1);
+    {
+        let st = plane.protocol_states.lock().get("pt").unwrap().clone();
+        let s = st.lock();
+        assert_eq!(s.last_detected_pushed, Some(3), "应记录已推送检测值");
+        assert!(s.detection_notified, "系统通知一次性闸应置位");
+    }
+
+    // 同值再喂: 不重复应用 (否则 point_count 被清空重置为 1)
+    let summary = route_bytes(
+        &plane,
+        None,
+        "tp",
+        &firewater_bytes(&[4.0, 5.0, 6.0]),
+        0,
+        &mut cache,
+    )
+    .await;
+    assert_eq!(summary.frames, 1);
+    assert_eq!(buf.lock().point_count(), 2, "同值检测不应重复清空 buffer");
+    assert_eq!(buf.lock().channel_count(), 3);
+}
+
+/// 自动通道检测 (并行路径): 大批次 + 积压触发并行喂入, par.feed 返回的检测值
+/// 同样按变化推送并对齐 buffer
+#[tokio::test]
+async fn auto_detection_applies_buffer_channels_in_parallel_feed() {
+    // tp.rx → pt.in (FireWater 自动检测)
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(Default::default()),
+                },
+            ),
+            node("pt", firewater(None)),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+    // 触发并行: depth >= 8 且批次 >= 32KB → workers = 2
+    let mut data = Vec::new();
+    for i in 0..5000 {
+        data.extend_from_slice(format!("{i}.0,2.0,3.0\n").as_bytes());
+    }
+    assert!(data.len() >= 32 * 1024, "前提: 批次需达到并行字节门槛");
+
+    let mut cache = DecoderFeedCache::new();
+    let summary = route_bytes(&plane, None, "tp", &data, 8, &mut cache).await;
+    assert_eq!(summary.frames, 5000);
+    assert_eq!(
+        plane.buffer_for("pt").lock().channel_count(),
+        3,
+        "并行路径检测值应直接应用到 buffer"
+    );
+    let st = plane.protocol_states.lock().get("pt").unwrap().clone();
+    assert_eq!(st.lock().last_detected_pushed, Some(3));
+}
+
+/// 手动通道数: 节点 (重) 建时 buffer 通道数即按配置对齐;
+/// 配置变更重建后对齐到新配置生效值 (手动 = 配置值; 自动 = 回默认 4 待重新检测)
+#[tokio::test]
+async fn buffer_channels_aligned_on_protocol_sync_and_rebuild() {
+    // 初始手动 2 通道
+    let plane = setup_plane(vec![node("pt", firewater(Some(2)))], vec![]);
+    assert_eq!(
+        plane.buffer_for("pt").lock().channel_count(),
+        2,
+        "节点创建即按手动配置对齐 buffer"
+    );
+
+    // 配置变更为手动 5 通道 → 重建后 buffer 对齐 5
+    plane
+        .global_nodes
+        .lock()
+        .insert("pt".into(), node("pt", firewater(Some(5))));
+    plane.sync_protocol_states();
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 5);
+
+    // 配置变更为自动 → 重建后检测值失效, 回默认 4 待重新检测
+    plane
+        .global_nodes
+        .lock()
+        .insert("pt".into(), node("pt", firewater(None)));
+    plane.sync_protocol_states();
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 4);
+    let st = plane.protocol_states.lock().get("pt").unwrap().clone();
+    assert_eq!(st.lock().last_detected_pushed, None, "重建后推送记录应重置");
+}
+
+/// 手动模式下不应触发协议检测推送事件 (detected_channels 在手动模式下返回 None,
+/// channels_detection_change 判定为 None→None 不推); 同时 buffer 通道数应保持手动配置值
+#[tokio::test]
+async fn manual_mode_does_not_emit_channels_detected_event() {
+    // tp.rx → pt.in (FireWater 手动 2 通道)
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(Default::default()),
+                },
+            ),
+            node("pt", firewater(Some(2))),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 2);
+
+    let mut cache = DecoderFeedCache::new();
+    let summary = route_bytes(
+        &plane,
+        None,
+        "tp",
+        &firewater_bytes(&[1.0, 2.0]),
+        0,
+        &mut cache,
+    )
+    .await;
+    assert_eq!(summary.frames, 1);
+    let st = plane.protocol_states.lock().get("pt").unwrap().clone();
+    assert_eq!(
+        st.lock().last_detected_pushed, None,
+        "手动模式不应记录检测推送值"
+    );
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 2);
+}
+
+/// 手动 → 自动切换后首次检测推送: 手动模式无推送记录, 切自动后第一次检测即变化,
+/// 应推送且对齐 buffer 到检测值
+#[tokio::test]
+async fn manual_to_auto_switch_resets_detection_state() {
+    // 起始手动 2 通道
+    let plane = setup_plane(vec![node("pt", firewater(Some(2)))], vec![]);
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 2);
+
+    // 配置切换为自动 → sync_protocol_states 重建, 推送记录与 buffer 回默认
+    plane
+        .global_nodes
+        .lock()
+        .insert("pt".into(), node("pt", firewater(None)));
+    plane.sync_protocol_states();
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 4);
+    {
+        let st = plane.protocol_states.lock().get("pt").unwrap().clone();
+        assert_eq!(st.lock().last_detected_pushed, None);
+    }
+
+    // 切回手动 5 通道
+    plane
+        .global_nodes
+        .lock()
+        .insert("pt".into(), node("pt", firewater(Some(5))));
+    plane.sync_protocol_states();
+    assert_eq!(plane.buffer_for("pt").lock().channel_count(), 5);
+}

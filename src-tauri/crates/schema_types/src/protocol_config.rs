@@ -39,3 +39,36 @@ impl Default for ProtocolConfig {
         Self::JustFloat { channels: Some(4) }
     }
 }
+
+impl ProtocolConfig {
+    /// 手动指定的通道数 (仅 JustFloat/FireWater 有通道概念; None = 自动检测或无通道概念)
+    pub const fn manual_channels(&self) -> Option<usize> {
+        match self {
+            Self::JustFloat { channels } | Self::FireWater { channels } => *channels,
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manual_channels_only_for_float_protocols() {
+        assert_eq!(
+            ProtocolConfig::JustFloat { channels: Some(2) }.manual_channels(),
+            Some(2)
+        );
+        assert_eq!(
+            ProtocolConfig::FireWater { channels: Some(5) }.manual_channels(),
+            Some(5)
+        );
+        assert_eq!(
+            ProtocolConfig::JustFloat { channels: None }.manual_channels(),
+            None
+        );
+        assert_eq!(ProtocolConfig::RawData.manual_channels(), None);
+        assert_eq!(ProtocolConfig::Slcan.manual_channels(), None);
+    }
+}

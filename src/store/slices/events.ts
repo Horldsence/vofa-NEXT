@@ -18,7 +18,7 @@ import {
 import { isGlobalNode } from '../appStoreHelpers';
 import { useAppStore } from '../appStore';
 import type { ConnectionState, TransportStats } from '../../types';
-import { EMPTY_NODE_STATS, cleanupDetectedChannelsPollers } from './connection';
+import { EMPTY_NODE_STATS } from './connection';
 
 let unlistenFns: UnlistenFn[] = [];
 let graphOutputSub: { cancel: () => void } | null = null;
@@ -79,6 +79,25 @@ function parseRxEvent(payload: unknown): { nodeId: string; stats: TransportStats
   return null;
 }
 
+/// protocol:channels-detected payload 兼容解析 — 契约为 { node_id, channels };
+/// 后端由 feed_protocol 在检测值变化时 (None→Some(n) 或 Some(a)→Some(b)) 主动推送
+function parseChannelsDetectedEvent(
+  payload: unknown
+): { nodeId: string; channels: number } | null {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'node_id' in payload &&
+    'channels' in payload &&
+    typeof (payload as { channels: unknown }).channels === 'number'
+  ) {
+    const p = payload as { node_id: string; channels: number };
+    return { nodeId: p.node_id, channels: p.channels };
+  }
+  console.warn('[events] protocol:channels-detected payload 契约不符:', payload);
+  return null;
+}
+
 export interface EventSlice {
   initEventListeners: () => Promise<() => void>;
 }
@@ -133,7 +152,35 @@ export function createEventSlice(set: any, get: any): EventSlice {
         });
       });
 
-      unlistenFns = [unlistenState, unlistenStats];
+      const unlistenChannels = await listen<unknown>('protocol:channels-detected', (event) => {
+        const parsed = parseChannelsDetectedEvent(event.payload);
+        if (!parsed) return;
+        const { nodeId, channels } = parsed;
+        // 写 detectedChannels (后端单一权威; UI 派生端口表 / 通道数随之刷新)
+        // 命中节点 → 计算 effective, 更新节点 data.channels 并重同步全 tab 图
+        // (ProtocolSource 的 ch 端口数随之变化)
+        set((s: any) => {
+          const node = s.rfNodes.find((n: any) => n.id === nodeId && n.type === 'protocol');
+          if (!node) {
+            // 节点已删 (前端未同步移除) — 清理孤儿 key 避免后续误用
+            if (nodeId in s.detectedChannels) {
+              const { [nodeId]: _drop, ...rest } = s.detectedChannels;
+              return { detectedChannels: rest };
+            }
+            return {};
+          }
+          const config = (node.data as { config: { channels?: number | null } }).config;
+          const manual = config?.channels ?? null;
+          const effective = manual != null ? manual : channels;
+          const rfNodes = s.rfNodes.map((n: any) =>
+            n.id === nodeId ? { ...n, data: { ...n.data, channels: effective } } : n
+          );
+          return { detectedChannels: { ...s.detectedChannels, [nodeId]: channels }, rfNodes };
+        });
+        get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+      });
+
+      unlistenFns = [unlistenState, unlistenStats, unlistenChannels];
 
       const graphCoalescer = makeRafCoalescer<{ values: Record<string, Record<string, number>>; tick: number }>(
         (v) => set({ graphOutputs: v.values, graphOutputsTick: v.tick })
@@ -193,7 +240,6 @@ export function createEventSlice(set: any, get: any): EventSlice {
           prevNodes = s.rfNodes;
           prevRawSource = s.rawDataSourceNodeId;
           reconcileSources();
-          get().ensureChannelsPolling?.();
         }
       });
 
@@ -238,7 +284,6 @@ export function createEventSlice(set: any, get: any): EventSlice {
           decodedEventsSub.cancel();
           decodedEventsSub = null;
         }
-        cleanupDetectedChannelsPollers();
       };
     },
   };

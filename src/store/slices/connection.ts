@@ -34,18 +34,6 @@ export const EMPTY_NODE_STATS: NodeStats = {
   rxDroppedTotal: 0,
 };
 
-/// 通道自动检测轮询器 (按 Protocol 节点 id)
-export let detectedChannelsPollers: Record<string, ReturnType<typeof setInterval>> = {};
-
-export function setDetectedChannelsPoller(nodeId: string, poller: ReturnType<typeof setInterval> | null) {
-  if (poller) detectedChannelsPollers[nodeId] = poller;
-  else delete detectedChannelsPollers[nodeId];
-}
-export function cleanupDetectedChannelsPollers() {
-  for (const p of Object.values(detectedChannelsPollers)) clearInterval(p);
-  detectedChannelsPollers = {};
-}
-
 /// 节点错误通知文案 — 按错误枚举解析, 每种类型首次出错时追加排查引导
 /// (遵循 settings.general.showContextualTips 开关)
 function nodeError(lang: Lang, e: unknown): string {
@@ -135,7 +123,6 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
           nodeStats: { ...s.nodeStats, [nodeId]: { ...EMPTY_NODE_STATS } },
           rawDataVersion: Date.now(),
         }));
-        get().ensureChannelsPolling();
       } catch (e) {
         const lang = get().lang;
         set((s: any) => ({
