@@ -4,11 +4,13 @@ import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { Binary, X } from 'lucide-react';
 import type { ProtocolNodeData } from '../../store/appStoreHelpers';
-import { protocolPortNames } from '../../lib/utils/protocolSchema';
+import { isRawDataPreset, protocolPortNames } from '../../lib/utils/protocolSchema';
 import { BYTES_DOMAIN_COLOR } from './TransportNode';
 
 /// 时域端口颜色 (与 WidgetNode.domainColor 一致)
 const TIME_DOMAIN_COLOR = '#75beff';
+/// 字符串域端口颜色 (与 WidgetNode.domainColor 的 string 分支一致)
+const STRING_DOMAIN_COLOR = '#ffa726';
 
 const protocolLabelKey: Record<string, string> = {
   JustFloat: 'justfloat',
@@ -20,7 +22,8 @@ const protocolLabelKey: Record<string, string> = {
 };
 
 /// 协议引擎 (Protocol) 全局节点 — 字节平面 + 数值帧源
-/// 输入端口 in (字节), 输出端口 out (字节) + ch0..chN (数值, 各 tab 数值图的帧源)
+/// 输入端口 in (字节), 输出端口 out (字节) + ch0..chN (数值, 各 tab 数值图的帧源);
+/// RawData 预设不产数值帧, 数值口为单个 str (字符串域)
 export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) {
   const lang = useAppStore((s) => s.lang);
   const removeGlobalNode = useAppStore((s) => s.removeGlobalNode);
@@ -28,8 +31,9 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
   const nodeData = data as unknown as ProtocolNodeData;
   const config = nodeData.config;
   const detectedChannels = useAppStore((s) => s.detectedChannels[id] ?? null);
-  // 输出口: 预设 = ch0..chN (与现有行为一致), custom schema = 命名端口
+  // 输出口: 预设 = ch0..chN (RawData = str), custom schema = 命名端口
   const ports = protocolPortNames(nodeData, detectedChannels);
+  const rawData = isRawDataPreset(nodeData);
   const channels = ports.length;
   const portsKey = ports.join('');
   const updateNodeInternals = useUpdateNodeInternals();
@@ -93,23 +97,28 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
             className={handleClass('out')}
           />
         </div>
-        {ports.map((port) => (
-          <div key={port} className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`${port} · ${t(lang, 'domainTime')}`}>
-            <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: TIME_DOMAIN_COLOR }} />
-            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port}</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={port}
-              style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: TIME_DOMAIN_COLOR }}
-              className={handleClass(port)}
-            />
-          </div>
-        ))}
+        {ports.map((port) => {
+          // RawData 预设的 str 口是字符串域 (其余端口均为时域数值口)
+          const isStr = rawData && port === 'str';
+          const color = isStr ? STRING_DOMAIN_COLOR : TIME_DOMAIN_COLOR;
+          return (
+            <div key={port} className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`${port} · ${t(lang, isStr ? 'domainString' : 'domainTime')}`}>
+              <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: color }} />
+              <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port}</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={port}
+                style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: color }}
+                className={handleClass(port)}
+              />
+            </div>
+          );
+        })}
       </div>
-      {/* 内容占位: 通道数摘要 */}
+      {/* 内容占位: 通道数摘要 (RawData 无数值通道, 显示 str 口) */}
       <div className="px-2 py-1.5 text-[10px] font-mono text-text-secondary">
-        {channels} {t(lang, 'channels')}
+        {rawData ? 'str' : `${channels} ${t(lang, 'channels')}`}
         {nodeData.convertTo ? ` → ${t(lang, protocolLabelKey[nodeData.convertTo.kind] ?? nodeData.convertTo.kind)}` : ''}
       </div>
     </div>

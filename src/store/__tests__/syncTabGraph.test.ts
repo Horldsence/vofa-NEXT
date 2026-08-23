@@ -77,6 +77,20 @@ const CUSTOM_PROTOCOL_NODE: Node = {
     },
   },
 };
+/// RawData 预设协议节点 (str 字符串口, 无 chN)
+const RAWDATA_PROTOCOL_NODE: Node = {
+  id: 'protocol-raw',
+  type: 'protocol',
+  position: { x: 300, y: 40 },
+  data: {
+    global: true,
+    config: { kind: 'RawData' },
+    convertTo: null,
+    channels: 4,
+    label: 'RawData',
+    schema: { preset: 'rawData', legacyConfig: { kind: 'RawData' }, decode: [] },
+  },
+};
 
 
 /// 取最近一次 update_tab_graph 调用参数 (invoke mock 类型为无参元组, 统一在此断言)
@@ -169,6 +183,43 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     // Protocol 节点定义携带 schema
     const protocol = args.nodes.find((n) => n.id === 'protocol-custom' && n.kind.kind === 'Protocol');
     expect(protocol?.kind.params?.schema).toMatchObject({ preset: 'custom' });
+  });
+
+  it('RawData 协议节点 str 边触发 ProtocolSource (port_names = ["str"])', async () => {
+    useAppStore.setState({
+      rfNodes: [TRANSPORT_NODE, RAWDATA_PROTOCOL_NODE, GAUGE_NODE],
+      rfEdges: [
+        { id: 'e-str', source: 'protocol-raw', sourceHandle: 'str', target: 'w-gauge', targetHandle: 'value' },
+      ] as Edge[],
+    } as never);
+
+    await syncTabGraphToBackend('default');
+
+    const args = lastGraphArgs();
+    const ps = args.nodes.find((n) => n.kind.kind === 'ProtocolSource');
+    expect(ps).toBeDefined();
+    expect(ps!.id).toBe('protocol-raw');
+    expect(ps!.kind.params).toMatchObject({
+      node_id: 'protocol-raw',
+      channels: 1,
+      port_names: ['str'],
+    });
+    // str 边原样提交 (后端 ProtocolSource str 端口写入字符串平面)
+    expect(args.edges.some((e) => e.source === 'protocol-raw' && e.source_handle === 'str')).toBe(true);
+  });
+
+  it('RawData 协议节点不再产 chN 口 — chN 边不触发 ProtocolSource', async () => {
+    useAppStore.setState({
+      rfNodes: [TRANSPORT_NODE, RAWDATA_PROTOCOL_NODE, GAUGE_NODE],
+      rfEdges: [
+        { id: 'e-ch', source: 'protocol-raw', sourceHandle: 'ch0', target: 'w-gauge', targetHandle: 'value' },
+      ] as Edge[],
+    } as never);
+
+    await syncTabGraphToBackend('default');
+
+    const args = lastGraphArgs();
+    expect(args.nodes.some((n) => n.kind.kind === 'ProtocolSource')).toBe(false);
   });
 
   it('custom schema 下 chN 等未知端口边不触发 ProtocolSource', async () => {

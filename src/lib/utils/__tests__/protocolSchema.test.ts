@@ -104,6 +104,32 @@ describe('protocolPortNames', () => {
     ).toEqual(['ch0', 'ch1', 'ch2', 'ch3']);
   });
 
+  it('RawData 预设: 单个 str 字符串口 (无 chN 数值口)', () => {
+    expect(
+      protocolPortNames({ config: { kind: 'RawData' }, channels: 4, schema: rawDataSchema() }, null)
+    ).toEqual(['str']);
+  });
+
+  it('RawData 缺 schema (旧数据): 按 config.kind 回退 str 口', () => {
+    expect(protocolPortNames({ config: { kind: 'RawData' }, channels: 4 }, null)).toEqual(['str']);
+  });
+
+  it('RawData 节点编辑块后 preset=custom: 端口由 decode 块派生 (不再 str)', () => {
+    const ports = protocolPortNames(
+      {
+        config: { kind: 'RawData' },
+        channels: 4,
+        schema: {
+          preset: 'custom',
+          legacyConfig: null,
+          decode: [{ id: 'f0', type: 'field', fieldType: 'uint8', portName: 'v0' }],
+        },
+      },
+      null
+    );
+    expect(ports).toEqual(['v0']);
+  });
+
   it('custom schema: 命名端口由 decode 块派生', () => {
     const ports = protocolPortNames(
       {

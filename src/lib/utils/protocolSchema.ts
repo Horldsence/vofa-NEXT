@@ -2,7 +2,8 @@
 ///
 /// 预设 (JustFloat/FireWater/RawData/Slcan/CandleLight/LogicDecode) 是 schema 的
 /// 工厂产物: preset = 对应值 + legacyConfig = 原 ProtocolConfig + decode 块生成
-/// ch0..chN 端口。预设路径仍走 legacy 引擎 (自动检测/CAN/逻辑事件能力保留);
+/// ch0..chN 端口 (RawData 例外 — 引擎不产数值帧, 端口为 str 字符串口, 见 protocolPortNames)。
+/// 预设路径仍走 legacy 引擎 (自动检测/CAN/逻辑事件能力保留);
 /// 用户编辑块后 preset='custom', 端口由 decode 块派生 (见 schemaPortNames)。
 
 import type {
@@ -20,6 +21,8 @@ const JUSTFLOAT_TAIL_HEX = '00 00 80 7F';
 
 /// 获取当前生效通道数 (优先检测值, 其次配置值)
 /// 注: 本函数原在 store/appStoreHelpers, 移至此处避免循环依赖 (appStoreHelpers 仍 re-export)
+/// RawData/Slcan/CandleLight/LogicDecode 返回占位 4 — 这些引擎不产数值帧,
+/// 节点端口由 protocolPortNames 另行决定 (RawData → ['str']), 该值仅作 data.channels 占位
 export function getEffectiveChannels(
   protocolConfig: ProtocolConfig,
   detectedChannels: number | null
@@ -116,15 +119,25 @@ export function schemaPortNames(decode: DecoderBlock[]): string[] {
   return ports;
 }
 
+/// RawData 预设判定 (覆盖有/无 schema 两种数据形态; custom 块编辑后不再是预设)
+/// RawData 引擎不产数值帧: 收到字节后 out(Bytes) 透传 + UTF-8 lossy 文本进 str 字符串口
+export function isRawDataPreset(nodeData: { config: ProtocolConfig; schema?: ProtocolSchema | null }): boolean {
+  const schema = nodeData.schema;
+  if (schema && schema.preset === 'custom') return false;
+  return schema?.preset === 'rawData' || nodeData.config.kind === 'RawData';
+}
+
 /// 协议节点输出口名字列表:
 /// - custom schema → 按 port_names 规则从 decode 块派生 (任意数量、可命名)
-/// - 预设 (或缺失 schema 的旧数据) → 现有 getEffectiveChannels 逻辑产 ch0..chN
+/// - RawData 预设 → 单个 str 字符串口 (无 chN 数值口)
+/// - 其他预设 (或缺失 schema 的旧数据) → 现有 getEffectiveChannels 逻辑产 ch0..chN
 export function protocolPortNames(
   nodeData: { config: ProtocolConfig; channels: number; schema?: ProtocolSchema | null },
   detectedChannels: number | null
 ): string[] {
   const schema = nodeData.schema;
   if (schema && schema.preset === 'custom') return schemaPortNames(schema.decode);
+  if (isRawDataPreset(nodeData)) return ['str'];
   const n = nodeData.channels > 0
     ? nodeData.channels
     : getEffectiveChannels(nodeData.config, detectedChannels);

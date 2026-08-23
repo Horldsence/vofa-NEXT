@@ -169,7 +169,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     return () => dockDrag.registerCanvasHandler(el, null);
   }, [createFromDrop]);
 
-  // 端口域解析: 全局节点按端口表 (rx/tx/in/out=字节, chN=时域); 控件端口按 getWidgetPorts 的 domain 标注
+  // 端口域解析: 全局节点按端口表 (rx/tx/in/out=字节, chN=时域, str=字符串); 控件端口按 getWidgetPorts 的 domain 标注
   const resolveDomain = useCallback(
     (nodeId: string | null, handleId: string | null | undefined, kind: 'source' | 'target'): DomainType | null => {
       if (!nodeId || !handleId) return null;
@@ -182,6 +182,8 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       }
       if (node.type === 'protocol') {
         if (handleId === 'in' || handleId === 'out') return 'bytes';
+        // RawData 预设的 str 口是字符串域 (UTF-8 lossy 文本)
+        if (kind === 'source' && handleId === 'str') return 'string';
         if (kind === 'source' && /^ch\d+$/.test(handleId)) return 'time';
         return null;
       }
