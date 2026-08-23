@@ -436,6 +436,8 @@ export async function applySnapshot(
 ): Promise<void> {
   const migrated = migrateSnapshotToV3(snap);
   const want = new Set(resolveSections(migrated, opts));
+  // 应用前存在的 controlTabs — 应用后消失的 tab 需清理其后端残留图
+  const prevTabIds = useAppStore.getState().controlTabs.map((t) => t.id);
 
   // 1. 设置
   if (want.has('settings') && migrated.settings) {
@@ -512,6 +514,12 @@ export async function applySnapshot(
   if (want.has('nodeGraph') || want.has('widgetsTabs') || want.has('transportProtocol')) {
     for (const tab of useAppStore.getState().controlTabs) {
       useAppStore.getState().syncTabGraph(tab.id);
+    }
+    // 应用后消失的 tab: 后端仍残留其图与其名下的全局节点, 须显式移除。
+    // 顺序: 先同步存活 tab (全局节点重新托管到存活 tab 名下), 再移除消失的 tab
+    const currentTabIds = new Set(useAppStore.getState().controlTabs.map((t) => t.id));
+    for (const tabId of prevTabIds) {
+      if (!currentTabIds.has(tabId)) useAppStore.getState().removeTabGraph(tabId);
     }
   }
 }

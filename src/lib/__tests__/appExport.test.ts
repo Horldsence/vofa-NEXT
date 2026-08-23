@@ -1,5 +1,6 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it, afterEach, vi } from 'vitest';
 import {
+  applySnapshot,
   collectPartialSnapshot,
   detectPresentSections,
   parseSnapshot,
@@ -8,6 +9,7 @@ import {
   type AppSnapshot,
 } from '../tauri/appExport';
 import { useAppStore } from '../../store/appStore';
+import { tauriMock } from '../../test/setup';
 
 describe('appExport 拆分备份', () => {
   afterEach(() => {
@@ -217,5 +219,71 @@ describe('appExport 拆分备份', () => {
     const again = parseSnapshot(serializeSnapshot(parsed));
     const schema2 = (again.rfNodes?.find((n) => n.id === 'protocol-1')?.data as { schema?: unknown }).schema;
     expect(schema2).toEqual(schema);
+  });
+});
+
+describe('applySnapshot 后端图清理', () => {
+  afterEach(() => {
+    useAppStore.setState({
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
+      activeControlTabId: 'default',
+      rfNodes: [],
+      rfEdges: [],
+    } as never);
+  });
+
+  it('替换 controlTabs 后对消失的 tab 调 remove_tab_graph (在存活 tab sync 之后)', async () => {
+    tauriMock.invoke.mockClear();
+    useAppStore.setState({
+      controlTabs: [
+        { id: 'default', name: 'Tab 1', widgets: [] },
+        { id: 'tab-old', name: 'Old', widgets: [] },
+      ],
+      activeControlTabId: 'default',
+      rfNodes: [],
+      rfEdges: [],
+    } as never);
+
+    await applySnapshot({
+      version: 3,
+      exportedAt: '',
+      sections: ['widgetsTabs'],
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
+    });
+
+    await vi.waitFor(() => {
+      expect(tauriMock.invoke).toHaveBeenCalledWith('remove_tab_graph', { tabId: 'tab-old' });
+    });
+    const calls = tauriMock.invoke.mock.calls as unknown as [string, unknown][];
+    const syncIdx = calls.findIndex(
+      ([cmd, args]) => cmd === 'update_tab_graph' && (args as { tabId: string }).tabId === 'default'
+    );
+    const removeIdx = calls.findIndex(([cmd]) => cmd === 'remove_tab_graph');
+    // 先同步存活 tab (全局节点重新托管), 再移除消失的 tab
+    expect(syncIdx).toBeGreaterThanOrEqual(0);
+    expect(removeIdx).toBeGreaterThan(syncIdx);
+  });
+
+  it('controlTabs 未变化时不调 remove_tab_graph', async () => {
+    tauriMock.invoke.mockClear();
+    useAppStore.setState({
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
+      activeControlTabId: 'default',
+      rfNodes: [],
+      rfEdges: [],
+    } as never);
+
+    await applySnapshot({
+      version: 3,
+      exportedAt: '',
+      sections: ['widgetsTabs'],
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
+    });
+
+    await vi.waitFor(() => {
+      expect(tauriMock.invoke).toHaveBeenCalledWith('update_tab_graph', expect.anything());
+    });
+    const calls = tauriMock.invoke.mock.calls as unknown as [string, unknown][];
+    expect(calls.some(([cmd]) => cmd === 'remove_tab_graph')).toBe(false);
   });
 });

@@ -58,8 +58,8 @@ pub async fn update_tab_graph(
     apply_tab_graph(&state, tab_id, nodes, edges).await
 }
 
-/// `update_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地单测)
-async fn apply_tab_graph(
+/// `update_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地测试)
+pub async fn apply_tab_graph(
     state: &AppState,
     tab_id: String,
     nodes: Vec<NodeDef>,
@@ -110,8 +110,8 @@ pub async fn remove_tab_graph(state: State<'_, AppState>, tab_id: String) -> Res
     apply_remove_tab_graph(&state, &tab_id).await
 }
 
-/// `remove_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地单测)
-async fn apply_remove_tab_graph(state: &AppState, tab_id: &str) -> Result<()> {
+/// `remove_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地测试)
+pub async fn apply_remove_tab_graph(state: &AppState, tab_id: &str) -> Result<()> {
     state.graphs.lock().remove(tab_id);
 
     // 全局节点表移除该 tab 节点 + 重建全局字节平面

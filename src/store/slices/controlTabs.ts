@@ -48,6 +48,10 @@ export function createControlTabSlice(set: any, get: any): ControlTabSlice {
           rfEdges: s.rfEdges.filter((e: any) => !tabNodeIds.has(e.source) && !tabNodeIds.has(e.target)),
         };
       });
+      // 全局节点 (Transport/Protocol) 在后端全局表中归属最后提交它的 tab:
+      // 先重同步全部存活 tab (把全局节点重新托管到存活 tab 名下),
+      // 再移除被删 tab 的图 — 否则后端的 retain 清理会连带删掉全局节点
+      get().controlTabs.forEach((t: any) => get().syncTabGraph(t.id));
       get().removeTabGraph(tabId);
     },
 

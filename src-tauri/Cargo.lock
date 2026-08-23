@@ -726,6 +726,7 @@ dependencies = [
  "pipeline_data_plane",
  "pipeline_dispatcher",
  "pipeline_stream",
+ "schema_types",
  "tauri",
  "tokio",
  "vofa_core",
