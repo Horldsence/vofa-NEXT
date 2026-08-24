@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getWidgetPorts } from '../WidgetNode';
+import { getWidgetPorts } from '../WidgetPorts';
 import type { StrOp, WidgetConfig } from '../../../types';
 import { STR_OP_PORTS } from '../../../types';
 

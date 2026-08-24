@@ -21,7 +21,8 @@ import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
 import type { WidgetConfig, MathOp, StrOp, FilterPresetKind, DomainType } from '../../types';
 import { isUnaryMathOp } from '../../types';
-import { WidgetNode, getWidgetPorts } from '../nodes/WidgetNode';
+import { WidgetNode } from '../nodes/WidgetNode';
+import { getWidgetPorts } from '../nodes/WidgetPorts';
 import { TransportNode } from '../nodes/TransportNode';
 import { ProtocolNode } from '../nodes/ProtocolNode';
 import { GlobalNodeProperties } from '../nodes/GlobalNodeProperties';
@@ -108,10 +109,23 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     [tabNodes]
   );
 
-  const tabEdges = useMemo(
-    () => rfEdges.filter((e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target)) as Edge[],
-    [rfEdges, tabNodeIds]
-  );
+  const EMPTY_EDGES: readonly string[] = [];
+  const tabErrorEdges = useAppStore((s) => s.tabErrorEdges[tabId] ?? EMPTY_EDGES);
+
+  const tabEdges = useMemo(() => {
+    const erroredSet = new Set(tabErrorEdges);
+    return rfEdges
+      .filter((e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target))
+      .map((e) => {
+        if (!erroredSet.has(e.id)) return e;
+        return {
+          ...e,
+          style: { ...(e.style ?? {}), stroke: '#ef4444', strokeWidth: 2 },
+          animated: true,
+          className: 'compile-error-edge',
+        };
+      }) as Edge[];
+  }, [rfEdges, tabNodeIds, tabErrorEdges]);
 
   // 选中的全局节点 → 右侧属性面板
   const selectedGlobalNode = useMemo(

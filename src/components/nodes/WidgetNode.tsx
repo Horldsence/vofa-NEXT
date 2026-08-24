@@ -5,11 +5,12 @@ import { useDockStore } from '../../store/dockStore';
 import { t } from '../../i18n';
 import { X, Settings2 } from 'lucide-react';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
+import { CanvasErrorTooltip, useCanvasNodeError } from '../ui/CanvasErrorTooltip';
+import { getWidgetPorts, type WidgetPort } from './WidgetPorts';
 import type { WidgetConfig, DomainType } from '../../types';
 import type { Lang } from '../../i18n';
-import { STR_OP_PORTS, isUnaryMathOp, getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
+import { getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
-import { commandInputPortNames } from '../../lib/utils/commandFrames';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
@@ -22,7 +23,7 @@ import { ImageViewer } from '../displays/widgets/ImageViewer';
 import { Gauge } from '../displays/widgets/Gauge';
 import { LED } from '../displays/widgets/LED';
 import { NumberDisplay } from '../displays/widgets/NumberDisplay';
-import { CustomWidget, evalCustomWidgetDef } from '../displays/widgets/CustomWidget';
+import { CustomWidget } from '../displays/widgets/CustomWidget';
 import { MathWidget } from '../displays/widgets/MathWidget';
 import { FilterWidget } from '../displays/widgets/FilterWidget';
 import { FFTWidget } from '../displays/widgets/FFTWidget';
@@ -31,193 +32,6 @@ import { TextDisplay } from '../displays/widgets/TextDisplay';
 import { TextInput } from '../controls/TextInput';
 import { StrWidget } from '../displays/widgets/StrWidget';
 
-/// 端口定义 — domain 标注该端口承载的是时域还是频域信号
-export interface WidgetPort {
-  id: string;
-  label: string;
-  domain: DomainType;
-}
-
-/// 获取模块的端口定义
-export function getWidgetPorts(widget: WidgetConfig): {
-  inputs: WidgetPort[];
-  outputs: WidgetPort[];
-} {
-  switch (widget.kind) {
-    case 'Knob':
-    case 'Slider':
-    case 'Button':
-    case 'Radio':
-    case 'Checkbox':
-      // 输入控件: 只有输出端口
-      return { inputs: [], outputs: [{ id: 'value', label: 'value', domain: 'time' }] };
-    case 'Label':
-    case 'Gauge':
-    case 'LED':
-    case 'NumberDisplay':
-      // 显示控件: 只有单个输入端口
-      return { inputs: [{ id: 'value', label: 'value', domain: 'time' }], outputs: [] };
-    case 'PieChart':
-      return {
-        inputs: widget.params.segments.map((seg, i) => ({ id: `seg${i}`, label: seg, domain: 'time' as DomainType })),
-        outputs: [],
-      };
-    case 'Image':
-      return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
-    case 'Waveform':
-      // 波形图: 多个通道输入端口
-      return {
-        inputs: Array.from({ length: widget.params.channels }, (_, i) => ({
-          id: `CH${i}`,
-          label: `CH${i}`,
-          domain: 'time' as DomainType,
-        })),
-        outputs: [],
-      };
-    case 'Math': {
-      // 算术控件: 多个输入端口 (单目运算固定 1 个) + 单输出
-      const isUnary = isUnaryMathOp(widget.params.op);
-      const inputCount = isUnary ? 1 : widget.params.inputCount;
-      return {
-        inputs: Array.from({ length: inputCount }, (_, i) => ({
-          id: `in${i}`,
-          label: `in${i}`,
-          domain: 'time' as DomainType,
-        })),
-        outputs: [{ id: 'result', label: 'result', domain: 'time' }],
-      };
-    }
-    case 'Filter':
-      // 滤波器: 单输入 in0 (时域) + 单输出 result (时域)
-      return {
-        inputs: [{ id: 'in0', label: 'in0', domain: 'time' }],
-        outputs: [{ id: 'result', label: 'result', domain: 'time' }],
-      };
-    case 'FFT':
-      // FFT 频域求解器: 单输入 in0 (时域) + 单输出 spectrum (频域)
-      return {
-        inputs: [{ id: 'in0', label: 'in0', domain: 'time' }],
-        outputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }],
-      };
-    case 'IFFT':
-      // 逆 FFT 求解器: 单输入 spectrum (频域) + 单输出 out0 (时域)
-      return {
-        inputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }],
-        outputs: [{ id: 'out0', label: 'out0', domain: 'time' }],
-      };
-    case 'Spectrum':
-      // 频谱展示 (纯展示): 单输入 spectrum (频域) — 数据源由连线决定
-      // (FFT 求解器的 spectrum 输出 → 本端口), 不再用下拉选择
-      return { inputs: [{ id: 'spectrum', label: 'spectrum', domain: 'freq' }], outputs: [] };
-    case 'Model3D':
-      // 3D 模型: 六通道输入 (位置 x/y/z + 旋转 roll/pitch/yaw), 无输出 (前端 Three.js 直接渲染)
-      // - trajectory          -> 仅使用 x/y/z (位置)
-      // - attitude            -> 仅使用 roll/pitch/yaw (欧拉角, 弧度)
-      // - trajectory-attitude -> 同时使用全部六通道
-      // 缺失端口由 useGraphInputs 补 0, 向后兼容旧连线
-      return {
-        inputs: [
-          { id: 'x', label: 'x', domain: 'time' },
-          { id: 'y', label: 'y', domain: 'time' },
-          { id: 'z', label: 'z', domain: 'time' },
-          { id: 'roll', label: 'roll', domain: 'time' },
-          { id: 'pitch', label: 'pitch', domain: 'time' },
-          { id: 'yaw', label: 'yaw', domain: 'time' },
-        ],
-        outputs: [],
-      };
-    case 'Command': {
-      // 命令发送: 输入端口 = 所有帧 var_ref 块 portName 并集 (端口名自定义)
-      // loopbackOut 字节出口 — 发送的字节沿字节边路由 (Transport.tx 真实发送 / FrameDecoder.in 喂入)
-      const inputs = commandInputPortNames(widget.params)
-        .map((name) => ({ id: name, label: name, domain: 'time' as DomainType }));
-      const outputs = [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'bytes' as DomainType }];
-      return { inputs, outputs };
-    }
-    case 'FrameDecoder': {
-      // 帧解码器: 输出端口 = length/id/field/bitfield 块的 portName + 可选附加端口
-      // 字节输入口 in (旧名 loopbackIn 后端仍兼容): 字节来源完全由输入字节边决定
-      const blocks = widget.params.blocks ?? [];
-      const inputs = [{ id: 'in', label: 'in', domain: 'bytes' as DomainType }];
-      const outputs: WidgetPort[] = [];
-      for (const b of blocks) {
-        if (b.type === 'length') {
-          const name = b.portName ?? 'length';
-          outputs.push({ id: name, label: name, domain: 'time' });
-        } else if (b.type === 'id') {
-          const name = b.portName ?? 'id_value';
-          outputs.push({ id: name, label: name, domain: 'time' });
-        } else if (b.type === 'field' || b.type === 'bitfield') {
-          outputs.push({ id: b.portName, label: b.portName, domain: 'time' });
-        }
-      }
-      if (widget.params.enableValid) outputs.push({ id: 'valid', label: 'valid', domain: 'time' });
-      if (widget.params.enableFrameCount) outputs.push({ id: 'frame_count', label: 'frame_count', domain: 'time' });
-      if (widget.params.enableLastTimestamp) outputs.push({ id: 'last_timestamp', label: 'last_timestamp', domain: 'time' });
-      if (widget.params.enableFps) outputs.push({ id: 'fps', label: 'fps', domain: 'time' });
-      // raw 输出口: 整帧原始字节 (无 f32 语义) — 连到 RawData 时显示该解码器消费的完整帧字节;
-      // 普通 field 口连 RawData 则显示该字段的数值流
-      outputs.push({ id: 'raw', label: 'raw', domain: 'time' });
-      return { inputs, outputs };
-    }
-    case 'Custom': {
-      // Custom: 从用户代码中解析端口定义 (默认视为时域)
-      const { def } = evalCustomWidgetDef(widget.params.code);
-      return {
-        inputs: (def?.inputs ?? [{ id: 'value', label: 'value' }]).map((p) => ({
-          id: p.id,
-          label: p.label,
-          domain: 'time' as DomainType,
-        })),
-        outputs: (def?.outputs ?? []).map((p) => ({
-          id: p.id,
-          label: p.label,
-          domain: 'time' as DomainType,
-        })),
-      };
-    }
-    case 'Trigger':
-      // 触发器: 1 个数字触发端口 (auto 模式) + 2 个数值输出端口 (value / matched) + 1 个字符串输出端口 (text)
-      return {
-        inputs: [{ id: 'trigger', label: 'trigger', domain: 'time' }],
-        outputs: [
-          { id: 'value', label: 'value', domain: 'time' },
-          { id: 'matched', label: 'matched', domain: 'time' },
-          { id: 'text', label: 'text', domain: 'string' },
-        ],
-      };
-    case 'TextInput':
-      // 文本输入: 无输入端口, 唯一输出 str (字符串域, 供 Str/TextDisplay 消费)
-      return {
-        inputs: [],
-        outputs: [{ id: 'str', label: 'str', domain: 'string' }],
-      };
-    case 'TextDisplay':
-      // 文本展示: 1 个字符串输入端口
-      return {
-        inputs: [{ id: 'text', label: 'text', domain: 'string' }],
-        outputs: [],
-      };
-    case 'Str': {
-      // 字符串操作: 端口表由 STR_OP_PORTS 派生 (与后端 StrOp::input_ports 一致)
-      // 输出固定为 result 口, 域按 op 决定 (len/find/contains 数值, 其余字符串)
-      const meta = STR_OP_PORTS[widget.params.op];
-      return {
-        inputs: meta.inputs.map((p) => ({ ...p })),
-        outputs: [{ id: 'result', label: 'result', domain: meta.outputDomain }],
-      };
-    }
-    case 'RawData':
-      // 关联端口 (ASSOCIATIVE): 端口在此仅为回退值 — 实际端口由 WidgetNode 动态派生,
-      // 每个已连接的 source 节点 = 一个通道端口。边只是用户意图标记: 控件视图展示
-      // 选中通道的原始数据, 字节不路由进 f32 图 — 后端通过旁路通道捕获各解码器字节。
-      return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
-    default:
-      return { inputs: [{ id: 'in', label: 'in', domain: 'time' }], outputs: [] };
-  }
-}
-
-/// 派生 RawData 输入端口 — 动态: 每条入边的 (source, sourceHandle) 组合 = 一个通道端口。
 /// 端口 id 用 `src:<sourceId>:<sourceHandle>` (稳定, 不随源节点 label 变化),
 /// label 取源节点的输出端口名 (handle)。尚未连接任何边时回退到单个默认端口, 便于用户建立第一条连接。
 /// 域标注: 字节源端口 (Transport rx / Protocol out) 标 bytes (黄色), 其余标 time
@@ -266,6 +80,8 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
   const rfEdges = useAppStore((s) => s.rfEdges);
   const lang = useAppStore((s) => s.lang);
+  const nodeTabId = data.tabId as string | undefined;
+  const errorMessage = useCanvasNodeError(id, nodeTabId);
 
   // 稳定回调 — memo 包装的嵌入控件 (Gauge/LED/...) 依赖同引用 props 才能跳过重渲染
   const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
@@ -438,11 +254,13 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       : widget.kind;
 
   return (
-    <div
-      className="nowheel widget-card-acrylic rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
-      onDoubleClick={widgetToTab(widget) ? handleOpenWindow : undefined}
-      title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
-    >
+    <CanvasErrorTooltip message={errorMessage}>
+      <div
+        className="nowheel widget-card-acrylic rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
+        style={errorMessage ? { boxShadow: '0 0 0 2px #ef4444' } : undefined}
+        onDoubleClick={widgetToTab(widget) ? handleOpenWindow : undefined}
+        title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
+      >
       <div
         className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px]"
         style={{ color: categoryColor }}
@@ -536,5 +354,6 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
         ))}
       </div>
     </div>
+    </CanvasErrorTooltip>
   );
 });

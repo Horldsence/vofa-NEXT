@@ -6,6 +6,7 @@ import { Binary, X } from 'lucide-react';
 import type { ProtocolNodeData } from '../../store/appStoreHelpers';
 import { isRawDataPreset, protocolPortNames } from '../../lib/utils/protocolSchema';
 import { BYTES_DOMAIN_COLOR } from './TransportNode';
+import { CanvasErrorTooltip, useCanvasNodeError } from '../ui/CanvasErrorTooltip';
 
 /// 时域端口颜色 (与 WidgetNode.domainColor 一致)
 const TIME_DOMAIN_COLOR = '#75beff';
@@ -33,6 +34,7 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
   const rfEdges = useAppStore((s) => s.rfEdges);
   const derivedPorts = useAppStore((s) => s.derivedPorts[id]);
   const detectedChannels = useAppStore((s) => s.detectedChannels[id] ?? null);
+  const errorMessage = useCanvasNodeError(id, undefined);
   const nodeData = data as unknown as ProtocolNodeData;
   const config = nodeData.config;
   // 优先读后端 derived; 兜底用 protocolPortNames (节点刚创建/连接瞬间 derived 未到)
@@ -58,7 +60,11 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
     `w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(portId) ? ' connected' : ''}`;
 
   return (
-    <div className="nowheel widget-card-acrylic rounded-md min-w-[140px] max-w-[220px] text-[11px] relative [&.selected]:border-accent">
+    <CanvasErrorTooltip message={errorMessage}>
+      <div
+        className="nowheel widget-card-acrylic rounded-md min-w-[140px] max-w-[220px] text-[11px] relative [&.selected]:border-accent"
+        style={errorMessage ? { boxShadow: '0 0 0 2px #ef4444' } : undefined}
+      >
       <div className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] text-accent">
         <span className="flex items-center gap-1 flex-1 truncate">
           <Binary size={11} />
@@ -126,5 +132,6 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
         {nodeData.convertTo ? ` → ${t(lang, protocolLabelKey[nodeData.convertTo.kind] ?? nodeData.convertTo.kind)}` : ''}
       </div>
     </div>
+    </CanvasErrorTooltip>
   );
 });

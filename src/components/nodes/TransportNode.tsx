@@ -5,6 +5,7 @@ import { t } from '../../i18n';
 import { Cable, X } from 'lucide-react';
 import type { TransportNodeData } from '../../store/appStoreHelpers';
 import type { TransportConfig } from '../../types';
+import { CanvasErrorTooltip, useCanvasNodeError } from '../ui/CanvasErrorTooltip';
 
 /// 字节域端口颜色 (与 WidgetNode.domainColor 一致)
 export const BYTES_DOMAIN_COLOR = '#e5c07b';
@@ -54,6 +55,7 @@ export const TransportNode = memo(function TransportNode({ id, data }: NodeProps
   const removeGlobalNode = useAppStore((s) => s.removeGlobalNode);
   const connectionState = useAppStore((s) => s.connectionStates[id] ?? 'Disconnected');
   const rfEdges = useAppStore((s) => s.rfEdges);
+  const errorMessage = useCanvasNodeError(id, undefined);
   const config = (data as unknown as TransportNodeData).config;
 
   const connectedHandles = new Set<string>();
@@ -66,7 +68,11 @@ export const TransportNode = memo(function TransportNode({ id, data }: NodeProps
     `w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(portId) ? ' connected' : ''}`;
 
   return (
-    <div className="nowheel widget-card-acrylic rounded-md min-w-[150px] max-w-[220px] text-[11px] relative [&.selected]:border-accent">
+    <CanvasErrorTooltip message={errorMessage}>
+      <div
+        className="nowheel widget-card-acrylic rounded-md min-w-[150px] max-w-[220px] text-[11px] relative [&.selected]:border-accent"
+        style={errorMessage ? { boxShadow: '0 0 0 2px #ef4444' } : undefined}
+      >
       <div className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] text-yellow">
         <span className="flex items-center gap-1 flex-1 truncate">
           <Cable size={11} />
@@ -117,5 +123,6 @@ export const TransportNode = memo(function TransportNode({ id, data }: NodeProps
         </div>
       </div>
     </div>
+    </CanvasErrorTooltip>
   );
 });
