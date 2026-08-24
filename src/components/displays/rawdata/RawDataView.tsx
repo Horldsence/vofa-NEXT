@@ -471,7 +471,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
                 />
               )}
             </div>
-            <div className="w-[220px] flex-shrink-0 border-l border-border bg-bg-sidebar flex flex-col overflow-hidden">
+            <div className="w-[220px] shrink-0 border-l border-border bg-bg-sidebar flex flex-col overflow-hidden">
               {showSettings && (
                 <div className="flex-1 overflow-y-auto p-3">
                   <RawDataViewSettings

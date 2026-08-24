@@ -12,6 +12,7 @@ import {
   CircuitBoard as CircuitBoardIcon,
   ScanText as ScanTextIcon,
   Zap as ZapIcon,
+  AlertTriangle as AlertTriangleIcon,
 } from 'lucide-react';
 import { WaveformChart } from '../displays/waveform/WaveformChart';
 import { RawDataView } from '../displays/rawdata/RawDataView';
@@ -21,6 +22,7 @@ import { SpectrumChart } from '../displays/widgets/SpectrumChart';
 import { CommandSender } from '../displays/command/CommandSender';
 import { CanView } from '../displays/can/CanView';
 import { LogicView } from '../displays/logic/LogicView';
+import { CompileErrorsView } from '../displays/compileErrors/CompileErrorsView';
 import { FrameDecoder } from '../displays/decoder/FrameDecoder';
 import { Trigger } from '../controls/Trigger';
 import { TableView } from '../displays/widgets/TableView';
@@ -73,7 +75,7 @@ const WaveformTabView = memo(function WaveformTabView({
       <div className="flex-1 min-w-0 relative">
         <WaveformChart widget={widget} axisConfig={axisConfig} onConfigChange={onConfigChange} buffer={buffer} />
       </div>
-      <div className="w-[256px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
+      <div className="w-[256px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
         <AxisSettings
           config={axisConfig}
           onChange={onConfigChange}
@@ -211,6 +213,11 @@ const canTabContent = (
 const logicTabContent = (
   <div className="flex h-full w-full">
     <LogicView />
+  </div>
+);
+const compileErrorsTabContent = (
+  <div className="flex h-full w-full">
+    <CompileErrorsView />
   </div>
 );
 
@@ -416,6 +423,8 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       return canTabContent;
     case 'logic':
       return logicTabContent;
+    case 'compile-errors':
+      return compileErrorsTabContent;
     case 'table-view': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'TableView'
@@ -473,6 +482,8 @@ export function DataTabIcon({ type, size = 12 }: { type: string; size?: number }
       return <ZapIcon size={size} />;
     case 'table-view':
       return <BarChart3Icon size={size} />;
+    case 'compile-errors':
+      return <AlertTriangleIcon size={size} />;
     default:
       return null;
   }

@@ -965,6 +965,19 @@ canBitrate: CAN Bitrate
 serialPort: Serial Port
 candleDevice: USB Device
 noCandleDevices: No devices found
+# Compile Errors Panel
+compileErrorsTitle: Compile Errors
+compileErrors: Compile Errors Panel
+noCompileErrors: No compile errors
+flyToNode: Fly to node
+addCompileErrorsTab: Add Compile Errors Tab
+tabRepaired: This tab was repaired, history kept until closed
+compileErrorNodes: "{{count}} node(s)"
+compileErrorTabs: "{{count}} tab(s)"
+compileErrorValueCycle: Value Cycle
+compileErrorByteCycle: Byte Cycle
+compileErrorDomainMismatch: Domain Mismatch
+compileErrorNodeNotFound: Node Not Found
 slcanDesc: Communicate with CANable devices via slcan ASCII protocol (serial-to-CAN)
 candleLightDesc: Communicate with CANable devices via candleLight binary protocol (native USB)
 

@@ -144,9 +144,9 @@ export const StatusBar = memo(function StatusBar() {
   }[connectionState];
 
   return (
-    <div ref={rootRef} className="h-[24px] bg-bg-statusbar text-text-secondary flex items-center px-2 text-xs gap-3 flex-shrink-0 overflow-hidden" onContextMenu={onContextMenu}>
+    <div ref={rootRef} className="h-[24px] bg-bg-statusbar text-text-secondary flex items-center px-2 text-xs gap-3 shrink-0 overflow-hidden" onContextMenu={onContextMenu}>
       <div className="flex items-center gap-1.5 h-full">
-        <span className={clsx("w-2.5 h-2.5 rounded-full inline-block flex-shrink-0", dotColorClass)} />
+        <span className={clsx("w-2.5 h-2.5 rounded-full inline-block shrink-0", dotColorClass)} />
         <span className="whitespace-nowrap">{stateLabel[connectionState]}</span>
       </div>
       {tier < 2 && (
@@ -196,16 +196,19 @@ export const StatusBar = memo(function StatusBar() {
         </>
       )}
       <div className="flex items-center gap-1.5 h-full">
-        <CompileStatusIndicator compact={tier >= 2} />
+        <CompileStatusIndicator
+          compact={tier >= 2}
+          onClickError={() => useAppStore.getState().addCompileErrorsTab()}
+        />
       </div>
-      <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
+      <div className="w-px h-3 bg-border-subtle mx-1 shrink-0" />
       <CanLoadAlarm />
       <PipelineDropAlarm />
       <UpdateIndicator />
       {tier < 3 && <BufferUsageStats compact={tier >= 2} />}
-      <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
+      <div className="w-px h-3 bg-border-subtle mx-1 shrink-0" />
       <button
-        className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors duration-150 flex-shrink-0"
+        className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors duration-150 shrink-0"
         title={t(lang, 'refresh')}
         onClick={() => refreshPorts()}
       >

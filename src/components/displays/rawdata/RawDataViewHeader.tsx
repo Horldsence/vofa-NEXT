@@ -116,7 +116,7 @@ export function RawDataViewHeader({
 }: Props) {
   return (
     <>
-      <div className="flex gap-1 p-1.5 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
+      <div className="flex gap-1 p-1.5 items-center border-b border-border bg-bg-panel-header shrink-0">
         <div className="flex items-center bg-bg-input rounded p-0.5">
           {GROUPING_OPTIONS.map((opt) => (
             <button
@@ -160,7 +160,7 @@ export function RawDataViewHeader({
         </div>
 
         <div className={`flex items-center gap-1 bg-bg-input rounded px-1.5 py-0.5 border border-border ${isNum ? 'opacity-40 pointer-events-none' : ''}`}>
-          <Search size={12} className="text-text-secondary flex-shrink-0" />
+          <Search size={12} className="text-text-secondary shrink-0" />
           <input
             type="text"
             disabled={isNum}
@@ -193,7 +193,7 @@ export function RawDataViewHeader({
         )}
 
         {channelOptions.length > 0 && (
-          <label className="flex items-center gap-1 text-xs text-text-secondary flex-shrink-0">
+          <label className="flex items-center gap-1 text-xs text-text-secondary shrink-0">
             <span>{t(lang, 'rawDataChannel')}</span>
             <select
               value={channel}

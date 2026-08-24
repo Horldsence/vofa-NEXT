@@ -63,11 +63,11 @@ function TriggerRuleRow({ rule, expanded, onToggleExpand, onUpdate, onRemove, la
           {t(lang, cfg.labelKey)}
         </span>
         <span className="text-[10px] text-text-secondary font-mono truncate flex-1 min-w-0">{ruleSummary(rule)}</span>
-        <span className="text-text-secondary flex-shrink-0 p-0.5 pointer-events-none">
+        <span className="text-text-secondary shrink-0 p-0.5 pointer-events-none">
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         </span>
         <button
-          className="text-text-secondary hover:text-red flex-shrink-0 p-0.5"
+          className="text-text-secondary hover:text-red shrink-0 p-0.5"
           onClick={(e) => { e.stopPropagation(); onRemove(); }}
           title={t(lang, 'removeWidget')}
         >
@@ -372,7 +372,7 @@ export function Trigger({ widget }: TriggerProps) {
       {/* 左侧: 规则块列表 */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2 p-3 overflow-y-auto bg-bg-sidebar">
         {/* 顶部: 标题 + 模式切换 */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-border flex-shrink-0">
+        <div className="flex items-center justify-between pb-1.5 border-b border-border shrink-0">
           <span className="text-base font-semibold text-text-bright">{params.label || t(lang, 'triggerTitle')}</span>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-text-secondary">{rules.length} {t(lang, 'triggerRulesCount')}</span>
@@ -416,7 +416,7 @@ export function Trigger({ widget }: TriggerProps) {
           ))}
         </div>
 
-        <div className="flex flex-wrap gap-1 pt-1 border-t border-border flex-shrink-0">
+        <div className="flex flex-wrap gap-1 pt-1 border-t border-border shrink-0">
           {MATCH_TYPES.map((mt) => {
             const cfg = MATCH_TYPE_CONFIG[mt];
             return (
@@ -438,7 +438,7 @@ export function Trigger({ widget }: TriggerProps) {
       </div>
 
       {/* 右侧: 模式面板 + 全局设置 */}
-      <div className="w-[320px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
+      <div className="w-[320px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
         {mode === 'manual' ? (
           <ManualPanel command={command} onCommandChange={handleCommandChange} result={lastResult} lang={lang} />
         ) : (

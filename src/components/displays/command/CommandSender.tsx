@@ -108,8 +108,8 @@ function CommandFrameTabBar({
   };
 
   return (
-    <div className="flex items-center gap-1 px-2 py-1 border-b border-border flex-shrink-0 overflow-x-auto">
-      <span className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pr-1 flex-shrink-0">
+    <div className="flex items-center gap-1 px-2 py-1 border-b border-border shrink-0 overflow-x-auto">
+      <span className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold pr-1 shrink-0">
         {t(lang, 'cmdFrames')}
       </span>
       {frames.map((f) => {
@@ -117,7 +117,7 @@ function CommandFrameTabBar({
         return (
           <div
             key={f.id}
-            className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-sm text-[11px] cursor-pointer select-none border transition-colors flex-shrink-0 ${
+            className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-sm text-[11px] cursor-pointer select-none border transition-colors shrink-0 ${
               active
                 ? 'bg-bg-button text-text-inverse border-bg-button'
                 : 'bg-bg-input text-text-secondary border-border hover:text-text-primary'
@@ -148,7 +148,7 @@ function CommandFrameTabBar({
             )}
             {frames.length > 1 && (
               <button
-                className="p-0.5 opacity-60 hover:opacity-100 hover:text-red flex-shrink-0"
+                className="p-0.5 opacity-60 hover:opacity-100 hover:text-red shrink-0"
                 title={t(lang, 'cmdRemoveFrame')}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -162,7 +162,7 @@ function CommandFrameTabBar({
         );
       })}
       <button
-        className="inline-flex items-center justify-center p-1 rounded-sm border border-dashed border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors flex-shrink-0"
+        className="inline-flex items-center justify-center p-1 rounded-sm border border-dashed border-border text-text-secondary hover:text-text-primary hover:border-accent transition-colors shrink-0"
         title={t(lang, 'cmdAddFrame')}
         onClick={onAdd}
       >

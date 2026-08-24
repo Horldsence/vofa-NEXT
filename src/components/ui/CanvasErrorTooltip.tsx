@@ -34,10 +34,12 @@ export function compileErrorMessage(err: CompileError, nodeId: string): string {
 /// 节点命中错误时返回消息文本,否则 null
 /// tabId 为 undefined 时 (全局节点 — Transport/Protocol), 遍历任意 tab 错误集命中即报错
 export function useCanvasNodeError(nodeId: string, tabId: string | undefined): string | null {
+  const tabStates = useAppStore((s) => s.tabStates);
   const tabErrorNodes = useAppStore((s) => s.tabErrorNodes);
   const tabErrors = useAppStore((s) => s.tabErrors);
   return useMemo(() => {
     if (tabId !== undefined) {
+      if (tabStates[tabId] !== 'error') return null;
       const nodes = tabErrorNodes[tabId];
       if (!nodes || !nodes.includes(nodeId)) return null;
       const report = tabErrors[tabId];
@@ -45,12 +47,13 @@ export function useCanvasNodeError(nodeId: string, tabId: string | undefined): s
       return compileErrorMessage(report.error, nodeId);
     }
     for (const [tId, nodes] of Object.entries(tabErrorNodes)) {
+      if (tabStates[tId] !== 'error') continue;
       if (!nodes.includes(nodeId)) continue;
       const report = tabErrors[tId];
       if (report) return compileErrorMessage(report.error, nodeId);
     }
     return null;
-  }, [tabErrorNodes, tabErrors, tabId, nodeId]);
+  }, [tabStates, tabErrorNodes, tabErrors, tabId, nodeId]);
 }
 
 interface CanvasErrorTooltipProps {
@@ -71,7 +74,7 @@ export function CanvasErrorTooltip({ message, children }: CanvasErrorTooltipProp
       {hover && (
         <div
           role="tooltip"
-          className="absolute z-50 left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 bg-red-500 text-white text-xs rounded shadow-lg pointer-events-none max-w-[260px] whitespace-normal leading-tight"
+          className="absolute z-50 left -translate-x bottom-full mb-1 px-2 py-1 bg-red-500 text-white text-xs rounded shadow-lg pointer-events-none max-w-[260px] whitespace-normal leading-tight"
         >
           {message}
         </div>

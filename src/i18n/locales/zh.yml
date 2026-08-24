@@ -965,6 +965,19 @@ canBitrate: CAN 波特率
 serialPort: 串口路径
 candleDevice: USB 设备
 noCandleDevices: 未发现设备
+# Compile Errors Panel
+compileErrorsTitle: 编译错误
+compileErrors: 编译错误面板
+noCompileErrors: 当前没有编译错误
+flyToNode: 定位节点
+addCompileErrorsTab: 添加编译错误 Tab
+tabRepaired: 此 Tab 已修复, 但面板保留历史记录
+compileErrorNodes: "{{count}} 个节点"
+compileErrorTabs: "{{count}} 个 Tab"
+compileErrorValueCycle: 值信号环路
+compileErrorByteCycle: 字节信号环路
+compileErrorDomainMismatch: 信号域不匹配
+compileErrorNodeNotFound: 未找到节点
 slcanDesc: 通过 slcan ASCII 协议与 CANable 设备通信 (串口转 CAN)
 candleLightDesc: 通过 candleLight 二进制协议与 CANable 设备通信 (原生 USB)
 

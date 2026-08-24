@@ -269,9 +269,9 @@ export function CanFrameList() {
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
       {/* 工具栏 */}
-      <div className="flex flex-wrap gap-2 p-2 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
+      <div className="flex flex-wrap gap-2 p-2 items-center border-b border-border bg-bg-panel-header shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <Filter size={12} className="text-text-secondary flex-shrink-0" />
+          <Filter size={12} className="text-text-secondary shrink-0" />
           <input
             type="text"
             className="w-24 sm:w-28 px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-xs focus:outline-none focus:border-accent font-mono"
@@ -351,7 +351,7 @@ export function CanFrameList() {
       </div>
 
       {/* 表头 */}
-      <div className="flex items-center text-[10px] uppercase text-text-secondary font-mono border-b border-border bg-bg-panel-header flex-shrink-0 select-none">
+      <div className="flex items-center text-[10px] uppercase text-text-secondary font-mono border-b border-border bg-bg-panel-header shrink-0 select-none">
         <span className="px-3 py-1.5 text-left font-medium whitespace-nowrap min-w-[132px]">
           {t(lang, 'time')}
         </span>

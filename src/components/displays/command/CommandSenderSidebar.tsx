@@ -39,7 +39,7 @@ export function CommandSenderSidebar({
   const timerMs = frame.timerMs ?? 100;
 
   return (
-    <div className="w-[300px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
+    <div className="w-[300px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
       {/* 预览 */}
       <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, 'cmdPreview')}</div>
       <div className="bg-bg-editor border border-border rounded px-2 py-1.5 flex flex-col gap-1">
@@ -94,7 +94,7 @@ export function CommandSenderSidebar({
       )}
       {lastSent && (
         <div className="flex items-center gap-1 px-1.5 py-1 bg-bg-editor rounded-sm text-[10px]" title={lastSent}>
-          <span className="text-text-secondary flex-shrink-0">{t(lang, 'cmdLastSent')}:</span>
+          <span className="text-text-secondary shrink-0">{t(lang, 'cmdLastSent')}:</span>
           <span className="font-mono text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{lastSent}</span>
         </div>
       )}

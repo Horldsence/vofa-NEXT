@@ -140,7 +140,7 @@ export function DecodedEventList() {
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg-editor">
-      <div className="flex flex-wrap gap-2 p-2 items-center border-b border-border bg-bg-panel-header flex-shrink-0">
+      <div className="flex flex-wrap gap-2 p-2 items-center border-b border-border bg-bg-panel-header shrink-0">
         <div className="flex items-center gap-0.5">
           {(['all', 'Uart', 'I2c', 'Spi'] as const).map((tp) => (
             <button
@@ -179,7 +179,7 @@ export function DecodedEventList() {
       </div>
 
       {/* 表头 */}
-      <div className="grid grid-cols-[7rem_4rem_1fr] sm:grid-cols-[8rem_4rem_1fr] gap-2 px-3 sm:px-4 py-1 border-b border-border bg-bg-panel-header text-[10px] font-semibold uppercase tracking-wide text-text-secondary flex-shrink-0">
+      <div className="grid grid-cols-[7rem_4rem_1fr] sm:grid-cols-[8rem_4rem_1fr] gap-2 px-3 sm:px-4 py-1 border-b border-border bg-bg-panel-header text-[10px] font-semibold uppercase tracking-wide text-text-secondary shrink-0">
         <span>{t(lang, 'time')}</span>
         <span>Protocol</span>
         <span>Data</span>

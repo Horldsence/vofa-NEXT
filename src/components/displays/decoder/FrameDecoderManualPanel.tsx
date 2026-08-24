@@ -67,7 +67,7 @@ export function ManualModePanel({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-text-bright truncate">{ex.name}</span>
-                    <span className="text-[10px] text-text-secondary uppercase flex-shrink-0">{ex.format}</span>
+                    <span className="text-[10px] text-text-secondary uppercase shrink-0">{ex.format}</span>
                   </div>
                   <div className="text-[10px] text-text-secondary truncate mt-0.5">{ex.description}</div>
                 </button>
@@ -96,7 +96,7 @@ export function ManualModePanel({
                       className="w-full text-left px-3 py-1.5 hover:bg-bg-hover transition-colors border-b border-border/40 last:border-b-0"
                       onClick={() => onSelectHistory(h)}
                     >
-                      <div className="text-[10px] text-text-secondary uppercase flex-shrink-0">{h.format}</div>
+                      <div className="text-[10px] text-text-secondary uppercase shrink-0">{h.format}</div>
                       <div className="text-xs text-text-primary font-mono truncate">{h.input}</div>
                     </button>
                   ))}
@@ -148,7 +148,7 @@ export function ManualModePanel({
           <div className="text-[10px] text-text-secondary uppercase tracking-wide font-semibold">{t(lang, 'fdParseResult')}</div>
           {result.error ? (
             <div className="flex items-start gap-1 bg-red/10 border border-red/30 text-red px-2 py-1.5 rounded-sm text-xs">
-              <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" />
+              <AlertTriangle size={11} className="shrink-0 mt-0.5" />
               <span className="break-all">{result.error}</span>
             </div>
           ) : (

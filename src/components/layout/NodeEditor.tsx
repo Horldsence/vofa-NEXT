@@ -68,6 +68,21 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   const addProtocolNode = useAppStore((s) => s.addProtocolNode);
   const setSidebarView = useAppStore((s) => s.setSidebarView);
   const reactFlow = useReactFlow();
+
+  const flyToRequest = useAppStore((s) => s.flyToRequest);
+  useEffect(() => {
+    if (!flyToRequest) return;
+    if (flyToRequest.tabId !== tabId) return;
+    const node = rfNodes.find((n) => n.id === flyToRequest.nodeId);
+    if (node) {
+      reactFlow.setCenter(node.position.x, node.position.y, {
+        duration: 400,
+        zoom: 1.5,
+      });
+    }
+    useAppStore.getState().clearFlyToRequest();
+  }, [flyToRequest, tabId, rfNodes, reactFlow]);
+
   // 控件拖拽悬停画布时的高亮 (dockDrag 控制器驱动)
   const [isDragOver, setIsDragOver] = useState(false);
   useEffect(() => dockDrag.subscribeCanvasHover(setIsDragOver), []);
@@ -109,11 +124,12 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     [tabNodes]
   );
 
+  const tabState = useAppStore((s) => s.tabStates[tabId]);
   const EMPTY_EDGES: readonly string[] = [];
   const tabErrorEdges = useAppStore((s) => s.tabErrorEdges[tabId] ?? EMPTY_EDGES);
 
   const tabEdges = useMemo(() => {
-    const erroredSet = new Set(tabErrorEdges);
+    const erroredSet = tabState === 'error' ? new Set(tabErrorEdges) : new Set<string>();
     return rfEdges
       .filter((e) => tabNodeIds.has(e.source) && tabNodeIds.has(e.target))
       .map((e) => {
@@ -125,7 +141,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           className: 'compile-error-edge',
         };
       }) as Edge[];
-  }, [rfEdges, tabNodeIds, tabErrorEdges]);
+  }, [rfEdges, tabNodeIds, tabErrorEdges, tabState]);
 
   // 选中的全局节点 → 右侧属性面板
   const selectedGlobalNode = useMemo(

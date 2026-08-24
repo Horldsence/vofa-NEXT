@@ -228,7 +228,7 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
       {/* 主区: 块列表 (可拖拽排序) */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col gap-2 p-3 overflow-y-auto bg-bg-sidebar">
         {/* 顶部: 标题 + 模式切换 */}
-        <div className="flex items-center justify-between pb-1.5 border-b border-border flex-shrink-0">
+        <div className="flex items-center justify-between pb-1.5 border-b border-border shrink-0">
           <span className="text-base font-semibold text-text-bright">{params.label}</span>
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-text-secondary">{blocks.length} blocks</span>
@@ -291,7 +291,7 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
                   onClick={() => toggleExpand(block.id)}
                 >
                   <div
-                    className="inline-flex items-center justify-center p-0.5 cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary flex-shrink-0"
+                    className="inline-flex items-center justify-center p-0.5 cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary shrink-0"
                     title={t(lang, 'cmdDragToReorder')}
                     draggable
                     onDragStart={handleDragStart(block.id)}
@@ -300,22 +300,22 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
                     <GripVertical size={12} className="pointer-events-none" />
                   </div>
                   <span
-                    className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wide flex-shrink-0 border ${cfg.badgeClass}`}
+                    className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wide shrink-0 border ${cfg.badgeClass}`}
                   >
                     {cfg.icon}
                     {t(lang, cfg.labelKey)}
                   </span>
                   {block.label && (
-                    <span className="text-xs text-text-primary truncate flex-shrink-0">{block.label}</span>
+                    <span className="text-xs text-text-primary truncate shrink-0">{block.label}</span>
                   )}
                   <span className="text-[10px] text-text-secondary font-mono truncate flex-1 min-w-0">
                     {blockSummary(block)}
                   </span>
-                  <span className="text-text-secondary flex-shrink-0 p-0.5 pointer-events-none">
+                  <span className="text-text-secondary shrink-0 p-0.5 pointer-events-none">
                     {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                   </span>
                   <button
-                    className="text-text-secondary hover:text-red flex-shrink-0 p-0.5"
+                    className="text-text-secondary hover:text-red shrink-0 p-0.5"
                     onClick={(e) => { e.stopPropagation(); removeBlock(block.id); }}
                     title={t(lang, 'removeWidget')}
                   >
@@ -335,7 +335,7 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
         </div>
 
         {/* 添加块按钮 (仅基础 7 种; 扩展块走协议 schema 编辑器) */}
-        <div className="flex flex-wrap gap-1 pt-1 border-t border-border flex-shrink-0">
+        <div className="flex flex-wrap gap-1 pt-1 border-t border-border shrink-0">
           {FRAME_DECODER_ADDABLE_TYPES.map((bt) => {
             const cfg = BLOCK_TYPE_CONFIG[bt];
             return (
@@ -357,7 +357,7 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
       </div>
 
       {/* 侧栏: 模式相关内容 + 全局设置 */}
-      <div className="w-[320px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
+      <div className="w-[320px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
         {mode === 'live' ? (
           <LiveModePanel
             portNames={portNames}

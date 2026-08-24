@@ -34,7 +34,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* 快速入门 */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Lightbulb size={14} className="text-accent flex-shrink-0" />
+              <Lightbulb size={14} className="text-accent shrink-0" />
               {t(lang, 'helpQuickStart')}
             </h2>
             <ol className="m-0 pl-5 text-sm text-text-primary leading-[1.7] list-decimal">
@@ -49,7 +49,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* 代码结构 */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Code size={14} className="text-accent flex-shrink-0" />
+              <Code size={14} className="text-accent shrink-0" />
               {t(lang, 'helpCodeStructure')}
             </h2>
             <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpCodeStructureDesc')}</p>
@@ -83,7 +83,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* ctx API */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Workflow size={14} className="text-accent flex-shrink-0" />
+              <Workflow size={14} className="text-accent shrink-0" />
               {t(lang, 'helpCtxApi')}
             </h2>
             <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpCtxApiDesc')}</p>
@@ -133,7 +133,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* 输入输出 */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Send size={14} className="text-accent flex-shrink-0" />
+              <Send size={14} className="text-accent shrink-0" />
               {t(lang, 'helpInputsOutputs')}
             </h2>
             <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpIoDesc')}</p>
@@ -148,7 +148,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* 设置项类型 */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Settings size={14} className="text-accent flex-shrink-0" />
+              <Settings size={14} className="text-accent shrink-0" />
               {t(lang, 'helpSettingsTypes')}
             </h2>
             <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpSettingsDesc')}</p>
@@ -163,7 +163,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* 示例 */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Code size={14} className="text-accent flex-shrink-0" />
+              <Code size={14} className="text-accent shrink-0" />
               {t(lang, 'helpExamples')}
             </h2>
             <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpExamplesDesc')}</p>
@@ -253,7 +253,7 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
           {/* 安全说明 */}
           <section className="flex flex-col gap-2">
             <h2 className="flex items-center gap-1.5 text-base font-semibold text-text-primary m-0 pb-1 border-b border-border">
-              <Lightbulb size={14} className="text-accent flex-shrink-0" />
+              <Lightbulb size={14} className="text-accent shrink-0" />
               {t(lang, 'helpSecurity')}
             </h2>
             <p className="m-0 text-sm text-text-secondary leading-[1.5]">{t(lang, 'helpSecurityDesc')}</p>

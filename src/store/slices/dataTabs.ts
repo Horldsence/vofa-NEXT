@@ -9,6 +9,9 @@ export interface DataTabSlice {
   setActiveDataTab: (tabId: string) => void;
   addCanTab: () => void;
   addLogicTab: () => void;
+  /// 整库唯一 — 首次创建后再次调用会切到已存在 tab,
+  /// 新建 tab 由 DockLayout useEffect → reconcile 自动安置到 focusedCard.tabIds
+  addCompileErrorsTab: () => void;
 }
 
 export function createDataTabSlice(set: any, get: any): DataTabSlice {
@@ -72,6 +75,26 @@ export function createDataTabSlice(set: any, get: any): DataTabSlice {
         dataTabs: [...get().dataTabs, tab],
         activeDataTabId: tab.id,
       });
+    },
+
+    addCompileErrorsTab: () => {
+      const existing = get().dataTabs.find((t: DataTab) => t.type === 'compile-errors');
+      if (existing) {
+        set({ activeDataTabId: existing.id });
+        return;
+      }
+      const tab: DataTab = {
+        id: `compile-errors-${Date.now()}`,
+        type: 'compile-errors',
+        name: t(get().lang, 'compileErrorsTitle'),
+        closable: true,
+      };
+      set({
+        dataTabs: [...get().dataTabs, tab],
+        activeDataTabId: tab.id,
+      });
+      // dockStore 的安置由 DockLayout useEffect → reconcile 自动处理
+      // (reconcile 把 missing tabId 推入 focusedCard.tabIds 或首个 data card)
     },
   };
 }

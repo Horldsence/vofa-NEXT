@@ -29,8 +29,12 @@ export interface CompileStatusSlice {
   pendingTabs: string[];
   errorTabs: string[];
   anyCompiling: boolean;
+  /// 一次性 fly-to 请求 — CompileErrorItem 触发, NodeEditorInner 命中即消费并清空
+  flyToRequest: { nodeId: string; tabId: string } | null;
   setCompileEvent: (e: GraphCompileEvent) => void;
   resetStatus: (tabId?: string) => void;
+  requestFlyTo: (nodeId: string, tabId: string) => void;
+  clearFlyToRequest: () => void;
 }
 
 export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlice {
@@ -43,6 +47,7 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
     pendingTabs: [],
     errorTabs: [],
     anyCompiling: false,
+    flyToRequest: null,
 
     setCompileEvent: (e) =>
       set((s: any) => {
@@ -56,17 +61,18 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
           nextErrors[tabId] = e.report;
           nextErrorNodes[tabId] = e.report.nodes ?? [];
           nextErrorEdges[tabId] = e.report.edges ?? [];
-        } else if (e.state === 'ok') {
-          delete nextErrors[tabId];
-          delete nextErrorNodes[tabId];
-          delete nextErrorEdges[tabId];
         }
+        // 注意: state === 'ok' 时不删除 nextErrors/nextErrorNodes/nextErrorEdges —
+        // 保留历史供 Compile Errors 面板回放 (用户确认: 错误修复后状态栏图标不消失,
+        // tab 分组显示绿色 ✓ 等待用户手动 X 关闭).
+        // 真正的清理靠 resetStatus(tabId) — 由 removeControlTab / removeDataTab 触发
         const pending = Object.entries(nextStates)
           .filter(([, v]) => v === 'pending' || v === 'compiling')
           .map(([k]) => k);
-        const errors = Object.entries(nextStates)
-          .filter(([, v]) => v === 'error')
-          .map(([k]) => k);
+        // errorTabs: 累积式 — 一旦进入 error 的 tabId 永不退出, 除非 resetStatus
+        const errorSet = new Set(s.errorTabs);
+        if (e.state === 'error') errorSet.add(tabId);
+        const errors = Array.from(errorSet);
         return {
           tabStates: nextStates,
           tabErrors: nextErrors,
@@ -91,6 +97,7 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
             pendingTabs: [],
             errorTabs: [],
             anyCompiling: false,
+            flyToRequest: null,
           };
         }
         const { [tabId]: _, ...restStates } = s.tabStates;
@@ -102,9 +109,9 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
         const pending = Object.entries(nextStates)
           .filter(([, v]) => v === 'pending' || v === 'compiling')
           .map(([k]) => k);
-        const errors = Object.entries(nextStates)
-          .filter(([, v]) => v === 'error')
-          .map(([k]) => k);
+        // resetStatus 同步把 errorTabs 里这个 tabId 移除 — 与"累积式"语义配合
+        // (累积是相对 setCompileEvent 的; tab 整体删除时显式清理)
+        const errors = s.errorTabs.filter((id: string) => id !== tabId);
         return {
           tabStates: nextStates,
           tabErrors: restErrors,
@@ -114,7 +121,17 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
           pendingTabs: pending,
           errorTabs: errors,
           anyCompiling: pending.length > 0,
+          // 若当前 fly-to 请求指向已删 tab, 同步清掉避免孤儿
+          flyToRequest:
+            s.flyToRequest && s.flyToRequest.tabId === tabId ? null : s.flyToRequest,
         };
       }),
+
+    /// 排队 fly-to 请求 — CompileErrorItem 在切到 control tab 后调用,
+    /// NodeEditorInner 的 useEffect 命中即调 reactFlow.setCenter 并消费
+    requestFlyTo: (nodeId, tabId) => set({ flyToRequest: { nodeId, tabId } }),
+
+    /// 消费方 (NodeEditorInner) 命中后调, 也可由超时/手动重置触发
+    clearFlyToRequest: () => set({ flyToRequest: null }),
   };
 }

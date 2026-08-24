@@ -98,7 +98,7 @@ function ToastItem({ notif, lang, onDismiss }: ToastItemProps) {
     >
       {/* 头部: 图标 + 标题 + 严重级别眉标 (引导风格小号大写标签) + 关闭 */}
       <div className="flex items-start gap-2">
-        <div className={`flex-shrink-0 flex items-center justify-center pt-0.5 ${iconColorClass}`}>
+        <div className={`shrink-0 flex items-center justify-center pt-0.5 ${iconColorClass}`}>
           <Icon size={16} />
         </div>
         <div className="flex-1 min-w-0 flex items-center gap-2">
@@ -110,12 +110,12 @@ function ToastItem({ notif, lang, onDismiss }: ToastItemProps) {
               </span>
             )}
           </span>
-          <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm flex-shrink-0 ${severityTagClass}`}>
+          <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded-sm shrink-0 ${severityTagClass}`}>
             {severityLabel}
           </span>
         </div>
         <button
-          className="flex-shrink-0 bg-transparent border-none text-text-secondary cursor-pointer p-0.5 rounded-sm flex items-center justify-center transition-colors hover:bg-bg-hover hover:text-text-bright"
+          className="shrink-0 bg-transparent border-none text-text-secondary cursor-pointer p-0.5 rounded-sm flex items-center justify-center transition-colors hover:bg-bg-hover hover:text-text-bright"
           onClick={onDismiss}
           title={t(lang, 'notifDismiss')}
           aria-label={t(lang, 'notifDismiss')}
