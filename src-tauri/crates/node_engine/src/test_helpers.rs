@@ -231,6 +231,11 @@ pub fn source_frames(frames: &[(&str, Vec<f32>)]) -> SourceFramesMap {
     m
 }
 
+/// 空 SourceFramesMap — 节点求值时无帧源可用,源缺失路径覆盖用
+pub fn empty_frames() -> SourceFramesMap {
+    SourceFramesMap::default()
+}
+
 /// 空的每源最新文本缓存 (evaluate/run 的 source_texts 参数)
 pub fn empty_texts() -> SourceTextsMap {
     SourceTextsMap::default()

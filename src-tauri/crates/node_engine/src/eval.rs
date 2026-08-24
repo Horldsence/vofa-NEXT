@@ -14,11 +14,14 @@ use rustc_hash::FxBuildHasher;
 use vofa_core::DataFrame;
 
 use node_frame_decoder::FrameParser;
-use node_kind::{StrNumParams, StrResult};
+use node_kind::StrResult;
 use node_trigger::TriggerState;
 
 use crate::ops::CompiledOp;
 use crate::{StringValuesMap, ValuesMap};
+
+pub use crate::eval_ports::{node_out_entry, set_port};
+pub use crate::eval_str::{node_out_str_entry, set_str_port, str_num_default};
 
 /// 多源最新帧缓存 — key = 全局 Protocol 节点 id, value = 该源最近一帧
 /// (latest-value 融合: 每个源独立缓存, 求值时按源读取)
@@ -27,60 +30,6 @@ pub type SourceFramesMap = HashMap<String, DataFrame, FxBuildHasher>;
 /// 每源最新文本缓存 — key = 全局 Protocol 节点 id, value = 该源原始字节的
 /// UTF-8 lossy 解码文本 (RawData 协议写入, latest-value 融合, 仿 [`SourceFramesMap`])
 pub type SourceTextsMap = HashMap<String, String, FxBuildHasher>;
-
-/// 取节点的输出 map (不存在则创建) — evaluate_into 热路径用
-///
-/// 不做 clear: 端口覆盖写, 稳态零分配; 过期端口清理由调用方
-/// 在图重编译时清空整个 out 保证。
-pub fn node_out_entry<'a>(
-    out: &'a mut ValuesMap,
-    node_id: &str,
-) -> &'a mut HashMap<String, f32, FxBuildHasher> {
-    if out.get_mut(node_id).is_none() {
-        out.insert(node_id.to_string(), HashMap::default());
-    }
-    out.get_mut(node_id).unwrap()
-}
-
-/// 写端口值 — 键已存在时原位写 (零分配), 不存在才插入
-pub fn set_port(m: &mut HashMap<String, f32, FxBuildHasher>, port: &str, value: f32) {
-    if let Some(slot) = m.get_mut(port) {
-        *slot = value;
-    } else {
-        m.insert(port.to_string(), value);
-    }
-}
-
-/// 取节点的字符串输出 map (不存在则创建) — 仿 [`node_out_entry`]
-pub fn node_out_str_entry<'a>(
-    out: &'a mut StringValuesMap,
-    node_id: &str,
-) -> &'a mut HashMap<String, String, FxBuildHasher> {
-    if out.get_mut(node_id).is_none() {
-        out.insert(node_id.to_string(), HashMap::default());
-    }
-    out.get_mut(node_id).unwrap()
-}
-
-/// 写字符串端口值 — 键已存在时原位写 (复用缓冲, 稳态低分配), 不存在才插入
-pub fn set_str_port(m: &mut HashMap<String, String, FxBuildHasher>, port: &str, value: &str) {
-    if let Some(slot) = m.get_mut(port) {
-        slot.clear();
-        slot.push_str(value);
-    } else {
-        m.insert(port.to_string(), value.to_owned());
-    }
-}
-
-/// Str 数值端口的内联回退值 (端口未连接时使用): 端口名 → [`StrNumParams`] 字段
-pub fn str_num_default(num: &StrNumParams, port: &str) -> f32 {
-    match port {
-        "pos" => num.pos,
-        "len" => num.len,
-        "size" => num.size,
-        _ => 0.0,
-    }
-}
 
 /// 编译期槽位评估表 — 编译流水线后端产物 (构建见 [`crate::lower`]), 逐帧评估纯数组读写
 pub struct CompiledEval {

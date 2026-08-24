@@ -29,6 +29,8 @@ mod byte_plan;
 mod compile;
 mod errors;
 mod eval;
+pub mod eval_ports;
+pub mod eval_str;
 pub mod evaluate;
 mod hir;
 pub mod lower;
@@ -42,7 +44,17 @@ mod compile_tests;
 #[cfg(test)]
 mod equiv_tests;
 #[cfg(test)]
-mod eval_tests;
+mod tests {
+    use super::*;
+
+    mod eval_custom_tests;
+    mod eval_filter_tests;
+    mod eval_input_tests;
+    mod eval_math_tests;
+    mod eval_misc_tests;
+    mod eval_str_tests;
+    mod eval_trigger_tests;
+}
 
 #[cfg(test)]
 pub(crate) mod test_helpers;
