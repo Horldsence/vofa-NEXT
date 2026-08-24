@@ -10,6 +10,7 @@ import { useSlidingPill, SlidingPill } from '../ui/SlidingPill';
 import { AnimatedSwitch } from '../ui/AnimatedSwitch';
 import { NodeEditor } from './NodeEditor';
 import { DataTabContent, DataTabIcon } from './DataTabContent';
+import { CompileDot } from './CompileStatusIndicator';
 import { useContextMenu, showContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag } from '../../lib/dockDrag';
@@ -209,7 +210,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
           <div
             key={tab.id}
             data-tab-key={tab.id}
-            className={`relative px-2.5 h-7 text-xs cursor-pointer rounded-sm flex items-center gap-1.5 flex-shrink-0 transition-colors duration-150 select-none ${
+            className={`relative px-2.5 h-7 text-xs cursor-pointer rounded-sm flex items-center gap-1.5 flex-shrink-0 min-w-0 max-w-[180px] overflow-hidden transition-colors duration-150 select-none ${
               tab.id === activeTabId
                 ? 'text-text-bright'
                 : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active'
@@ -243,7 +244,10 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
                 onClick={(e) => e.stopPropagation()}
               />
             ) : (
-              <span>{tab.name}</span>
+              <>
+                {kind === 'control' && <CompileDot tabId={tab.id} />}
+                <span className="truncate">{tab.name}</span>
+              </>
             )}
             {closable(tab.id) && (
               <button

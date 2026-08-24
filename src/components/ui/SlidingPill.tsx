@@ -58,6 +58,7 @@ export function useSlidingPill(activeKey: string | null) {
       });
     });
     ro.observe(container);
+    container.querySelectorAll<HTMLElement>('[data-tab-key]').forEach((el) => ro.observe(el));
     return () => {
       ro.disconnect();
       if (raf !== null) cancelAnimationFrame(raf);
