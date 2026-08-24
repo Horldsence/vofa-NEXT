@@ -115,7 +115,7 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> CompiledEval {
         let Some(node) = g.graph[ix].value_def.as_ref() else {
             continue;
         };
-        crate::lower_kinds::lower_node(node, &mut ctx);
+        kinds::lower_node(node, &mut ctx);
     }
 
     // SpectrumSink 输入槽位 (不在 eval_order, 输入端口固定 "in0")
@@ -138,3 +138,5 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> CompiledEval {
         str_slot_index,
     }
 }
+
+pub mod kinds;

@@ -7,14 +7,14 @@
 //!   双角色节点 (字节/数值平面定义同槽共存) + 端口域解析 + 边分类
 //! - [`plane`]: 中端 — 值平面/字节平面的 EdgeFiltered 零拷贝投影 + petgraph
 //!   拓扑排序 + 完整环路径诊断; 跨平面不构成循环由投影结构性保证
-//! - [`lower`] / [`lower_kinds`]: 后端 — SlotArena 槽位分配 (f32/字符串双 arena)
+//! - [`lower`] / [`lower::kinds`]: 后端 — SlotArena 槽位分配 (f32/字符串双 arena)
 //!   + per-kind lowering → 平坦 [`CompiledOp`] 序列
 //!
 //! 产物与运行时:
 //! - [`compile`]: CompiledGraph 编译 facade (流水线驱动 + 节点查询访问器)
 //! - [`byte_plan`]: 字节平面路由 (BytePlan / ByteRoute) — 拓扑序 + O(1) 成员查询
 //! - [`eval`]: 编译期槽位评估表 (CompiledEval) — f32 热路径
-//! - [`evaluate`]: 慢路径图求值 + 节点查询 — CompiledGraph::evaluate / evaluate_into
+//! - [`evaluate`]: 慢路径图求值 + NodeArm 分发表 — CompiledGraph::evaluate / evaluate_into
 //! - [`errors`]: CompileError — 强类型变体, 完整环路径诊断
 //! - [`ValuesMap`][]: 输出值表类型别名 (FxHash 优化)
 //! - [`StringValuesMap`][]: 字符串输出值表类型别名 (Str 节点 String 域输出)
@@ -29,10 +29,9 @@ mod byte_plan;
 mod compile;
 mod errors;
 mod eval;
-mod evaluate;
+pub mod evaluate;
 mod hir;
-mod lower;
-mod lower_kinds;
+pub mod lower;
 mod ops;
 mod plane;
 mod prelude;
