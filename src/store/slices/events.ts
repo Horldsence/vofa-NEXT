@@ -114,6 +114,24 @@ function parseGraphDerivedEvent(payload: unknown): import('./derived').GraphDeri
   return null;
 }
 
+/// graph:compile payload 解析 — 编译队列对外广播;
+/// 契约为 `{ tab_id, state, queued_seq, report }` (state: pending|compiling|ok|error).
+function parseGraphCompileEvent(
+  payload: unknown,
+): import('./compileStatus').GraphCompileEvent | null {
+  if (
+    payload &&
+    typeof payload === 'object' &&
+    'tab_id' in payload &&
+    'state' in payload &&
+    'queued_seq' in payload
+  ) {
+    return payload as import('./compileStatus').GraphCompileEvent;
+  }
+  console.warn('[events] graph:compile payload 契约不符:', payload);
+  return null;
+}
+
 export interface EventSlice {
   initEventListeners: () => Promise<() => void>;
 }
@@ -205,7 +223,15 @@ export function createEventSlice(set: any, get: any): EventSlice {
         get().setDerived(parsed.nodes);
       });
 
-      unlistenFns = [unlistenState, unlistenStats, unlistenChannels, unlistenDerived];
+      // graph:compile — 后端 cmd_graph 编译队列状态广播;
+      // 写 compileStatus 切片 (状态栏 / tab 角标 / 画布错误高亮的单一权威)。
+      const unlistenCompile = await listen<unknown>('graph:compile', (event) => {
+        const parsed = parseGraphCompileEvent(event.payload);
+        if (!parsed) return;
+        get().setCompileEvent(parsed);
+      });
+
+      unlistenFns = [unlistenState, unlistenStats, unlistenChannels, unlistenDerived, unlistenCompile];
 
       const graphCoalescer = makeRafCoalescer<{ values: Record<string, Record<string, number>>; tick: number }>(
         (v) => set({ graphOutputs: v.values, graphOutputsTick: v.tick })

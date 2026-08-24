@@ -35,6 +35,8 @@ mod lower;
 mod lower_kinds;
 mod ops;
 mod plane;
+mod prelude;
+mod traits;
 
 #[cfg(test)]
 mod compile_tests;

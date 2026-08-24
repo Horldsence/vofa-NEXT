@@ -16,7 +16,7 @@ use rustc_hash::FxHashMap;
 
 use node_kind::{port_domain, NodeDef, NodeKind, PortDomain, RAW_DATA_PORT_PREFIX};
 
-use crate::errors::CompileError;
+use crate::errors::{port_domain_event, CompileError};
 
 /// 节点图 HIR 类型
 pub type Hir = StableDiGraph<HirNode, HirEdge>;
@@ -133,10 +133,10 @@ impl TypedGraph {
                         edge_id: e.id.clone(),
                         source_node: e.source.clone(),
                         source_port: e.source_handle.clone(),
-                        src_domain,
+                        src_domain: port_domain_event(src_domain),
                         target: e.target.clone(),
                         target_port: e.target_handle.clone(),
-                        tgt_domain,
+                        tgt_domain: port_domain_event(tgt_domain),
                     });
                 }
             };

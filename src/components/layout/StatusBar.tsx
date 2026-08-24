@@ -10,6 +10,7 @@ import { PipelineDropAlarm } from './PipelineDropAlarm';
 import { UpdateIndicator } from './UpdateIndicator';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePrimaryProtocolConfig, usePrimaryTransportConfig } from '../../lib/hooks/usePrimaryNodes';
+import CompileStatusIndicator from './CompileStatusIndicator';
 
 /// 底部状态栏 — 显示连接状态、统计数据
 ///
@@ -194,6 +195,9 @@ export const StatusBar = memo(function StatusBar() {
           </div>
         </>
       )}
+      <div className="flex items-center gap-1.5 h-full">
+        <CompileStatusIndicator compact={tier >= 2} />
+      </div>
       <div className="w-px h-3 bg-border-subtle mx-1 flex-shrink-0" />
       <CanLoadAlarm />
       <PipelineDropAlarm />

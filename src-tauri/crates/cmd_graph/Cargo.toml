@@ -11,6 +11,7 @@ workspace = true
 app_state = { workspace = true }
 log = { workspace = true }
 notify_events = { workspace = true }
+parking_lot = "0.12"
 pipeline_data_plane = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }

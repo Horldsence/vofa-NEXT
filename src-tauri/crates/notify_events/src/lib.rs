@@ -19,6 +19,8 @@ pub const TRANSPORT_RX_EVENT: &str = "transport:rx";
 pub const PROTOCOL_CHANNELS_DETECTED_EVENT: &str = "protocol:channels-detected";
 /// `graph:derived` 事件名 (图编译派生数据 — 节点输出端口表 / 生效通道数, 差分推送)
 pub const GRAPH_DERIVED_EVENT: &str = "graph:derived";
+/// `graph:compile` event name (编译队列状态广播 — pending / ok / error, 携 receipt_seq)
+pub const GRAPH_COMPILE_EVENT: &str = "graph:compile";
 
 /// `transport:state` payload — 连接状态变化 (携带来源 Transport 节点 id)
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -83,6 +85,11 @@ pub fn emit_protocol_channels_detected(app: &AppHandle, node_id: &str, channels:
 /// 调用方约定 payload 形如 `{ "nodes": [{ "node_id": "...", "ports": [...], "effective_channels": N }] }`。
 pub fn emit_graph_derived<P: Serialize + Clone>(app: &AppHandle, payload: &P) {
     let _ = app.emit(GRAPH_DERIVED_EVENT, payload.clone());
+}
+
+/// emit `graph:compile` 事件 payload — 编译队列状态广播.
+pub fn emit_graph_compiled<P: Serialize + Clone>(app: &AppHandle, payload: &P) {
+    let _ = app.emit(GRAPH_COMPILE_EVENT, payload.clone());
 }
 
 pub mod notify;

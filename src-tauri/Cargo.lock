@@ -726,6 +726,7 @@ dependencies = [
  "node_engine",
  "node_kind",
  "notify_events",
+ "parking_lot",
  "pipeline_data_plane",
  "pipeline_dispatcher",
  "pipeline_stream",

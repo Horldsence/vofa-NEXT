@@ -17,11 +17,13 @@ use std::error::Error as StdError;
 use serde::ser::{SerializeMap, Serializer};
 use thiserror::Error as ThisError;
 
+mod compile;
 mod config;
 mod port;
 mod protocol;
 mod transport;
 
+pub use compile::{CompileError, CompileReport, PortDomain};
 pub use config::ConfigError;
 pub use port::{PortAlreadyOpenError, PortNotFoundError, PortNotOpenError};
 pub use protocol::ProtocolError;
