@@ -172,6 +172,19 @@ function App() {
           st.toggleSidebar(st.sidebarView);
           break;
         }
+        // 数据面板菜单 (Panel) — 与 src-tauri/crates/menu_shell 的 ids::PANEL_OPEN_* 一一对应
+        case 'menu:panel-open-compile-errors':
+          useAppStore.getState().addCompileErrorsTab();
+          break;
+        case 'menu:panel-open-compile-results':
+          useAppStore.getState().addCompileResultsTab();
+          break;
+        case 'menu:panel-open-can':
+          useAppStore.getState().addCanTab();
+          break;
+        case 'menu:panel-open-logic':
+          useAppStore.getState().addLogicTab();
+          break;
         default:
           break;
       }

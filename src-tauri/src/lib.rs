@@ -140,6 +140,7 @@ pub fn run() {
             set_logic_buffer_capacity,
             // 节点图 (后端化重构)
             update_tab_graph,
+            get_graph_hir,
             remove_tab_graph,
             set_input_value,
             submit_custom_output,

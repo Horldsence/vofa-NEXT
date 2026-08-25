@@ -5,6 +5,7 @@ import { exit } from '@tauri-apps/plugin-process';
 import clsx from 'clsx';
 import { useAppStore } from '../../store/appStore';
 import { useSettingsStore } from '../../store/settingsStore';
+import { getAvailableDataPanelEntries, type DataPanelEntry } from '../../store/slices/dataTabs';
 import { t, type Lang } from '../../i18n';
 
 const APP_GITHUB = 'https://github.com/Horldsence/vofa-NEXT';
@@ -49,6 +50,7 @@ interface MenuAction {
   id: string;
   label: string;
   shortcut?: string;
+  disabled?: boolean;
   onClick: () => void;
 }
 
@@ -80,6 +82,19 @@ function buildMenus(lang: Lang): MenuDef[] {
     s.toggleSidebar(s.sidebarView);
   };
 
+  /// 数据面板菜单条目 — 复用 dataTabs slice 的单一事实源;
+  /// 派生面板项随画布 widgets 变化 enabled/disabled
+  const entries = getAvailableDataPanelEntries(app(), app());
+  const entryToMenu = (e: DataPanelEntry): MenuAction => ({
+    kind: 'item',
+    id: `panel-${e.type}`,
+    label: e.available ? L(e.labelKey) : `${L(e.labelKey)} (${L('panelOpenNoWidget')})`,
+    disabled: !e.available,
+    onClick: e.open,
+  });
+  const standalone = entries.filter((e) => e.group === 'standalone').map(entryToMenu);
+  const derived = entries.filter((e) => e.group === 'derived').map(entryToMenu);
+
   return [
     {
       id: 'app',
@@ -97,6 +112,15 @@ function buildMenus(lang: Lang): MenuDef[] {
       entries: [
         { kind: 'item', id: 'new-tab', label: L('menuNewTab'), shortcut: 'Ctrl+T', onClick: newTab },
         { kind: 'item', id: 'close-tab', label: L('menuCloseTab'), shortcut: 'Ctrl+W', onClick: closeTab },
+      ],
+    },
+    {
+      id: 'panel',
+      label: L('menuPanel'),
+      entries: [
+        ...standalone,
+        ...(standalone.length && derived.length ? [{ kind: 'separator' as const }] : []),
+        ...derived,
       ],
     },
     {
@@ -288,7 +312,10 @@ export const MenuBar = memo(function MenuBar() {
                       key={entry.id}
                       type="button"
                       role="menuitem"
-                      className="context-menu-item"
+                      className={clsx(
+                        'context-menu-item',
+                        entry.disabled && 'opacity-50 cursor-not-allowed pointer-events-none'
+                      )}
                       style={{ height: 26 }}
                       onClick={handleItemClick(entry)}
                     >

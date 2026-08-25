@@ -11,6 +11,7 @@ import { createGraphStateSlice } from './slices/graphState';
 import { createEventSlice } from './slices/events';
 import { createDerivedSlice } from './slices/derived';
 import { createCompileStatusSlice } from './slices/compileStatus';
+import { createCompileHirSlice } from './slices/compileHir';
 
 export type { SidebarView } from './slices/sidebar';
 export {
@@ -34,7 +35,8 @@ export type AppStore = ReturnType<typeof createSidebarSlice>
   & ReturnType<typeof createGraphStateSlice>
   & ReturnType<typeof createEventSlice>
   & ReturnType<typeof createDerivedSlice>
-  & ReturnType<typeof createCompileStatusSlice>;
+  & ReturnType<typeof createCompileStatusSlice>
+  & ReturnType<typeof createCompileHirSlice>;
 
 export const useAppStore = create<AppStore>()((set, get) => ({
   ...createSidebarSlice(set, get),
@@ -49,4 +51,5 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   ...createEventSlice(set, get),
   ...createDerivedSlice(set, get),
   ...createCompileStatusSlice(set, get),
+  ...createCompileHirSlice(set, get),
 }));

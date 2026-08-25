@@ -471,8 +471,27 @@ export async function applySnapshot(
     const patch: Record<string, unknown> = {};
     if (migrated.widgets) patch.widgets = migrated.widgets;
     if (migrated.controlTabs) patch.controlTabs = migrated.controlTabs;
-    if (migrated.dataTabs) patch.dataTabs = migrated.dataTabs;
-    if (migrated.activeDataTabId != null) patch.activeDataTabId = migrated.activeDataTabId;
+    if (migrated.dataTabs) {
+      // 兜底注入 fixed compile-errors / compile-results Tab
+      // 老快照 (或外部导入的快照) 可能不包含; 缺一补一, 已存在则跳过
+      const fixedTabs: DataTab[] = [
+        { id: 'compile-errors-fixed', type: 'compile-errors', name: 'Compile Errors', closable: false },
+        { id: 'compile-results-fixed', type: 'compile-results', name: 'Compile Results', closable: false },
+      ];
+      const have = new Set(migrated.dataTabs.map((t) => t.id));
+      const mergedDataTabs = [...migrated.dataTabs];
+      for (const ft of fixedTabs) {
+        if (!have.has(ft.id)) mergedDataTabs.push(ft);
+      }
+      patch.dataTabs = mergedDataTabs;
+    }
+    if (migrated.activeDataTabId != null) {
+      patch.activeDataTabId = migrated.activeDataTabId;
+    } else {
+      // 快照未指定活动数据 Tab → 兜底到 compile-results-fixed (须存在)
+      const ids = (patch.dataTabs as DataTab[] | undefined)?.map((t) => t.id) ?? [];
+      if (ids.includes('compile-results-fixed')) patch.activeDataTabId = 'compile-results-fixed';
+    }
     if (migrated.activeControlTabId != null) patch.activeControlTabId = migrated.activeControlTabId;
     useAppStore.setState(patch);
     if (migrated.rawDataViewPrefs) {

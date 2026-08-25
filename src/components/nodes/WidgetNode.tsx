@@ -82,6 +82,11 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const lang = useAppStore((s) => s.lang);
   const nodeTabId = data.tabId as string | undefined;
   const errorMessage = useCanvasNodeError(id, nodeTabId);
+  // 持久高亮 — compile-results Tab 点击 source/target 后由 setCanvasHighlight 写入,
+  // 与 highlightedNodeId 同步; 错误优先 (error 时不覆盖红框)
+  const canvasHighlight = useAppStore((s) => s.canvasHighlight);
+  const isCanvasHighlighted =
+    !!canvasHighlight && canvasHighlight.nodeId === id && !errorMessage;
 
   // 稳定回调 — memo 包装的嵌入控件 (Gauge/LED/...) 依赖同引用 props 才能跳过重渲染
   const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
@@ -257,7 +262,13 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
     <CanvasErrorTooltip message={errorMessage}>
       <div
         className="nowheel widget-card-acrylic rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
-        style={errorMessage ? { boxShadow: '0 0 0 2px #ef4444' } : undefined}
+        style={
+          errorMessage
+            ? { boxShadow: '0 0 0 2px #ef4444' }
+            : isCanvasHighlighted
+              ? { boxShadow: '0 0 0 2px var(--color-accent)' }
+              : undefined
+        }
         onDoubleClick={widgetToTab(widget) ? handleOpenWindow : undefined}
         title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
       >
@@ -290,68 +301,75 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
           <X size={10} />
         </button>
       </div>
-      <div className="p-2 flex flex-col gap-1.5">
-        <WidgetEmbeddedContext.Provider value={true}>
-          {renderContent()}
-        </WidgetEmbeddedContext.Provider>
-      </div>
-      {/* 输入端口 (左侧) — Handle 覆盖 position:relative 让多端口纵向分布 */}
-      <div className="absolute top-1/2 left-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
-        {effectivePorts.inputs.map((port) => (
-          <div
-            key={port.id}
-            className="flex items-center gap-1 h-[14px] relative pl-0.5"
-            title={`${port.label} · ${domainLabel(lang, port.domain)}`}
-          >
-            <Handle
-              type="target"
-              position={Position.Left}
-              id={port.id}
-              style={{
-                position: 'relative',
-                left: 'auto',
-                top: 'auto',
-                transform: 'none',
-                borderColor: domainColor(port.domain),
-              }}
-              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
-            />
-            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
-            <span
-              className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none"
-              style={{ backgroundColor: domainColor(port.domain) }}
-            />
+      <div className="flex flex-row w-full min-h-[32px]">
+        {/* 输入端口 (左侧) — 融入普通文档流 */}
+        <div className="flex flex-col justify-center gap-0.5 py-1 -ml-1.5 z-10">
+          {effectivePorts.inputs.map((port) => (
+            <div
+              key={port.id}
+              className="flex items-center gap-1 h-[14px] relative"
+              title={`${port.label} · ${domainLabel(lang, port.domain)}`}
+            >
+              <Handle
+                type="target"
+                position={Position.Left}
+                id={port.id}
+                style={{
+                  position: 'relative',
+                  left: 'auto',
+                  top: 'auto',
+                  transform: 'none',
+                  borderColor: domainColor(port.domain),
+                }}
+                className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
+              />
+              <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
+              <span
+                className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none"
+                style={{ backgroundColor: domainColor(port.domain) }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* 主内容区 */}
+        <div className="flex-1 p-2 flex flex-col justify-center min-w-0">
+          <div className="flex flex-col gap-1.5">
+            <WidgetEmbeddedContext.Provider value={true}>
+              {renderContent()}
+            </WidgetEmbeddedContext.Provider>
           </div>
-        ))}
-      </div>
-      {/* 输出端口 (右侧) — 标签在 Handle 左侧, 允许向左延伸适应过长端口名 */}
-      <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-end gap-0.5 py-1 z-10">
-        {effectivePorts.outputs.map((port) => (
-          <div
-            key={port.id}
-            className="flex items-center gap-1 h-[14px] relative pr-0.5"
-            title={`${port.label} · ${domainLabel(lang, port.domain)}`}
-          >
-            <span
-              className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none"
-              style={{ backgroundColor: domainColor(port.domain) }}
-            />
-            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id={port.id}
-              style={{
-                position: 'relative',
-                right: 'auto',
-                top: 'auto',
-                transform: 'none',
-                borderColor: domainColor(port.domain),
-              }}
-              className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
-            />
-          </div>
-        ))}
+        </div>
+
+        {/* 输出端口 (右侧) — 融入普通文档流 */}
+        <div className="flex flex-col items-end justify-center gap-0.5 py-1 -mr-1.5 z-10">
+          {effectivePorts.outputs.map((port) => (
+            <div
+              key={port.id}
+              className="flex items-center justify-end gap-1 h-[14px] relative"
+              title={`${port.label} · ${domainLabel(lang, port.domain)}`}
+            >
+              <span
+                className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none"
+                style={{ backgroundColor: domainColor(port.domain) }}
+              />
+              <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port.label}</span>
+              <Handle
+                type="source"
+                position={Position.Right}
+                id={port.id}
+                style={{
+                  position: 'relative',
+                  right: 'auto',
+                  top: 'auto',
+                  transform: 'none',
+                  borderColor: domainColor(port.domain),
+                }}
+                className={`w-[9px] h-[9px] bg-bg-input border-[1.5px] rounded-full cursor-crosshair transition-all duration-150 hover:bg-accent hover:scale-130 [&.connectingto]:bg-green [&.connectingto]:border-green [&.valid]:bg-green [&.valid]:border-green${connectedHandles.has(port.id) ? ' connected' : ''}`}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
     </CanvasErrorTooltip>

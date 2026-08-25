@@ -31,10 +31,15 @@ export interface CompileStatusSlice {
   anyCompiling: boolean;
   /// 一次性 fly-to 请求 — CompileErrorItem 触发, NodeEditorInner 命中即消费并清空
   flyToRequest: { nodeId: string; tabId: string } | null;
+  /// 持久高亮 — compile-results Tab 点击 source/target 后写入, 与 highlightedNodeId
+  /// 同步; 节点组件用此给画布目标节点加 accent 色边框, 直到下次点击或清空
+  canvasHighlight: { nodeId: string; tabId: string } | null;
   setCompileEvent: (e: GraphCompileEvent) => void;
   resetStatus: (tabId?: string) => void;
   requestFlyTo: (nodeId: string, tabId: string) => void;
   clearFlyToRequest: () => void;
+  setCanvasHighlight: (nodeId: string, tabId: string) => void;
+  clearCanvasHighlight: () => void;
 }
 
 export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlice {
@@ -48,6 +53,7 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
     errorTabs: [],
     anyCompiling: false,
     flyToRequest: null,
+    canvasHighlight: null,
 
     setCompileEvent: (e) =>
       set((s: any) => {
@@ -98,6 +104,7 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
             errorTabs: [],
             anyCompiling: false,
             flyToRequest: null,
+            canvasHighlight: null,
           };
         }
         const { [tabId]: _, ...restStates } = s.tabStates;
@@ -124,6 +131,9 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
           // 若当前 fly-to 请求指向已删 tab, 同步清掉避免孤儿
           flyToRequest:
             s.flyToRequest && s.flyToRequest.tabId === tabId ? null : s.flyToRequest,
+          // 持久高亮: tab 整体删除时同步清掉
+          canvasHighlight:
+            s.canvasHighlight && s.canvasHighlight.tabId === tabId ? null : s.canvasHighlight,
         };
       }),
 
@@ -133,5 +143,11 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
 
     /// 消费方 (NodeEditorInner) 命中后调, 也可由超时/手动重置触发
     clearFlyToRequest: () => set({ flyToRequest: null }),
+
+    /// 持久画布高亮 — compile-results Tab 点击 source/target 时设置,
+    /// 节点组件订阅并给画布目标节点加 accent 色边框; 切 tab / 再次点同名由 CompileResultsView 清
+    setCanvasHighlight: (nodeId, tabId) => set({ canvasHighlight: { nodeId, tabId } }),
+
+    clearCanvasHighlight: () => set({ canvasHighlight: null }),
   };
 }

@@ -1,5 +1,5 @@
 import { memo, useState, useCallback } from 'react';
-import { Plus, X, Type, Trash2, Copy, Cpu, CircuitBoard, AlertTriangle } from 'lucide-react';
+import { Plus, X, Type, Trash2, Copy } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore, type AppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
@@ -55,9 +55,6 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   );
   // 全局 Tab 数量/类型派生标量 — 窄化为布尔/数字, 仅在对应状态翻转时触发重渲染
   const canClose = useAppStore((s) => s.controlTabs.length > 1);
-  const hasCanTab = useAppStore((s) => s.dataTabs.some((tab) => tab.type === 'can'));
-  const hasLogicTab = useAppStore((s) => s.dataTabs.some((tab) => tab.type === 'logic'));
-  const hasCompileErrorsTab = useAppStore((s) => s.dataTabs.some((tab) => tab.type === 'compile-errors'));
 
   // Tab 滑动指示器
   const { containerRef: tabBarRef, pill: tabPill } = useSlidingPill(activeTabId);
@@ -119,29 +116,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
   const tabBarContextMenu = useContextMenu(
     kind === 'control'
       ? [{ id: 'new-tab', label: t(lang, 'newTab'), icon: <Plus />, onClick: () => addControlTab() }]
-      : [
-          {
-            id: 'add-can-tab',
-            label: t(lang, 'addCanTab'),
-            icon: <Cpu size={14} />,
-            disabled: hasCanTab,
-            onClick: () => useAppStore.getState().addCanTab(),
-          },
-          {
-            id: 'add-logic-tab',
-            label: t(lang, 'addLogicTab'),
-            icon: <CircuitBoard size={14} />,
-            disabled: hasLogicTab,
-            onClick: () => useAppStore.getState().addLogicTab(),
-          },
-          {
-            id: 'add-compile-errors-tab',
-            label: t(lang, 'addCompileErrorsTab'),
-            icon: <AlertTriangle size={14} className={hasCompileErrorsTab ? '' : 'text-red-500'} />,
-            disabled: hasCompileErrorsTab,
-            onClick: () => useAppStore.getState().addCompileErrorsTab(),
-          },
-        ]
+      : []
   );
 
   const makeTabContextMenu = useCallback(
@@ -274,7 +249,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
             )}
           </div>
         ))}
-        {kind === 'control' ? (
+        {kind === 'control' && (
           <button
             className="w-6 h-7 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors cursor-pointer ml-1 shrink-0"
             onClick={() => addControlTab()}
@@ -282,31 +257,6 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
           >
             <Plus size={14} />
           </button>
-        ) : (
-          <>
-            <button
-              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors"
-              onClick={() => useAppStore.getState().addCanTab()}
-              title={t(lang, 'addCanTab')}
-            >
-              <Cpu size={12} />
-            </button>
-            <button
-              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors disabled:opacity-30 disabled:pointer-events-none"
-              onClick={() => useAppStore.getState().addLogicTab()}
-              title={t(lang, 'addLogicTab')}
-            >
-              <CircuitBoard size={12} />
-            </button>
-            <button
-              className="w-7 h-7 text-xs cursor-pointer rounded-md flex items-center justify-center shrink-0 text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors disabled:opacity-30 disabled:pointer-events-none"
-              onClick={() => useAppStore.getState().addCompileErrorsTab()}
-              disabled={hasCompileErrorsTab}
-              title={t(lang, 'addCompileErrorsTab')}
-            >
-              <AlertTriangle size={12} className={hasCompileErrorsTab ? 'hidden' : ''} />
-            </button>
-          </>
         )}
       </div>
 

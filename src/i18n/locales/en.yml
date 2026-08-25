@@ -979,6 +979,57 @@ compileErrorByteCycle: Byte Cycle
 compileErrorDomainMismatch: Domain Mismatch
 compileErrorNodeNotFound: Node Not Found
 slcanDesc: Communicate with CANable devices via slcan ASCII protocol (serial-to-CAN)
+
+# Compile Results Panel
+connectionResultsTitle: Connection Results
+colEdgeClass: Edge Class
+colSourceDomain: Source Domain
+colTargetDomain: Target Domain
+colDualRole: Dual Role
+toggleEdgeClass: Show edge class
+toggleSourceDomain: Show source domain
+toggleTargetDomain: Show target domain
+toggleDualRole: Show dual role
+dualRoleMarker: DUAL
+modalAddEdge: Add Connection
+modalModifyEdge: Edit Connection
+fieldSourceNode: Source node
+fieldTargetNode: Target node
+fieldSourceHandle: Source handle
+fieldTargetHandle: Target handle
+confirmAdd: Confirm
+cancel: Cancel
+
+# Data Panel Menu (菜单 — 数据面板)
+menuPanel: Panel
+menuPanelOpenCompileErrors: Open Compile Errors
+menuPanelOpenCompileResults: Open Compile Results
+menuPanelOpenCan: Open CAN Frames
+menuPanelOpenLogic: Open Logic Analyzer
+panelOpenSection: Open Data Panel
+panelOpenNoWidget: "no widget on canvas"
+dataPanelsDesc: Open any data panel — click an existing tab to cycle, or create one when no matching widget exists on the canvas.
+dataPanelsStandaloneTitle: Standalone
+dataPanelsDerivedTitle: By Widget
+dataTabWaveform: Waveform
+dataTabSpectrum: Spectrum
+dataTabRawData: Raw Data
+dataTabPie: Pie Chart
+dataTabImage: Image
+dataTabModel3d: 3D Model
+dataTabCommand: Command Sender
+dataTabFrameDecoder: Frame Decoder
+dataTabTrigger: Trigger
+addConnection: Add
+pasteConnection: Paste
+colSource: Source
+colTarget: Target
+colActions: Actions
+noConnections: No connections found.
+defaultHandle: default
+editConnection: Edit
+nodeTypeTransport: Transport
+nodeTypeProtocol: Protocol
 candleLightDesc: Communicate with CANable devices via candleLight binary protocol (native USB)
 
 # CAN Load Analysis
@@ -1065,6 +1116,7 @@ fdCoverStart: Cover start
 triggerTitle: Trigger
 triggerModeManual: Manual
 triggerModeAuto: Auto
+triggerEdge: Edge
 triggerEdgeLevel: Level
 triggerEdgeRising: Rising
 triggerMatchExact: Exact

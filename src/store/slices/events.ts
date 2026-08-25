@@ -229,6 +229,11 @@ export function createEventSlice(set: any, get: any): EventSlice {
         const parsed = parseGraphCompileEvent(event.payload);
         if (!parsed) return;
         get().setCompileEvent(parsed);
+        // refetch HIR (供 compile-results Tab 渲染);
+        // 仅在编译成功时触发 — 错误态保留上次成功 HIR, 错误详情由 compile-errors Tab 单独展示
+        if (parsed.state === 'ok') {
+          void get().fetchHir(parsed.tab_id);
+        }
       });
 
       unlistenFns = [unlistenState, unlistenStats, unlistenChannels, unlistenDerived, unlistenCompile];

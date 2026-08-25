@@ -981,6 +981,57 @@ compileErrorNodeNotFound: 未找到节点
 slcanDesc: 通过 slcan ASCII 协议与 CANable 设备通信 (串口转 CAN)
 candleLightDesc: 通过 candleLight 二进制协议与 CANable 设备通信 (原生 USB)
 
+# Compile Results Panel (编译结果面板)
+connectionResultsTitle: 连接结果
+colEdgeClass: 边分类
+colSourceDomain: 源端口域
+colTargetDomain: 目标端口域
+colDualRole: 双角色
+toggleEdgeClass: 显示边分类
+toggleSourceDomain: 显示源端口域
+toggleTargetDomain: 显示目标端口域
+toggleDualRole: 显示双角色
+dualRoleMarker: 双角色
+modalAddEdge: 添加连接
+modalModifyEdge: 编辑连接
+fieldSourceNode: 源节点
+fieldTargetNode: 目标节点
+fieldSourceHandle: 源端口
+fieldTargetHandle: 目标端口
+confirmAdd: 确认
+cancel: 取消
+
+# Data Panel Menu (菜单 — 数据面板)
+menuPanel: 数据面板
+menuPanelOpenCompileErrors: 打开编译错误
+menuPanelOpenCompileResults: 打开编译结果
+menuPanelOpenCan: 打开 CAN 帧
+menuPanelOpenLogic: 打开逻辑分析仪
+panelOpenSection: 打开数据面板
+panelOpenNoWidget: "画布无对应控件"
+dataPanelsDesc: 一键打开任何数据面板 — 已有 Tab 时点击轮转切换, 无对应控件时自动创建。
+dataPanelsStandaloneTitle: 独立面板
+dataPanelsDerivedTitle: 派生面板
+dataTabWaveform: 波形
+dataTabSpectrum: 频谱
+dataTabRawData: 原始数据
+dataTabPie: 饼图
+dataTabImage: 图像
+dataTabModel3d: 3D 模型
+dataTabCommand: 命令发送
+dataTabFrameDecoder: 帧解码
+dataTabTrigger: 触发器
+addConnection: 添加
+pasteConnection: 粘贴
+colSource: 源
+colTarget: 目标
+colActions: 操作
+noConnections: 未找到连接。
+defaultHandle: 默认
+editConnection: 编辑
+nodeTypeTransport: 传输
+nodeTypeProtocol: 协议
+
 # CAN 负载分析
 canLoadAnalysis: 负载分析
 canLoadWindow: 时间窗口
@@ -1062,6 +1113,7 @@ fdSignedYes: 带符号
 triggerTitle: 触发器
 triggerModeManual: 手动
 triggerModeAuto: 自动
+triggerEdge: 边沿
 triggerEdgeLevel: 电平
 triggerEdgeRising: 上升沿
 triggerMatchExact: 精确

@@ -75,5 +75,5 @@ pub use byte_plan::{BytePlan, ByteRoute};
 pub use compile::CompiledGraph;
 pub use errors::CompileError;
 pub use eval::{CompiledEval, SourceFramesMap, SourceTextsMap};
-pub use hir::TypedGraph;
+pub use hir::{EdgeClass, HirEdge, HirNode, TypedGraph};
 pub use ops::CompiledOp;

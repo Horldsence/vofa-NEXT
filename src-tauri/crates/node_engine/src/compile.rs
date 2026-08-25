@@ -164,6 +164,11 @@ impl CompiledGraph {
     pub const fn compiled(&self) -> &CompiledEval {
         &self.compiled
     }
+
+    /// HIR 视图 (只读访问编译前端产物, 供 IPC `get_graph_hir` 序列化)
+    pub const fn hir(&self) -> &TypedGraph {
+        &self.hir
+    }
 }
 
 // ============ 节点查询访问器 (编译期预计算, 返回切片零分配) ============

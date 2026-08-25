@@ -135,6 +135,10 @@ function buildDock(
   return { dockRoot: root, dockCards: cards };
 }
 
+/// 模板默认聚焦的数据 Tab — 应用模板后首先看向「编译结果」,核对连线质量
+/// (compile-errors / compile-results 是 appStore 初始 dataTabs 里固定存在的两个 Tab)
+const TEMPLATE_DEFAULT_ACTIVE_DATA_TAB = 'compile-results-fixed';
+
 /// 组装快照
 function buildSnapshot(opts: {
   name: string;
@@ -143,7 +147,6 @@ function buildSnapshot(opts: {
   widgetNodes: Node[];
   edges: Edge[];
   extraDataTabs?: DataTab[];
-  activeDataTabId?: string;
   sourceChannels?: number;
   /// 自定义协议 schema (preset='custom'); 缺省由 protocol 配置工厂生成预设 schema
   protocolSchema?: ProtocolSchema;
@@ -159,8 +162,7 @@ function buildSnapshot(opts: {
   }
   const extraTabs = opts.extraDataTabs ?? [];
   const dataTabs: DataTab[] = [WAVEFORM_FIXED, ...derivedTabs, ...extraTabs];
-  const activeDataTabId =
-    opts.activeDataTabId ?? derivedTabs[0]?.id ?? extraTabs[0]?.id ?? 'waveform-fixed';
+  const activeDataTabId = TEMPLATE_DEFAULT_ACTIVE_DATA_TAB;
   const { dockRoot, dockCards } = buildDock(
     [TAB],
     dataTabs.map((t) => t.id),
@@ -253,7 +255,6 @@ function filterTemplate(): AppSnapshot {
       edge('e3', PROTOCOL_ID, 'ch0', 'wf-filter', 'CH0'),
       edge('e4', 'f-lp', 'result', 'wf-filter', 'CH1'),
     ],
-    activeDataTabId: 'wf-filter',
   });
 }
 
@@ -268,7 +269,6 @@ function canTemplate(): AppSnapshot {
     widgetNodes: [],
     edges: [],
     extraDataTabs: [{ id: 'can-main', type: 'can', name: 'CAN', closable: true }],
-    activeDataTabId: 'can-main',
   });
 }
 
@@ -303,7 +303,6 @@ function serialTemplate(): AppSnapshot {
       edge('e3', PROTOCOL_ID, 'ch2', 'nd-ch2', 'value'),
       edge('e4', PROTOCOL_ID, 'ch3', 'nd-ch3', 'value'),
     ],
-    activeDataTabId: 'waveform-fixed',
   });
 }
 
@@ -331,7 +330,6 @@ function demoTemplate(): AppSnapshot {
       edge('e4', PROTOCOL_ID, 'ch1', 'm-sin', 'in0'),
       edge('e5', 'm-sin', 'result', 'g-sin', 'value'),
     ],
-    activeDataTabId: 'wf',
   });
 }
 
@@ -363,7 +361,6 @@ function fftTemplate(): AppSnapshot {
       edge('e4', PROTOCOL_ID, 'ch0', 'wf-ifft', 'CH0'),
       edge('e5', 'ifft-main', 'out0', 'wf-ifft', 'CH1'),
     ],
-    activeDataTabId: 'spec-main',
   });
 }
 
@@ -430,7 +427,6 @@ function customProtocolTemplate(): AppSnapshot {
       // 多帧发送器 → 设备写入口
       edge('e4', 'cmd-main', 'loopbackOut', TRANSPORT_ID, 'tx'),
     ],
-    activeDataTabId: 'wf-custom',
   });
 }
 

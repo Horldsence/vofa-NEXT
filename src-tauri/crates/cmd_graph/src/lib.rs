@@ -5,12 +5,14 @@
 mod compile_queue;
 mod derived;
 mod graph;
+mod hir_query;
 mod inject;
 mod logic;
 
 pub use compile_queue::*;
 pub use derived::*;
 pub use graph::*;
+pub use hir_query::*;
 pub use inject::*;
 pub use logic::*;
 

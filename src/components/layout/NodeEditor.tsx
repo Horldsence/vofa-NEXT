@@ -285,6 +285,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         nodeTypes={nodeTypes}
+        defaultEdgeOptions={{ interactionWidth: 40, style: { strokeWidth: 2 } }}
         fitView
         fitViewOptions={{ padding: 0.2, minZoom: 1, maxZoom: 1 }}
         minZoom={0.2}

@@ -12,6 +12,7 @@
 //! - `menu:zoom-reset`  -> 重置缩放
 //! - `menu:github`      -> 打开 GitHub 仓库
 //! - `menu:docs`        -> 打开文档
+//! - `menu:panel:*`     -> 打开数据面板 (Compile Errors / Results / CAN / Logic / …)
 
 use tauri::{
     menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
@@ -31,6 +32,13 @@ pub mod ids {
     pub const ZOOM_RESET: &str = "menu:zoom-reset";
     pub const GITHUB: &str = "menu:github";
     pub const DOCS: &str = "menu:docs";
+
+    // 数据面板 (Panel 菜单) — 前端菜单事件通过 menu-event 转发,
+    // App.tsx switch 中按 type 调用对应的 addCompileErrorsTab / addCompileResultsTab 等 action
+    pub const PANEL_OPEN_COMPILE_ERRORS: &str = "menu:panel-open-compile-errors";
+    pub const PANEL_OPEN_COMPILE_RESULTS: &str = "menu:panel-open-compile-results";
+    pub const PANEL_OPEN_CAN: &str = "menu:panel-open-can";
+    pub const PANEL_OPEN_LOGIC: &str = "menu:panel-open-logic";
 }
 
 /// 构建应用主菜单
@@ -88,6 +96,43 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
                 Some("CmdOrCtrl+W"),
             )?,
             &PredefinedMenuItem::separator(app_handle)?,
+        ],
+    )?;
+
+    // ============ Panel 菜单 (打开数据面板 — 与前端 MenuBar 保持对齐) ============
+    let panel_menu = Submenu::with_items(
+        app_handle,
+        "Panel",
+        true,
+        &[
+            &MenuItem::with_id(
+                app_handle,
+                ids::PANEL_OPEN_COMPILE_ERRORS,
+                "Open Compile Errors",
+                true,
+                None::<&str>,
+            )?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::PANEL_OPEN_COMPILE_RESULTS,
+                "Open Compile Results",
+                true,
+                None::<&str>,
+            )?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::PANEL_OPEN_CAN,
+                "Open CAN Frames",
+                true,
+                None::<&str>,
+            )?,
+            &MenuItem::with_id(
+                app_handle,
+                ids::PANEL_OPEN_LOGIC,
+                "Open Logic Analyzer",
+                true,
+                None::<&str>,
+            )?,
         ],
     )?;
 
@@ -188,6 +233,7 @@ pub fn build_menu(app: &App) -> tauri::Result<Menu<Wry>> {
         &[
             &app_menu,
             &file_menu,
+            &panel_menu,
             &edit_menu,
             &view_menu,
             &window_menu,

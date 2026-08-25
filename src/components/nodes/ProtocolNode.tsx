@@ -35,6 +35,10 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
   const derivedPorts = useAppStore((s) => s.derivedPorts[id]);
   const detectedChannels = useAppStore((s) => s.detectedChannels[id] ?? null);
   const errorMessage = useCanvasNodeError(id, undefined);
+  // 持久高亮 — 与 highlightedNodeId 同步; 错误优先
+  const canvasHighlight = useAppStore((s) => s.canvasHighlight);
+  const isCanvasHighlighted =
+    !!canvasHighlight && canvasHighlight.nodeId === id && !errorMessage;
   const nodeData = data as unknown as ProtocolNodeData;
   const config = nodeData.config;
   // 优先读后端 derived; 兜底用 protocolPortNames (节点刚创建/连接瞬间 derived 未到)
@@ -63,7 +67,13 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
     <CanvasErrorTooltip message={errorMessage}>
       <div
         className="nowheel widget-card-acrylic rounded-md min-w-[140px] max-w-[220px] text-[11px] relative [&.selected]:border-accent"
-        style={errorMessage ? { boxShadow: '0 0 0 2px #ef4444' } : undefined}
+        style={
+          errorMessage
+            ? { boxShadow: '0 0 0 2px #ef4444' }
+            : isCanvasHighlighted
+              ? { boxShadow: '0 0 0 2px var(--color-accent)' }
+              : undefined
+        }
       >
       <div className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] text-accent">
         <span className="flex items-center gap-1 flex-1 truncate">
@@ -80,56 +90,61 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
           <X size={10} />
         </button>
       </div>
-      {/* in 字节输入口 (左) */}
-      <div className="absolute top-1/2 left-0 -translate-y-1/2 flex flex-col gap-0.5 py-1">
-        <div className="flex items-center gap-1 h-[14px] relative pl-0.5" title={`in · ${t(lang, 'domainBytes')}`}>
-          <Handle
-            type="target"
-            position={Position.Left}
-            id="in"
-            style={{ position: 'relative', left: 'auto', top: 'auto', transform: 'none', borderColor: BYTES_DOMAIN_COLOR }}
-            className={handleClass('in')}
-          />
-          <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">in</span>
-          <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: BYTES_DOMAIN_COLOR }} />
+      
+      <div className="flex flex-row w-full min-h-[32px]">
+        {/* in 字节输入口 (左) */}
+        <div className="flex flex-col justify-center gap-0.5 py-1 -ml-1.5 z-10">
+          <div className="flex items-center gap-1 h-[14px] relative" title={`in · ${t(lang, 'domainBytes')}`}>
+            <Handle
+              type="target"
+              position={Position.Left}
+              id="in"
+              style={{ position: 'relative', left: 'auto', top: 'auto', transform: 'none', borderColor: BYTES_DOMAIN_COLOR }}
+              className={handleClass('in')}
+            />
+            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">in</span>
+            <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: BYTES_DOMAIN_COLOR }} />
+          </div>
         </div>
-      </div>
-      {/* out 字节口 + 数值帧端口 (右): 预设 ch0..chN / custom 命名端口 */}
-      <div className="absolute top-1/2 right-0 -translate-y-1/2 flex flex-col items-end gap-0.5 py-1 z-10">
-        <div className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`out · ${t(lang, 'domainBytes')}`}>
-          <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: BYTES_DOMAIN_COLOR }} />
-          <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">out</span>
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="out"
-            style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: BYTES_DOMAIN_COLOR }}
-            className={handleClass('out')}
-          />
+
+        {/* 内容占位: 通道数摘要 */}
+        <div className="flex-1 flex flex-col justify-center px-2 py-1.5 text-[10px] font-mono text-text-secondary text-center">
+          {rawData ? 'str' : `${channels} ${t(lang, 'channels')}`}
+          {nodeData.convertTo ? <div className="text-[9px] mt-0.5 opacity-80">→ {t(lang, protocolLabelKey[nodeData.convertTo.kind] ?? nodeData.convertTo.kind)}</div> : null}
         </div>
-        {ports.map((port) => {
-          // RawData 预设的 str 口是字符串域 (其余端口均为时域数值口)
-          const isStr = rawData && port === 'str';
-          const color = isStr ? STRING_DOMAIN_COLOR : TIME_DOMAIN_COLOR;
-          return (
-            <div key={port} className="flex items-center gap-1 h-[14px] relative pr-0.5" title={`${port} · ${t(lang, isStr ? 'domainString' : 'domainTime')}`}>
-              <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: color }} />
-              <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port}</span>
-              <Handle
-                type="source"
-                position={Position.Right}
-                id={port}
-                style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: color }}
-                className={handleClass(port)}
-              />
-            </div>
-          );
-        })}
-      </div>
-      {/* 内容占位: 通道数摘要 (RawData 无数值通道, 显示 str 口) */}
-      <div className="px-2 py-1.5 text-[10px] font-mono text-text-secondary">
-        {rawData ? 'str' : `${channels} ${t(lang, 'channels')}`}
-        {nodeData.convertTo ? ` → ${t(lang, protocolLabelKey[nodeData.convertTo.kind] ?? nodeData.convertTo.kind)}` : ''}
+
+        {/* out 字节口 + 数值帧端口 (右) */}
+        <div className="flex flex-col items-end justify-center gap-0.5 py-1 -mr-1.5 z-10">
+          <div className="flex items-center gap-1 h-[14px] relative" title={`out · ${t(lang, 'domainBytes')}`}>
+            <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: BYTES_DOMAIN_COLOR }} />
+            <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">out</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="out"
+              style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: BYTES_DOMAIN_COLOR }}
+              className={handleClass('out')}
+            />
+          </div>
+          {ports.map((port) => {
+            // RawData 预设的 str 口是字符串域 (其余端口均为时域数值口)
+            const isStr = rawData && port === 'str';
+            const color = isStr ? STRING_DOMAIN_COLOR : TIME_DOMAIN_COLOR;
+            return (
+              <div key={port} className="flex items-center gap-1 h-[14px] relative" title={`${port} · ${t(lang, isStr ? 'domainString' : 'domainTime')}`}>
+                <span className="w-[5px] h-[5px] rounded-full flex-shrink-0 pointer-events-none" style={{ backgroundColor: color }} />
+                <span className="text-[9px] text-text-secondary font-mono whitespace-nowrap bg-bg-sidebar px-0.5 py-px rounded-sm">{port}</span>
+                <Handle
+                  type="source"
+                  position={Position.Right}
+                  id={port}
+                  style={{ position: 'relative', right: 'auto', top: 'auto', transform: 'none', borderColor: color }}
+                  className={handleClass(port)}
+                />
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
     </CanvasErrorTooltip>
