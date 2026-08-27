@@ -3,13 +3,13 @@
 //! 由 `src-tauri/src/commands/{buffer.rs, window.rs}` 提取而来。
 
 mod buffer;
-mod window;
-mod frame_field;
-mod frame_checksum;
 mod command_frame;
+mod frame_checksum;
+mod frame_field;
+mod window;
 
 pub use buffer::*;
-pub use window::*;
-pub use frame_field::*;
-pub use frame_checksum::*;
 pub use command_frame::*;
+pub use frame_checksum::*;
+pub use frame_field::*;
+pub use window::*;

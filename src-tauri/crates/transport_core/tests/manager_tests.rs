@@ -1,15 +1,12 @@
 //! TransportManager 集成测试 — 多节点管理 / 重连 / 热更新链路配置
 
+use schema_types::{ProtocolConfig, TestDataLink};
 use std::time::Duration;
 use tokio::sync::broadcast;
 use transport_core::TransportManager;
-use schema_types::{ProtocolConfig, TestDataLink};
-use vofa_core::{
-    ConnectionState, Error, TestDataConfig, TestSignal,
-    TransportConfig,
-};
+use vofa_core::{ConnectionState, Error, TestDataConfig, TestSignal, TransportConfig};
 
-fn test_data_config() -> TransportConfig {
+const fn test_data_config() -> TransportConfig {
     TransportConfig::TestData(TestDataConfig {
         channels: 2,
         sample_rate: 1000.0,
@@ -18,9 +15,13 @@ fn test_data_config() -> TransportConfig {
 }
 
 async fn open_node(mgr: &mut TransportManager, id: &str) {
-    mgr.open(id, test_data_config(), TestDataLink::new(ProtocolConfig::RawData))
-        .await
-        .unwrap();
+    mgr.open(
+        id,
+        test_data_config(),
+        TestDataLink::new(ProtocolConfig::RawData),
+    )
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -182,7 +183,7 @@ async fn test_data_protocol_hot_update() {
             .await
             .expect("热更新后数据")
             .unwrap();
-        if batch.last() == Some(&b'\n') && batch.iter().all(|b| b.is_ascii()) {
+        if batch.last() == Some(&b'\n') && batch.iter().all(u8::is_ascii) {
             saw_csv = true;
             break;
         }
@@ -190,18 +191,15 @@ async fn test_data_protocol_hot_update() {
     assert!(saw_csv, "热更新后应生成 FireWater CSV 格式");
 
     // 未打开的节点热更新报错 (前端据此提示重连)
-    assert!(
-        mgr.update_link("nope", TestDataLink::new(ProtocolConfig::RawData))
-            .is_err()
-    );
+    assert!(mgr
+        .update_link("nope", TestDataLink::new(ProtocolConfig::RawData))
+        .is_err());
 }
 
 /// TestData 经 schema 热更新: Custom encode 块改变输出格式
 #[tokio::test]
 async fn test_data_schema_hot_update() {
-    use schema_types::{
-        DecoderBlockDef, EncodeBlockDef, FieldType, ProtocolSchema, SchemaPreset,
-    };
+    use schema_types::{DecoderBlockDef, EncodeBlockDef, FieldType, ProtocolSchema, SchemaPreset};
 
     let mut mgr = TransportManager::new();
     mgr.open(
@@ -265,7 +263,10 @@ async fn test_data_schema_hot_update() {
             break;
         }
     }
-    assert!(saw_schema_frame, "热更新后应按 Custom schema encode 块生成帧");
+    assert!(
+        saw_schema_frame,
+        "热更新后应按 Custom schema encode 块生成帧"
+    );
 
     // 再次热更新回 legacy (schema = None): 输出恢复 JustFloat
     mgr.update_link(

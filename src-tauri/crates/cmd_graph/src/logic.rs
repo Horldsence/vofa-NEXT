@@ -1,13 +1,13 @@
 use app_state::AppState;
-use pipeline_dispatcher::filtered_sources::{FilteredDecodedStreamSource, FilteredLogicStreamSource};
+use logic_types::{DecodedEventBatch, DecodedEventFilter, LogicSampleBatch, LogicSampleFilter};
+use pipeline_dispatcher::filtered_sources::{
+    FilteredDecodedStreamSource, FilteredLogicStreamSource,
+};
 use pipeline_stream::{
     join_or_create_group, leave_group, sharded_stream_loop, DecodedStreamSource, LogicStreamSource,
 };
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use logic_types::{
-    DecodedEventBatch, DecodedEventFilter, LogicSampleBatch, LogicSampleFilter,
-};
 use vofa_core::Result;
 
 // ============ 逻辑分析仪命令 ============

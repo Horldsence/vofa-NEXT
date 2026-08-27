@@ -18,8 +18,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use node_kind::NodeKind;
 
-use crate::errors::CompileError;
-use crate::hir::{EdgeClass, HirNode, TypedGraph};
+use node_hir::CompileError;
+use node_hir::{EdgeClass, HirNode, TypedGraph};
 
 /// 值平面 MIR — 拓扑序 + 输入反查索引 + 编译期端口名缓存
 #[derive(Debug)]
@@ -230,8 +230,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::*;
     use node_kind::MathOp;
+    use node_testkit::*;
 
     fn ids<'a>(g: &'a TypedGraph, order: &[NodeIndex]) -> Vec<&'a str> {
         order.iter().map(|&ix| g.id_of(ix)).collect()

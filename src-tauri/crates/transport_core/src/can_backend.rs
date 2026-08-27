@@ -10,8 +10,8 @@
 //! 设计为 `async_trait` + `Send + Sync`,可在 tokio task 间共享。
 
 use async_trait::async_trait;
-use tokio::sync::broadcast;
 use can_types::CanFrame;
+use tokio::sync::broadcast;
 use vofa_core::Result;
 
 /// CAN 后端 — 给诊断引擎提供 CanFrame 收发能力的抽象

@@ -4,7 +4,7 @@ use dsp_filter::{filter_kind_from_config, DigitalFilter};
 use node_kind::NodeKind;
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, set_port};
+use node_eval::{node_out_entry, set_port};
 
 use super::{EvalCtx, NodeArm};
 
@@ -12,8 +12,12 @@ pub struct FilterArm;
 
 impl NodeArm for FilterArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
-        let NodeKind::Filter { config } = &node.kind else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
+        let NodeKind::Filter { config } = &node.kind else {
+            return;
+        };
         let input_val = graph.resolve_input(node_id, "in0", ctx.out);
         let new_kind = filter_kind_from_config(config);
         let need_rebuild = ctx

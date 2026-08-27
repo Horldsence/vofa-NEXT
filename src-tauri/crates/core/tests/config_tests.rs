@@ -9,7 +9,7 @@
 use can_types::CanBitrate;
 use vofa_core::config::{
     ButtonConfig, CandleConfig, CheckboxConfig, ImageConfig, ImageFormat, KnobConfig, LabelConfig,
-    PieChartConfig, PipelineConfig, RadioConfig, SerialConfig, SliderConfig, SlcanConfig,
+    PieChartConfig, PipelineConfig, RadioConfig, SerialConfig, SlcanConfig, SliderConfig,
     TcpClientConfig, TcpServerConfig, TestDataConfig, TestSignal, TransportConfig, UdpConfig,
     WaveformConfig, WidgetBinding, WidgetConfig,
 };
@@ -18,6 +18,12 @@ use vofa_core::{FlowControl, Parity, StopBits};
 // ============================================================
 // TransportConfig enum + 7 个 backend 子 config
 // ============================================================
+
+/// 浮点断言统一入口 — 配置值均为 serde 往返的精确字面量, 单点放宽浮点严格相等
+#[allow(clippy::float_cmp)]
+fn assert_f32(actual: f32, expected: f32) {
+    assert_eq!(actual, expected);
+}
 
 #[test]
 fn transport_config_serial_default_roundtrip() {
@@ -92,7 +98,8 @@ fn tcp_client_default_and_roundtrip() {
         host: "10.0.0.1".into(),
         port: 502,
     });
-    let restored: TransportConfig = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+    let restored: TransportConfig =
+        serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
     match restored {
         TransportConfig::TcpClient(c) => {
             assert_eq!(c.host, "10.0.0.1");
@@ -112,7 +119,8 @@ fn tcp_server_default_and_roundtrip() {
         listen_addr: "::".into(),
         listen_port: 7777,
     });
-    let restored: TransportConfig = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+    let restored: TransportConfig =
+        serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
     match restored {
         TransportConfig::TcpServer(s) => {
             assert_eq!(s.listen_addr, "::");
@@ -126,7 +134,7 @@ fn tcp_server_default_and_roundtrip() {
 fn test_data_config_default_and_signal_serde() {
     let td = TestDataConfig::default();
     assert_eq!(td.channels, 4);
-    assert_eq!(td.sample_rate, 1000.0);
+    assert_f32(td.sample_rate, 1000.0);
     assert_eq!(td.signal, TestSignal::Sine);
 
     // 所有 10 个 TestSignal 变体 round-trip
@@ -160,7 +168,8 @@ fn slcan_config_default_and_roundtrip() {
         baud_rate: 1_000_000,
         can_bitrate: CanBitrate::Bps1m,
     });
-    let restored: TransportConfig = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+    let restored: TransportConfig =
+        serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
     match restored {
         TransportConfig::Slcan(s) => {
             assert_eq!(s.port_name, "/dev/cu.usbserial-1410");
@@ -179,13 +188,15 @@ fn candle_config_default_and_roundtrip() {
     assert_eq!(c.can_bitrate, CanBitrate::Bps500k);
     assert_eq!(c.channel, 0);
 
+    #[allow(clippy::cast_possible_truncation)] // 测试只取地址低 8 位
     let cfg = TransportConfig::CandleLight(CandleConfig {
         bus: 1,
         address: 0xDEAD_BEEF_u32 as u8,
         can_bitrate: CanBitrate::Bps250k,
         channel: 1,
     });
-    let restored: TransportConfig = serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
+    let restored: TransportConfig =
+        serde_json::from_str(&serde_json::to_string(&cfg).unwrap()).unwrap();
     match restored {
         TransportConfig::CandleLight(c) => {
             assert_eq!(c.bus, 1);
@@ -217,7 +228,7 @@ fn knob_widget_roundtrip_with_auto_binding() {
     match restored {
         WidgetConfig::Knob(k) => {
             assert_eq!(k.id, "k1");
-            assert_eq!(k.default, 50.0);
+            assert_f32(k.default, 50.0);
             assert!(matches!(k.binding, WidgetBinding::Auto { channel: 3 }));
         }
         _ => panic!("expected Knob variant"),
@@ -241,8 +252,8 @@ fn button_widget_with_manual_template_binding() {
     let restored: WidgetConfig = serde_json::from_str(&json).unwrap();
     match restored {
         WidgetConfig::Button(b) => {
-            assert_eq!(b.press_value, 1.0);
-            assert_eq!(b.release_value, 0.0);
+            assert_f32(b.press_value, 1.0);
+            assert_f32(b.release_value, 0.0);
         }
         _ => panic!("expected Button variant"),
     }
@@ -253,7 +264,11 @@ fn radio_widget_options_roundtrip() {
     let w = WidgetConfig::Radio(RadioConfig {
         id: "r1".into(),
         label: "Mode".into(),
-        options: vec![("Low".into(), 1.0), ("Mid".into(), 2.0), ("High".into(), 3.0)],
+        options: vec![
+            ("Low".into(), 1.0),
+            ("Mid".into(), 2.0),
+            ("High".into(), 3.0),
+        ],
         default: 1,
         binding: WidgetBinding::None,
     });
@@ -285,7 +300,7 @@ fn checkbox_and_slider_widget_roundtrip() {
     match restored {
         WidgetConfig::Checkbox(c) => {
             assert!(c.default);
-            assert_eq!(c.checked_value, 1.0);
+            assert_f32(c.checked_value, 1.0);
         }
         _ => panic!("expected Checkbox variant"),
     }
@@ -303,8 +318,8 @@ fn checkbox_and_slider_widget_roundtrip() {
     let restored: WidgetConfig = serde_json::from_str(&json).unwrap();
     match restored {
         WidgetConfig::Slider(s) => {
-            assert_eq!(s.max, 200.0);
-            assert_eq!(s.step, 0.5);
+            assert_f32(s.max, 200.0);
+            assert_f32(s.step, 0.5);
         }
         _ => panic!("expected Slider variant"),
     }

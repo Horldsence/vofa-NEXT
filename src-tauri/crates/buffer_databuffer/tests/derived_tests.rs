@@ -145,5 +145,8 @@ fn remove_derived_sink_rebuilds_index() {
     buf.push_derived_idx(new_i_b, 99.0);
     let w = buf.get_recent(1);
     assert!(!w.derived.contains_key("waveA"));
-    assert_eq!(w.derived.get("waveB").unwrap().get("math1").unwrap(), &vec![99.0]);
+    assert_eq!(
+        w.derived.get("waveB").unwrap().get("math1").unwrap(),
+        &vec![99.0]
+    );
 }

@@ -94,7 +94,7 @@ fn test_non_utf8_input_dropped() {
 #[test]
 fn test_encode_channels_format() {
     let mut engine = FireWaterEngine::new(Some(3));
-    let encoded = engine.encode_channels(&[1.0, 2.5, 3.14]);
+    let encoded = engine.encode_channels(&[1.0, 2.5, 4.25]);
     let s = std::str::from_utf8(&encoded).unwrap();
     assert!(s.ends_with('\n'));
     assert!(s.contains(','));
@@ -133,7 +133,7 @@ fn test_split_aligned_equivalence() {
     let ranges = seq_engine
         .split_aligned(data, 2)
         .expect("firewater 应支持并行切分");
-    let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+    let tail_start = ranges.last().map_or(0, |r| r.end);
     let mut merged = FeedOutput::default();
     let mut concat = Vec::new();
     for r in &ranges {

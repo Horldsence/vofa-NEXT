@@ -1,9 +1,9 @@
+use error::TransportError;
+use schema_types::TestDataLink;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, watch, Notify};
-use schema_types::TestDataLink;
 use vofa_core::{ConnectionState, Result, TransportConfig, TransportStats};
-use error::TransportError;
 
 /// 单连接句柄 — 一个传输节点实例的全部运行时状态
 ///

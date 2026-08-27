@@ -5,8 +5,8 @@
 //! - 前端 `Trigger.tsx` 在手动模式按 Fire / 自动模式 trigger 跳变时调用
 //! - 返回 `{ value, matched, text, output_type }` 给前端写入 `graphOutputs` 与 `customTextOutputs`
 
-use vofa_core::Result;
 use node_trigger::{TriggerMatchResult, TriggerMatcher, TriggerRuleDef};
+use vofa_core::Result;
 
 /// 执行一次触发器匹配
 ///
@@ -16,7 +16,7 @@ use node_trigger::{TriggerMatchResult, TriggerMatcher, TriggerRuleDef};
 /// - `command`: 待匹配命令字符串 (manual 模式来自面板, auto 模式来自本地文本框)
 /// - `numeric`: 可选的数值, 仅 `range` 类型规则使用; `None` 时跳过 range 规则
 #[tauri::command]
-pub async fn match_trigger_command(
+pub fn match_trigger_command(
     rules: Vec<TriggerRuleDef>,
     default_miss: f32,
     default_miss_text: String,

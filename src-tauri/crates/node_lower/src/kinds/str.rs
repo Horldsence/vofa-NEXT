@@ -2,9 +2,8 @@
 //! (只含同 domain 端口,与 StrOp::evaluate 的紧凑对齐约定一致)
 //! 输出端口固定 "result",域由 op.output_domain() 决定
 
-use node_kind::{NodeDef, PortDomain, StrNumParams, StrOp};
+use node_kind::{str_num_default, NodeDef, PortDomain, StrNumParams, StrOp};
 
-use crate::eval::str_num_default;
 use crate::lower::LowerCtx;
 use crate::ops::CompiledOp;
 

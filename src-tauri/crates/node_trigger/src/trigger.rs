@@ -134,12 +134,7 @@ impl TriggerMatcher {
         }
     }
 
-    fn eval_rule(
-        &mut self,
-        rule: &TriggerRuleDef,
-        command: &str,
-        numeric: Option<f32>,
-    ) -> bool {
+    fn eval_rule(&mut self, rule: &TriggerRuleDef, command: &str, numeric: Option<f32>) -> bool {
         match rule.match_type {
             TriggerMatchType::Exact => command == rule.pattern,
             TriggerMatchType::Prefix => command.starts_with(&rule.pattern),
@@ -426,7 +421,18 @@ fn glob_to_regex_source(glob: &str) -> String {
 mod tests {
     use super::*;
 
-    fn rule(id: &str, mt: TriggerMatchType, pattern: &str, value: f32, enabled: bool) -> TriggerRuleDef {
+    /// 数值断言统一入口 — 输出值由字面规则/缺省值精确给出, 单点放宽浮点严格相等
+    #[allow(clippy::float_cmp)]
+    fn assert_value(actual: f32, expected: f32) {
+        assert_eq!(actual, expected);
+    }
+    fn rule(
+        id: &str,
+        mt: TriggerMatchType,
+        pattern: &str,
+        value: f32,
+        enabled: bool,
+    ) -> TriggerRuleDef {
         TriggerRuleDef {
             id: id.to_string(),
             pattern: pattern.to_string(),
@@ -439,7 +445,13 @@ mod tests {
         }
     }
 
-    fn string_rule(id: &str, mt: TriggerMatchType, pattern: &str, text: &str, enabled: bool) -> TriggerRuleDef {
+    fn string_rule(
+        id: &str,
+        mt: TriggerMatchType,
+        pattern: &str,
+        text: &str,
+        enabled: bool,
+    ) -> TriggerRuleDef {
         TriggerRuleDef {
             id: id.to_string(),
             pattern: pattern.to_string(),
@@ -455,13 +467,16 @@ mod tests {
     #[test]
     fn parse_range_basic() {
         assert_eq!(parse_range("1..10"), Some((1.0, 10.0)));
-        assert_eq!(parse_range("-5.5..3.14"), Some((-5.5, 3.14)));
+        assert_eq!(parse_range("-5.5..3.75"), Some((-5.5, 3.75)));
         assert_eq!(parse_range("-10..0"), Some((-10.0, 0.0)));
     }
 
     #[test]
     fn parse_range_infinity() {
-        assert_eq!(parse_range("-Infinity..Infinity"), Some((f32::NEG_INFINITY, f32::INFINITY)));
+        assert_eq!(
+            parse_range("-Infinity..Infinity"),
+            Some((f32::NEG_INFINITY, f32::INFINITY))
+        );
         assert_eq!(parse_range("0..Infinity"), Some((0.0, f32::INFINITY)));
         assert_eq!(parse_range("-Infinity..0"), Some((f32::NEG_INFINITY, 0.0)));
     }
@@ -481,7 +496,7 @@ mod tests {
         let rules = vec![rule("r1", TriggerMatchType::Exact, "HELLO", 1.0, true)];
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
         assert!(m.match_input("HELLO", None).matched);
-        assert_eq!(m.match_input("HELLO", None).value, 1.0);
+        assert_value(m.match_input("HELLO", None).value, 1.0);
         assert!(!m.match_input("hello", None).matched); // 大小写敏感
         assert!(!m.match_input("", None).matched);
     }
@@ -493,17 +508,17 @@ mod tests {
             rule("r2", TriggerMatchType::Contains, "TEMP", 2.0, true),
         ];
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
-        assert_eq!(m.match_input("GET_TEMP", None).value, 1.0); // 首个命中
-        assert_eq!(m.match_input("SET_TEMP", None).value, 2.0);
-        assert_eq!(m.match_input("SET_VOLT", None).value, 0.0); // 默认未命中
+        assert_value(m.match_input("GET_TEMP", None).value, 1.0); // 首个命中
+        assert_value(m.match_input("SET_TEMP", None).value, 2.0);
+        assert_value(m.match_input("SET_VOLT", None).value, 0.0); // 默认未命中
     }
 
     #[test]
     fn match_regex() {
         let rules = vec![rule("r1", TriggerMatchType::Regex, r"^H.*O$", 5.0, true)];
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
-        assert_eq!(m.match_input("HELLO", None).value, 5.0);
-        assert_eq!(m.match_input("HEYLO", None).value, 5.0); // .* 匹配任意
+        assert_value(m.match_input("HELLO", None).value, 5.0);
+        assert_value(m.match_input("HEYLO", None).value, 5.0); // .* 匹配任意
         assert!(!m.match_input("HELP", None).matched); // 不以 O 结尾
         assert!(!m.match_input("AYO", None).matched); // 不以 H 开头
     }
@@ -524,7 +539,7 @@ mod tests {
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
         let r = m.match_input("anything", None);
         assert!(!r.matched);
-        assert_eq!(r.value, 0.0);
+        assert_value(r.value, 0.0);
     }
 
     #[test]
@@ -534,7 +549,7 @@ mod tests {
         // 包含端点
         assert!(m.match_input("", Some(1.0)).matched);
         assert!(m.match_input("", Some(5.0)).matched);
-        assert!(m.match_input("", Some(3.14)).matched);
+        assert!(m.match_input("", Some(3.25)).matched);
         assert!(!m.match_input("", Some(0.999)).matched);
         assert!(!m.match_input("", Some(5.001)).matched);
         // 无 numeric 时跳过
@@ -548,8 +563,8 @@ mod tests {
             rule("r2", TriggerMatchType::Exact, "Y", 2.0, true),
         ];
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
-        assert_eq!(m.match_input("X", None).value, 0.0); // r1 禁用, 默认值
-        assert_eq!(m.match_input("Y", None).value, 2.0);
+        assert_value(m.match_input("X", None).value, 0.0); // r1 禁用, 默认值
+        assert_value(m.match_input("Y", None).value, 2.0);
     }
 
     #[test]
@@ -559,26 +574,32 @@ mod tests {
             rule("r2", TriggerMatchType::Exact, "TEST", 2.0, true),
         ];
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
-        assert_eq!(m.match_input("TEST", None).value, 1.0); // r1 先命中
+        assert_value(m.match_input("TEST", None).value, 1.0); // r1 先命中
     }
 
     #[test]
     fn match_no_rules_returns_default_miss() {
         let mut m = TriggerMatcher::new(vec![], 99.0, String::new());
         assert!(!m.match_input("anything", None).matched);
-        assert_eq!(m.match_input("anything", None).value, 99.0);
+        assert_value(m.match_input("anything", None).value, 99.0);
     }
 
     #[test]
     fn match_string_output_rule() {
-        let rules = vec![string_rule("r1", TriggerMatchType::Exact, "HELLO", "world", true)];
+        let rules = vec![string_rule(
+            "r1",
+            TriggerMatchType::Exact,
+            "HELLO",
+            "world",
+            true,
+        )];
         let mut m = TriggerMatcher::new(rules, 0.0, "fallback".to_string());
         let r = m.match_input("HELLO", None);
         assert!(r.matched);
         assert_eq!(r.output_type, "string");
         assert_eq!(r.text, "world");
         // number 字段填 miss (命中规则未指定 number 输出)
-        assert_eq!(r.value, 0.0);
+        assert_value(r.value, 0.0);
     }
 
     #[test]
@@ -586,7 +607,7 @@ mod tests {
         let mut m = TriggerMatcher::new(vec![], 42.0, "empty".to_string());
         let r = m.match_input("anything", None);
         assert!(!r.matched);
-        assert_eq!(r.value, 42.0);
+        assert_value(r.value, 42.0);
         assert_eq!(r.text, "empty");
         assert_eq!(r.output_type, "miss");
     }
@@ -620,7 +641,13 @@ mod tests {
 
     #[test]
     fn match_glob_alternatives() {
-        let rules = vec![rule("r1", TriggerMatchType::Glob, "{HELLO,HI}_*", 1.0, true)];
+        let rules = vec![rule(
+            "r1",
+            TriggerMatchType::Glob,
+            "{HELLO,HI}_*",
+            1.0,
+            true,
+        )];
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
         assert!(m.match_input("HELLO_TEMP", None).matched);
         assert!(m.match_input("HI_VOLT", None).matched);
@@ -634,7 +661,7 @@ mod tests {
         let mut m = TriggerMatcher::new(rules, 0.0, String::new());
         let r = m.match_input("anything", None);
         assert!(!r.matched);
-        assert_eq!(r.value, 0.0);
+        assert_value(r.value, 0.0);
     }
 
     #[test]
@@ -688,7 +715,7 @@ mod tests {
         // 持续高位: 不再触发
         assert!(st.eval_auto("rising", 5.0).is_none());
         assert!(st.eval_auto("rising", 6.0).is_none()); // 非零 → 非零 不算上升沿
-        // 回落到 0 后再升: 重新触发 (re-arm)
+                                                        // 回落到 0 后再升: 重新触发 (re-arm)
         assert!(st.eval_auto("rising", 0.0).is_none());
         assert!(st.eval_auto("rising", 3.0).is_some());
         // 负值不是上升沿 (prev==0 但 value 不 > 0)

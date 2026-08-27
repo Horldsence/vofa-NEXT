@@ -1,8 +1,8 @@
 use app_state::AppState;
-use pipeline_stream::{sharded_stream_loop, join_or_create_group, leave_group, WaveformSource};
+use buffer_databuffer::WaveformWindow;
+use pipeline_stream::{join_or_create_group, leave_group, sharded_stream_loop, WaveformSource};
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use buffer_databuffer::WaveformWindow;
 use vofa_core::Result;
 
 /// 订阅波形数据 — 统一分片流 (快照语义 + 自动并发分片)

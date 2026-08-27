@@ -5,7 +5,7 @@ use node_kind::NodeKind;
 use node_trigger::TriggerState;
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, node_out_str_entry, set_port, set_str_port};
+use node_eval::{node_out_entry, node_out_str_entry, set_port, set_str_port};
 
 use super::{EvalCtx, NodeArm};
 
@@ -13,7 +13,9 @@ pub struct TriggerArm;
 
 impl NodeArm for TriggerArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
         let NodeKind::Trigger {
             mode,
             edge,

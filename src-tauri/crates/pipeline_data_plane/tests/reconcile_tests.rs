@@ -6,12 +6,12 @@
 //! - Protocol 节点删除 → protocol_states / buffers 清理
 
 use app_state::AppState;
-use pipeline_data_plane::DataPlaneState;
-use schema_types::{ProtocolConfig, TestDataLink};
-use vofa_core::TransportConfig;
 use node_engine::CompiledGraph;
 use node_kind::{NodeDef, NodeKind};
 use node_trigger::TriggerState;
+use pipeline_data_plane::DataPlaneState;
+use schema_types::{ProtocolConfig, TestDataLink};
+use vofa_core::TransportConfig;
 
 fn transport_node(id: &str, tab: &str) -> NodeDef {
     NodeDef {

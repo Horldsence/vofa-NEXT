@@ -6,7 +6,7 @@ use dsp_window::WindowType;
 use node_kind::{MathOp, NodeDef, NodeKind, StrOp};
 
 use super::*;
-use crate::test_helpers::*;
+use node_testkit::*;
 
 #[test]
 fn test_compile_empty() {
@@ -48,7 +48,14 @@ fn test_filter_in_eval_order() {
     // Filter 应在 eval_order 中 (有输出)
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_filter("f1", "t1", FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 }),
+        make_filter(
+            "f1",
+            "t1",
+            FilterConfig::Lowpass {
+                cutoff: 100.0,
+                sample_rate: 1000.0,
+            },
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "f1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();

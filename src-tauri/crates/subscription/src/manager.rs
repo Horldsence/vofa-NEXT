@@ -79,7 +79,8 @@ mod tests {
         assert_eq!(mgr.len(), 1);
 
         // 取消
-        if let Some(tx) = mgr.tasks.lock().remove(&42) {
+        let removed = mgr.tasks.lock().remove(&42);
+        if let Some(tx) = removed {
             let _ = tx.send(());
         }
 
@@ -92,7 +93,8 @@ mod tests {
     async fn test_cancel_nonexistent() {
         let mgr = SubscriptionManager::new();
         // 取消不存在的订阅不应 panic
-        if let Some(tx) = mgr.tasks.lock().remove(&999) {
+        let removed = mgr.tasks.lock().remove(&999);
+        if let Some(tx) = removed {
             let _ = tx.send(());
         }
         assert!(mgr.is_empty());

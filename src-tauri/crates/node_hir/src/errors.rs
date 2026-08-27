@@ -12,7 +12,7 @@ pub use error::{CompileError, CompileReport, PortDomain};
 
 /// `node_kind::PortDomain` → 事件契约 `error::PortDomain` (serde-friendly DTO).
 /// 在 `CompileError::DomainMismatch` 构造处调用.
-pub fn port_domain_event(d: node_kind::PortDomain) -> PortDomain {
+pub const fn port_domain_event(d: node_kind::PortDomain) -> PortDomain {
     match d {
         node_kind::PortDomain::F32 => PortDomain::F32,
         node_kind::PortDomain::Bytes => PortDomain::Bytes,

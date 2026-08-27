@@ -173,10 +173,7 @@ fn port_domain_of_node(node: &HirNode, handle: &str, is_output: bool) -> PortDom
 /// 注: `state.graphs` 仅在 `apply_tab_graph` 编译成功时插入 — 编译未完成
 /// 或编译失败时返回空表 (前端会保留上次成功的 HIR 显示并展示占位文案).
 #[tauri::command]
-pub async fn get_graph_hir(
-    state: State<'_, AppState>,
-    tab_id: String,
-) -> Result<GraphHir> {
+pub async fn get_graph_hir(state: State<'_, AppState>, tab_id: String) -> Result<GraphHir> {
     let graphs = state.graphs.lock();
     let view = extract_hir(&tab_id, graphs.get(&tab_id));
     drop(graphs);

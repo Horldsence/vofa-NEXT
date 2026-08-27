@@ -222,7 +222,7 @@ The default layout looks like this (all panels can be freely rearranged):
 | `transport_core` / `transport_serial` / `transport_net` / `transport_can_bridge` | Transport layer (serial / TCP / UDP / Slcan / CandleLight / test data) |
 | `protocol_engine` / `protocol_float` / `protocol_can_bridge` | Protocol engines (JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode) |
 | `buffer_ring` / `buffer_databuffer` / `buffer_raw` / `buffer_graph` | Ring buffer, multi-channel `DataBuffer`, raw-data collector, graph routing |
-| `node_kind` / `node_engine` / `node_frame_decoder` / `node_trigger` | DAG node definitions, compiler & evaluator, frame decoder, trigger matching |
+| `node_kind` / `node_hir` / `node_plane` / `node_lower` / `node_eval` / `node_engine` / `node_frame_decoder` / `node_trigger` | DAG node definitions, compiler pipeline (HIR → plane projection → lowering → slot runtime) & facade, frame decoder, trigger matching |
 | `dsp_window` / `dsp_fft` / `dsp_filter` | Digital signal processing (window functions, FFT spectrum, FIR/IIR filters) |
 | `automotive_isotp` / `automotive_can` / `automotive_diag` | Diagnostic engine (ISO-TP / UDS / OBD-II / J1939) bridging CAN backends |
 | `pipeline_data_plane` / `pipeline_stream` / `pipeline_dispatcher` / `subscription` | Data plane: byte routing, chunked stream dispatch, subscription registry |

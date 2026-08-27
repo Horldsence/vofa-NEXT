@@ -1,7 +1,9 @@
 //! FrameParser 核心测试 — parse_hex / 校验算法 / 状态机端到端解析
 
 use node_frame_decoder::{parse_hex, ChecksumAlgorithm, FrameParser};
-use schema_types::{DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType, LengthUnit};
+use schema_types::{
+    DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType, LengthUnit,
+};
 
 #[test]
 fn test_parse_hex_spaces() {
@@ -84,7 +86,7 @@ fn test_checksum_verify() {
 #[test]
 fn test_fps_empty() {
     let p = FrameParser::new(Vec::new(), false, false, false, false);
-    assert_eq!(p.fps(), 0.0);
+    assert!(p.fps().abs() < f32::EPSILON);
 }
 
 #[test]

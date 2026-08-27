@@ -1,9 +1,9 @@
 use app_state::AppState;
+use buffer_raw::{DirectionFilter, RawDataBatch};
 use pipeline_dispatcher::filtered_sources::FilteredRawDataSource;
 use pipeline_stream::{join_or_create_group, leave_group, sharded_stream_loop, RawDataSource};
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use buffer_raw::{DirectionFilter, RawDataBatch};
 use vofa_core::Result;
 
 // ============ 原始数据命令 ============
@@ -211,13 +211,7 @@ pub async fn subscribe_rawdata_filtered(
         group_id,
         channel_id,
         state.pipeline_config.read().max_stream_shards,
-        || {
-            FilteredRawDataSource::new(
-                collector,
-                direction,
-                search.as_deref(),
-            )
-        },
+        || FilteredRawDataSource::new(collector, direction, search.as_deref()),
     )?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
@@ -274,13 +268,7 @@ pub async fn subscribe_rawdata_node_filtered(
         group_id,
         channel_id,
         state.pipeline_config.read().max_stream_shards,
-        || {
-            FilteredRawDataSource::new(
-                collector,
-                direction,
-                search.as_deref(),
-            )
-        },
+        || FilteredRawDataSource::new(collector, direction, search.as_deref()),
     )?;
 
     let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();

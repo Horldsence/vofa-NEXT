@@ -9,8 +9,8 @@ use node_kind::{DecoderBlockDef, MathOp, NodeDef, NodeKind};
 
 use super::SourceFramesMap;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
 use crate::{StringValuesMap, ValuesMap};
+use node_testkit::*;
 
 fn empty_frames() -> SourceFramesMap {
     SourceFramesMap::default()
@@ -140,7 +140,14 @@ fn test_compiled_eval_equivalence() {
         make_protocol_source("ps1", "t1", "proto1", 4),
         make_math("m1", "t1", MathOp::Add, 2),
         make_math("m2", "t1", MathOp::Mul, 2),
-        make_filter("f1", "t1", FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 }),
+        make_filter(
+            "f1",
+            "t1",
+            FilterConfig::Lowpass {
+                cutoff: 100.0,
+                sample_rate: 1000.0,
+            },
+        ),
         make_input("knob1", "t1"),
         // FrameDecoder 无 parser (decoder_states 为空) — 覆盖 written 语义
         NodeDef {

@@ -37,17 +37,14 @@ pub fn sync_spectrum_analyzers(state: &GraphEvalState) {
 
     // 新建或重建 analyzer
     for (sink_id, (window_size, window_type, output, sample_rate)) in &current_configs {
-        let need_rebuild = match analyzers.get(sink_id) {
-            None => true,
-            Some(a) => {
-                // 任一配置变化都需要重建 (window_size/sample_rate 需要 new FFT planner;
-                // window_type/output 虽有 setter 但重建更简单且不影响性能)
-                a.window_size() != *window_size
-                    || a.sample_rate() != *sample_rate
-                    || a.window_type() != *window_type
-                    || a.output() != *output
-            }
-        };
+        // 任一配置变化都需要重建 (window_size/sample_rate 需要 new FFT planner;
+        // window_type/output 虽有 setter 但重建更简单且不影响性能)
+        let need_rebuild = !analyzers.get(sink_id).is_some_and(|a| {
+            a.window_size() == *window_size
+                && (a.sample_rate() - *sample_rate).abs() < f32::EPSILON
+                && a.window_type() == *window_type
+                && a.output() == *output
+        });
         if need_rebuild {
             let analyzer = SpectrumAnalyzer::new(*window_size, *window_type, *output, *sample_rate);
             analyzers.insert(sink_id.clone(), analyzer);

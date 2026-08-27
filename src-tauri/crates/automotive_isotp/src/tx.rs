@@ -1,11 +1,11 @@
 //! ISO-TP 发送流程 — start_send_request + send_consecutive_frames + 辅助
 
+use can_types::{CanDirection, CanFrame};
+use diagnostic::IsoTpConfig;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot;
 use tokio::time::{sleep, timeout};
-use can_types::{CanDirection, CanFrame};
-use diagnostic::IsoTpConfig;
 use transport_core::CanBackend;
 
 use crate::constants::{CF_DATA_LEN, FF_DATA_LEN, FF_DL_MAX, PCI_CF, PCI_FF, PCI_SF, SF_MAX_DATA};

@@ -80,13 +80,13 @@ fn parse_hex_empty_returns_empty_vec() {
 #[test]
 fn parse_hex_odd_length_error() {
     let err = parse_hex("ABC").unwrap_err();
-    assert!(err.contains("偶数"), "expected 偶数 in error, got: {}", err);
+    assert!(err.contains("偶数"), "expected 偶数 in error, got: {err}");
 }
 
 #[test]
 fn parse_hex_invalid_char_error() {
     let err = parse_hex("ZZ").unwrap_err();
-    assert!(err.contains("ZZ"), "expected ZZ in error, got: {}", err);
+    assert!(err.contains("ZZ"), "expected ZZ in error, got: {err}");
 }
 
 // ===== parse_ascii =====

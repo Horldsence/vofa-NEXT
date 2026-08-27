@@ -142,6 +142,9 @@ impl ProtocolEngine for LogicDecoderEngine {
 }
 
 /// 仅在 UART 配置下编译; 其他配置下返回空
-pub(crate) const fn _ensure_decode_uart_method_used(_e: &LogicDecoderEngine, _d: &[u8]) -> Vec<DecodedEvent> {
+pub(crate) const fn _ensure_decode_uart_method_used(
+    _e: &LogicDecoderEngine,
+    _d: &[u8],
+) -> Vec<DecodedEvent> {
     Vec::new()
 }

@@ -7,13 +7,20 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 #[test]
 fn test_filter_lowpass_passes_input() {
     // 配置 Filter 的 FilterConfig 后, 单次评估应建立 filter_states 并产出非空结果
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_filter("f1", "t1", FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 }),
+        make_filter(
+            "f1",
+            "t1",
+            FilterConfig::Lowpass {
+                cutoff: 100.0,
+                sample_rate: 1000.0,
+            },
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "f1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
@@ -35,7 +42,10 @@ fn test_filter_lowpass_passes_input() {
     assert!(v.is_some(), "filter result present");
     let r = v.unwrap();
     assert!(r.is_finite(), "filter result finite: {r}");
-    assert!(r.abs() <= 7.5 + 1e-3, "filter not amplified past input: {r}");
+    assert!(
+        r.abs() <= 7.5 + 1e-3,
+        "filter not amplified past input: {r}"
+    );
     // filter_states 应包含 f1
     assert!(filter_states.contains_key("f1"));
 }
@@ -45,7 +55,14 @@ fn test_filter_state_persistence() {
     // filter_states 跨帧持久化 — 第二帧起输出基于非零状态 (与首帧不同)
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_filter("f1", "t1", FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 }),
+        make_filter(
+            "f1",
+            "t1",
+            FilterConfig::Lowpass {
+                cutoff: 100.0,
+                sample_rate: 1000.0,
+            },
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "f1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
@@ -85,7 +102,14 @@ fn test_filter_config_change_rebuilds_state() {
     // 用户修改 FilterConfig 时, 状态应重建 (按新派生 FilterKind 重新构造 DigitalFilter)
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_filter("f1", "t1", FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 }),
+        make_filter(
+            "f1",
+            "t1",
+            FilterConfig::Lowpass {
+                cutoff: 100.0,
+                sample_rate: 1000.0,
+            },
+        ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "f1", "in0")];
     let g = CompiledGraph::compile("t1".into(), nodes, edges.clone()).unwrap();
@@ -109,9 +133,17 @@ fn test_filter_config_change_rebuilds_state() {
     // FilterConfig 切换到 Bandpass, 与上一组 (Lowpass) 派生不同 FilterKind → 重建 state
     let nodes2 = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
-        make_filter("f1", "t1", FilterConfig::Bandpass { low: 100.0, high: 200.0, sample_rate: 1000.0 }),
+        make_filter(
+            "f1",
+            "t1",
+            FilterConfig::Bandpass {
+                low: 100.0,
+                high: 200.0,
+                sample_rate: 1000.0,
+            },
+        ),
     ];
-    let g2 = CompiledGraph::compile("t1".into(), nodes2, edges.clone()).unwrap();
+    let g2 = CompiledGraph::compile("t1".into(), nodes2, edges).unwrap();
     let frames2 = source_frames(&[("proto1", vec![3.0])]);
     let out2 = g2.evaluate(
         &frames2,
@@ -139,7 +171,10 @@ fn test_filter_lowpass_preserves_dc() {
         make_filter(
             "f1",
             "t1",
-            FilterConfig::Lowpass { cutoff: 100.0, sample_rate: 1000.0 },
+            FilterConfig::Lowpass {
+                cutoff: 100.0,
+                sample_rate: 1000.0,
+            },
         ),
     ];
     let edges = vec![edge("e1", "ps1", "ch0", "f1", "in0")];
@@ -172,6 +207,3 @@ fn test_filter_lowpass_preserves_dc() {
         "低通滤波器直流稳态应接近 1.0, 实际 {last_y}"
     );
 }
-
-
-

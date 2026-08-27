@@ -11,8 +11,8 @@
 
 // ============ 下游 crate 类型 ============
 pub use buffer_graph::{Edge, NodeGraph, RoutedData};
-pub use dsp_filter::DigitalFilter;
 pub use dsp_fft::{IfftState, SpectrumOutput, WindowType};
+pub use dsp_filter::DigitalFilter;
 pub use node_frame_decoder::FrameParser;
 pub use node_kind::{
     DecoderBlockDef, MathOp, NodeDef, NodeKind, PortDomain, StrNumParams, StrOp, StrResult,
@@ -21,15 +21,15 @@ pub use node_kind::{
 };
 pub use node_trigger::{TriggerRuleDef, TriggerState};
 
-// ============ 本 crate 类型 ============
-pub use crate::byte_plan::{BytePlan, ByteRoute};
+// ============ 引擎类型 (流水线各段 crate) + 本 crate 门面 ============
 pub use crate::compile::CompiledGraph;
-pub use crate::errors::{port_domain_event, CompileError, CompileReport};
-pub use crate::eval::{CompiledEval, SourceFramesMap, SourceTextsMap};
-pub use crate::hir::{EdgeClass, HirEdge, HirNode, TypedGraph};
-pub use crate::ops::CompiledOp;
-pub use crate::plane::ValueMir;
 pub use crate::traits::{
-    CompileInput, CompileOutput, Compilable, EvalInput, EvalOutput, Evaluable, NodeSpec,
+    Compilable, CompileInput, CompileOutput, EvalInput, EvalOutput, Evaluable, NodeSpec,
     PortDescriptor, PortKind,
 };
+pub use node_eval::{CompiledEval, SourceFramesMap, SourceTextsMap};
+pub use node_hir::{
+    port_domain_event, CompileError, CompileReport, EdgeClass, HirEdge, HirNode, TypedGraph,
+};
+pub use node_lower::CompiledOp;
+pub use node_plane::{BytePlan, ByteRoute, ValueMir};

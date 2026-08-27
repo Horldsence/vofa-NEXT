@@ -24,7 +24,7 @@ fn char_slice(s: &str, start: usize, end: usize) -> String {
 
 /// 字符串操作评估实现 — 内部分发到 `match`, 调用方按 `input_ports_for()` 顺序塞入输入.
 #[allow(clippy::cast_precision_loss)]
-pub fn evaluate(op: &super::StrOp, str_inputs: &[&str], num_inputs: &[f32]) -> StrResult {
+pub fn evaluate(op: super::StrOp, str_inputs: &[&str], num_inputs: &[f32]) -> StrResult {
     use super::StrOp::*;
     let s = |i: usize| str_inputs.get(i).copied().unwrap_or("");
     let n = |i: usize| num_inputs.get(i).copied().unwrap_or(0.0);
@@ -71,11 +71,7 @@ pub fn evaluate(op: &super::StrOp, str_inputs: &[&str], num_inputs: &[f32]) -> S
             let src = s(0);
             let len = char_len(src);
             let start = to_count(n(0)).clamp(1, len + 1) - 1;
-            let (head, mid, tail) = (
-                char_slice(src, 0, start),
-                s(1),
-                char_slice(src, start, len),
-            );
+            let (head, mid, tail) = (char_slice(src, 0, start), s(1), char_slice(src, start, len));
             StrResult::Text(format!("{head}{mid}{tail}"))
         }
         Delete => {

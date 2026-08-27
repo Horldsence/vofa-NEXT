@@ -1,3 +1,4 @@
+use error::TransportError;
 use serialport::{self, DataBits, FlowControl, Parity, StopBits};
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -5,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use vofa_core::{Result, SlcanConfig};
-use error::TransportError;
 
 /// 启动 slcan 传输
 ///
@@ -36,10 +36,11 @@ pub fn spawn(
     port.write_all(bitrate_cmd.as_bytes())
         .map_err(TransportError::SlcanBitrate)?;
     std::thread::sleep(Duration::from_millis(50));
-    port.write_all(b"O\r").map_err(|e| TransportError::SlcanOpen {
-        port: config.port_name.clone(),
-        source: e,
-    })?;
+    port.write_all(b"O\r")
+        .map_err(|e| TransportError::SlcanOpen {
+            port: config.port_name.clone(),
+            source: e,
+        })?;
     std::thread::sleep(Duration::from_millis(50));
 
     let mut write_port = port

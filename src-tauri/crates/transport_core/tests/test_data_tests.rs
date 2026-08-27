@@ -4,9 +4,9 @@
 //! `ProtocolConfig` 变体生成的字节格式正确 (JustFloat 帧尾 / FireWater CSV /
 //! Slcan ASCII / CandleLight 二进制 / RawData 计数器 / LogicDecode 字节位)。
 
-use transport_core::test_data::generate_bytes;
 use logic_types::LogicDecoderConfig;
 use schema_types::ProtocolConfig;
+use transport_core::test_data::generate_bytes;
 use vofa_core::{Parity, StopBits, TestSignal};
 
 #[test]

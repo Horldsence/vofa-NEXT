@@ -5,15 +5,14 @@
 //! - 版本号单调性
 //! - 容量上限与 set_max_size
 
-use logic_types::{
-    DecodedBuffer, DecodedEvent, I2cEvent, LogicBuffer, LogicSample,
-};
+use logic_types::{DecodedBuffer, DecodedEvent, I2cEvent, LogicBuffer, LogicSample};
 
-fn sample(ts: u64) -> LogicSample {
+#[allow(clippy::cast_possible_truncation)] // 测试样本刻意只取低 8 位通道值
+const fn sample(ts: u64) -> LogicSample {
     LogicSample::new(ts, 0xFF & (ts as u32), 8)
 }
 
-fn uart(ts: u64, byte: u8) -> DecodedEvent {
+const fn uart(ts: u64, byte: u8) -> DecodedEvent {
     DecodedEvent::Uart {
         timestamp: ts,
         byte,
@@ -21,7 +20,7 @@ fn uart(ts: u64, byte: u8) -> DecodedEvent {
     }
 }
 
-fn i2c(ts: u64) -> DecodedEvent {
+const fn i2c(ts: u64) -> DecodedEvent {
     DecodedEvent::I2c {
         timestamp: ts,
         event: I2cEvent::Stop,
@@ -55,7 +54,10 @@ fn logic_buffer_push_past_capacity_drops_oldest() {
     b.push(sample(4));
     assert_eq!(b.len(), 3);
     let recent = b.get_recent(10);
-    assert_eq!(recent.iter().map(|s| s.timestamp).collect::<Vec<_>>(), vec![2, 3, 4]);
+    assert_eq!(
+        recent.iter().map(|s| s.timestamp).collect::<Vec<_>>(),
+        vec![2, 3, 4]
+    );
 }
 
 #[test]

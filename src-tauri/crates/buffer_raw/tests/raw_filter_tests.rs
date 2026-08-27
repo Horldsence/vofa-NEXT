@@ -1,6 +1,4 @@
-use buffer_raw::{
-    chunk_matches, DirectionFilter, RawDataDirection, SearchPattern, StoredChunk,
-};
+use buffer_raw::{chunk_matches, DirectionFilter, RawDataDirection, SearchPattern, StoredChunk};
 
 fn make_chunk(direction: RawDataDirection, bytes: &[u8]) -> StoredChunk {
     StoredChunk {
@@ -105,8 +103,12 @@ fn search_pattern_invalid_hex_digit_falls_through_to_utf8() {
 #[test]
 fn chunk_matches_direction_filter_rejects() {
     let chunk = make_chunk(RawDataDirection::Tx, b"hello");
-    let (ok, tail) =
-        chunk_matches(&chunk, DirectionFilter::Rx, None, b"prev_tail_should_be_ignored");
+    let (ok, tail) = chunk_matches(
+        &chunk,
+        DirectionFilter::Rx,
+        None,
+        b"prev_tail_should_be_ignored",
+    );
     assert!(!ok);
     assert!(tail.is_empty());
 }

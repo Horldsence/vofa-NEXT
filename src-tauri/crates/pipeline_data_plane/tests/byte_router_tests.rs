@@ -493,7 +493,8 @@ async fn manual_mode_does_not_emit_channels_detected_event() {
     assert_eq!(summary.frames, 1);
     let st = plane.protocol_states.lock().get("pt").unwrap().clone();
     assert_eq!(
-        st.lock().last_detected_pushed, None,
+        st.lock().last_detected_pushed,
+        None,
         "手动模式不应记录检测推送值"
     );
     assert_eq!(plane.buffer_for("pt").lock().channel_count(), 2);

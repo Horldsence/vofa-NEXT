@@ -1,12 +1,10 @@
 //! Str arm — input_ports 拆分 str/num → op.evaluate → StrResult 分派
 //! str ≤ 2 / num ≤ 2 走栈数组,超出走堆兜底;StrOp::evaluate 的 str_inputs 紧凑对齐
 
-use node_kind::{NodeKind, PortDomain, StrResult};
+use node_kind::{str_num_default, NodeKind, PortDomain, StrResult};
 
 use crate::compile::CompiledGraph;
-use crate::eval::{
-    node_out_entry, node_out_str_entry, set_port, set_str_port, str_num_default,
-};
+use node_eval::{node_out_entry, node_out_str_entry, set_port, set_str_port};
 
 use super::{EvalCtx, NodeArm};
 
@@ -14,8 +12,12 @@ pub struct StrArm;
 
 impl NodeArm for StrArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
-        let NodeKind::Str { op, num } = &node.kind else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
+        let NodeKind::Str { op, num } = &node.kind else {
+            return;
+        };
         let ports = op.input_ports();
         let n_str = ports.iter().filter(|p| p.1 == PortDomain::String).count();
         let n_num = ports.len() - n_str;

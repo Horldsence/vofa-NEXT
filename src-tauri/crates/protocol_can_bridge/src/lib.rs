@@ -9,8 +9,7 @@ pub mod rawdata;
 pub mod slcan;
 
 pub use candle::{
-    CandleEngine, CAND_CMD_RX, CAND_CMD_TX, CAND_FRAME_SIZE, CAND_ID_EFF, CAND_ID_MASK,
-    CAND_ID_RTR,
+    CandleEngine, CAND_CMD_RX, CAND_CMD_TX, CAND_FRAME_SIZE, CAND_ID_EFF, CAND_ID_MASK, CAND_ID_RTR,
 };
 pub use rawdata::RawDataEngine;
 pub use slcan::SlcanEngine;

@@ -29,7 +29,5 @@ pub use can_frame::{
     CanBitrate, CanDirection, CanFilter, CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo,
 };
 pub use can_load_stats::{frame_bits, CanLoadStats};
-pub use can_load_types::{
-    CanIdLoadHistory, CanIdLoadStats, CanLoadHistoryPoint, CanLoadSnapshot,
-};
+pub use can_load_types::{CanIdLoadHistory, CanIdLoadStats, CanLoadHistoryPoint, CanLoadSnapshot};
 pub use test_data::CanFrameTestData;

@@ -1,9 +1,9 @@
 //! `ProtocolEngine` trait 与跨协议统一的输入/输出容器
 
-use serde::{Deserialize, Serialize};
-use vofa_core::DataFrame;
 use can_types::CanFrame;
 use logic_types::{DecodedEvent, LogicSample};
+use serde::{Deserialize, Serialize};
+use vofa_core::DataFrame;
 
 use super::parse::{detect_format, parse_ascii, parse_hex};
 

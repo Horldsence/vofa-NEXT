@@ -75,16 +75,16 @@ impl CanLoadStats {
             .push_back((frame.timestamp, bits, frame.id, frame.extended, frame.dlc));
         self.total_bits += u64::from(bits);
         self.total_bytes += u64::from(frame.dlc);
-        let entry =
-            self.per_id
-                .entry((frame.id, frame.extended))
-                .or_insert_with(|| CanIdLoadStats {
-                    id: frame.id,
-                    extended: frame.extended,
-                    frame_count: 0,
-                    total_bits: 0,
-                    total_bytes: 0,
-                });
+        let entry = self
+            .per_id
+            .entry((frame.id, frame.extended))
+            .or_insert_with(|| CanIdLoadStats {
+                id: frame.id,
+                extended: frame.extended,
+                frame_count: 0,
+                total_bits: 0,
+                total_bytes: 0,
+            });
         entry.frame_count += 1;
         entry.total_bits += u64::from(bits);
         entry.total_bytes += u64::from(frame.dlc);

@@ -1,7 +1,6 @@
-//! 编译期槽位评估表 (CompiledEval) — f32 热路径
+//! 编译期槽位评估表 ([`CompiledEval`]) — f32 热路径
 //!
-//! 结构: 平坦 [`CompiledOp`] 数组 (定义见 `ops` 模块, 构建见 `lower` 模块)
-//! + 槽位读写 + 零字符串哈希。
+//! 结构: 包裹 `node_lower::SlotPlan` 的平坦操作序列 + 槽位读写 + 零字符串哈希。
 //!
 //! 逐帧评估时仅有的字符串查找是 ProtocolSource 的帧源解析
 //! (每源每帧一次, 编译期预排为 `frame_sources` 下标表)。
@@ -15,13 +14,12 @@ use vofa_core::DataFrame;
 
 use node_frame_decoder::FrameParser;
 use node_kind::StrResult;
+use node_lower::{CompiledOp, SlotPlan};
 use node_trigger::TriggerState;
 
-use crate::ops::CompiledOp;
+use crate::eval_ports::{node_out_entry, set_port};
+use crate::eval_str::{node_out_str_entry, set_str_port};
 use crate::{StringValuesMap, ValuesMap};
-
-pub use crate::eval_ports::{node_out_entry, set_port};
-pub use crate::eval_str::{node_out_str_entry, set_str_port, str_num_default};
 
 /// 多源最新帧缓存 — key = 全局 Protocol 节点 id, value = 该源最近一帧
 /// (latest-value 融合: 每个源独立缓存, 求值时按源读取)
@@ -31,46 +29,46 @@ pub type SourceFramesMap = HashMap<String, DataFrame, FxBuildHasher>;
 /// UTF-8 lossy 解码文本 (RawData 协议写入, latest-value 融合, 仿 [`SourceFramesMap`])
 pub type SourceTextsMap = HashMap<String, String, FxBuildHasher>;
 
-/// 编译期槽位评估表 — 编译流水线后端产物 (构建见 [`crate::lower`]), 逐帧评估纯数组读写
+/// 编译期槽位评估表 — 封装编译后端产物 (lowering 产物见 `node_lower::SlotPlan`),
+/// 逐帧评估纯数组读写
 pub struct CompiledEval {
-    /// 槽位 i 对应的 (node_id, port) — 供快照物化/派生边反查
-    pub(crate) slot_names: Vec<(String, String)>,
-    /// (node_id, port) → 槽位下标
-    pub(crate) slot_index: HashMap<(String, String), usize, FxBuildHasher>,
-    /// 平坦操作序列 (拓扑序 == eval_order)
-    pub(crate) ops: Vec<CompiledOp>,
-    /// SpectrumSink 输入槽位: (sink_node_id, 源值槽位; None = 无上游边, 与缺省 0.0 对应)
-    pub(crate) spectrum_slots: Vec<(String, Option<usize>)>,
-    /// ProtocolSource 引用的全局 Protocol 节点 id 表 (去重, 编译期预排;
-    /// 逐帧评估时每源一次字符串查找解析为帧引用, op 用下标直读)
-    pub(crate) frame_sources: Vec<String>,
-    /// 字符串槽位 i 对应的 (node_id, port) — Str 节点 String 域输出, 仿 slot_names
-    pub(crate) str_slot_names: Vec<(String, String)>,
-    /// (node_id, port) → 字符串槽位下标
-    pub(crate) str_slot_index: HashMap<(String, String), usize, FxBuildHasher>,
+    /// lowering 产物: 双域槽位表 + 平坦操作序列 + 帧源表
+    plan: SlotPlan,
 }
 
 impl CompiledEval {
+    /// 封装值平面 lowering 产物 — 编译 facade 流水线的第 3 段装配点
+    pub const fn new(plan: SlotPlan) -> Self {
+        Self { plan }
+    }
+
     /// 槽位数 (调用方据此分配 slots/written 缓冲并跨帧复用)
     pub const fn slot_count(&self) -> usize {
-        self.slot_names.len()
+        self.plan.slot_names.len()
     }
 
     /// 字符串槽位数 (调用方据此分配 str_slots/str_written 缓冲并跨帧复用)
     pub const fn str_slot_count(&self) -> usize {
-        self.str_slot_names.len()
+        self.plan.str_slot_names.len()
+    }
+
+    /// 平坦操作序列只读视图 — 编译期结构断言/诊断用
+    pub fn ops(&self) -> &[CompiledOp] {
+        &self.plan.ops
     }
 
     /// (node_id, port) → 槽位 (派生边批首解析用)
     pub fn slot_of(&self, node: &str, port: &str) -> Option<usize> {
-        self.slot_index
+        self.plan
+            .slot_index
             .get(&(node.to_string(), port.to_string()))
             .copied()
     }
 
     /// (node_id, port) → 字符串槽位 (字符串输出发布解析用)
     pub fn str_slot_of(&self, node: &str, port: &str) -> Option<usize> {
-        self.str_slot_index
+        self.plan
+            .str_slot_index
             .get(&(node.to_string(), port.to_string()))
             .copied()
     }
@@ -112,17 +110,17 @@ impl CompiledEval {
         // (8 源以内走栈数组, 避免逐帧堆分配)
         let mut stack_src: [Option<&DataFrame>; 8] = [None; 8];
         let mut heap_src;
-        let resolved: &mut [Option<&DataFrame>] = if self.frame_sources.len() <= 8 {
-            &mut stack_src[..self.frame_sources.len()]
+        let resolved: &mut [Option<&DataFrame>] = if self.plan.frame_sources.len() <= 8 {
+            &mut stack_src[..self.plan.frame_sources.len()]
         } else {
-            heap_src = vec![None; self.frame_sources.len()];
+            heap_src = vec![None; self.plan.frame_sources.len()];
             &mut heap_src
         };
-        for (i, id) in self.frame_sources.iter().enumerate() {
+        for (i, id) in self.plan.frame_sources.iter().enumerate() {
             resolved[i] = source_frames.get(id);
         }
 
-        for op in &self.ops {
+        for op in &self.plan.ops {
             match op {
                 CompiledOp::ProtocolSource { src, ch, slot } => {
                     slots[*slot] = resolved[*src]
@@ -134,7 +132,7 @@ impl CompiledEval {
                 CompiledOp::ProtocolSourceStr { src, slot } => {
                     // 源有缓存文本时写字符串槽位 (复用缓冲原位写, 仿 TextInput);
                     // 无缓存时不写 (str_written 不置位 → 快照保持上次值)
-                    if let Some(text) = source_texts.get(&self.frame_sources[*src]) {
+                    if let Some(text) = source_texts.get(&self.plan.frame_sources[*src]) {
                         let s = &mut str_slots[*slot];
                         s.clear();
                         s.push_str(text);
@@ -358,7 +356,7 @@ impl CompiledEval {
     ///
     /// 只覆盖写本帧已产出的端口, 不清理过期键 (与 evaluate_into 语义一致)
     pub fn materialize(&self, slots: &[f32], written: &[bool], out: &mut ValuesMap) {
-        for (i, (node_id, port)) in self.slot_names.iter().enumerate() {
+        for (i, (node_id, port)) in self.plan.slot_names.iter().enumerate() {
             if written[i] {
                 let m = node_out_entry(out, node_id);
                 set_port(m, port, slots[i]);
@@ -375,7 +373,7 @@ impl CompiledEval {
         str_written: &[bool],
         out_str: &mut StringValuesMap,
     ) {
-        for (i, (node_id, port)) in self.str_slot_names.iter().enumerate() {
+        for (i, (node_id, port)) in self.plan.str_slot_names.iter().enumerate() {
             if str_written[i] {
                 let m = node_out_str_entry(out_str, node_id);
                 set_str_port(m, port, &str_slots[i]);
@@ -389,7 +387,8 @@ impl CompiledEval {
         slots: &'a [f32],
         written: &'a [bool],
     ) -> impl Iterator<Item = (&'a str, f32)> + 'a {
-        self.spectrum_slots
+        self.plan
+            .spectrum_slots
             .iter()
             .filter_map(move |(sink, slot)| match slot {
                 Some(s) if written[*s] => Some((sink.as_str(), slots[*s])),

@@ -106,6 +106,7 @@ mod tests {
     use std::f32::consts::PI;
 
     #[test]
+    #[allow(clippy::cast_precision_loss)] // 测试信号计数器数值小, 转 f32 无精度损失
     fn test_ifft_reconstructs_even_signal() {
         // 余弦(偶)信号 + Rect 窗 + bin 对齐 → 振幅谱 → IFFT 应精确还原
         let n = 256;

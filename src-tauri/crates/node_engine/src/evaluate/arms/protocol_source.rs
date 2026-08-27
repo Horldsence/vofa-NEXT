@@ -4,7 +4,7 @@
 use node_kind::{protocol_source_port_names, NodeKind};
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, node_out_str_entry, set_port, set_str_port};
+use node_eval::{node_out_entry, node_out_str_entry, set_port, set_str_port};
 
 use super::{EvalCtx, NodeArm};
 
@@ -12,7 +12,9 @@ pub struct ProtocolSourceArm;
 
 impl NodeArm for ProtocolSourceArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
         let NodeKind::ProtocolSource {
             node_id: source_id,
             channels,

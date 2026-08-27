@@ -2,14 +2,14 @@
 
 use can_types::{CanBuffer, CanDirection, CanFrame};
 
-fn mk_frame(ts: u64, id: u32) -> CanFrame {
+const fn mk_frame(ts: u64, id: u32) -> CanFrame {
     CanFrame {
         timestamp: ts,
         id,
         extended: false,
         rtr: false,
         dlc: 0,
-        data: vec![],
+        data: Vec::new(),
         direction: CanDirection::Rx,
     }
 }
@@ -41,7 +41,10 @@ fn push_past_capacity_drops_oldest() {
     buf.push(mk_frame(4, 4));
     assert_eq!(buf.len(), 3);
     let frames = buf.get_recent(10);
-    assert_eq!(frames.iter().map(|f| f.id).collect::<Vec<_>>(), vec![2, 3, 4]);
+    assert_eq!(
+        frames.iter().map(|f| f.id).collect::<Vec<_>>(),
+        vec![2, 3, 4]
+    );
 }
 
 #[test]

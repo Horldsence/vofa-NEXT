@@ -1,8 +1,8 @@
 //! ISO-TP 会话公开 API — `IsoTpSession` / `IsoTpSessionHandle`
 
+use diagnostic::IsoTpConfig;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use diagnostic::IsoTpConfig;
 use transport_core::CanBackend;
 
 use crate::error::AutomotiveError;

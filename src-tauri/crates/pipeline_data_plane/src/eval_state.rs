@@ -4,6 +4,12 @@
 //! 通过 `pipeline_data_plane` crate 同时被两者依赖, 打破潜在的环依赖。
 //! 在 `src-tauri` 旧结构中, 它们定义于 `state::app_state.rs`。
 
+use buffer_raw::RawDataCollector;
+use dsp_fft::{IfftState, SpectrumAnalyzer, SpectrumResult};
+use dsp_filter::DigitalFilter;
+use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
+use node_frame_decoder::FrameParser;
+use node_trigger::TriggerState;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -11,12 +17,6 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tauri::ipc::Channel;
-use buffer_raw::RawDataCollector;
-use dsp_filter::DigitalFilter;
-use dsp_fft::{IfftState, SpectrumAnalyzer, SpectrumResult};
-use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
-use node_frame_decoder::FrameParser;
-use node_trigger::TriggerState;
 
 /// 单个图输出快照 — 通过 Channel 推送到前端
 ///
@@ -152,6 +152,7 @@ pub struct GraphEvalState {
 /// `graph_string_outputs` 与 `trigger_states` 仅经 `GraphEvalState` 共享 (无其他持有方),
 /// 故函数内部创建, 不占用参数位 (Arc 构造非 const, 本函数因此不是 const fn)
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::implicit_hasher)] // 字段与 AppState/CompiledEval 的具体 hasher 类型耦合, 泛化 S 会传染整个状态图
 #[must_use]
 pub fn build_graph_eval_state(
     graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,

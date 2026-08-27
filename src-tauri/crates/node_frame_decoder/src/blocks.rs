@@ -12,9 +12,7 @@
 use std::collections::HashMap;
 
 use super::{ChecksumAlgorithm, FrameParser, ParseResult};
-use schema_types::{
-    DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
-};
+use schema_types::{DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType};
 
 impl FrameParser {
     /// 从给定字节切片解析一帧 (核心解析逻辑)
@@ -106,11 +104,9 @@ impl FrameParser {
                     let n = if *field_type == FieldType::Bytes {
                         // Bytes 类型: 用 length_ref 引用的 length_value
                         // 无 length_ref 时默认 0 字节; 未找到 ref 时跳过块 (返回 None)
-                        length_ref
-                            .as_ref()
-                            .map_or(Some(0), |ref_id| {
-                                length_values.get(ref_id).map(|&v| v as usize)
-                            })
+                        length_ref.as_ref().map_or(Some(0), |ref_id| {
+                            length_values.get(ref_id).map(|&v| v as usize)
+                        })
                     } else {
                         field_type.byte_len()
                     };

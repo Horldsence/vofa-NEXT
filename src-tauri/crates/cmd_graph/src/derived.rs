@@ -4,7 +4,7 @@
 //! 随 `update_tab_graph` Tauri 命令返回并经 `graph:derived` 事件差分推送。
 //! 前端 `derivedPorts` store 据此渲染 React Flow handle 与节点摘要。
 
-use node_kind::{NodeDef, NodeKind, PortDomain, protocol_source_port_names};
+use node_kind::{protocol_source_port_names, NodeDef, NodeKind, PortDomain};
 use schema_types::{ProtocolConfig, ProtocolSchema};
 use serde::Serialize;
 
@@ -79,9 +79,9 @@ pub fn compute_derived(nodes: &[NodeDef]) -> Vec<NodeDerived> {
 
 fn derive_node(n: &NodeDef) -> NodeDerived {
     match &n.kind {
-        NodeKind::Protocol {
-            config, schema, ..
-        } => derive_protocol(n.id.clone(), config, schema.as_ref()),
+        NodeKind::Protocol { config, schema, .. } => {
+            derive_protocol(n.id.clone(), config, schema.as_ref())
+        }
         NodeKind::ProtocolSource { .. } => NodeDerived {
             // 端口表与所引用的全局 Protocol 节点同源 — 渲染端按全局节点 id 读,
             // 此处重复一份便于初次派生到达前的占位查询
@@ -233,11 +233,7 @@ mod tests {
     use super::*;
     use schema_types::{DecoderBlockDef, FieldType, SchemaPreset};
 
-    fn protocol_node(
-        id: &str,
-        config: ProtocolConfig,
-        schema: Option<ProtocolSchema>,
-    ) -> NodeDef {
+    fn protocol_node(id: &str, config: ProtocolConfig, schema: Option<ProtocolSchema>) -> NodeDef {
         NodeDef {
             id: id.into(),
             tab_id: "tab1".into(),
@@ -272,7 +268,11 @@ mod tests {
             ],
             encode: None,
         };
-        let n = protocol_node("p1", ProtocolConfig::JustFloat { channels: None }, Some(schema));
+        let n = protocol_node(
+            "p1",
+            ProtocolConfig::JustFloat { channels: None },
+            Some(schema),
+        );
         let derived = compute_derived(&[n]);
         assert_eq!(derived.len(), 1);
         assert_eq!(
@@ -293,11 +293,7 @@ mod tests {
 
     #[test]
     fn preset_justfloat_with_manual_channels_uses_config_value() {
-        let n = protocol_node(
-            "p1",
-            ProtocolConfig::JustFloat { channels: Some(6) },
-            None,
-        );
+        let n = protocol_node("p1", ProtocolConfig::JustFloat { channels: Some(6) }, None);
         let derived = compute_derived(&[n]);
         let names: Vec<_> = derived[0]
             .ports
@@ -354,14 +350,21 @@ mod tests {
         let text_in = NodeDef {
             id: "t1".into(),
             tab_id: "tab1".into(),
-            kind: NodeKind::TextInput {
-                text: "hi".into(),
-            },
+            kind: NodeKind::TextInput { text: "hi".into() },
         };
         let derived = compute_derived(&[input, math, text_in]);
-        assert_eq!(derived[0].ports, vec![port("value", DerivedPortDomain::F32)]);
-        assert_eq!(derived[1].ports, vec![port("result", DerivedPortDomain::F32)]);
-        assert_eq!(derived[2].ports, vec![port("str", DerivedPortDomain::String)]);
+        assert_eq!(
+            derived[0].ports,
+            vec![port("value", DerivedPortDomain::F32)]
+        );
+        assert_eq!(
+            derived[1].ports,
+            vec![port("result", DerivedPortDomain::F32)]
+        );
+        assert_eq!(
+            derived[2].ports,
+            vec![port("str", DerivedPortDomain::String)]
+        );
     }
 
     #[test]

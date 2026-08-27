@@ -7,7 +7,7 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 #[test]
 fn test_evaluate_input_node() {
     let nodes = vec![make_input("knob1", "t1")];
@@ -27,4 +27,3 @@ fn test_evaluate_input_node() {
     );
     assert_eq!(out.get("knob1").and_then(|m| m.get("value")), Some(&42.0));
 }
-

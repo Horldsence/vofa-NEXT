@@ -20,23 +20,23 @@ pub mod frame_dispatch;
 pub mod read_task;
 pub mod reconcile;
 
+use buffer_databuffer::DataBuffer;
+use buffer_raw::RawDataCollector;
+use can_types::{CanBuffer, CanLoadStats};
+use logic_types::{DecodedBuffer, LogicBuffer};
+use node_engine::{BytePlan, SourceFramesMap, SourceTextsMap};
+use node_kind::{NodeDef, NodeKind};
 use parking_lot::{Mutex, RwLock};
+use protocol_engine::ProtocolEngine;
+use schema_types::{ProtocolConfig, ProtocolSchema};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::AppHandle;
 use tokio::task::JoinHandle;
-use buffer_databuffer::DataBuffer;
-use buffer_raw::RawDataCollector;
-use can_types::{CanBuffer, CanLoadStats};
-use logic_types::{DecodedBuffer, LogicBuffer};
-use schema_types::{ProtocolConfig, ProtocolSchema};
-use vofa_core::PipelineConfig;
-use node_engine::{BytePlan, SourceFramesMap, SourceTextsMap};
-use node_kind::{NodeDef, NodeKind};
-use protocol_engine::ProtocolEngine;
 use transport_core::TransportManager;
+use vofa_core::PipelineConfig;
 
 use crate::eval_state::GraphEvalState;
 use crate::feed_parallel::ParallelFeeder;
@@ -53,7 +53,9 @@ fn create_protocol_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
         ProtocolConfig::RawData => Box::new(RawData::new()),
         ProtocolConfig::Slcan => Box::new(Slcan::new()),
         ProtocolConfig::CandleLight => Box::new(Candle::new()),
-        ProtocolConfig::LogicDecode { decoder } => Box::new(LogicDecoderEngine::new(decoder.clone())),
+        ProtocolConfig::LogicDecode { decoder } => {
+            Box::new(LogicDecoderEngine::new(decoder.clone()))
+        }
         ProtocolConfig::Diagnostic { .. } => Box::new(RawData::new()),
     }
 }
@@ -95,14 +97,13 @@ impl ProtocolNodeState {
     ) -> Self {
         // 有 schema 时由 compile_schema 构造引擎 (预设走 legacy 引擎, Custom 走 SchemaEngine);
         // 无 schema (旧前端) 保持原有 create_engine 路径
-        let engine = match schema {
-            Some(s) => schema_engine::compile_schema(s),
-            None => create_protocol_engine(config),
-        };
+        let engine = schema.map_or_else(
+            || create_protocol_engine(config),
+            schema_engine::compile_schema,
+        );
         Self {
             engine: Arc::new(Mutex::new(engine)),
-            convert_engine: convert_to
-                .map(|c| Arc::new(Mutex::new(create_protocol_engine(c)))),
+            convert_engine: convert_to.map(|c| Arc::new(Mutex::new(create_protocol_engine(c)))),
             config: config.clone(),
             convert_config: convert_to.cloned(),
             schema: schema.cloned(),
@@ -307,7 +308,8 @@ impl DataPlaneState {
 
     /// 卸载 Transport 节点读任务 (close 时调用)
     pub fn detach(&self, node_id: &str) {
-        if let Some(h) = self.read_tasks.lock().remove(node_id) {
+        let handle = self.read_tasks.lock().remove(node_id);
+        if let Some(h) = handle {
             h.abort();
         }
     }
@@ -330,6 +332,11 @@ pub struct DataPlaneMetrics {
 }
 
 impl DataPlaneMetrics {
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )] // 诊断日志近似换算 (MB/s / ms), 数值精度不影响行为
     fn report(&self) {
         let rx_msgs = self.rx_msgs.swap(0, Ordering::Relaxed);
         let lagged = self.lagged.swap(0, Ordering::Relaxed);

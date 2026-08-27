@@ -4,11 +4,11 @@
 //! 沿全局 BytePlan 路由 (协议解析/帧解码喂入/回注发送) → 统计节流 emit。
 //! 广播通道关闭 (连接断开) 时退出并 emit Disconnected。
 
+use buffer_raw::RawDataDirection;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tauri::AppHandle;
 use tokio::sync::broadcast;
-use buffer_raw::RawDataDirection;
 use vofa_core::{ConnectionState, TransportStats};
 
 use super::{byte_router, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
@@ -80,10 +80,10 @@ pub(super) async fn read_task(
             &mut dec_cache,
         )
         .await;
-        plane
-            .metrics
-            .feed_ns
-            .fetch_add(t_feed.elapsed().as_nanos() as u64, Ordering::Relaxed);
+        plane.metrics.feed_ns.fetch_add(
+            u64::try_from(t_feed.elapsed().as_nanos()).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
         plane.metrics.feed_batches.fetch_add(1, Ordering::Relaxed);
         plane
             .metrics

@@ -4,7 +4,7 @@
 use node_kind::NodeKind;
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, set_port};
+use node_eval::{node_out_entry, set_port};
 
 use super::{EvalCtx, NodeArm};
 
@@ -12,8 +12,12 @@ pub struct MathArm;
 
 impl NodeArm for MathArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
-        let NodeKind::Math { op, input_count } = &node.kind else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
+        let NodeKind::Math { op, input_count } = &node.kind else {
+            return;
+        };
         let mut stack_buf = [0.0f32; 16];
         let mut heap_buf;
         let inputs: &mut [f32] = if *input_count <= 16 {

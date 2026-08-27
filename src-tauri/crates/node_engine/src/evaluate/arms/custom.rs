@@ -3,7 +3,7 @@
 use node_kind::NodeKind;
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, set_port};
+use node_eval::{node_out_entry, set_port};
 
 use super::{EvalCtx, NodeArm};
 
@@ -11,8 +11,12 @@ pub struct CustomArm;
 
 impl NodeArm for CustomArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
-        let NodeKind::Custom { outputs, .. } = &node.kind else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
+        let NodeKind::Custom { outputs, .. } = &node.kind else {
+            return;
+        };
         let m = node_out_entry(ctx.out, node_id);
         if let Some(vals) = ctx.custom_outputs.get(node_id) {
             for (k, &v) in vals {

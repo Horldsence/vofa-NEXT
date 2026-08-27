@@ -105,7 +105,9 @@ impl Default for CompileQueue {
 
 impl CompileQueue {
     pub fn new() -> Self {
-        Self { state: PMutex::new(QueueState::default()) }
+        Self {
+            state: PMutex::new(QueueState::default()),
+        }
     }
 
     /// 写入 pending, 标记 worker 启动职责, 返回 receipt
@@ -117,10 +119,9 @@ impl CompileQueue {
         let seq = state.next_seq;
         state.next_seq = state.next_seq.wrapping_add(1);
         let is_new = !state.pending.contains_key(&tab_id);
-        state.pending.insert(
-            tab_id.clone(),
-            PendingRequest { nodes, edges, seq },
-        );
+        state
+            .pending
+            .insert(tab_id.clone(), PendingRequest { nodes, edges, seq });
         let need_spawn = if state.compiling.contains(&tab_id) {
             false
         } else {
@@ -128,7 +129,10 @@ impl CompileQueue {
             true
         };
         SubmitResult {
-            receipt: Receipt { tab_id, queued_seq: seq },
+            receipt: Receipt {
+                tab_id,
+                queued_seq: seq,
+            },
             need_spawn,
             is_new,
         }
@@ -161,7 +165,9 @@ impl CompileQueue {
         if still_mine {
             let receipt = state.receipt_seq.fetch_add(1, Ordering::Relaxed) + 1;
             state.published.insert(tab_id.to_string(), receipt);
-            state.last_state.insert(tab_id.to_string(), CompileState::Ok);
+            state
+                .last_state
+                .insert(tab_id.to_string(), CompileState::Ok);
         }
         state.compiling.remove(tab_id);
     }
@@ -177,7 +183,9 @@ impl CompileQueue {
         if still_mine {
             let receipt = state.receipt_seq.fetch_add(1, Ordering::Relaxed) + 1;
             state.published.insert(tab_id.to_string(), receipt);
-            state.last_state.insert(tab_id.to_string(), CompileState::Error);
+            state
+                .last_state
+                .insert(tab_id.to_string(), CompileState::Error);
         }
         state.compiling.remove(tab_id);
     }
@@ -191,7 +199,11 @@ impl CompileQueue {
     /// 最近一次发布的状态 (测试 / 状态栏查询)
     pub fn current_state(&self, tab_id: &str) -> CompileState {
         let state = self.state.lock();
-        state.last_state.get(tab_id).copied().unwrap_or(CompileState::Idle)
+        state
+            .last_state
+            .get(tab_id)
+            .copied()
+            .unwrap_or(CompileState::Idle)
     }
 }
 

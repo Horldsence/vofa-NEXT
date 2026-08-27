@@ -4,12 +4,12 @@
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
 )]
+use schema_types::{encode_by_blocks, ProtocolConfig, SchemaPreset, TestDataLink};
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc, watch, Notify};
-use schema_types::{encode_by_blocks, ProtocolConfig, SchemaPreset, TestDataLink};
 use vofa_core::{TestDataConfig, TestSignal};
 
 /// 启动测试数据生成器
@@ -278,7 +278,12 @@ pub fn generate_frame(channels: usize, signal: TestSignal, t: f32) -> Vec<f32> {
                 TestSignal::Chirp => {
                     // 扫频: 频率随时间线性增加
                     let f = t.mul_add(2.0, 0.5);
-                    (i as f32).mul_add(10.0, (t * f * freq * 2.0 * std::f32::consts::PI).sin().mul_add(80.0, 128.0))
+                    (i as f32).mul_add(
+                        10.0,
+                        (t * f * freq * 2.0 * std::f32::consts::PI)
+                            .sin()
+                            .mul_add(80.0, 128.0),
+                    )
                 }
                 TestSignal::Steps => {
                     // 阶梯: 每 10 个采样点上升一级

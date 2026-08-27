@@ -35,10 +35,7 @@ impl NodeDef {
 /// 解析 ProtocolSource 的输出端口名列表（编译/求值共用）
 ///
 /// `port_names` 给定且非空时用命名端口（越界/空名回退 `"ch{i}"`），否则缺省 `"ch0".."chN"`
-pub fn protocol_source_port_names(
-    port_names: Option<&[String]>,
-    channels: usize,
-) -> Vec<String> {
+pub fn protocol_source_port_names(port_names: Option<&[String]>, channels: usize) -> Vec<String> {
     (0..channels)
         .map(|i| {
             port_names

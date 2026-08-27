@@ -1,11 +1,11 @@
 //! ISO-TP 集成测试 — PCI 常量验证 + Session API smoke + Handle clone
 
-use std::sync::Arc;
-use tokio::sync::broadcast;
 use can_types::{CanDirection, CanFrame};
 use diagnostic::{IsoTpAddressMode, IsoTpConfig};
-use vofa_core::Result;
+use std::sync::Arc;
+use tokio::sync::broadcast;
 use transport_core::CanBackend;
+use vofa_core::Result;
 
 use automotive_isotp::IsoTpSession;
 
@@ -24,12 +24,13 @@ impl transport_core::CanBackend for DummyBackend {
         self.rx.subscribe()
     }
 
+    #[allow(clippy::unnecessary_literal_bound)] // trait 签名为 &str, 实现方返回字面量
     fn name(&self) -> &str {
         "DummyBackend"
     }
 }
 
-fn dummy_cfg() -> IsoTpConfig {
+const fn dummy_cfg() -> IsoTpConfig {
     IsoTpConfig {
         tx_id: 0x600,
         rx_id: 0x658,
@@ -43,7 +44,7 @@ fn dummy_cfg() -> IsoTpConfig {
 
 #[test]
 fn pci_type_extraction_matches_iso_spec() {
-    use automotive_isotp::constants::{pci_type, PCI_CF, PCI_FF, PCI_FC, PCI_SF};
+    use automotive_isotp::constants::{pci_type, PCI_CF, PCI_FC, PCI_FF, PCI_SF};
     assert_eq!(PCI_SF, 0x00);
     assert_eq!(PCI_FF, 0x10);
     assert_eq!(PCI_CF, 0x20);
@@ -132,10 +133,7 @@ fn automotive_error_formats_all_variants() {
         (AutomotiveError::IsoTpTaskCrashed, "任务崩溃"),
         (AutomotiveError::IsoTpFlowControlOverflow, "OVERFLOW"),
         (
-            AutomotiveError::IsoTpDataTooLong {
-                length: 10,
-                max: 8,
-            },
+            AutomotiveError::IsoTpDataTooLong { length: 10, max: 8 },
             "数据超长",
         ),
         (
@@ -145,14 +143,13 @@ fn automotive_error_formats_all_variants() {
             },
             "SN 不匹配",
         ),
-        (
-            AutomotiveError::IsoTpTimeout { tx_id: 0x123 },
-            "N_As 超时",
-        ),
+        (AutomotiveError::IsoTpTimeout { tx_id: 0x123 }, "N_As 超时"),
     ];
     for (e, prefix) in cases {
         let s = format!("{e}");
         assert!(s.contains(prefix), "期望 '{prefix}' 出现在 '{s}'");
     }
-    let _r: AutomotiveResult<()> = Err(AutomotiveError::IsoTpTimeout { tx_id: 1 });
+    // AutomotiveResult 别名可承载 IsoTp 错误变体
+    let r: AutomotiveResult<()> = Err(AutomotiveError::IsoTpTimeout { tx_id: 1 });
+    assert!(r.is_err());
 }

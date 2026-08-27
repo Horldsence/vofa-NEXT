@@ -1,8 +1,8 @@
+use error::PortNotFoundError;
+use schema_types::TestDataLink;
 use std::collections::HashMap;
 use tokio::sync::broadcast;
-use schema_types::TestDataLink;
 use vofa_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats};
-use error::PortNotFoundError;
 
 use crate::handle::TransportHandle;
 
@@ -65,7 +65,14 @@ impl TransportManager {
                 TransportConfig::TestData(c) => {
                     let (write_tx, data_tx, cancel, running, notify, protocol) =
                         crate::test_data::spawn(c.clone(), link)?;
-                    (write_tx, data_tx, cancel, Some(running), Some(notify), Some(protocol))
+                    (
+                        write_tx,
+                        data_tx,
+                        cancel,
+                        Some(running),
+                        Some(notify),
+                        Some(protocol),
+                    )
                 }
                 TransportConfig::Slcan(c) => {
                     let (w, d, c) = transport_can_bridge::slcan::spawn(c.clone())?;
@@ -112,17 +119,23 @@ impl TransportManager {
 
     /// 订阅指定节点的接收数据 (未知 id 返回 None)
     pub fn subscribe(&self, node_id: &str) -> Option<broadcast::Receiver<Vec<u8>>> {
-        self.handles.get(node_id).map(super::handle::TransportHandle::subscribe)
+        self.handles
+            .get(node_id)
+            .map(super::handle::TransportHandle::subscribe)
     }
 
     /// 获取指定节点的连接状态 (未知 id 返回 None)
     pub fn state(&self, node_id: &str) -> Option<ConnectionState> {
-        self.handles.get(node_id).map(super::handle::TransportHandle::state)
+        self.handles
+            .get(node_id)
+            .map(super::handle::TransportHandle::state)
     }
 
     /// 获取指定节点的统计信息 (未知 id 返回 None)
     pub fn stats(&self, node_id: &str) -> Option<TransportStats> {
-        self.handles.get(node_id).map(super::handle::TransportHandle::stats)
+        self.handles
+            .get(node_id)
+            .map(super::handle::TransportHandle::stats)
     }
 
     /// 获取指定节点的配置 (未知 id 返回 None) — 供外部查询 CAN 波特率等
@@ -171,9 +184,11 @@ impl TransportManager {
     }
 
     fn get(&self, node_id: &str) -> Result<&TransportHandle> {
-        self.handles
-            .get(node_id)
-            .ok_or_else(|| Error::PortNotFound(PortNotFoundError { port: node_id.to_string() }))
+        self.handles.get(node_id).ok_or_else(|| {
+            Error::PortNotFound(PortNotFoundError {
+                port: node_id.to_string(),
+            })
+        })
     }
 }
 

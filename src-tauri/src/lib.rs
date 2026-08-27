@@ -15,9 +15,9 @@ pub use menu_shell::{build_menu, on_menu_event};
 // 必须 glob 导入: `#[tauri::command]` 生成的 `__cmd__*` / `__tauri_command_name_*`
 // 宏 (`#[macro_export]`, doc-hidden) 只在 glob 导入时进入本 crate 宏命名空间,
 // `generate_handler!` 展开时需要它们在作用域内。
-pub use update_flow::*;
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
+pub use update_flow::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

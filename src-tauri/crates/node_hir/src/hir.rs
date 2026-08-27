@@ -130,12 +130,12 @@ impl TypedGraph {
                 // 其余组合 (String↔F32 / String↔Bytes 等跨域) 一律域不匹配
                 _ => {
                     return Err(CompileError::DomainMismatch {
-                        edge_id: e.id.clone(),
-                        source_node: e.source.clone(),
-                        source_port: e.source_handle.clone(),
+                        edge_id: e.id.as_str().into(),
+                        source_node: e.source.as_str().into(),
+                        source_port: e.source_handle.as_str().into(),
                         src_domain: port_domain_event(src_domain),
-                        target: e.target.clone(),
-                        target_port: e.target_handle.clone(),
+                        target: e.target.as_str().into(),
+                        target_port: e.target_handle.as_str().into(),
                         tgt_domain: port_domain_event(tgt_domain),
                     });
                 }
@@ -222,7 +222,7 @@ fn is_raw_data_channel_target(graph: &Hir, target: NodeIndex, target_handle: &st
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::*;
+    use node_testkit::*;
 
     #[test]
     fn test_intern_and_roles() {

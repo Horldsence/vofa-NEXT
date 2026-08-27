@@ -1,18 +1,18 @@
-//! 后端低阶 (lowering) 驱动 — 值平面 MIR → 槽位评估表 ([`CompiledEval`])
+//! 后端低阶 (lowering) 驱动 — 值平面 MIR → 槽位产物 ([`SlotPlan`])
 //!
 //! 结构: [`SlotArena`] 槽位分配器 (f32/字符串各一实例) + 按节点种类分派的
-//! per-kind lowering (见 `lower_kinds` 模块)。
+//! per-kind lowering (见 `kinds` 模块)。
 //! 输入边在编译期经 [`ValueMir`] 反查索引解析为槽位下标;
-//! 查不到 = 常量 0.0 (与 resolve_input 缺省语义一致, 以 None 表示)。
+//! 查不到 = 常量 0.0 (与慢路径 resolve_input 缺省语义一致, 以 None 表示)。
 
 use rustc_hash::FxHashMap;
 
 use node_kind::NodeKind;
 
-use crate::eval::CompiledEval;
-use crate::hir::TypedGraph;
+use node_hir::TypedGraph;
+use node_plane::ValueMir;
+
 use crate::ops::CompiledOp;
-use crate::plane::ValueMir;
 
 /// 槽位表拆解产物 (names + index)
 pub type SlotTable = (Vec<(String, String)>, FxHashMap<(String, String), usize>);
@@ -101,8 +101,29 @@ impl LowerCtx<'_> {
     }
 }
 
+/// 编译后端产物 — 平坦操作序列 + 双域槽位表 + 帧源表
+///
+/// 由 `node_eval` 封装为逐帧评估的 `CompiledEval`; 字段均为 lowering 直接产物。
+pub struct SlotPlan {
+    /// 槽位 i 对应的 (node_id, port) — 供快照物化/派生边反查
+    pub slot_names: Vec<(String, String)>,
+    /// (node_id, port) → 槽位下标
+    pub slot_index: FxHashMap<(String, String), usize>,
+    /// 平坦操作序列 (拓扑序 == eval_order)
+    pub ops: Vec<CompiledOp>,
+    /// SpectrumSink 输入槽位: (sink_node_id, 源值槽位; None = 无上游边, 与缺省 0.0 对应)
+    pub spectrum_slots: Vec<(String, Option<usize>)>,
+    /// ProtocolSource 引用的全局 Protocol 节点 id 表 (去重, 编译期预排;
+    /// 逐帧评估时每源一次字符串查找解析为帧引用, op 用下标直读)
+    pub frame_sources: Vec<String>,
+    /// 字符串槽位 i 对应的 (node_id, port) — Str 节点 String 域输出, 仿 slot_names
+    pub str_slot_names: Vec<(String, String)>,
+    /// (node_id, port) → 字符串槽位下标
+    pub str_slot_index: FxHashMap<(String, String), usize>,
+}
+
 /// 值平面 lowering: 遍历拓扑序按节点 kind 分配输出槽位 + 生成平坦操作序列
-pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> CompiledEval {
+pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> SlotPlan {
     let mut ctx = LowerCtx {
         mir,
         f32_slots: SlotArena::new(),
@@ -115,7 +136,7 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> CompiledEval {
         let Some(node) = g.graph[ix].value_def.as_ref() else {
             continue;
         };
-        kinds::lower_node(node, &mut ctx);
+        crate::kinds::lower_node(node, &mut ctx);
     }
 
     // SpectrumSink 输入槽位 (不在 eval_order, 输入端口固定 "in0")
@@ -128,7 +149,7 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> CompiledEval {
 
     let (slot_names, slot_index) = ctx.f32_slots.into_parts();
     let (str_slot_names, str_slot_index) = ctx.str_slots.into_parts();
-    CompiledEval {
+    SlotPlan {
         slot_names,
         slot_index,
         ops: ctx.ops,
@@ -138,5 +159,3 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> CompiledEval {
         str_slot_index,
     }
 }
-
-pub mod kinds;

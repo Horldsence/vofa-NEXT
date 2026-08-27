@@ -20,7 +20,7 @@ pub mod obd;
 pub mod uds;
 
 pub use config::{
-    DiagnosticConfig, IsoTpConfig, IsoTpAddressMode, J1939Config, ObdConfig, UdsConfig,
+    DiagnosticConfig, IsoTpAddressMode, IsoTpConfig, J1939Config, ObdConfig, UdsConfig,
 };
 pub use j1939::{J1939Id, J1939Spn};
 pub use message::{DiagnosticMessage, DiagnosticMessageBatch};

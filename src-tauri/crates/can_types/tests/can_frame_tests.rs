@@ -8,9 +8,7 @@
 //! - CanFrameBatch 构造与状态
 //! - CandleDeviceInfo 序列化
 
-use can_types::{
-    CanBitrate, CanDirection, CanFilter, CanFrame, CanFrameBatch, CanFrameFilter,
-};
+use can_types::{CanBitrate, CanDirection, CanFilter, CanFrame, CanFrameBatch, CanFrameFilter};
 
 #[test]
 fn direction_default_is_rx() {
@@ -27,7 +25,12 @@ fn direction_eq_and_copy() {
 
 #[test]
 fn frame_new_truncates_data_to_dlc8() {
-    let f = CanFrame::new(100, 0x100, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10], CanDirection::Tx);
+    let f = CanFrame::new(
+        100,
+        0x100,
+        vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        CanDirection::Tx,
+    );
     assert_eq!(f.timestamp, 100);
     assert_eq!(f.id, 0x100);
     assert!(!f.extended);
@@ -183,15 +186,21 @@ fn frame_batch_seq_propagates_and_len_tracks() {
     let mut batch = CanFrameBatch::new(7);
     assert_eq!(batch.seq, 7);
     assert!(batch.is_empty());
-    batch.frames.push(CanFrame::new(0, 1, vec![], CanDirection::Rx));
-    batch.frames.push(CanFrame::new(0, 2, vec![], CanDirection::Rx));
+    batch
+        .frames
+        .push(CanFrame::new(0, 1, vec![], CanDirection::Rx));
+    batch
+        .frames
+        .push(CanFrame::new(0, 2, vec![], CanDirection::Rx));
     assert_eq!(batch.len(), 2);
 }
 
 #[test]
 fn frame_batch_serde_roundtrip() {
     let mut batch = CanFrameBatch::new(42);
-    batch.frames.push(CanFrame::new(100, 0x200, vec![0xAA], CanDirection::Rx));
+    batch
+        .frames
+        .push(CanFrame::new(100, 0x200, vec![0xAA], CanDirection::Rx));
     let json = serde_json::to_string(&batch).unwrap();
     let restored: CanFrameBatch = serde_json::from_str(&json).unwrap();
     assert_eq!(restored.seq, 42);

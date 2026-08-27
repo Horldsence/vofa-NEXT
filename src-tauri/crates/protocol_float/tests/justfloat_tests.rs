@@ -83,6 +83,7 @@ fn test_auto_mode_multi_frames() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)] // f32 经 le_bytes 往返为位精确字面量
 fn test_encode_uses_detected_channels() {
     // 自动模式: 检测后编码使用检测到的通道数
     let mut engine = JustFloatEngine::new(None);
@@ -102,6 +103,7 @@ fn test_encode_uses_detected_channels() {
 }
 
 #[test]
+#[allow(clippy::float_cmp)] // f32 经 le_bytes 往返为位精确字面量
 fn test_encode_channels_roundtrip() {
     let mut engine = JustFloatEngine::new(Some(3));
     let encoded = engine.encode_channels(&[1.5, 2.5, 3.5]);
@@ -147,7 +149,7 @@ fn test_split_aligned_equivalence() {
     let ranges = seq_engine
         .split_aligned(&data, 3)
         .expect("justfloat 应支持并行切分");
-    let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+    let tail_start = ranges.last().map_or(0, |r| r.end);
     let mut merged = FeedOutput::default();
     let mut concat = Vec::new();
     for r in &ranges {

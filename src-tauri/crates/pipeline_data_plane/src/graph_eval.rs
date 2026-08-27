@@ -95,7 +95,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     let mut ifft_states = eval_state.ifft_states.lock();
     let mut trigger_states = eval_state.trigger_states.lock();
 
-    let mut combined: node_engine::ValuesMap = Default::default();
+    let mut combined: node_engine::ValuesMap = HashMap::default();
     // 字符串输出: 各图求值结果累积于此, 求值后全量覆盖写进 graph_string_outputs
     let mut combined_str = node_engine::StringValuesMap::default();
     for (_, graph) in graphs.iter() {
@@ -119,7 +119,8 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     {
         let mut snap = eval_state.output_snapshot.lock();
         snap.tick = snap.tick.wrapping_add(1);
-        snap.values = combined.clone();
+        // clone_from 复用旧快照的分配; combined 随后仍作为谱输入被读取
+        snap.values.clone_from(&combined);
     }
 
     // 更新后端字符串输出 (供 text_output_ticker 合并发布) —
@@ -223,7 +224,7 @@ pub fn process_source_batch(
     // 快照批内节流发布: 大批次 (700k 时一批可达 24ms+) 只在批尾更新快照,
     // 数值读数 (MathWidget/Gauge 等走 output_snapshot) 会明显落后波形轨迹
     // (波形是逐帧 push 进 buffer、流式 drain 的)。每 ~8ms 中途发布一次。
-    const PUBLISH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(8);
+    let publish_interval = std::time::Duration::from_millis(8);
     let mut last_publish = std::time::Instant::now();
 
     for (i, frame) in frames.iter().enumerate() {
@@ -242,7 +243,7 @@ pub fn process_source_batch(
         // 1. push 原始帧到该源自己的 buffer
         let t = std::time::Instant::now();
         buffer.push_frame(frame);
-        breakdown.push_frame_ns += t.elapsed().as_nanos() as u64;
+        breakdown.push_frame_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
 
         // 2. 评估被触发的图 (编译期槽位表, 纯数组读写零字符串哈希)
         let t = std::time::Instant::now();
@@ -268,7 +269,7 @@ pub fn process_source_batch(
                 str_written,
             );
         }
-        breakdown.graph_eval_ns += t.elapsed().as_nanos() as u64;
+        breakdown.graph_eval_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
 
         // 3. 收集派生值 (批首预计算索引, 与 push_frame 时间戳对齐; 仅 written 槽位)
         let t = std::time::Instant::now();
@@ -278,7 +279,7 @@ pub fn process_source_batch(
                 buffer.push_derived_idx(buf_idx, slots[slot]);
             }
         }
-        breakdown.derived_ns += t.elapsed().as_nanos() as u64;
+        breakdown.derived_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
 
         // 4. 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口 (仅 written 槽位)
         let t = std::time::Instant::now();
@@ -292,12 +293,12 @@ pub fn process_source_batch(
                 }
             }
         }
-        breakdown.spectrum_ns += t.elapsed().as_nanos() as u64;
+        breakdown.spectrum_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
 
         // 5. 每 1024 帧检查一次, 距上次发布 ≥8ms 则中途发布快照
         //    (物化当前帧槽位直接合并进 snap.values — 覆盖写, 未触发图旧值保留)
         //    注: 快照发布 (步骤 5/6) 不计入细分耗时 (物化 + 锁, 发布点稀疏)
-        if i & 0x3FF == 0x3FF && last_publish.elapsed() >= PUBLISH_INTERVAL {
+        if i & 0x3FF == 0x3FF && last_publish.elapsed() >= publish_interval {
             {
                 let mut snap = eval_state.output_snapshot.lock();
                 for (gi, g) in graph_list.iter().enumerate() {

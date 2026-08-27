@@ -36,8 +36,14 @@ fn field_type_decode_i8_negative() {
 #[test]
 fn field_type_decode_uint16_endianness() {
     let bytes = [0x34, 0x12];
-    assert_eq!(FieldType::UInt16LE.decode(&bytes), Some(0x1234 as f32));
-    assert_eq!(FieldType::UInt16BE.decode(&bytes), Some(0x3412 as f32));
+    assert_eq!(
+        FieldType::UInt16LE.decode(&bytes),
+        Some(f32::from(u16::from_le_bytes(bytes)))
+    );
+    assert_eq!(
+        FieldType::UInt16BE.decode(&bytes),
+        Some(f32::from(u16::from_be_bytes(bytes)))
+    );
 }
 
 #[test]
@@ -95,7 +101,7 @@ fn field_type_encode_float32() {
 #[test]
 fn field_type_encode_bytes_truncates_low_byte() {
     // Bytes 编码: 单字节 = value as u8 (浮点→整型 saturating cast)
-    assert_eq!(FieldType::Bytes.encode(0x34 as f32), vec![0x34]);
+    assert_eq!(FieldType::Bytes.encode(f32::from(0x34_u8)), vec![0x34]);
     assert_eq!(FieldType::Bytes.encode(300.5), vec![255]); // 超 255 saturating
 }
 

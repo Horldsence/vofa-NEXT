@@ -8,7 +8,7 @@ fn to_samples(data: &[u8]) -> Vec<LogicSample> {
         .enumerate()
         .map(|(i, &b)| LogicSample {
             timestamp: i as u64,
-            channels: b as u32,
+            channels: u32::from(b),
             channel_count: 8,
         })
         .collect()
@@ -25,7 +25,7 @@ fn run_spi_mode_test(mode: u8) {
     let mut engine = LogicDecoderEngine::new(config);
     let mosi_byte = 0xA5u8;
     let miso_byte = 0x3Cu8;
-    let sclk_idle: u8 = if matches!(mode, 0 | 1) { 0 } else { 1 };
+    let sclk_idle: u8 = u8::from(!matches!(mode, 0 | 1));
     let sample_rising = matches!(mode, 0 | 2);
     let mut data = Vec::new();
     data.push(0b1000 | sclk_idle);
@@ -60,10 +60,10 @@ fn run_spi_mode_test(mode: u8) {
     );
     match &events[0] {
         DecodedEvent::Spi { mosi, miso, .. } => {
-            assert_eq!(*mosi, mosi_byte, "mode {}: MOSI 不匹配", mode);
-            assert_eq!(*miso, miso_byte, "mode {}: MISO 不匹配", mode);
+            assert_eq!(*mosi, mosi_byte, "mode {mode}: MOSI 不匹配");
+            assert_eq!(*miso, miso_byte, "mode {mode}: MISO 不匹配");
         }
-        _ => panic!("mode {}: 期望 SPI 事件", mode),
+        _ => panic!("mode {mode}: 期望 SPI 事件"),
     }
 }
 

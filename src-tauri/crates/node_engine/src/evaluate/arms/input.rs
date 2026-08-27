@@ -1,7 +1,7 @@
 //! Input arm — input_values[node_id] → "value" 数值槽位 (缺省 0.0)
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, set_port};
+use node_eval::{node_out_entry, set_port};
 
 use super::{EvalCtx, NodeArm};
 

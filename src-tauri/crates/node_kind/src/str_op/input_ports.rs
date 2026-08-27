@@ -30,7 +30,7 @@ const IN_STR1_STR2_POS_LEN: &[(&str, PortDomain)] = &[
 ];
 
 /// 输入端口表查找 — 单一事实源.
-pub const fn input_ports_for(op: &super::StrOp) -> &'static [(&'static str, PortDomain)] {
+pub const fn input_ports_for(op: super::StrOp) -> &'static [(&'static str, PortDomain)] {
     use super::StrOp::*;
     match op {
         Len | Upper | Lower | Trim | Reverse => IN_STR,
@@ -44,7 +44,7 @@ pub const fn input_ports_for(op: &super::StrOp) -> &'static [(&'static str, Port
 }
 
 /// 输出端口 "result" 的域: `Len`/`Find`/`Contains` = F32, 其余 = String.
-pub const fn output_domain_for(op: &super::StrOp) -> PortDomain {
+pub const fn output_domain_for(op: super::StrOp) -> PortDomain {
     use super::StrOp::*;
     match op {
         Len | Find | Contains => PortDomain::F32,

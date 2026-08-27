@@ -1,6 +1,10 @@
 //! 应用全局状态 — AppState (Tauri-managed) + GraphEvalState 由
 //! [`pipeline_data_plane`] 提供 (本文件 re-use 即可)。
 
+use buffer_raw::RawDataCollector;
+use can_types::{CanBuffer, CanLoadStats};
+use logic_types::{DecodedBuffer, LogicBuffer};
+use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use parking_lot::{Mutex, RwLock};
 use pipeline_data_plane::{
     build_graph_eval_state, GraphEvalState, StreamGroupState, DEFAULT_CAN_BUFFER_CAPACITY,
@@ -11,12 +15,8 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
-use buffer_raw::RawDataCollector;
-use can_types::{CanBuffer, CanLoadStats};
-use logic_types::{DecodedBuffer, LogicBuffer};
-use vofa_core::PipelineConfig;
-use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use transport_core::TransportManager;
+use vofa_core::PipelineConfig;
 
 /// 应用全局状态
 pub struct AppState {
@@ -51,8 +51,7 @@ pub struct AppState {
     /// 图输出订阅者 (60 FPS 推送)
     pub output_subscribers: Arc<Mutex<Vec<Channel<pipeline_data_plane::GraphOutputSnapshot>>>>,
     /// Custom 输入订阅者 (30 FPS 推送到前端 iframe)
-    pub custom_input_subscribers:
-        Arc<Mutex<Vec<Channel<pipeline_data_plane::CustomInputBatch>>>>,
+    pub custom_input_subscribers: Arc<Mutex<Vec<Channel<pipeline_data_plane::CustomInputBatch>>>>,
     /// FrameDecoder 节点旁路原始字节收集器 (供前端 RawData 显示"每帧消费的原始字节")
     /// key: FrameDecoder widget id, value: Arc<Mutex<RawDataCollector>> (共享实例)
     /// 与 decoder_states 生命周期同步, 独立于按 Transport 源的 raw_collectors
@@ -101,8 +100,9 @@ impl AppState {
         let input_values = Arc::new(Mutex::new(HashMap::new()));
         let custom_outputs = Arc::new(Mutex::new(HashMap::new()));
         let custom_text_outputs = Arc::new(Mutex::new(HashMap::new()));
-        let text_output_snapshot =
-            Arc::new(Mutex::new(pipeline_data_plane::StringOutputSnapshot::default()));
+        let text_output_snapshot = Arc::new(Mutex::new(
+            pipeline_data_plane::StringOutputSnapshot::default(),
+        ));
         let text_output_subscribers = Arc::new(Mutex::new(Vec::new()));
         let source_frames = Arc::new(Mutex::new(SourceFramesMap::default()));
         let source_texts = Arc::new(Mutex::new(SourceTextsMap::default()));
@@ -123,11 +123,11 @@ impl AppState {
         let can_buffer = Arc::new(Mutex::new(CanBuffer::new(DEFAULT_CAN_BUFFER_CAPACITY)));
         // DEFAULT_CAN_LOAD_STATS_WINDOW = (window_us, history_capacity)
         let (window_us, history_capacity) = DEFAULT_CAN_LOAD_STATS_WINDOW;
-        let can_load_stats =
-            Arc::new(Mutex::new(CanLoadStats::new(window_us, history_capacity)));
+        let can_load_stats = Arc::new(Mutex::new(CanLoadStats::new(window_us, history_capacity)));
         let logic_buffer = Arc::new(Mutex::new(LogicBuffer::new(DEFAULT_LOGIC_BUFFER_CAPACITY)));
-        let decoded_buffer =
-            Arc::new(Mutex::new(DecodedBuffer::new(DEFAULT_DECODED_BUFFER_CAPACITY)));
+        let decoded_buffer = Arc::new(Mutex::new(DecodedBuffer::new(
+            DEFAULT_DECODED_BUFFER_CAPACITY,
+        )));
         let pipeline_config = Arc::new(RwLock::new(PipelineConfig::default()));
 
         let eval: GraphEvalState = build_graph_eval_state(

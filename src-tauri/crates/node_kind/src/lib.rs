@@ -31,4 +31,4 @@ pub use ports::{
     TRANSPORT_TX_HANDLE,
 };
 pub use spec::{protocol_source_port_names, NodeDef};
-pub use str_op::{StrNumParams, StrOp, StrResult};
+pub use str_op::{str_num_default, StrNumParams, StrOp, StrResult};

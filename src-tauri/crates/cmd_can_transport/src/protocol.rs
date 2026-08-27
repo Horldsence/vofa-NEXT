@@ -1,4 +1,5 @@
 use app_state::AppState;
+use error::ConfigError;
 use logic_decoder::LogicDecoderEngine;
 use notify_events::emit_transport_state;
 use pipeline_data_plane::feed_parallel::ParallelFeeder;
@@ -8,7 +9,6 @@ use protocol_float::{FireWaterEngine as FireWater, JustFloatEngine as JustFloat}
 use schema_types::ProtocolConfig;
 use tauri::{AppHandle, State};
 use vofa_core::{ConnectionState, Error, Result, TransportConfig};
-use error::ConfigError;
 
 /// 根据配置创建协议引擎
 pub fn create_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
@@ -18,7 +18,9 @@ pub fn create_engine(config: &ProtocolConfig) -> Box<dyn ProtocolEngine> {
         ProtocolConfig::RawData => Box::new(RawData::new()),
         ProtocolConfig::Slcan => Box::new(Slcan::new()),
         ProtocolConfig::CandleLight => Box::new(Candle::new()),
-        ProtocolConfig::LogicDecode { decoder } => Box::new(LogicDecoderEngine::new(decoder.clone())),
+        ProtocolConfig::LogicDecode { decoder } => {
+            Box::new(LogicDecoderEngine::new(decoder.clone()))
+        }
         ProtocolConfig::Diagnostic { .. } => Box::new(RawData::new()),
     }
 }
@@ -65,20 +67,20 @@ pub async fn set_protocol(
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: node_id.clone() }))?;
+        .ok_or_else(|| {
+            Error::Config(ConfigError::ProtocolNodeNotFound {
+                node_id: node_id.clone(),
+            })
+        })?;
     {
         let mut s = st.lock();
-        s.engine = std::sync::Arc::new(parking_lot::Mutex::new(create_engine(
-            &config,
-        )));
+        s.engine = std::sync::Arc::new(parking_lot::Mutex::new(create_engine(&config)));
         s.config = config;
         s.parallel_supported = None;
         s.in_parallel = false;
         s.detection_notified = false;
         s.last_detected_pushed = None;
-        s.parallel = std::sync::Arc::new(tokio::sync::Mutex::new(
-            ParallelFeeder::new(),
-        ));
+        s.parallel = std::sync::Arc::new(tokio::sync::Mutex::new(ParallelFeeder::new()));
     }
     // 手动通道数: 直接在后端对齐该源 buffer 通道数
     // (自动模式无需处理: 检测推送记录已重置, 重新检测到值后按变化推送时对齐)
@@ -98,7 +100,11 @@ pub async fn get_protocol(state: State<'_, AppState>, node_id: String) -> Result
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: node_id.clone() }))?;
+        .ok_or_else(|| {
+            Error::Config(ConfigError::ProtocolNodeNotFound {
+                node_id: node_id.clone(),
+            })
+        })?;
     let config = st.lock().config.clone();
     Ok(config)
 }
@@ -115,7 +121,11 @@ pub async fn get_detected_channels(
         .lock()
         .get(&node_id)
         .cloned()
-        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: node_id.clone() }))?;
+        .ok_or_else(|| {
+            Error::Config(ConfigError::ProtocolNodeNotFound {
+                node_id: node_id.clone(),
+            })
+        })?;
     let engine = st.lock().engine.clone();
     let detected = engine.lock().detected_channels();
     Ok(detected)

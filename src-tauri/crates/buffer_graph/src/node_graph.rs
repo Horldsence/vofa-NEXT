@@ -118,7 +118,7 @@ impl NodeGraph {
 
         fn dfs(node: &str, edges: &[Edge], visited: &mut HashMap<String, u8>) -> bool {
             match visited.get(node) {
-                Some(&1) => return true, // 发现环
+                Some(&1) => return true,  // 发现环
                 Some(&2) => return false, // 已完成
                 _ => {}
             }

@@ -110,7 +110,7 @@ pub enum NodeKind {
 }
 
 /// 协议帧源节点是否参与字节源标记边（Sink 视角）
-pub fn is_protocol_source(k: &NodeKind) -> bool {
+pub const fn is_protocol_source(k: &NodeKind) -> bool {
     matches!(k, NodeKind::ProtocolSource { .. })
 }
 

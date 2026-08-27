@@ -1,8 +1,6 @@
 //! `can_types::can_load_stats` 单元测试 + `frame_bits` 工具测试
 
-use can_types::{
-    frame_bits, CanDirection, CanFrame, CanFrameTestData, CanLoadStats,
-};
+use can_types::{frame_bits, CanDirection, CanFrame, CanFrameTestData, CanLoadStats};
 
 // ============ frame_bits 测试 ============
 
@@ -43,7 +41,10 @@ fn frame_bits_dlc_grows_monotonically() {
         let f = CanFrame::new(0, 0x100, vec![0; dlc as usize], CanDirection::Rx);
         let bits = frame_bits(&f);
         if dlc > 0 {
-            assert!(bits > prev, "DLC={dlc} bits={bits} should exceed prev={prev}");
+            assert!(
+                bits > prev,
+                "DLC={dlc} bits={bits} should exceed prev={prev}"
+            );
         }
         prev = bits;
     }
@@ -76,7 +77,12 @@ fn push_single_frame_updates_totals() {
 fn load_ratio_increases_with_dense_traffic() {
     let mut s = build_stats(1_000_000, 100);
     // 1s 窗口,500kbps → 500_000 bits/s = 500_000_000 bits/窗口
-    let standard_bits = frame_bits(&CanFrame::new(0, 0x100, vec![0; 8], CanDirection::Rx)) as u64;
+    let standard_bits = u64::from(frame_bits(&CanFrame::new(
+        0,
+        0x100,
+        vec![0; 8],
+        CanDirection::Rx,
+    )));
     // 推 100 帧 100ms 内 (然后 sample_history) → 高负载
     let frames = CanFrameTestData::standard_frames(0x100, 100);
     for (i, f) in frames.iter().enumerate() {
@@ -97,7 +103,11 @@ fn load_ratio_increases_with_dense_traffic() {
 fn evict_removes_old_samples_on_push() {
     let mut s = build_stats(1_000_000, 100);
     for i in 0..10u32 {
-        s.push(&CanFrameTestData::load_frame(0x100 + i, 0, u64::from(i) * 100));
+        s.push(&CanFrameTestData::load_frame(
+            0x100 + i,
+            0,
+            u64::from(i) * 100,
+        ));
     }
     // 推到第 1_100_000us 时,前面 9 个样本 (ts<100_000) 已被剔除
     s.push(&CanFrameTestData::load_frame(0x200, 0, 1_100_000));
@@ -152,7 +162,7 @@ fn per_id_history_is_sampled_on_sample_history() {
 #[test]
 fn load_ratio_zero_when_no_bitrate() {
     let s = build_stats(1_000_000, 100);
-    assert_eq!(s.load_ratio(0), 0.0);
+    assert!(s.load_ratio(0).abs() < 1e-6);
 }
 
 #[test]

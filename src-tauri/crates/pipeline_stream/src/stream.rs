@@ -12,6 +12,11 @@
 //! - **顺序**: 增量流前端按 seq 严格重组; 快照流 (波形) 按 "最新 seq 胜出"。
 
 use crate::dispatcher::{adaptive_channel_loop, AdaptiveRate};
+use buffer_databuffer::{DataBuffer, WaveformWindow};
+use buffer_raw::{RawDataBatch, RawDataCollector, RawDrain};
+use can_types::{CanBuffer, CanFrameBatch};
+use error::ConfigError;
+use logic_types::{DecodedBuffer, DecodedEventBatch, LogicBuffer, LogicSampleBatch};
 use parking_lot::Mutex;
 use pipeline_data_plane::StreamGroupState;
 use std::collections::HashMap;
@@ -20,12 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tokio::sync::oneshot;
-use buffer_databuffer::{DataBuffer, WaveformWindow};
-use buffer_raw::{RawDataBatch, RawDataCollector, RawDrain};
-use can_types::{CanBuffer, CanFrameBatch};
-use logic_types::{DecodedBuffer, DecodedEventBatch, LogicBuffer, LogicSampleBatch};
 use vofa_core::{Error, Result};
-use error::ConfigError;
 
 /// 每个订阅组的最大分片数 — 默认值, 实际由 PipelineConfig::max_stream_shards 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步)
@@ -116,6 +116,7 @@ pub type GroupMembership<S> = (Arc<Mutex<S>>, Arc<AtomicU64>, usize, String);
 ///   返回组 id (= 首个 channel id 字符串)
 /// - `group_id = Some`: 作为新 shard 加入, 流源实例按类型 downcast 取回 (类型不符报错)
 /// - `max_shards`: 组最大分片数 (来自 PipelineConfig::max_stream_shards)
+#[allow(clippy::implicit_hasher)] // 组表由 dispatcher 以 std hasher 构造共享, 泛化 S 会传染调用方
 pub fn join_or_create_group<S, F>(
     groups: &Arc<Mutex<HashMap<String, StreamGroupState>>>,
     group_id: Option<String>,
@@ -154,19 +155,16 @@ where
                 }));
             }
             g.shards += 1;
-            let source = g
-                .source
-                .clone()
-                .downcast::<Mutex<S>>()
-                .map_err(|_| {
-                    Error::Config(ConfigError::StreamGroupTypeMismatch { key: key.clone() })
-                })?;
+            let source = g.source.clone().downcast::<Mutex<S>>().map_err(|_| {
+                Error::Config(ConfigError::StreamGroupTypeMismatch { key: key.clone() })
+            })?;
             Ok((source, g.seq.clone(), g.shards - 1, key))
         }
     }
 }
 
 /// 分片退出时调用: 组计数 -1, 空组移除
+#[allow(clippy::implicit_hasher)] // 同 join_or_create_group
 pub fn leave_group(groups: &Arc<Mutex<HashMap<String, StreamGroupState>>>, key: &str) {
     let mut map = groups.lock();
     if let Some(g) = map.get_mut(key) {

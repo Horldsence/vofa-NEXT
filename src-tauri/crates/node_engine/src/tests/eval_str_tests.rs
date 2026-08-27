@@ -7,7 +7,7 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 #[test]
 fn test_str_len_outputs_f32_to_values_map() {
     // Len 输出域为 F32: 写入 ValuesMap, 不写 StringValuesMap;
@@ -122,7 +122,7 @@ fn test_str_num_port_fallback_vs_connected() {
     // 编译期结构断言: num_inputs/num_defaults 与端口表 F32 端口 (pos, len) 紧凑对齐
     let str_op = g
         .compiled()
-        .ops
+        .ops()
         .iter()
         .find_map(|op| match op {
             CompiledOp::Str {
@@ -201,8 +201,6 @@ fn test_str_chain_two_nodes() {
     assert!(pos("concat1") < pos("up1"));
     assert!(pos("up1") < pos("len1"));
 }
-
-
 
 #[test]
 fn test_text_input_writes_str_port_slow_path() {

@@ -58,7 +58,11 @@ fn test_new_worker_creates_independent_instance() {
 
 #[test]
 fn test_default_impl_matches_new() {
+    // 经泛型路径调用 Default, 与手写 new 的产物保持一致
+    fn default_of<E: Default>() -> E {
+        E::default()
+    }
     let a = RawDataEngine::new();
-    let b = RawDataEngine::default();
+    let b = default_of::<RawDataEngine>();
     assert_eq!(a.name(), b.name());
 }

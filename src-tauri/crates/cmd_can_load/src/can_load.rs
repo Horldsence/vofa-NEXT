@@ -1,7 +1,7 @@
 use app_state::AppState;
+use can_types::CanLoadSnapshot;
 use std::time::Duration;
 use tauri::{ipc::Channel, AppHandle, Manager, State};
-use can_types::CanLoadSnapshot;
 use vofa_core::Result;
 
 /// 从指定 Transport 节点的 TransportConfig 提取 CAN 波特率 (bps)
@@ -43,8 +43,8 @@ pub async fn get_can_load_stats(
     bitrate_bps: Option<u32>,
 ) -> Result<CanLoadSnapshot> {
     let bitrate = resolve_can_bitrate(&state, &node_id, bitrate_bps).await;
-    let stats = state.can_load_stats.lock();
-    Ok(stats.snapshot(bitrate))
+    let load_stats = state.can_load_stats.lock();
+    Ok(load_stats.snapshot(bitrate))
 }
 
 /// 设置 CAN 负载统计滑动窗口大小 (微秒)
@@ -82,7 +82,7 @@ pub async fn subscribe_can_load(
     interval_ms: Option<u64>,
     bitrate_bps: Option<u32>,
 ) -> Result<()> {
-    let stats = state.can_load_stats.clone();
+    let load_stats_handle = state.can_load_stats.clone();
     let interval = Duration::from_millis(interval_ms.unwrap_or(500));
     let channel_id = on_event.id();
 
@@ -108,7 +108,7 @@ pub async fn subscribe_can_load(
                 }
                 _ = ticker.tick() => {
                     let snap = {
-                        let mut s = stats.lock();
+                        let mut s = load_stats_handle.lock();
                         s.sample_history(bitrate, now_us());
                         s.snapshot(bitrate)
                     };
@@ -127,7 +127,8 @@ pub async fn subscribe_can_load(
 /// 取消订阅 CAN 负载统计
 #[tauri::command]
 pub async fn unsubscribe_can_load(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.can_load_tasks.lock().remove(&channel_id) {
+    let removed = state.can_load_tasks.lock().remove(&channel_id);
+    if let Some(tx) = removed {
         let _ = tx.send(());
     }
     Ok(())
@@ -184,12 +185,8 @@ pub async fn export_can_load_csv(
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs());
     let (yyyy, mm, dd, hh, min, ss) = secs_to_local_components(now);
-    let timestamp_str = format!(
-        "{yyyy:04}-{mm:02}-{dd:02}T{hh:02}:{min:02}:{ss:02}"
-    );
-    let filename = format!(
-        "vofa-can-load-{yyyy:04}{mm:02}{dd:02}-{hh:02}{min:02}{ss:02}.csv"
-    );
+    let timestamp_str = format!("{yyyy:04}-{mm:02}-{dd:02}T{hh:02}:{min:02}:{ss:02}");
+    let filename = format!("vofa-can-load-{yyyy:04}{mm:02}{dd:02}-{hh:02}{min:02}{ss:02}.csv");
 
     let csv = format_can_load_csv(&snap, bitrate, &timestamp_str);
 
@@ -210,11 +207,12 @@ pub async fn export_can_load_csv(
 
 /// 将 UNIX 秒数转换为本地时间组件 (年月日时分秒)
 /// 简化实现, 不依赖 chrono — 假设本地时区为系统设置的时区
+#[allow(clippy::cast_possible_wrap, clippy::cast_sign_loss)] // unix 秒值域远小于 c_long 上限, tm 字段均为非负小整数
 fn secs_to_local_components(secs: u64) -> (u32, u32, u32, u32, u32, u32) {
     // 用 libc localtime_r 获取本地时间 (跨平台)
     #[cfg(unix)]
     {
-        use std::os::raw::{c_long, c_int, c_char};
+        use std::os::raw::{c_char, c_int, c_long};
         extern "C" {
             fn localtime_r(time: *const c_long, result: *mut libc_tm) -> *mut libc_tm;
         }

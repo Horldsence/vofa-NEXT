@@ -5,12 +5,12 @@
 //! [`pipeline_dispatcher::sync_ifft_buffers`] 提供。
 
 use crate::{CustomInputBatch, GraphEvalState, SpectrumBatch};
+use dsp_fft::SpectrumResult;
 use pipeline_data_plane::StreamGroupState;
 use pipeline_dispatcher::{sync_ifft_buffers, sync_spectrum_analyzers};
 use pipeline_stream::AdaptiveRate;
 use std::collections::HashMap;
 use std::time::Duration;
-use dsp_fft::SpectrumResult;
 
 /// 合并自定义文本输出与后端图求值字符串输出 — 同 (widget, port) 键以后端求值为准
 ///

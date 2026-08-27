@@ -9,9 +9,7 @@
 //! - `TransportStats` 默认值与累加
 //! - `now_us` 单调性 / 非负性
 
-use vofa_core::frame::{
-    now_us, ConnectionState, DataFrame, PortInfo, RawData, TransportStats,
-};
+use vofa_core::frame::{now_us, ConnectionState, DataFrame, PortInfo, RawData, TransportStats};
 
 #[test]
 fn dataframe_new_uses_current_timestamp() {

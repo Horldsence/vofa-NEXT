@@ -10,15 +10,15 @@
 
 use std::collections::HashMap;
 
-use dsp_filter::DigitalFilter;
 use dsp_fft::IfftState;
+use dsp_filter::DigitalFilter;
 use node_frame_decoder::FrameParser;
 use node_kind::NodeKind;
 use node_trigger::TriggerState;
 
+use node_eval::{SourceFramesMap, SourceTextsMap, StringValuesMap, ValuesMap};
+
 use crate::compile::CompiledGraph;
-use crate::eval::{SourceFramesMap, SourceTextsMap};
-use crate::{StringValuesMap, ValuesMap};
 
 pub mod arms;
 
@@ -88,8 +88,12 @@ impl CompiledGraph {
         out_str: &mut StringValuesMap,
     ) {
         for node_id in &self.eval_order {
-            let Some(node) = self.value_def(node_id) else { continue };
-            let Some(arm) = arm_for(&node.kind) else { continue };
+            let Some(node) = self.value_def(node_id) else {
+                continue;
+            };
+            let Some(arm) = arm_for(&node.kind) else {
+                continue;
+            };
             let mut ctx = EvalCtx {
                 source_frames,
                 source_texts,
@@ -106,7 +110,10 @@ impl CompiledGraph {
         }
     }
 
-    pub fn collect_custom_inputs(&self, computed: &ValuesMap) -> HashMap<String, HashMap<String, f32>> {
+    pub fn collect_custom_inputs(
+        &self,
+        computed: &ValuesMap,
+    ) -> HashMap<String, HashMap<String, f32>> {
         let mut result = HashMap::new();
         for node in self.value_nodes() {
             if let NodeKind::Custom { inputs, .. } = &node.kind {
@@ -124,7 +131,10 @@ impl CompiledGraph {
         let mut result = HashMap::new();
         for node in self.value_nodes() {
             if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
-                result.insert(node.id.clone(), self.resolve_input(&node.id, "in0", computed));
+                result.insert(
+                    node.id.clone(),
+                    self.resolve_input(&node.id, "in0", computed),
+                );
             }
         }
         result

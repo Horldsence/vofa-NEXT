@@ -10,7 +10,7 @@
 
 #![allow(dead_code)] // 形状模块 — trait 由下游 crate 按需启用，未启用前保留为抽象
 
-use crate::errors::CompileError;
+use node_hir::CompileError;
 
 /// 端口描述 — trait 形状
 #[derive(Debug, Clone)]
@@ -27,7 +27,10 @@ pub enum PortKind {
     Bytes,
     String,
     /// RawData 关联通道 — `src:<source>:<handle>` 动态端口标记
-    RawData { source: String, handle: String },
+    RawData {
+        source: String,
+        handle: String,
+    },
 }
 
 /// 节点规格 trait — `NodeDef` 是事实上的实现
@@ -56,10 +59,11 @@ pub trait Compilable {
 
 /// 求值输入 — 各类运行期缓冲与状态表
 pub struct EvalInput<'a> {
-    pub source_frames: &'a crate::eval::SourceFramesMap,
-    pub source_texts: &'a crate::eval::SourceTextsMap,
+    pub source_frames: &'a node_eval::SourceFramesMap,
+    pub source_texts: &'a node_eval::SourceTextsMap,
     pub input_values: &'a std::collections::HashMap<String, f32>,
-    pub custom_outputs: &'a std::collections::HashMap<String, std::collections::HashMap<String, f32>>,
+    pub custom_outputs:
+        &'a std::collections::HashMap<String, std::collections::HashMap<String, f32>>,
     pub filter_states: &'a mut std::collections::HashMap<String, dsp_filter::DigitalFilter>,
     pub decoder_states: &'a std::collections::HashMap<String, node_frame_decoder::FrameParser>,
     pub ifft_states: &'a mut std::collections::HashMap<String, dsp_fft::IfftState>,
@@ -68,8 +72,8 @@ pub struct EvalInput<'a> {
 
 /// 求值输出 — 物化到调用方缓冲
 pub struct EvalOutput<'a> {
-    pub values: &'a mut crate::ValuesMap,
-    pub string_values: &'a mut crate::StringValuesMap,
+    pub values: &'a mut node_eval::ValuesMap,
+    pub string_values: &'a mut node_eval::StringValuesMap,
 }
 
 /// 求值 trait

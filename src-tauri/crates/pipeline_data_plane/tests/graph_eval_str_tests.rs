@@ -8,7 +8,7 @@ use std::sync::atomic::Ordering;
 use app_state::AppState;
 use node_engine::CompiledGraph;
 use node_kind::{NodeDef, NodeKind, StrNumParams, StrOp};
-use pipeline_data_plane::{DataPlaneState, evaluate_snapshot_now, frame_dispatch};
+use pipeline_data_plane::{evaluate_snapshot_now, frame_dispatch, DataPlaneState};
 use vofa_core::DataFrame;
 
 /// 纯本地图 (无 ProtocolSource → 任意源来帧都触发), 含一个 Str 节点

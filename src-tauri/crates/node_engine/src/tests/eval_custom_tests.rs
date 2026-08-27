@@ -7,7 +7,7 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 #[test]
 fn test_evaluate_custom_node() {
     let nodes = vec![
@@ -42,4 +42,3 @@ fn test_evaluate_custom_node() {
         Some(&5.0)
     );
 }
-

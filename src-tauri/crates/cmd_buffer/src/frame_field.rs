@@ -28,9 +28,15 @@ pub enum FieldType {
 /// 解析十进制 / `0xHEX` / `0bBIN` / 浮点数字字符串
 fn parse_number_str(value: &str, min: i64, max: i64) -> Result<i64, String> {
     let trimmed = value.trim();
-    let n: i64 = if let Some(rest) = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")) {
+    let n: i64 = if let Some(rest) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
         i64::from_str_radix(rest, 16).map_err(|e| format!("无效的 HEX 数字 `{value}`: {e}"))?
-    } else if let Some(rest) = trimmed.strip_prefix("0b").or_else(|| trimmed.strip_prefix("0B")) {
+    } else if let Some(rest) = trimmed
+        .strip_prefix("0b")
+        .or_else(|| trimmed.strip_prefix("0B"))
+    {
         i64::from_str_radix(rest, 2).map_err(|e| format!("无效的 BIN 数字 `{value}`: {e}"))?
     } else if trimmed.contains('.') {
         let f: f64 = trimmed
@@ -54,10 +60,7 @@ fn parse_number_str(value: &str, min: i64, max: i64) -> Result<i64, String> {
 /// HEX 字符串解析 (与前端 parseHex 一致)
 /// 接受 `AA 01 02 BB` / `AA0102BB` / `AA,01,02` 等格式
 pub fn parse_hex(input: &str) -> Result<Vec<u8>, String> {
-    let cleaned: String = input
-        .chars()
-        .filter(|c| c.is_ascii_hexdigit())
-        .collect();
+    let cleaned: String = input.chars().filter(|c| c.is_ascii_hexdigit()).collect();
     if cleaned.is_empty() {
         return Ok(Vec::new());
     }
@@ -154,13 +157,22 @@ mod tests {
 
     #[test]
     fn pack_field_uint_le() {
-        assert_eq!(pack_field(FieldType::Uint16Le, "0x0102").unwrap(), vec![0x02, 0x01]);
-        assert_eq!(pack_field(FieldType::Uint16Be, "0x0102").unwrap(), vec![0x01, 0x02]);
+        assert_eq!(
+            pack_field(FieldType::Uint16Le, "0x0102").unwrap(),
+            vec![0x02, 0x01]
+        );
+        assert_eq!(
+            pack_field(FieldType::Uint16Be, "0x0102").unwrap(),
+            vec![0x01, 0x02]
+        );
     }
 
     #[test]
     fn pack_field_int_le() {
-        assert_eq!(pack_field(FieldType::Int16Le, "-1").unwrap(), vec![0xff, 0xff]);
+        assert_eq!(
+            pack_field(FieldType::Int16Le, "-1").unwrap(),
+            vec![0xff, 0xff]
+        );
     }
 
     #[test]

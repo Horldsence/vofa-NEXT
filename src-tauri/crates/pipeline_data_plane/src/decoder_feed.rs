@@ -37,10 +37,9 @@ fn collect_decoder_configs(eval_state: &GraphEvalState) -> HashMap<String, Decod
 pub fn ensure_decoder(eval_state: &GraphEvalState, dec_id: &str, config: &DecoderParseConfig) {
     let (blocks, ev, efc, elt, efps) = config;
     let mut decoder_states = eval_state.decoder_states.lock();
-    let need_rebuild = match decoder_states.get(dec_id) {
-        None => true,
-        Some(p) => !p.matches_config(blocks, *ev, *efc, *elt, *efps),
-    };
+    let need_rebuild = decoder_states
+        .get(dec_id)
+        .is_none_or(|p| !p.matches_config(blocks, *ev, *efc, *elt, *efps));
     if need_rebuild {
         let parser = FrameParser::new(blocks.clone(), *ev, *efc, *elt, *efps);
         decoder_states.insert(dec_id.to_string(), parser);

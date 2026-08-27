@@ -445,7 +445,7 @@ fn test_split_aligned_equivalence() {
     let ranges = seq_engine
         .split_aligned(&data, 3)
         .expect("slcan 应支持并行切分");
-    let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+    let tail_start = ranges.last().map_or(0, |r| r.end);
     let mut merged = FeedOutput::default();
     let mut concat = Vec::new();
     for r in &ranges {

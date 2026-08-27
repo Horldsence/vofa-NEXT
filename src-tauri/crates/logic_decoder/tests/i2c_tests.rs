@@ -3,7 +3,7 @@
 use logic_decoder::LogicDecoderEngine;
 use logic_types::{DecodedEvent, I2cEvent, LogicDecoderConfig, LogicSample};
 
-fn i2c_bit(sda: bool, scl: bool) -> u8 {
+const fn i2c_bit(sda: bool, scl: bool) -> u8 {
     let mut v = 0u8;
     if sda {
         v |= 0x01;
@@ -32,7 +32,7 @@ fn to_samples(data: &[u8]) -> Vec<LogicSample> {
         .enumerate()
         .map(|(i, &b)| LogicSample {
             timestamp: i as u64,
-            channels: b as u32,
+            channels: u32::from(b),
             channel_count: 8,
         })
         .collect()

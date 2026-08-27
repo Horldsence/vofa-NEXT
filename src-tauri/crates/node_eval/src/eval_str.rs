@@ -1,12 +1,10 @@
-//! 字符串端口 helpers + Str 数值端口内联回退
+//! 字符串端口 helpers — evaluate 慢路径/快照物化共用,稳态低分配覆盖写
 //!
 //! 与 [`crate::eval_ports`] 中的 f32 端口 helpers 对偶,按 PortDomain::String / Bytes 分域拆分
 
 use std::collections::HashMap;
 
 use rustc_hash::FxBuildHasher;
-
-use node_kind::StrNumParams;
 
 use crate::StringValuesMap;
 
@@ -28,15 +26,5 @@ pub fn set_str_port(m: &mut HashMap<String, String, FxBuildHasher>, port: &str, 
         slot.push_str(value);
     } else {
         m.insert(port.to_string(), value.to_owned());
-    }
-}
-
-/// Str 数值端口的内联回退值 (端口未连接时使用): 端口名 → [`StrNumParams`] 字段
-pub fn str_num_default(num: &StrNumParams, port: &str) -> f32 {
-    match port {
-        "pos" => num.pos,
-        "len" => num.len,
-        "size" => num.size,
-        _ => 0.0,
     }
 }

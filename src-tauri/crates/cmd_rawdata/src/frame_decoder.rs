@@ -1,5 +1,5 @@
-use vofa_core::Result;
 use protocol_engine::{detect_format, parse_ascii, parse_hex, InputFormat};
+use vofa_core::Result;
 
 /// 帧解码器手动测试结果 (与前端 FrameDecoderManualResult 对应)
 #[derive(Debug, Clone, serde::Serialize)]

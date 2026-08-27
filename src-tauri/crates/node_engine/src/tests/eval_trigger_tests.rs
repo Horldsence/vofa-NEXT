@@ -7,7 +7,7 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 #[test]
 fn test_trigger_manual_number_rule_hit() {
     // manual 模式: 每帧以 command 匹配, number 规则命中 → value + matched (text 不写)
@@ -442,6 +442,3 @@ fn test_trigger_manual_tracks_prev_no_false_rising_on_mode_switch() {
         Some((7.0, 1.0))
     );
 }
-
-
-

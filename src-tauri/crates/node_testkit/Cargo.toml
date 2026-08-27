@@ -1,0 +1,19 @@
+[package]
+name = "node_testkit"
+description = "节点图测试构造器 — 节点/边/帧源工厂函数, 仅作 dev-dependency 使用"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+schema_types = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_window = { workspace = true }
+buffer_graph = { workspace = true }
+node_kind = { workspace = true }
+node_eval = { workspace = true }
+node_trigger = { workspace = true }

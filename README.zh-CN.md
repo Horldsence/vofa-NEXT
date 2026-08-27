@@ -223,7 +223,7 @@ VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基�
 | `transport_core` / `transport_serial` / `transport_net` / `transport_can_bridge` | 传输层（串口 / TCP / UDP / Slcan / CandleLight / 测试数据） |
 | `protocol_engine` / `protocol_float` / `protocol_can_bridge` | 协议引擎（JustFloat / FireWater / RawData / Slcan / CandleLight / LogicDecode） |
 | `buffer_ring` / `buffer_databuffer` / `buffer_raw` / `buffer_graph` | 环形缓冲区、多通道 `DataBuffer`、原始数据收集器、图路由 |
-| `node_kind` / `node_engine` / `node_frame_decoder` / `node_trigger` | DAG 节点定义、编译与求值、帧解码器、触发器匹配 |
+| `node_kind` / `node_hir` / `node_plane` / `node_lower` / `node_eval` / `node_engine` / `node_frame_decoder` / `node_trigger` | DAG 节点定义、编译流水线（HIR → 平面投影 → lowering → 槽位运行时）与门面、帧解码器、触发器匹配 |
 | `dsp_window` / `dsp_fft` / `dsp_filter` | 数字信号处理（窗函数、FFT 频谱、FIR/IIR 滤波器） |
 | `automotive_isotp` / `automotive_can` / `automotive_diag` | 诊断引擎（ISO-TP / UDS / OBD-II / J1939），桥接 CAN 后端 |
 | `pipeline_data_plane` / `pipeline_stream` / `pipeline_dispatcher` / `subscription` | 数据平面：字节路由、分片流分发、订阅注册表 |

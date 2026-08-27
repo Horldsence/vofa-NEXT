@@ -12,7 +12,7 @@ struct MockEngine {
 }
 
 impl MockEngine {
-    fn new(label: &'static str) -> Self {
+    const fn new(label: &'static str) -> Self {
         Self {
             label,
             auto_mode: false,
@@ -24,12 +24,14 @@ impl MockEngine {
 impl ProtocolEngine for MockEngine {
     fn feed(&mut self, data: &[u8]) -> FeedOutput {
         // 按字节数生成等长通道值的 DataFrame
-        let channels: Vec<f32> = data.iter().map(|&b| b as f32).collect();
+        let channels: Vec<f32> = data.iter().map(|&b| f32::from(b)).collect();
         FeedOutput::from_frames(vec![DataFrame::new(channels)])
     }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // Mock 按 u8 截断编码
     fn encode_channel(&mut self, _channel: usize, value: f32) -> Vec<u8> {
         vec![value as u8]
     }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)] // Mock 按 u8 截断编码
     fn encode_channels(&mut self, values: &[f32]) -> Vec<u8> {
         values.iter().map(|&v| v as u8).collect()
     }
@@ -43,7 +45,7 @@ impl ProtocolEngine for MockEngine {
         self.auto_mode
     }
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(MockEngine::new(self.label))
+        Box::new(Self::new(self.label))
     }
 }
 
@@ -69,11 +71,12 @@ impl ProtocolEngine for MockCanEngine {
     fn encode_channels(&mut self, _values: &[f32]) -> Vec<u8> {
         Vec::new()
     }
+    #[allow(clippy::unnecessary_literal_bound)] // trait 签名为 &str, 实现方返回字面量
     fn name(&self) -> &str {
         "MockCan"
     }
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(MockCanEngine)
+        Box::new(Self)
     }
 }
 
@@ -90,11 +93,12 @@ impl ProtocolEngine for EmptyEngine {
     fn encode_channels(&mut self, _values: &[f32]) -> Vec<u8> {
         Vec::new()
     }
+    #[allow(clippy::unnecessary_literal_bound)] // trait 签名为 &str, 实现方返回字面量
     fn name(&self) -> &str {
         "Empty"
     }
     fn new_worker(&self) -> Box<dyn ProtocolEngine> {
-        Box::new(EmptyEngine)
+        Box::new(Self)
     }
 }
 
@@ -162,7 +166,7 @@ fn parsed_input_error_constructor() {
     let p = ParsedInput::error("boom");
     match p {
         ParsedInput::Error { message } => assert_eq!(message, "boom"),
-        other => panic!("expected Error, got {:?}", other),
+        other => panic!("expected Error, got {other:?}"),
     }
 }
 
@@ -175,9 +179,12 @@ fn parse_input_default_with_hex_format() {
     match result {
         ParsedInput::Frames(frames) => {
             assert_eq!(frames.len(), 1);
-            assert_eq!(frames[0].channels, vec![0xAA as f32, 0x01 as f32]);
+            assert_eq!(
+                frames[0].channels,
+                vec![f32::from(0xAA_u8), f32::from(0x01_u8)]
+            );
         }
-        other => panic!("expected Frames, got {:?}", other),
+        other => panic!("expected Frames, got {other:?}"),
     }
 }
 
@@ -189,7 +196,7 @@ fn parse_input_default_with_auto_resolves_hex() {
         ParsedInput::Frames(frames) => {
             assert_eq!(frames.len(), 1);
         }
-        other => panic!("expected Frames, got {:?}", other),
+        other => panic!("expected Frames, got {other:?}"),
     }
 }
 
@@ -199,9 +206,9 @@ fn parse_input_default_with_ascii_format() {
     let result = engine.parse_input("Hi", InputFormat::Ascii);
     match result {
         ParsedInput::Frames(frames) => {
-            assert_eq!(frames[0].channels, vec![b'H' as f32, b'i' as f32]);
+            assert_eq!(frames[0].channels, vec![f32::from(b'H'), f32::from(b'i')]);
         }
-        other => panic!("expected Frames, got {:?}", other),
+        other => panic!("expected Frames, got {other:?}"),
     }
 }
 
@@ -214,7 +221,7 @@ fn parse_input_default_collects_can_frames() {
             assert_eq!(frames.len(), 1);
             assert_eq!(frames[0].id, 0x123);
         }
-        other => panic!("expected CanFrames, got {:?}", other),
+        other => panic!("expected CanFrames, got {other:?}"),
     }
 }
 
@@ -226,7 +233,7 @@ fn parse_input_default_falls_back_to_raw_bytes() {
         ParsedInput::RawBytes(bytes) => {
             assert_eq!(bytes, vec![0xAA, 0x01, 0x02, 0xBB]);
         }
-        other => panic!("expected RawBytes, got {:?}", other),
+        other => panic!("expected RawBytes, got {other:?}"),
     }
 }
 
@@ -236,7 +243,7 @@ fn parse_input_default_empty_input_returns_error() {
     let result = engine.parse_input("", InputFormat::Hex);
     match result {
         ParsedInput::Error { message } => assert!(message.contains("空")),
-        other => panic!("expected Error, got {:?}", other),
+        other => panic!("expected Error, got {other:?}"),
     }
 }
 
@@ -246,7 +253,7 @@ fn parse_input_default_invalid_hex_returns_error() {
     let result = engine.parse_input("ZZ", InputFormat::Hex);
     match result {
         ParsedInput::Error { .. } => {}
-        other => panic!("expected Error, got {:?}", other),
+        other => panic!("expected Error, got {other:?}"),
     }
 }
 
@@ -265,15 +272,18 @@ fn default_trait_methods_return_baseline() {
     let mut engine = MockEngine::new("Mock");
     assert_eq!(engine.detected_channels(), None);
     assert!(!engine.is_auto_mode());
-    assert_eq!(engine.encode_can(&can_types::CanFrame {
-        timestamp: 0,
-        id: 0,
-        extended: false,
-        rtr: false,
-        dlc: 0,
-        data: Vec::new(),
-        direction: CanDirection::Rx,
-    }), Vec::<u8>::new());
+    assert_eq!(
+        engine.encode_can(&can_types::CanFrame {
+            timestamp: 0,
+            id: 0,
+            extended: false,
+            rtr: false,
+            dlc: 0,
+            data: Vec::new(),
+            direction: CanDirection::Rx,
+        }),
+        Vec::<u8>::new()
+    );
     assert!(engine.split_aligned(&[1, 2, 3], 2).is_none());
     assert_eq!(engine.take_pending(), Vec::<u8>::new());
 }

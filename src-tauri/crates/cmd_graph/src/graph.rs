@@ -12,8 +12,8 @@ use tauri::{ipc::Channel, AppHandle, Emitter, State};
 use vofa_core::{Error, Result};
 
 use crate::{
-    compile_queue, compute_derived, GraphCompileEvent, GraphDerived, GRAPH_COMPILE_EVENT,
-    inject_protocol_sources, CompileState,
+    compile_queue, compute_derived, inject_protocol_sources, CompileState, GraphCompileEvent,
+    GraphDerived,
 };
 
 // 全局队列入口保留 (供后续 LWW 后台 worker 接入, 当前同步实现不直接调用)
@@ -86,27 +86,26 @@ pub async fn apply_tab_graph(
     compile_nodes.extend(inject_protocol_sources(&nodes, &edges));
 
     // 2. 本 tab 数值图编译 — 失败时构造 `CompileReport` 并 emit `graph:compile` 事件
-    let compiled =
-        match node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges) {
-            Ok(g) => g,
-            Err(e) => {
-                let report = error::CompileReport::new(e);
-                if let Some(app) = app {
-                    let _ = app.emit(
-                        crate::GRAPH_COMPILE_EVENT,
-                        GraphCompileEvent {
-                            tab_id: tab_id.clone(),
-                            state: CompileState::Error,
-                            queued_seq: 0,
-                            report: Some(report),
-                        },
-                    );
-                }
-                return Err(Error::Config(ConfigError::GraphCompile(Box::new(
-                    error::CompileError::Cycle { cycle: vec![] },
-                ))));
+    let compiled = match node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges) {
+        Ok(g) => g,
+        Err(e) => {
+            let report = error::CompileReport::new(e);
+            if let Some(app) = app {
+                let _ = app.emit(
+                    crate::GRAPH_COMPILE_EVENT,
+                    GraphCompileEvent {
+                        tab_id: tab_id.clone(),
+                        state: CompileState::Error,
+                        queued_seq: 0,
+                        report: Some(report),
+                    },
+                );
             }
-        };
+            return Err(Error::Config(ConfigError::GraphCompile(Box::new(
+                error::CompileError::Cycle { cycle: vec![] },
+            ))));
+        }
+    };
 
     // 3. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
     // ProtocolSource 是 tab 数值平面的帧源引用, 不参与字节平面, 不进全局表

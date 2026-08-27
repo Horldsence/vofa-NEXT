@@ -7,7 +7,7 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 
 #[test]
 fn test_evaluate_protocol_source() {
@@ -94,7 +94,6 @@ fn test_protocol_source_missing_source_writes_zero() {
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch2")), Some(&0.0));
 }
 
-
 #[test]
 fn test_protocol_source_named_ports_evaluate() {
     // 命名端口: channels[i] 写入第 i 个命名槽位 (慢路径)
@@ -180,8 +179,6 @@ fn test_protocol_source_port_names_fallback() {
         vec!["x", "ch1", "ch2"]
     );
 }
-
-
 
 #[test]
 fn test_protocol_source_str_port_slow_path() {
@@ -291,6 +288,3 @@ fn test_protocol_source_str_port_slot_run() {
     compiled.materialize_str(&str_slots, &str_written, &mut out_str);
     assert!(!out_str.contains_key("ps1"));
 }
-
-
-

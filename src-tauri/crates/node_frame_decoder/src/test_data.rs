@@ -45,9 +45,7 @@ use std::collections::HashMap;
 
 use super::blocks::{block_should_execute, checksum_byte_len, parse_hex};
 use super::ChecksumAlgorithm;
-use schema_types::{
-    DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
-};
+use schema_types::{DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType};
 
 /// 帧解码器测试数据生成器 — 见模块文档
 pub struct FrameDecoderTestData;
@@ -72,7 +70,12 @@ impl FrameDecoderTestData {
     }
 
     /// 编码一帧, 返回 (字节流, 各 Checksum 块的字节位置 (buf_pos, cs_len))
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_possible_wrap, clippy::items_after_statements)]
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap,
+        clippy::items_after_statements
+    )]
     fn encode_frame_inner(
         blocks: &[DecoderBlockDef],
         field_values: &HashMap<String, f32>,

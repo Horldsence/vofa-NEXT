@@ -35,9 +35,7 @@ pub enum BlockKind {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BlockDto {
     #[serde(rename = "const_hex")]
-    ConstHex {
-        hex: Option<String>,
-    },
+    ConstHex { hex: Option<String> },
     VarRef {
         port_name: Option<String>,
         field_type: Option<FieldType>,
@@ -85,7 +83,10 @@ pub fn compute_frame_bytes(
     for (idx, block) in frame.blocks.iter().enumerate() {
         let chunk_result: Result<Vec<u8>, String> = match block {
             BlockDto::ConstHex { hex } => parse_hex(hex.as_deref().unwrap_or("")),
-            BlockDto::VarRef { port_name, field_type } => {
+            BlockDto::VarRef {
+                port_name,
+                field_type,
+            } => {
                 let key = port_name.as_deref().unwrap_or("value");
                 let val = inputs.get(key).copied().unwrap_or(0.0);
                 let ft = field_type.unwrap_or(FieldType::Uint16Le);
@@ -179,8 +180,13 @@ mod tests {
     fn checksum_sum8_over_preceding() {
         let frame = CommandFrameDto {
             blocks: vec![
-                BlockDto::ConstHex { hex: Some("01 02".into()) },
-                BlockDto::Checksum { checksum: Some(ChecksumKind::Sum8), custom_script: None },
+                BlockDto::ConstHex {
+                    hex: Some("01 02".into()),
+                },
+                BlockDto::Checksum {
+                    checksum: Some(ChecksumKind::Sum8),
+                    custom_script: None,
+                },
             ],
             append_newline: false,
         };
@@ -191,7 +197,9 @@ mod tests {
     #[test]
     fn append_newline_after_chunks() {
         let frame = CommandFrameDto {
-            blocks: vec![BlockDto::ConstHex { hex: Some("AA".into()) }],
+            blocks: vec![BlockDto::ConstHex {
+                hex: Some("AA".into()),
+            }],
             append_newline: true,
         };
         let out = compute_frame_bytes(&frame, &empty_inputs());
@@ -202,8 +210,12 @@ mod tests {
     fn invalid_hex_reports_error_with_block_index() {
         let frame = CommandFrameDto {
             blocks: vec![
-                BlockDto::ConstHex { hex: Some("AA".into()) },
-                BlockDto::ConstHex { hex: Some("BADHEX1".into()) },
+                BlockDto::ConstHex {
+                    hex: Some("AA".into()),
+                },
+                BlockDto::ConstHex {
+                    hex: Some("BADHEX1".into()),
+                },
             ],
             append_newline: false,
         };

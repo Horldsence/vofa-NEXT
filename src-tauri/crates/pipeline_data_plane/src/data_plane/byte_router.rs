@@ -11,11 +11,11 @@
 //! - FrameDecoder 节点 `in`/`loopbackIn`: 走 feed_one_decoder 语义 (按边路由)
 //! - Transport 节点 `tx`: registry.send (协议转换回注 / 命令发送落地)
 
-use tauri::AppHandle;
-use schema_types::{ProtocolConfig, SchemaPreset};
 use node_kind::{
     NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE, TRANSPORT_TX_HANDLE,
 };
+use schema_types::{ProtocolConfig, SchemaPreset};
+use tauri::AppHandle;
 
 use super::DataPlaneState;
 use crate::decoder_feed::DecoderFeedCache;
@@ -183,21 +183,20 @@ async fn feed_protocol(
             .get_or_insert_with(|| engine.lock().split_aligned(&[], 2).is_some())
     };
 
-    let out;
     let mut detection = None;
-    if can_parallel {
-        let mut par = parallel.lock().await;
-        {
+    let out = if can_parallel {
+        // 首次进入并行: 接续主引擎内部缓冲里的半个帧 (false→true 转换沿)
+        let enter_parallel = {
             let mut s = st.lock();
-            if !s.in_parallel {
-                // 首次进入并行: 接续主引擎内部缓冲里的半个帧
-                s.in_parallel = true;
-                par.pending = engine.lock().take_pending();
-            }
+            !std::mem::replace(&mut s.in_parallel, true)
+        };
+        let mut par = parallel.lock().await;
+        if enter_parallel {
+            par.pending = engine.lock().take_pending();
         }
         let (o, det, _timing) = par.feed(&engine, data, workers).await;
-        out = o;
         detection = det;
+        o
     } else {
         // 积压消退回落顺序模式: 不完整尾字节喂回主引擎 (零丢失)
         let was_parallel = {
@@ -210,7 +209,7 @@ async fn feed_protocol(
                 let _ = engine.lock().feed(&pending);
             }
         }
-        let o = {
+        {
             let mut p = engine.lock();
             let o = p.feed(data);
             // 自动通道检测: 自动模式下每次读取检测值, 变化即推 (见下方检测值处理)
@@ -218,9 +217,8 @@ async fn feed_protocol(
                 detection = p.detected_channels();
             }
             o
-        };
-        out = o;
-    }
+        }
+    };
     // 通道检测处理 (单次锁内取齐决策):
     // - 系统通知保持一次性语义 (detection_notified 闸)
     // - 前端事件 protocol:channels-detected 按变化推送 (last_detected_pushed 记录上次已推送值),
@@ -289,10 +287,10 @@ async fn feed_protocol(
         let s = st.lock();
         (
             s.convert_engine.clone(),
-            match &s.schema {
-                Some(schema) => schema.preset == SchemaPreset::RawData,
-                None => matches!(s.config, ProtocolConfig::RawData),
-            },
+            s.schema.as_ref().map_or_else(
+                || matches!(s.config, ProtocolConfig::RawData),
+                |schema| schema.preset == SchemaPreset::RawData,
+            ),
         )
     };
 

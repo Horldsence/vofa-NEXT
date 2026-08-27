@@ -1,13 +1,11 @@
 use app_state::AppState;
+use can_types::{CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo};
+use error::ConfigError;
 use pipeline_dispatcher::filtered_sources::FilteredCanStreamSource;
-use pipeline_stream::{
-    join_or_create_group, leave_group, sharded_stream_loop, CanStreamSource,
-};
+use pipeline_stream::{join_or_create_group, leave_group, sharded_stream_loop, CanStreamSource};
 use std::time::Duration;
 use tauri::{ipc::Channel, State};
-use can_types::{CanFrame, CanFrameBatch, CanFrameFilter, CandleDeviceInfo};
 use vofa_core::Result;
-use error::ConfigError;
 
 // ============ CAN 帧相关 ============
 
@@ -52,7 +50,9 @@ pub async fn send_can_frame(
             .get(&proto_id)
             .cloned()
             .ok_or_else(|| {
-                vofa_core::Error::Config(ConfigError::ProtocolNodeNotFound { node_id: proto_id.clone() })
+                vofa_core::Error::Config(ConfigError::ProtocolNodeNotFound {
+                    node_id: proto_id.clone(),
+                })
             })?;
         let engine = st.lock().engine.clone();
         let bytes = engine.lock().encode_can(&frame);

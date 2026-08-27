@@ -41,6 +41,7 @@ fn test_uart_decode_wraps_bytes() {
 }
 
 #[test]
+#[allow(clippy::cast_possible_truncation)] // 字节序号按 u8 溢出环绕, 与协议行为一致
 fn test_uart_decode_multi_byte() {
     let config = LogicDecoderConfig::Uart {
         baud_rate: 115200,
@@ -58,10 +59,10 @@ fn test_uart_decode_multi_byte() {
             DecodedEvent::Uart {
                 byte, parity_ok, ..
             } => {
-                assert_eq!(*byte, i as u8, "索引 {} 字节不匹配", i);
-                assert!(*parity_ok, "索引 {} parity_ok 应为 true", i);
+                assert_eq!(*byte, i as u8, "索引 {i} 字节不匹配");
+                assert!(*parity_ok, "索引 {i} parity_ok 应为 true");
             }
-            _ => panic!("索引 {} 期望 UART 事件", i),
+            _ => panic!("索引 {i} 期望 UART 事件"),
         }
     }
 }

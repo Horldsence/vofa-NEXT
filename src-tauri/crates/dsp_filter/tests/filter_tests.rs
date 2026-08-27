@@ -1,10 +1,10 @@
 //! 数字滤波器集成测试
 
-use std::f32::consts::PI;
 use dsp_filter::{
     bandpass_biquad, bandstop_biquad, highpass_biquad, lowpass_biquad, DigitalFilter, FilterKind,
     FilterPreset,
 };
+use std::f32::consts::PI;
 
 #[test]
 fn test_fir_passthrough() {
@@ -43,6 +43,7 @@ fn test_iir_passthrough() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)] // 测试信号循环计数数值小, 转 f32 无精度损失
 fn test_lowpass_attenuates_high_freq() {
     // 采样率 1000 Hz, 截止 100 Hz
     // 输入 50 Hz (低频) 应通过, 400 Hz (高频) 应衰减
@@ -88,6 +89,7 @@ fn test_lowpass_attenuates_high_freq() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)] // 测试信号循环计数数值小, 转 f32 无精度损失
 fn test_highpass_attenuates_low_freq() {
     let fs = 1000.0;
     let mut f_hp = DigitalFilter::from_preset(FilterPreset::Highpass {
@@ -199,6 +201,7 @@ fn test_nyquist_guard_coefficients_finite() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss)] // 斜坡信号循环计数数值小, 转 f32 无精度损失
 fn test_nyquist_guard_stays_stable() {
     // 截止频率远超 Nyquist 时, 长期输入不应发散
     let mut f = DigitalFilter::from_preset(FilterPreset::Lowpass {

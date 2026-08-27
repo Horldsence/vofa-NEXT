@@ -243,8 +243,10 @@ fn logic_sample_batch_default_seq_is_zero() {
 
 #[test]
 fn decoded_event_batch_serde_preserves_seq() {
-    let mut b = logic_types::DecodedEventBatch::default();
-    b.seq = 42;
+    let mut b = logic_types::DecodedEventBatch {
+        seq: 42,
+        ..Default::default()
+    };
     b.events.push(DecodedEvent::Uart {
         timestamp: 1,
         byte: 0x42,

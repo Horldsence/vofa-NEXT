@@ -13,9 +13,9 @@
 //! LogicDecoder (跨字节状态机) / RawData (无帧) 由 `split_aligned` 返回 None 回退。
 
 use parking_lot::Mutex;
+use protocol_engine::{FeedOutput, ProtocolEngine};
 use std::sync::Arc;
 use vofa_core::PipelineConfig;
-use protocol_engine::{FeedOutput, ProtocolEngine};
 
 /// 最大并行 worker 数 — 默认值, 实际运行由 PipelineConfig::max_feed_workers 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步, 见下方单测)
@@ -85,14 +85,11 @@ impl ParallelFeeder {
         // 2. 锁内计算切分 + 懒建 worker 池 (按需补足到块数) + 读取自动模式标记
         let (ranges, auto_mode) = {
             let p = proto.lock();
-            let ranges = match p.split_aligned(&full, workers) {
-                Some(r) => r,
-                None => {
-                    // 协议不支持并行 — 防御性回退: 整批留待下次, 调用方不应进入此路径
-                    self.pending = full;
-                    timing.split_ns = t_split.elapsed().as_nanos() as u64;
-                    return (FeedOutput::default(), None, timing);
-                }
+            let Some(ranges) = p.split_aligned(&full, workers) else {
+                // 协议不支持并行 — 防御性回退: 整批留待下次, 调用方不应进入此路径
+                self.pending = full;
+                timing.split_ns = u64::try_from(t_split.elapsed().as_nanos()).unwrap_or(u64::MAX);
+                return (FeedOutput::default(), None, timing);
             };
             let missing = ranges.len().saturating_sub(self.workers.len());
             for _ in 0..missing {
@@ -100,7 +97,7 @@ impl ParallelFeeder {
             }
             (ranges, p.is_auto_mode())
         };
-        timing.split_ns = t_split.elapsed().as_nanos() as u64;
+        timing.split_ns = u64::try_from(t_split.elapsed().as_nanos()).unwrap_or(u64::MAX);
 
         let t_join = std::time::Instant::now();
         // 3. 尾部不完整帧存入 pending, 下一批前置拼接
@@ -108,7 +105,7 @@ impl ParallelFeeder {
         self.pending = full[tail_start..].to_vec();
 
         if ranges.is_empty() {
-            timing.join_ns = t_join.elapsed().as_nanos() as u64;
+            timing.join_ns = u64::try_from(t_join.elapsed().as_nanos()).unwrap_or(u64::MAX);
             return (FeedOutput::default(), None, timing);
         }
 
@@ -143,7 +140,7 @@ impl ParallelFeeder {
                 }
             }
         }
-        timing.join_ns = t_join.elapsed().as_nanos() as u64;
+        timing.join_ns = u64::try_from(t_join.elapsed().as_nanos()).unwrap_or(u64::MAX);
         (merged, detection, timing)
     }
 

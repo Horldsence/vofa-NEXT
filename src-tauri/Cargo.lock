@@ -2734,22 +2734,32 @@ dependencies = [
 name = "node_engine"
 version = "0.1.2"
 dependencies = [
- "buffer_databuffer",
  "buffer_graph",
- "buffer_raw",
- "buffer_ring",
  "dsp_fft",
  "dsp_filter",
  "dsp_window",
- "error",
+ "node_eval",
  "node_frame_decoder",
+ "node_hir",
  "node_kind",
+ "node_lower",
+ "node_plane",
+ "node_testkit",
  "node_trigger",
  "petgraph",
+]
+
+[[package]]
+name = "node_eval"
+version = "0.1.2"
+dependencies = [
+ "dsp_fft",
+ "dsp_filter",
+ "node_frame_decoder",
+ "node_kind",
+ "node_lower",
+ "node_trigger",
  "rustc-hash",
- "schema_types",
- "serde",
- "thiserror 1.0.69",
  "vofa_core",
 ]
 
@@ -2763,6 +2773,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "node_hir"
+version = "0.1.2"
+dependencies = [
+ "buffer_graph",
+ "error",
+ "node_kind",
+ "node_testkit",
+ "petgraph",
+ "rustc-hash",
+]
+
+[[package]]
 name = "node_kind"
 version = "0.1.2"
 dependencies = [
@@ -2773,6 +2795,44 @@ dependencies = [
  "schema_types",
  "serde",
  "serde_json",
+ "vofa_core",
+]
+
+[[package]]
+name = "node_lower"
+version = "0.1.2"
+dependencies = [
+ "dsp_filter",
+ "node_hir",
+ "node_kind",
+ "node_plane",
+ "node_trigger",
+ "rustc-hash",
+]
+
+[[package]]
+name = "node_plane"
+version = "0.1.2"
+dependencies = [
+ "node_hir",
+ "node_kind",
+ "node_testkit",
+ "petgraph",
+ "rustc-hash",
+]
+
+[[package]]
+name = "node_testkit"
+version = "0.1.2"
+dependencies = [
+ "buffer_graph",
+ "dsp_fft",
+ "dsp_filter",
+ "dsp_window",
+ "node_eval",
+ "node_kind",
+ "node_trigger",
+ "schema_types",
  "vofa_core",
 ]
 

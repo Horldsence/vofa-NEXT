@@ -7,7 +7,7 @@
 //! - `DiagnosticMessage` 联合类型 serde internally-tagged 序列化
 
 use diagnostic::{
-    Dtc, DtcStatus, DiagnosticConfig, DiagnosticMessage, IsoTpAddressMode, IsoTpConfig,
+    DiagnosticConfig, DiagnosticMessage, Dtc, DtcStatus, IsoTpAddressMode, IsoTpConfig,
     J1939Config, J1939Id, J1939Spn, ObdConfig, ObdMode, UdsConfig, UdsNrc, UdsService,
 };
 
@@ -167,7 +167,10 @@ fn j1939_config_default_zero() {
 
 #[test]
 fn diagnostic_config_default_is_uds() {
-    assert!(matches!(DiagnosticConfig::default(), DiagnosticConfig::Uds { .. }));
+    assert!(matches!(
+        DiagnosticConfig::default(),
+        DiagnosticConfig::Uds { .. }
+    ));
 }
 
 // ============ DiagnosticMessage ============

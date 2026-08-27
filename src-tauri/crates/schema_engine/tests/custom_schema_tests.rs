@@ -34,18 +34,18 @@ fn justfloat_like_schema() -> ProtocolSchema {
             },
         ],
         encode: Some(vec![
-                EncodeBlockDef::VarRef {
-                    port_name: "a".into(),
-                    field_type: FieldType::Float32LE,
-                },
-                EncodeBlockDef::VarRef {
-                    port_name: "b".into(),
-                    field_type: FieldType::Float32LE,
-                },
-                EncodeBlockDef::ConstHex {
-                    hex: "00 00 80 7F".into(),
-                },
-            ]),
+            EncodeBlockDef::VarRef {
+                port_name: "a".into(),
+                field_type: FieldType::Float32LE,
+            },
+            EncodeBlockDef::VarRef {
+                port_name: "b".into(),
+                field_type: FieldType::Float32LE,
+            },
+            EncodeBlockDef::ConstHex {
+                hex: "00 00 80 7F".into(),
+            },
+        ]),
     }
 }
 
@@ -201,7 +201,7 @@ fn test_custom_schema_ascii_field() {
     let mut engine = compile_schema(&schema);
     let frames = engine.feed(b"T1A3\r").frames;
     assert_eq!(frames.len(), 1);
-    assert_eq!(frames[0].channels, vec![0x1A3 as f32]);
+    assert_eq!(frames[0].channels, vec![f32::from(0x1A3_u16)]);
 }
 
 #[test]
@@ -324,7 +324,7 @@ fn test_encode_channel_pads_to_port_count() {
 #[test]
 fn test_new_worker_creates_independent_instance() {
     let schema = justfloat_like_schema();
-    let mut engine = SchemaEngine::new(schema.clone());
+    let mut engine = SchemaEngine::new(schema);
     let mut worker = engine.new_worker();
     // worker 独立, 喂入数据后原 engine 不受影响
     let mut data = Vec::new();

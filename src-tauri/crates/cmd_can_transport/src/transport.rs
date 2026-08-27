@@ -1,15 +1,15 @@
 use app_state::AppState;
+use buffer_raw::RawDataDirection;
+use error::ConfigError;
 use notify_events::emit_transport_state;
 use notify_events::notify;
+use schema_types::{ProtocolConfig, ProtocolSchema, TestDataLink};
 use serde::Serialize;
 use tauri::{AppHandle, State};
-use buffer_raw::RawDataDirection;
-use schema_types::{ProtocolConfig, ProtocolSchema, TestDataLink};
+use transport_core::TransportManager;
 use vofa_core::{
     ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats, WidgetBinding,
 };
-use error::ConfigError;
-use transport_core::TransportManager;
 
 /// 列出所有可用串口
 #[tauri::command]
@@ -100,16 +100,19 @@ pub async fn send_widget_value(
     let data = match binding {
         WidgetBinding::None => return Ok(()),
         WidgetBinding::Auto { channel } => {
-            let pn = protocol_node.ok_or_else(|| {
-                Error::Config(ConfigError::AutoBindingMissingProtocolNode)
-            })?;
+            let pn = protocol_node
+                .ok_or_else(|| Error::Config(ConfigError::AutoBindingMissingProtocolNode))?;
             let st = state
                 .data_plane
                 .protocol_states
                 .lock()
                 .get(&pn)
                 .cloned()
-                .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: pn.clone() }))?;
+                .ok_or_else(|| {
+                    Error::Config(ConfigError::ProtocolNodeNotFound {
+                        node_id: pn.clone(),
+                    })
+                })?;
             let engine = st.lock().engine.clone();
             let bytes = engine.lock().encode_channel(channel, value);
             bytes
@@ -222,7 +225,11 @@ pub async fn send_and_capture(
         .lock()
         .get(&protocol_node)
         .cloned()
-        .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound { node_id: protocol_node.clone() }))?;
+        .ok_or_else(|| {
+            Error::Config(ConfigError::ProtocolNodeNotFound {
+                node_id: protocol_node.clone(),
+            })
+        })?;
     let out = st.lock().engine.lock().feed(&data);
     let frames = out.frames;
     let can_count = out.can_frames.len();

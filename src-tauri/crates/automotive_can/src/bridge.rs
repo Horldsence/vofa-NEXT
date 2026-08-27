@@ -2,16 +2,16 @@
 //! 统一的 `CanBackend` trait。
 
 use async_trait::async_trait;
+use can_types::{CanDirection, CanFrame};
+use error::TransportError;
 use parking_lot::Mutex;
+use protocol_can_bridge::{CandleEngine, SlcanEngine};
+use protocol_engine::ProtocolEngine;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
-use can_types::{CanDirection, CanFrame};
-use vofa_core::{Error, Result};
-use error::TransportError;
-use protocol_can_bridge::{CandleEngine, SlcanEngine};
-use protocol_engine::ProtocolEngine;
 use transport_core::CanBackend;
+use vofa_core::{Error, Result};
 
 /// 桥接器配置 — 选择底层 CAN 协议编解码引擎
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +70,7 @@ impl BridgeCanBackend {
                 match tokio::time::timeout(std::time::Duration::from_millis(100), byte_rx.recv())
                     .await
                 {
-                    Err(_) => {} // timeout,继续循环检查 cancel
+                    Err(_) => {}         // timeout,继续循环检查 cancel
                     Ok(Err(_)) => break, // channel 关闭
                     Ok(Ok(bytes)) => {
                         if bytes.is_empty() {

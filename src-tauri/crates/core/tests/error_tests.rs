@@ -77,15 +77,15 @@ fn kind_returns_variant_name_for_each_variant() {
     let e = Error::Protocol(ProtocolError::CrcMismatch);
     assert_eq!(e.kind(), "Protocol");
     let e = Error::PortNotFound(PortNotFoundError {
-        port: "".into(),
+        port: String::new(),
     });
     assert_eq!(e.kind(), "PortNotFound");
     let e = Error::PortAlreadyOpen(PortAlreadyOpenError {
-        port: "".into(),
+        port: String::new(),
     });
     assert_eq!(e.kind(), "PortAlreadyOpen");
     let e = Error::PortNotOpen(PortNotOpenError {
-        port: "".into(),
+        port: String::new(),
     });
     assert_eq!(e.kind(), "PortNotOpen");
     let e: Error = std::io::Error::other("x").into();
@@ -118,14 +118,10 @@ fn serializes_io_error_with_message() {
 
 #[test]
 fn result_alias_uses_core_error() {
-    fn ok_path() -> Result<u32> {
-        Ok(7)
-    }
-    fn err_path() -> Result<u32> {
-        Err(Error::Config(ConfigError::AutoBindingMissingProtocolNode))
-    }
-    assert_eq!(ok_path().unwrap(), 7);
-    assert!(err_path().is_err());
+    let ok_path: Result<u32> = Ok(7);
+    let err_path: Result<u32> = Err(Error::Config(ConfigError::AutoBindingMissingProtocolNode));
+    assert!(matches!(ok_path, Ok(7)));
+    assert!(err_path.is_err());
 }
 
 #[test]

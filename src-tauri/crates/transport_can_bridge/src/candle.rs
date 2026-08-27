@@ -1,12 +1,12 @@
+use can_types::CandleDeviceInfo;
+use error::TransportError;
 use nusb::transfer::{Bulk, In, Out};
 use nusb::MaybeFuture;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use can_types::CandleDeviceInfo;
 use vofa_core::{CandleConfig, Result};
-use error::TransportError;
 
 /// candleLight USB VID/PID
 const CANDLE_VID: u16 = 0x1209;

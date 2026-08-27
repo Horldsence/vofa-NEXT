@@ -38,8 +38,13 @@ members = [
   "crates/menu_shell",
   "crates/notify_events",
   "crates/node_engine",
+  "crates/node_eval",
   "crates/node_frame_decoder",
+  "crates/node_hir",
   "crates/node_kind",
+  "crates/node_lower",
+  "crates/node_plane",
+  "crates/node_testkit",
   "crates/node_trigger",
   "crates/pipeline_data_plane",
   "crates/pipeline_dispatcher",
@@ -96,6 +101,7 @@ single_match_else = "allow"
 # 允许 if-then-else 链 (比 match 更清晰时)
 match_same_arms = "allow"
 # 允许手动 clamp
+
 manual_clamp = "allow"
 # 允许结构体字段顺序不优化
 struct_field_names = "allow"
@@ -111,6 +117,10 @@ useless_format = "allow"
 new_without_default = "allow"
 # 允许较多方法 (impl 块)
 too_many_lines = "allow"
+# MutexGuard 临界区按锁序整段持有是数据平面的刻意并发语义, 按逐次使用拆小作用域
+# 反而扩大竞态窗口 (clippy nursery 启发式)
+significant_drop_tightening = "allow"
+
 
 
 [workspace.dependencies]
@@ -147,8 +157,13 @@ protocol_float = { path = "crates/protocol_float" }
 protocol_can_bridge = { path = "crates/protocol_can_bridge" }
 logic_decoder = { path = "crates/logic_decoder" }
 node_engine = { path = "crates/node_engine" }
+node_eval = { path = "crates/node_eval" }
 node_frame_decoder = { path = "crates/node_frame_decoder" }
+node_hir = { path = "crates/node_hir" }
 node_kind = { path = "crates/node_kind" }
+node_lower = { path = "crates/node_lower" }
+node_plane = { path = "crates/node_plane" }
+node_testkit = { path = "crates/node_testkit" }
 node_trigger = { path = "crates/node_trigger" }
 schema_engine = { path = "crates/schema_engine" }
 transport_can_bridge = { path = "crates/transport_can_bridge" }

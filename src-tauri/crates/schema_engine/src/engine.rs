@@ -65,11 +65,13 @@ impl SchemaEngine {
     /// 从 data[0..] 尝试解析一帧 (data 起点 = header 起点或帧起点)
     ///
     /// `frame_start`: header 末尾 (= 字段起始) 在 data 中的索引
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     pub(crate) fn try_parse(&self, data: &[u8], frame_start: usize) -> ParseAttempt {
-        use schema_types::{
-            AsciiBase, DecoderChecksumCover, DecoderChecksumPosition, FieldType,
-        };
+        use schema_types::{AsciiBase, DecoderChecksumCover, DecoderChecksumPosition, FieldType};
         let mut outputs: HashMap<String, f32> = HashMap::new();
         let mut valid = true;
         let mut id_value: Option<i64> = None;
@@ -147,9 +149,7 @@ impl SchemaEngine {
                     if cursor + n > data.len() {
                         return ParseAttempt::Incomplete;
                     }
-                    let val = field_type
-                        .decode(&data[cursor..cursor + n])
-                        .unwrap_or(0.0);
+                    let val = field_type.decode(&data[cursor..cursor + n]).unwrap_or(0.0);
                     cursor += n;
                     outputs.insert(port_name.clone(), val);
                 }
@@ -167,8 +167,12 @@ impl SchemaEngine {
                     if abs + needed > data.len() {
                         return ParseAttempt::Incomplete;
                     }
-                    let val =
-                        read_bitfield(&data[abs..abs + needed], *bit_offset, *bit_length, *is_signed);
+                    let val = read_bitfield(
+                        &data[abs..abs + needed],
+                        *bit_offset,
+                        *bit_length,
+                        *is_signed,
+                    );
                     outputs.insert(port_name.clone(), val);
                 }
                 DecoderBlockDef::Csv { separator, ports } => {
@@ -240,8 +244,7 @@ impl SchemaEngine {
                     let cs_len = algorithm.byte_len();
                     let cs_bytes = match position {
                         // Inline/Append 均从当前 cursor 读取 (Append 简化为 cursor 处)
-                        DecoderChecksumPosition::Inline
-                        | DecoderChecksumPosition::Append => {
+                        DecoderChecksumPosition::Inline | DecoderChecksumPosition::Append => {
                             if cursor + cs_len > data.len() {
                                 return ParseAttempt::Incomplete;
                             }

@@ -9,10 +9,7 @@
 //! 推导 (后端单一权威)。
 
 use buffer_graph::Edge;
-use node_kind::{
-    NodeDef, NodeKind,
-    protocol_source_port_names,
-};
+use node_kind::{protocol_source_port_names, NodeDef, NodeKind};
 use schema_types::ProtocolConfig;
 use std::collections::HashSet;
 
@@ -61,10 +58,7 @@ pub fn inject_protocol_sources(nodes: &[NodeDef], edges: &[Edge]) -> Vec<NodeDef
 /// - preset: 端口名 = `protocol_source_port_names(None, channels)` (ch0..chN, RawData → 单 `str`)
 fn protocol_output_spec(node: &NodeDef) -> (usize, Vec<String>) {
     let kind = &node.kind;
-    let NodeKind::Protocol {
-        config, schema, ..
-    } = kind
-    else {
+    let NodeKind::Protocol { config, schema, .. } = kind else {
         return (0, Vec::new());
     };
     match schema {
@@ -101,7 +95,11 @@ mod tests {
     use schema_types::{DecoderBlockDef, FieldType, SchemaPreset};
     use vofa_core::config::TransportConfig;
 
-    fn protocol_node(id: &str, config: ProtocolConfig, schema: Option<schema_types::ProtocolSchema>) -> NodeDef {
+    fn protocol_node(
+        id: &str,
+        config: ProtocolConfig,
+        schema: Option<schema_types::ProtocolSchema>,
+    ) -> NodeDef {
         NodeDef {
             id: id.into(),
             tab_id: "tab1".into(),
@@ -141,14 +139,24 @@ mod tests {
         let sources = inject_protocol_sources(&[proto, widget], &edges);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].id, "p1");
-        let NodeKind::ProtocolSource { node_id, channels, port_names } = &sources[0].kind else {
+        let NodeKind::ProtocolSource {
+            node_id,
+            channels,
+            port_names,
+        } = &sources[0].kind
+        else {
             panic!("expected ProtocolSource");
         };
         assert_eq!(node_id, "p1");
         assert_eq!(*channels, 4);
         assert_eq!(
             port_names.as_ref().unwrap().as_slice(),
-            &["ch0".to_string(), "ch1".to_string(), "ch2".to_string(), "ch3".to_string()]
+            &[
+                "ch0".to_string(),
+                "ch1".to_string(),
+                "ch2".to_string(),
+                "ch3".to_string()
+            ]
         );
     }
 
@@ -206,7 +214,11 @@ mod tests {
             }],
             encode: None,
         };
-        let proto = protocol_node("p1", ProtocolConfig::JustFloat { channels: None }, Some(schema));
+        let proto = protocol_node(
+            "p1",
+            ProtocolConfig::JustFloat { channels: None },
+            Some(schema),
+        );
         let widget = NodeDef {
             id: "w1".into(),
             tab_id: "tab1".into(),
@@ -215,11 +227,19 @@ mod tests {
         let edges = vec![edge("p1", "rpm", "w1", "in0")];
         let sources = inject_protocol_sources(&[proto, widget], &edges);
         assert_eq!(sources.len(), 1);
-        let NodeKind::ProtocolSource { channels, port_names, .. } = &sources[0].kind else {
+        let NodeKind::ProtocolSource {
+            channels,
+            port_names,
+            ..
+        } = &sources[0].kind
+        else {
             panic!();
         };
         assert_eq!(*channels, 1);
-        assert_eq!(port_names.as_ref().unwrap().as_slice(), &["rpm".to_string()]);
+        assert_eq!(
+            port_names.as_ref().unwrap().as_slice(),
+            &["rpm".to_string()]
+        );
     }
 
     #[test]
@@ -233,22 +253,26 @@ mod tests {
         let edges = vec![edge("p1", "str", "w1", "in0")];
         let sources = inject_protocol_sources(&[proto, widget], &edges);
         assert_eq!(sources.len(), 1);
-        let NodeKind::ProtocolSource { channels, port_names, .. } = &sources[0].kind else {
+        let NodeKind::ProtocolSource {
+            channels,
+            port_names,
+            ..
+        } = &sources[0].kind
+        else {
             panic!();
         };
         assert_eq!(*channels, 1);
-        assert_eq!(port_names.as_ref().unwrap().as_slice(), &["str".to_string()]);
+        assert_eq!(
+            port_names.as_ref().unwrap().as_slice(),
+            &["str".to_string()]
+        );
     }
 
     /// 与 derived 端 `preset_justfloat_auto_falls_back_to_default` 对齐:
     /// `channels: None` 时 inject 也回退到默认 4 端口, 避免两侧派生不一致
     #[test]
     fn preset_justfloat_auto_channels_uses_default_four() {
-        let proto = protocol_node(
-            "p1",
-            ProtocolConfig::JustFloat { channels: None },
-            None,
-        );
+        let proto = protocol_node("p1", ProtocolConfig::JustFloat { channels: None }, None);
         let widget = NodeDef {
             id: "w1".into(),
             tab_id: "tab1".into(),
@@ -257,13 +281,23 @@ mod tests {
         let edges = vec![edge("p1", "ch0", "w1", "in0")];
         let sources = inject_protocol_sources(&[proto, widget], &edges);
         assert_eq!(sources.len(), 1);
-        let NodeKind::ProtocolSource { channels, port_names, .. } = &sources[0].kind else {
+        let NodeKind::ProtocolSource {
+            channels,
+            port_names,
+            ..
+        } = &sources[0].kind
+        else {
             panic!("expected ProtocolSource");
         };
         assert_eq!(*channels, 4);
         assert_eq!(
             port_names.as_ref().unwrap().as_slice(),
-            &["ch0".to_string(), "ch1".to_string(), "ch2".to_string(), "ch3".to_string()]
+            &[
+                "ch0".to_string(),
+                "ch1".to_string(),
+                "ch2".to_string(),
+                "ch3".to_string()
+            ]
         );
     }
 }

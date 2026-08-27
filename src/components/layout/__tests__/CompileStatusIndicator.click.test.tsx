@@ -14,10 +14,16 @@ describe('CompileStatusIndicator Click Behavior', () => {
     });
   });
 
-  it('renders null when errorTabs and pendingTabs are empty', () => {
+  it('renders an ok-state green check button when errorTabs and pendingTabs are empty', () => {
     const onClickSpy = vi.fn();
     const { container } = render(<CompileStatusIndicator onClickError={onClickSpy} />);
-    expect(container.firstChild).toBeNull();
+    // 常驻设计: 无错误时仍显示绿色 CheckCircle 按钮 (点击打开编译面板)
+    expect(container.firstChild).not.toBeNull();
+    const button = screen.getByRole('button', { name: /0 compile errors?/i });
+    expect(button).toBeInTheDocument();
+
+    fireEvent.click(button);
+    expect(onClickSpy).toHaveBeenCalledTimes(1);
   });
 
   it('renders a button and calls onClickError when clicked in error state', () => {

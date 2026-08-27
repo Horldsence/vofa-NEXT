@@ -1,3 +1,4 @@
+use error::TransportError;
 use serialport::{DataBits, FlowControl, Parity, SerialPortType, StopBits};
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -5,7 +6,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 use vofa_core::{PortInfo, Result, SerialConfig};
-use error::TransportError;
 
 #[cfg(windows)]
 use crate::windows_ports::port_descriptions;
@@ -17,8 +17,8 @@ fn port_descriptions() -> std::collections::HashMap<String, String> {
 
 /// 列出所有可用串口
 pub fn list_ports() -> Result<Vec<PortInfo>> {
-    let ports = serialport::available_ports()
-        .map_err(|e| TransportError::SerialEnumeration(e.into()))?;
+    let ports =
+        serialport::available_ports().map_err(|e| TransportError::SerialEnumeration(e.into()))?;
     let descriptions = port_descriptions();
     Ok(ports
         .into_iter()

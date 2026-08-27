@@ -13,9 +13,9 @@ use std::collections::HashMap;
 use petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use rustc_hash::FxHashSet;
 
-use crate::errors::CompileError;
-use crate::hir::TypedGraph;
 use crate::plane::byte_plane_order;
+use node_hir::CompileError;
+use node_hir::TypedGraph;
 
 /// 字节路由 — 一条字节边的下游端点
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -86,7 +86,7 @@ impl BytePlan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::*;
+    use node_testkit::*;
 
     #[test]
     fn test_byte_plan_topo_order() {

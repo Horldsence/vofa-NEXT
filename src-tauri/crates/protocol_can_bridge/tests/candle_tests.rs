@@ -2,8 +2,7 @@
 
 use can_types::{CanDirection, CanFrame};
 use protocol_can_bridge::{
-    CandleEngine, CAND_CMD_RX, CAND_CMD_TX, CAND_FRAME_SIZE, CAND_ID_EFF, CAND_ID_MASK,
-    CAND_ID_RTR,
+    CandleEngine, CAND_CMD_RX, CAND_CMD_TX, CAND_FRAME_SIZE, CAND_ID_EFF, CAND_ID_MASK, CAND_ID_RTR,
 };
 use protocol_engine::{FeedOutput, ProtocolEngine};
 
@@ -418,7 +417,7 @@ fn test_split_aligned_equivalence() {
     let ranges = seq_engine
         .split_aligned(&data, 3)
         .expect("candleLight 应支持并行切分");
-    let tail_start = ranges.last().map(|r| r.end).unwrap_or(0);
+    let tail_start = ranges.last().map_or(0, |r| r.end);
     let mut merged = FeedOutput::default();
     let mut concat = Vec::new();
     for r in &ranges {

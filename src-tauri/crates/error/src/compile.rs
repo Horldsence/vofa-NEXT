@@ -51,13 +51,15 @@ pub enum CompileError {
     ByteCycle { cycle: Vec<String> },
 
     /// 边两端端口域不匹配
+    /// (字符串字段用 Box<str> 收缩枚举体积 — CompileError 是高频返回类型的 Err,
+    /// serde 线上格式与 String 完全一致)
     DomainMismatch {
-        edge_id: String,
-        source_node: String,
-        source_port: String,
+        edge_id: Box<str>,
+        source_node: Box<str>,
+        source_port: Box<str>,
         src_domain: PortDomain,
-        target: String,
-        target_port: String,
+        target: Box<str>,
+        target_port: Box<str>,
         tgt_domain: PortDomain,
     },
 
@@ -71,8 +73,10 @@ impl CompileError {
         match self {
             Self::Cycle { cycle } | Self::ByteCycle { cycle } => dedup(cycle),
             Self::DomainMismatch {
-                source_node, target, ..
-            } => dedup(&[source_node.clone(), target.clone()]),
+                source_node,
+                target,
+                ..
+            } => dedup(&[source_node.to_string(), target.to_string()]),
             Self::NodeNotFound { id } => vec![id.clone()],
         }
     }
@@ -80,7 +84,7 @@ impl CompileError {
     /// 涉及的边 id — 供前端画布红边 + hover tooltip
     pub fn affects_edges(&self) -> Vec<String> {
         match self {
-            Self::DomainMismatch { edge_id, .. } => vec![edge_id.clone()],
+            Self::DomainMismatch { edge_id, .. } => vec![edge_id.to_string()],
             _ => vec![],
         }
     }

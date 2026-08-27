@@ -1,9 +1,9 @@
 //! CanBackend trait 契约测试 — 用 MockCanBackend 验证 trait 可实现并按约定工作
 
 use async_trait::async_trait;
+use can_types::{CanDirection, CanFrame};
 use tokio::sync::broadcast;
 use transport_core::CanBackend;
-use can_types::{CanDirection, CanFrame};
 use vofa_core::Result;
 
 /// 一个最简的内存 CanBackend,用于测试 trait 契约
@@ -21,6 +21,7 @@ impl CanBackend for MockCanBackend {
     fn subscribe_frames(&self) -> broadcast::Receiver<CanFrame> {
         self.tx.subscribe()
     }
+    #[allow(clippy::unnecessary_literal_bound)] // trait 签名为 &str, 实现方返回字面量
     fn name(&self) -> &str {
         "mock"
     }

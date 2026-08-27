@@ -4,15 +4,18 @@
 use node_kind::NodeKind;
 
 use crate::compile::CompiledGraph;
-use crate::eval::{node_out_entry, set_port};
+use node_eval::{node_out_entry, set_port};
 
 use super::{EvalCtx, NodeArm};
 
 pub struct FrameDecoderArm;
 
+#[allow(clippy::cast_precision_loss)] // 帧计数/时间戳转 f32 与快路径 CompiledEval 同语义
 impl NodeArm for FrameDecoderArm {
     fn run(&self, graph: &CompiledGraph, node_id: &str, ctx: &mut EvalCtx<'_>) {
-        let Some(node) = graph.value_def(node_id) else { return };
+        let Some(node) = graph.value_def(node_id) else {
+            return;
+        };
         let NodeKind::FrameDecoder {
             blocks,
             enable_valid,
@@ -47,10 +50,18 @@ impl NodeArm for FrameDecoderArm {
                     set_port(m, port, 0.0);
                 }
             }
-            if *enable_valid { set_port(m, "valid", 0.0); }
-            if *enable_frame_count { set_port(m, "frame_count", 0.0); }
-            if *enable_last_timestamp { set_port(m, "last_timestamp", 0.0); }
-            if *enable_fps { set_port(m, "fps", 0.0); }
+            if *enable_valid {
+                set_port(m, "valid", 0.0);
+            }
+            if *enable_frame_count {
+                set_port(m, "frame_count", 0.0);
+            }
+            if *enable_last_timestamp {
+                set_port(m, "last_timestamp", 0.0);
+            }
+            if *enable_fps {
+                set_port(m, "fps", 0.0);
+            }
         }
     }
 }

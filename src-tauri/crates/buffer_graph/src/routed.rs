@@ -13,7 +13,11 @@ pub struct RoutedData {
 
 impl RoutedData {
     /// 构造一个新的路由结果
-    pub fn new(target_node: impl Into<String>, target_handle: impl Into<String>, value: f32) -> Self {
+    pub fn new(
+        target_node: impl Into<String>,
+        target_handle: impl Into<String>,
+        value: f32,
+    ) -> Self {
         Self {
             target_node: target_node.into(),
             target_handle: target_handle.into(),

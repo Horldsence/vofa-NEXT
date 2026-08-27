@@ -161,29 +161,50 @@ mod tests {
     #[test]
     fn transport_handles() {
         let k = transport_test_data();
-        assert_eq!(port_domain(&k, TRANSPORT_RX_HANDLE, true), PortDomain::Bytes);
-        assert_eq!(port_domain(&k, TRANSPORT_TX_HANDLE, false), PortDomain::Bytes);
+        assert_eq!(
+            port_domain(&k, TRANSPORT_RX_HANDLE, true),
+            PortDomain::Bytes
+        );
+        assert_eq!(
+            port_domain(&k, TRANSPORT_TX_HANDLE, false),
+            PortDomain::Bytes
+        );
     }
 
     #[test]
     fn protocol_handles() {
         let k = protocol_default();
-        assert_eq!(port_domain(&k, PROTOCOL_IN_HANDLE, false), PortDomain::Bytes);
-        assert_eq!(port_domain(&k, PROTOCOL_OUT_HANDLE, true), PortDomain::Bytes);
+        assert_eq!(
+            port_domain(&k, PROTOCOL_IN_HANDLE, false),
+            PortDomain::Bytes
+        );
+        assert_eq!(
+            port_domain(&k, PROTOCOL_OUT_HANDLE, true),
+            PortDomain::Bytes
+        );
     }
 
     #[test]
     fn decoder_handles() {
         let k = decoder();
-        assert_eq!(port_domain(&k, FRAME_DECODER_IN_HANDLE, false), PortDomain::Bytes);
-        assert_eq!(port_domain(&k, LOOPBACK_IN_HANDLE, false), PortDomain::Bytes);
+        assert_eq!(
+            port_domain(&k, FRAME_DECODER_IN_HANDLE, false),
+            PortDomain::Bytes
+        );
+        assert_eq!(
+            port_domain(&k, LOOPBACK_IN_HANDLE, false),
+            PortDomain::Bytes
+        );
         assert_eq!(port_domain(&k, "value", true), PortDomain::F32);
     }
 
     #[test]
     fn sink_and_command_loopback_out() {
         let k = sink();
-        assert_eq!(port_domain(&k, LOOPBACK_OUT_HANDLE, true), PortDomain::Bytes);
+        assert_eq!(
+            port_domain(&k, LOOPBACK_OUT_HANDLE, true),
+            PortDomain::Bytes
+        );
         assert_eq!(port_domain(&k, "value", false), PortDomain::F32);
     }
 

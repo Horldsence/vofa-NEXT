@@ -11,7 +11,7 @@ use vofa_core::DataFrame;
 use node_kind::{MathOp, NodeDef, NodeKind, StrNumParams, StrOp};
 use node_trigger::{TriggerMatchType, TriggerRuleDef};
 
-use crate::{SourceFramesMap, SourceTextsMap};
+use node_eval::{SourceFramesMap, SourceTextsMap};
 
 pub fn make_protocol_source(id: &str, tab_id: &str, node_id: &str, channels: usize) -> NodeDef {
     NodeDef {

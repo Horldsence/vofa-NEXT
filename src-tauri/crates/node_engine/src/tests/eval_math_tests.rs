@@ -7,7 +7,7 @@ use node_trigger::TriggerMatchType;
 
 use super::*;
 use crate::compile::CompiledGraph;
-use crate::test_helpers::*;
+use node_testkit::*;
 #[test]
 fn test_evaluate_math_add() {
     let nodes = vec![
@@ -89,6 +89,3 @@ fn test_unary_math() {
     );
     assert_eq!(out.get("m1").and_then(|m| m.get("result")), Some(&5.0));
 }
-
-
-

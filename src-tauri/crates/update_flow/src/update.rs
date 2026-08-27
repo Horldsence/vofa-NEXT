@@ -69,11 +69,12 @@ pub async fn check_update(
     };
 
     // 以通道对应的静态 manifest 为 endpoint, 交给 updater 插件做版本比较
-    let endpoint = reqwest::Url::parse(manifest_url(channel))
-        .map_err(|e| AppError::Config(ConfigError::UrlParse {
+    let endpoint = reqwest::Url::parse(manifest_url(channel)).map_err(|e| {
+        AppError::Config(ConfigError::UrlParse {
             url: manifest_url(channel).to_string(),
             source: std::io::Error::other(e.to_string()),
-        }))?;
+        })
+    })?;
 
     let maybe_update = app
         .updater_builder()
@@ -97,15 +98,14 @@ pub async fn check_update(
         *pending
             .0
             .lock()
-            .map_err(|e| AppError::Config(ConfigError::MutexPoisoned(e.to_string())))?
-            = Some(update);
+            .map_err(|e| AppError::Config(ConfigError::MutexPoisoned(e.to_string())))? =
+            Some(update);
         Ok(result)
     } else {
         *pending
             .0
             .lock()
-            .map_err(|e| AppError::Config(ConfigError::MutexPoisoned(e.to_string())))?
-            = None;
+            .map_err(|e| AppError::Config(ConfigError::MutexPoisoned(e.to_string())))? = None;
         Ok(unavailable())
     }
 }
@@ -122,10 +122,12 @@ pub async fn download_and_install_update(
         .lock()
         .map_err(|e| AppError::Config(ConfigError::MutexPoisoned(e.to_string())))?
         .take()
-        .ok_or_else(|| AppError::Plugin(PluginError {
-            plugin: "tauri-plugin-updater",
-            source: Box::new(std::io::Error::other("no pending update")),
-        }))?;
+        .ok_or_else(|| {
+            AppError::Plugin(PluginError {
+                plugin: "tauri-plugin-updater",
+                source: Box::new(std::io::Error::other("no pending update")),
+            })
+        })?;
 
     update
         .download_and_install(

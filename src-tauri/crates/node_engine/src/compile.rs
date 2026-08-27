@@ -2,12 +2,12 @@
 //!
 //! 编译流程 (三段式, 对应编译器前端/中端/后端):
 //! 1. 前端: [`TypedGraph::build`] — id interning + 双角色节点归位 +
-//!    端口域解析 + 边分类 ([`crate::hir::EdgeClass`]), 跨域边报 DomainMismatch
-//! 2. 中端: 平面投影 ([`crate::plane`]) — 值平面拓扑序 (f32 ∪ 字符串边,
+//!    端口域解析 + 边分类 ([`node_hir::EdgeClass`]), 跨域边报 DomainMismatch
+//! 2. 中端: 平面投影 ([`node_plane`]) — 值平面拓扑序 (f32 ∪ 字符串边,
 //!    保证上游 string 节点先于下游 Str 节点求值) + 字节平面 [`BytePlan`];
 //!    跨平面不构成循环由 EdgeFiltered 视图结构性保证
-//! 3. 后端: [`crate::lower::lower_value_plane`] — 槽位分配 (f32/字符串双 arena)
-//!    + 平坦 [`crate::ops::CompiledOp`] 序列 (热路径逐帧零字符串哈希)
+//! 3. 后端: [`node_lower::lower_value_plane`] — 槽位分配 (f32/字符串双 arena)
+//!    + 平坦 `SlotPlan` / [`CompiledOp`] 序列 (热路径逐帧零字符串哈希)
 
 use std::collections::HashMap;
 
@@ -19,12 +19,10 @@ use dsp_fft::SpectrumOutput;
 use dsp_window::WindowType;
 use node_kind::{DecoderBlockDef, NodeDef, NodeKind};
 
-use crate::byte_plan::BytePlan;
-use crate::errors::CompileError;
-use crate::eval::CompiledEval;
-use crate::hir::{EdgeClass, HirEdge, TypedGraph};
-use crate::lower::lower_value_plane;
-use crate::plane::value_plane;
+use node_eval::CompiledEval;
+use node_hir::{CompileError, EdgeClass, HirEdge, TypedGraph};
+use node_lower::lower_value_plane;
+use node_plane::{value_plane, BytePlan};
 
 /// 编译后的图 — 包含拓扑序的评估计划
 pub struct CompiledGraph {
@@ -67,7 +65,7 @@ impl CompiledGraph {
         let mir = value_plane(&hir)?;
         let byte_plan = BytePlan::build(&hir)?;
         // 3. 后端: 槽位 lowering
-        let compiled = lower_value_plane(&hir, &mir);
+        let compiled = CompiledEval::new(lower_value_plane(&hir, &mir));
 
         let eval_order = mir
             .order

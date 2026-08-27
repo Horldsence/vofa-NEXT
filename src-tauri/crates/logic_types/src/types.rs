@@ -189,9 +189,7 @@ impl DecodedEventFilter {
         if payload.len() < pattern.len() {
             return false;
         }
-        payload
-            .windows(pattern.len())
-            .any(|w| w == pattern)
+        payload.windows(pattern.len()).any(|w| w == pattern)
     }
 
     /// 判断指定事件是否匹配本过滤条件

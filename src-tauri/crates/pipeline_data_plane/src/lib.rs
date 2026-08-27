@@ -31,14 +31,14 @@ pub mod eval_state;
 pub mod feed_parallel;
 pub mod graph_eval;
 
+pub use data_plane::byte_router::RouteSummary;
 pub use data_plane::{
     byte_router, frame_dispatch, read_task, reconcile, DataPlaneMetrics, DataPlaneState,
     ProtocolNodeState, METRICS_REPORT_INTERVAL, STATS_THROTTLE_MS,
 };
-pub use data_plane::byte_router::RouteSummary;
 pub use decoder_feed::{
-    ensure_decoder, feed_decoder_by_id, feed_one_decoder, sync_decoders_now,
-    DecoderFeedCache, DecoderParseConfig,
+    ensure_decoder, feed_decoder_by_id, feed_one_decoder, sync_decoders_now, DecoderFeedCache,
+    DecoderParseConfig,
 };
 pub use eval_state::{
     build_graph_eval_state, CustomInputBatch, GraphEvalState, GraphOutputSnapshot, SpectrumBatch,

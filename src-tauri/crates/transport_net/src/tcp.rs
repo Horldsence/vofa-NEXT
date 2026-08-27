@@ -1,10 +1,10 @@
+use error::TransportError;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
 use vofa_core::{Result, TcpClientConfig, TcpServerConfig};
-use error::TransportError;
 
 /// 启动 TCP 客户端
 pub async fn spawn_client(
@@ -15,13 +15,13 @@ pub async fn spawn_client(
     Arc<AtomicBool>,
 )> {
     let addr = format!("{}:{}", config.host, config.port);
-    let stream = TcpStream::connect(&addr).await.map_err(|e| {
-        TransportError::TcpConnect {
+    let stream = TcpStream::connect(&addr)
+        .await
+        .map_err(|e| TransportError::TcpConnect {
             host: config.host.clone(),
             port: config.port,
             source: e,
-        }
-    })?;
+        })?;
 
     let (read_half, write_half) = stream.into_split();
 
@@ -92,10 +92,12 @@ pub async fn spawn_server(
     Arc<AtomicBool>,
 )> {
     let addr = format!("{}:{}", config.listen_addr, config.listen_port);
-    let listener = TcpListener::bind(&addr).await.map_err(|e| TransportError::TcpListen {
-        addr: addr.clone(),
-        source: e,
-    })?;
+    let listener = TcpListener::bind(&addr)
+        .await
+        .map_err(|e| TransportError::TcpListen {
+            addr: addr.clone(),
+            source: e,
+        })?;
 
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);

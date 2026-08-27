@@ -4,7 +4,9 @@
 //! 验证编码→解析闭环: 输出值应与输入一致
 
 use node_frame_decoder::{ChecksumAlgorithm, FrameDecoderTestData, FrameParser};
-use schema_types::{DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType, LengthUnit};
+use schema_types::{
+    DecoderBlockDef, DecoderChecksumCover, DecoderChecksumPosition, FieldType, LengthUnit,
+};
 use std::collections::HashMap;
 
 fn header(id: &str, hex: &str) -> DecoderBlockDef {
@@ -203,8 +205,8 @@ fn test_encode_parse_roundtrip_bitfield() {
     ];
     let mut values = HashMap::new();
     values.insert("raw_byte".to_string(), 171.0); // 0xAB
-    values.insert("high_nibble".to_string(), 0xA_u32 as f32); // = 10
-    values.insert("low_nibble".to_string(), 0xB_u32 as f32); // = 11
+    values.insert("high_nibble".to_string(), f32::from(0xA_u8)); // = 10
+    values.insert("low_nibble".to_string(), f32::from(0xB_u8)); // = 11
 
     let bytes = FrameDecoderTestData::encode_frame(&blocks, &values);
     // AA AB BB

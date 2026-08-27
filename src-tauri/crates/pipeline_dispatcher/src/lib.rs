@@ -4,7 +4,7 @@
 //!
 //! 两个子模块:
 //! - [`spectrum_sync`] — `sync_spectrum_analyzers` (FrequencyAnalyzer 与 graphs 同步)
-//!   + `sync_ifft_buffers` (Ifft 节点重建缓冲), 由 `app_state::tickers::spectrum_ticker`
+//!   与 `sync_ifft_buffers` (Ifft 节点重建缓冲), 由 `app_state::tickers::spectrum_ticker`
 //!   每 tick 调用
 //! - [`filtered_sources`] — 按源过滤的订阅支持
 

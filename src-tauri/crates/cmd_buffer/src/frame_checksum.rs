@@ -30,7 +30,11 @@ fn crc8(data: &[u8]) -> u8 {
     for &b in data {
         crc ^= b;
         for _ in 0..8 {
-            crc = if crc & 0x80 != 0 { (crc << 1) ^ 0x07 } else { crc << 1 };
+            crc = if crc & 0x80 != 0 {
+                (crc << 1) ^ 0x07
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -42,7 +46,11 @@ fn crc16_modbus(data: &[u8]) -> u16 {
     for &b in data {
         crc ^= u16::from(b);
         for _ in 0..8 {
-            crc = if crc & 0x0001 != 0 { (crc >> 1) ^ 0xa001 } else { crc >> 1 };
+            crc = if crc & 0x0001 != 0 {
+                (crc >> 1) ^ 0xa001
+            } else {
+                crc >> 1
+            };
         }
     }
     crc
@@ -54,7 +62,11 @@ fn crc16_ccitt(data: &[u8]) -> u16 {
     for &b in data {
         crc ^= u16::from(b) << 8;
         for _ in 0..8 {
-            crc = if crc & 0x8000 != 0 { (crc << 1) ^ 0x1021 } else { crc << 1 };
+            crc = if crc & 0x8000 != 0 {
+                (crc << 1) ^ 0x1021
+            } else {
+                crc << 1
+            };
         }
     }
     crc
@@ -66,7 +78,11 @@ fn crc32(data: &[u8]) -> u32 {
     for &b in data {
         crc ^= u32::from(b);
         for _ in 0..8 {
-            crc = if crc & 1 != 0 { (crc >> 1) ^ 0xedb8_8320 } else { crc >> 1 };
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
         }
     }
     crc ^ 0xffff_ffff
@@ -134,7 +150,10 @@ mod tests {
 
     #[test]
     fn crc8_zero_input() {
-        assert_eq!(compute_checksum(ChecksumKind::Crc8, b"").unwrap(), vec![0x00]);
+        assert_eq!(
+            compute_checksum(ChecksumKind::Crc8, b"").unwrap(),
+            vec![0x00]
+        );
     }
 
     #[test]
@@ -157,19 +176,31 @@ mod tests {
 
     #[test]
     fn sum8_basic() {
-        assert_eq!(compute_checksum(ChecksumKind::Sum8, &[0x01, 0x02]).unwrap(), vec![0x03]);
-        assert_eq!(compute_checksum(ChecksumKind::Sum8, &[0xff, 0x01]).unwrap(), vec![0x00]);
+        assert_eq!(
+            compute_checksum(ChecksumKind::Sum8, &[0x01, 0x02]).unwrap(),
+            vec![0x03]
+        );
+        assert_eq!(
+            compute_checksum(ChecksumKind::Sum8, &[0xff, 0x01]).unwrap(),
+            vec![0x00]
+        );
     }
 
     #[test]
     fn xor8_basic() {
-        assert_eq!(compute_checksum(ChecksumKind::Xor8, &[0xaa, 0x55]).unwrap(), vec![0xff]);
+        assert_eq!(
+            compute_checksum(ChecksumKind::Xor8, &[0xaa, 0x55]).unwrap(),
+            vec![0xff]
+        );
     }
 
     #[test]
     fn lrc_basic() {
         // LRC 是 (-sum) & 0xff; sum8([0x01,0x02])=0x03, LRC=0xFD
-        assert_eq!(compute_checksum(ChecksumKind::Lrc, &[0x01, 0x02]).unwrap(), vec![0xfd]);
+        assert_eq!(
+            compute_checksum(ChecksumKind::Lrc, &[0x01, 0x02]).unwrap(),
+            vec![0xfd]
+        );
     }
 
     #[test]
