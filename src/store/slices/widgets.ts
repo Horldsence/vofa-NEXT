@@ -3,6 +3,14 @@ import type { WidgetConfig } from '../../types';
 import { createWidget, normalizeModel3DConfig } from '../../lib/utils/createWidget';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { normalizeCommandConfig } from '../../lib/utils/commandFrames';
+import { withHistoryOp, widgetKindLabelKey } from '../historyStore';
+import type { HistoryTarget } from '../historyStore';
+
+/** 控件类操作的目标语义 (行首徽章按画布同款分类色渲染) */
+const widgetTarget = (kind: WidgetConfig['kind']): HistoryTarget => ({
+  kind: 'node',
+  node: { kind: 'widget', widgetKind: kind },
+});
 
 /// 控件配置归一化入口
 /// - Command: 旧版单帧 → frames
@@ -34,103 +42,132 @@ export function createWidgetSlice(set: any, get: any): WidgetSlice {
     customEditorState: { open: false, widgetId: null },
 
     openCustomEditor: (widgetId) =>
-      set((s: any) => {
-        if (!widgetId) {
-          const widget = createWidget('Custom');
-          const tabId = s.activeControlTabId;
-          const pos = { x: 280, y: 80 + Math.random() * 100 };
-          const newNode: Node = {
-            id: widget.params.id,
-            type: 'widget',
-            position: pos,
-            data: { widget, tabId },
-          };
-          return {
-            widgets: [...s.widgets, widget],
-            rfNodes: [...s.rfNodes, newNode],
-            controlTabs: s.controlTabs.map((t: any) =>
-              t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
-            ),
-            customEditorState: { open: true, widgetId: widget.params.id },
-          };
-        }
-        return { customEditorState: { open: true, widgetId } };
-      }),
+      withHistoryOp({ opKey: 'opAddWidget', target: widgetTarget('Custom') }, () =>
+        set((s: any) => {
+          if (!widgetId) {
+            const widget = createWidget('Custom');
+            const tabId = s.activeControlTabId;
+            const pos = { x: 280, y: 80 + Math.random() * 100 };
+            const newNode: Node = {
+              id: widget.params.id,
+              type: 'widget',
+              position: pos,
+              data: { widget, tabId },
+            };
+            return {
+              widgets: [...s.widgets, widget],
+              rfNodes: [...s.rfNodes, newNode],
+              controlTabs: s.controlTabs.map((t: any) =>
+                t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
+              ),
+              customEditorState: { open: true, widgetId: widget.params.id },
+            };
+          }
+          return { customEditorState: { open: true, widgetId } };
+        })
+      ),
 
     closeCustomEditor: () => set({ customEditorState: { open: false, widgetId: null } }),
 
-    addWidget: (widget, tabId, position) => {
-      widget = normalizeWidget(widget);
-      set((s: any) => {
-        const pos = position ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 };
-        const newNode: Node = {
-          id: widget.params.id,
-          type: 'widget',
-          position: pos,
-          data: { widget, tabId },
-        };
-        const newState: Record<string, any> = {
-          widgets: [...s.widgets, widget],
-          rfNodes: [...s.rfNodes, newNode],
-        };
-        // 有窗口的控件: 自动创建数据窗口 Tab (关闭窗口不会删除节点, 可双击节点重开)
-        const tab = widgetToTab(widget);
-        if (tab) {
-          newState.dataTabs = [...s.dataTabs, tab];
-          newState.activeDataTabId = widget.params.id;
+    addWidget: (widget, tabId, position) =>
+      withHistoryOp(
+        {
+          opKey: 'opAddWidget',
+          detailKey: widgetKindLabelKey(widget.kind) ?? undefined,
+          target: widgetTarget(widget.kind),
+        },
+        () => {
+          widget = normalizeWidget(widget);
+          set((s: any) => {
+            const pos = position ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 };
+            const newNode: Node = {
+              id: widget.params.id,
+              type: 'widget',
+              position: pos,
+              data: { widget, tabId },
+            };
+            const newState: Record<string, any> = {
+              widgets: [...s.widgets, widget],
+              rfNodes: [...s.rfNodes, newNode],
+            };
+            // 有窗口的控件: 自动创建数据窗口 Tab (关闭窗口不会删除节点, 可双击节点重开)
+            const tab = widgetToTab(widget);
+            if (tab) {
+              newState.dataTabs = [...s.dataTabs, tab];
+              newState.activeDataTabId = widget.params.id;
+            }
+            newState.controlTabs = s.controlTabs.map((t: any) =>
+              t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
+            );
+            return newState;
+          });
+          get().syncTabGraph(tabId);
         }
-        newState.controlTabs = s.controlTabs.map((t: any) =>
-          t.id === tabId ? { ...t, widgets: [...t.widgets, widget.params.id] } : t
-        );
-        return newState;
-      });
-      get().syncTabGraph(tabId);
-    },
+      ),
 
     removeWidget: (id) => {
       const widget = get().widgets.find((w: WidgetConfig) => w.params.id === id);
       const affectedTabs = new Set<string>();
       const node = get().rfNodes.find((n: any) => n.id === id);
       if (node?.data?.tabId) affectedTabs.add(node.data.tabId as string);
-      set((s: any) => {
-        const newState: Record<string, any> = {
-          widgets: s.widgets.filter((w: WidgetConfig) => w.params.id !== id),
-          rfNodes: s.rfNodes.filter((n: any) => n.id !== id),
-          rfEdges: s.rfEdges.filter((e: any) => e.source !== id && e.target !== id),
-        };
-        if (
-          widget &&
-          (widget.kind === 'Waveform' ||
-            widget.kind === 'PieChart' ||
-            widget.kind === 'Image' ||
-            widget.kind === 'RawData')
-        ) {
-          const remaining = s.dataTabs.filter((t: any) => t.id !== id);
-          newState.dataTabs = remaining;
-          if (s.activeDataTabId === id) {
-            newState.activeDataTabId = remaining[0]?.id ?? 'waveform-fixed';
-          }
+      withHistoryOp(
+        {
+          opKey: 'opRemoveWidget',
+          detailKey: widget ? widgetKindLabelKey(widget.kind) ?? undefined : undefined,
+          target: widget ? widgetTarget(widget.kind) : { kind: 'nodes' },
+        },
+        () => {
+          set((s: any) => {
+            const newState: Record<string, any> = {
+              widgets: s.widgets.filter((w: WidgetConfig) => w.params.id !== id),
+              rfNodes: s.rfNodes.filter((n: any) => n.id !== id),
+              rfEdges: s.rfEdges.filter((e: any) => e.source !== id && e.target !== id),
+            };
+            if (
+              widget &&
+              (widget.kind === 'Waveform' ||
+                widget.kind === 'PieChart' ||
+                widget.kind === 'Image' ||
+                widget.kind === 'RawData')
+            ) {
+              const remaining = s.dataTabs.filter((t: any) => t.id !== id);
+              newState.dataTabs = remaining;
+              if (s.activeDataTabId === id) {
+                newState.activeDataTabId = remaining[0]?.id ?? 'waveform-fixed';
+              }
+            }
+            newState.controlTabs = s.controlTabs.map((t: any) => ({
+              ...t,
+              widgets: t.widgets.filter((w: string) => w !== id),
+            }));
+            return newState;
+          });
+          affectedTabs.forEach((tabId) => get().syncTabGraph(tabId));
         }
-        newState.controlTabs = s.controlTabs.map((t: any) => ({
-          ...t,
-          widgets: t.widgets.filter((w: string) => w !== id),
-        }));
-        return newState;
-      });
-      affectedTabs.forEach((tabId) => get().syncTabGraph(tabId));
+      );
     },
 
-    updateWidget: (id, widget) => {
-      widget = normalizeWidget(widget);
-      const node = get().rfNodes.find((n: any) => n.id === id);
-      const tabId = node?.data?.tabId as string | undefined;
-      set((s: any) => ({
-        widgets: s.widgets.map((w: WidgetConfig) => (w.params.id === id ? widget : w)),
-        rfNodes: s.rfNodes.map((n: any) =>
-          n.id === id ? { ...n, data: { ...n.data, widget } } : n
-        ),
-      }));
-      if (tabId) get().syncTabGraph(tabId);
-    },
+    updateWidget: (id, widget) =>
+      withHistoryOp(
+        {
+          opKey: 'opUpdateWidgetParams',
+          detailKey: widgetKindLabelKey(widget.kind) ?? undefined,
+          target: widgetTarget(widget.kind),
+        },
+        () => {
+          widget = normalizeWidget(widget);
+          const node = get().rfNodes.find((n: any) => n.id === id);
+          const tabId = node?.data?.tabId as string | undefined;
+          set((s: any) => ({
+            widgets: s.widgets.map((w: WidgetConfig) => (w.params.id === id ? widget : w)),
+            rfNodes: s.rfNodes.map((n: any) =>
+              n.id === id ? { ...n, data: { ...n.data, widget } } : n
+            ),
+          }));
+          if (tabId) get().syncTabGraph(tabId);
+        },
+        // 滑块拖拽等高频连续更新 — 同控件短窗内合并为一条
+        { coalesceKey: `widget.params.${id}` }
+      ),
   };
 }

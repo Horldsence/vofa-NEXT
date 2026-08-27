@@ -1042,6 +1042,33 @@ dataTabModel3d: 3D 模型
 dataTabCommand: 命令发送
 dataTabFrameDecoder: 帧解码
 dataTabTrigger: 触发器
+menuPanelOpenOperationHistory: 打开操作历史
+operationHistoryTitle: 操作历史
+opHistoryInitial: 初始状态
+opHistoryEmpty: 暂无操作记录。
+opHistoryClear: 清空历史
+opHistoryClearConfirm: 确认清空？
+opHistoryRedoZone: 已撤销 · 可重做
+opHistoryCurrentPosition: 当前位置
+opAddWidget: 添加控件
+opRemoveWidget: 删除控件
+opUpdateWidgetParams: 调整控件参数
+opConnectNodes: 添加连线
+opDeleteEdges: 删除连线
+opMoveNodes: 移动节点
+opRemoveNodes: 删除节点
+opAddTransportNode: 添加传输节点
+opAddProtocolNode: 添加协议节点
+opRemoveGlobalNode: 删除全局节点
+opUpdateTransportConfig: 修改传输配置
+opUpdateProtocolConfig: 修改协议配置
+opConvertProtocolTo: 协议转换
+opUpdateProtocolSchema: 编辑帧 Schema
+opAddControlTab: 新建控制页签
+opRemoveControlTab: 删除控制页签
+opRenameControlTab: 重命名页签
+opImportWorkspace: 导入工作区
+opApplyTemplate: 应用模板
 addConnection: 添加
 pasteConnection: 粘贴
 colSource: 源

@@ -20,6 +20,9 @@ import {
 } from '../appStoreHelpers';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
 import { useAppStore } from '../appStore';
+import { withHistoryOp } from '../historyStore';
+import type { HistoryTarget, NodeOpRef } from '../historyStore';
+import { nodeLabelOf, nodeRefOf } from '../../lib/utils/nodeKindVisuals';
 import type { ProtocolConfig, TransportConfig, WidgetConfig } from '../../types';
 
 export interface GraphSlice {
@@ -47,6 +50,11 @@ export interface GraphSlice {
 }
 
 export function createGraphSlice(set: any, get: any): GraphSlice {
+  /** 节点 id → 视觉引用 (传输/协议/控件), 找不到返回 null */
+  const nodeById = (id: string | null | undefined): Node | undefined =>
+    get().rfNodes.find((n: Node) => n.id === id);
+  const refOf = (id: string | null | undefined): NodeOpRef | null => nodeRefOf(nodeById(id));
+
   /// 变更涉及的 tab 集合 — 涉及全局节点时返回全部 tab
   const affectedTabsOf = (nodeIds: (string | null | undefined)[]): string[] => {
     const state = get();
@@ -98,43 +106,74 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
       void apiSubmitCustomTextOutput(widgetId, outputs);
     },
 
-    addTransportNode: (kind, position) => {
-      const node = createTransportNode(kind, position);
-      set((s: any) => ({ rfNodes: [...s.rfNodes, node] }));
-      get().syncAllTabGraphs();
-    },
+    addTransportNode: (kind, position) =>
+      withHistoryOp(
+        { opKey: 'opAddTransportNode', detailText: kind, target: { kind: 'node', node: { kind: 'transport' } } },
+        () => {
+        const node = createTransportNode(kind, position);
+        set((s: any) => ({ rfNodes: [...s.rfNodes, node] }));
+        get().syncAllTabGraphs();
+      }),
 
-    addProtocolNode: (config, position) => {
-      const node = createProtocolNode(config, position);
-      set((s: any) => ({ rfNodes: [...s.rfNodes, node] }));
-      get().syncAllTabGraphs();
-    },
+    addProtocolNode: (config, position) =>
+      withHistoryOp(
+        {
+          opKey: 'opAddProtocolNode',
+          detailText: config?.kind ?? undefined,
+          target: { kind: 'node', node: { kind: 'protocol' } },
+        },
+        () => {
+        const node = createProtocolNode(config, position);
+        set((s: any) => ({ rfNodes: [...s.rfNodes, node] }));
+        get().syncAllTabGraphs();
+      }),
 
     removeGlobalNode: (nodeId) => {
-      const node = get().rfNodes.find((n: Node) => n.id === nodeId);
-      if (!node || !isGlobalNode(node)) return;
-      // 关闭仍打开的连接 (尽力而为)
-      if (node.type === 'transport') void api.closeTransport(nodeId).catch(() => {});
-      set((s: any) => ({
-        rfNodes: s.rfNodes.filter((n: Node) => n.id !== nodeId),
-        rfEdges: s.rfEdges.filter((e: Edge) => e.source !== nodeId && e.target !== nodeId),
-      }));
-      // 同步清理派生端口表 (后端 remove_tab_graph 也会发新的 GraphDerived,
-      // 但全局节点删除不会触发 remove_tab_graph, 需前端本地清理)
-      get().removeDerived([nodeId]);
-      get().syncAllTabGraphs();
+      const victim = get().rfNodes.find((n: Node) => n.id === nodeId);
+      const ref = nodeRefOf(victim);
+      return withHistoryOp(
+        {
+          opKey: 'opRemoveGlobalNode',
+          detailText: nodeLabelOf(victim),
+          target: ref ? { kind: 'node', node: ref } : undefined,
+        },
+        () => {
+          const node = get().rfNodes.find((n: Node) => n.id === nodeId);
+          if (!node || !isGlobalNode(node)) return;
+          // 关闭仍打开的连接 (尽力而为)
+          if (node.type === 'transport') void api.closeTransport(nodeId).catch(() => {});
+          set((s: any) => ({
+            rfNodes: s.rfNodes.filter((n: Node) => n.id !== nodeId),
+            rfEdges: s.rfEdges.filter((e: Edge) => e.source !== nodeId && e.target !== nodeId),
+          }));
+          // 同步清理派生端口表 (后端 remove_tab_graph 也会发新的 GraphDerived,
+          // 但全局节点删除不会触发 remove_tab_graph, 需前端本地清理)
+          get().removeDerived([nodeId]);
+          get().syncAllTabGraphs();
+        }
+      );
     },
 
-    setTransportNodeConfig: (nodeId, config) => {
-      set((s: any) => ({
-        rfNodes: s.rfNodes.map((n: Node) =>
-          n.id === nodeId && n.type === 'transport'
-            ? { ...n, data: { ...n.data, config, label: config.kind } }
-            : n
-        ),
-      }));
-      get().syncAllTabGraphs();
-    },
+    setTransportNodeConfig: (nodeId, config) =>
+      withHistoryOp(
+        {
+          opKey: 'opUpdateTransportConfig',
+          detailText: config.kind,
+          target: { kind: 'node', node: { kind: 'transport' } },
+        },
+        () => {
+          set((s: any) => ({
+            rfNodes: s.rfNodes.map((n: Node) =>
+              n.id === nodeId && n.type === 'transport'
+                ? { ...n, data: { ...n.data, config, label: config.kind } }
+                : n
+            ),
+          }));
+          get().syncAllTabGraphs();
+        },
+        // 配置面板连续调节 (端口名/波特率输入等) — 短窗合并
+        { coalesceKey: `transport.config.${nodeId}` }
+      ),
 
     seedInitialGraph: (rawDataWidgetId) => {
       // 默认设备选 TestData — 新用户无硬件也能连接后立即看到数据
@@ -149,85 +188,150 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
     onNodesChange: (changes) => {
       // 键盘 Delete 删除全局节点: 清理其边 + 关闭连接 + 全 tab 重同步
       // (X 按钮走 removeGlobalNode; 这里兜 React Flow 的 remove change)
-      const removedGlobalIds: string[] = [];
-      const removedTransportIds: string[] = [];
-      // 被删除的 widget 节点所属 tab — 删除后其边/节点定义须同步移除
-      const removedWidgetTabIds = new Set<string>();
-      for (const ch of changes) {
-        if (ch.type === 'remove') {
-          const node = get().rfNodes.find((n: Node) => n.id === ch.id);
-          if (node && isGlobalNode(node)) {
-            removedGlobalIds.push(ch.id);
-            if (node.type === 'transport') removedTransportIds.push(ch.id);
-          } else if (node?.data?.tabId) {
-            removedWidgetTabIds.add(node.data.tabId as string);
+      // 撤销埋点: 仅记录 remove / position 两类 change, select/dimensions 不入历史;
+      // 拖动期间高频 position 批按时间窗合并为一条「移动节点」
+      const removing = changes.some((ch) => ch.type === 'remove');
+      const moving = changes.some((ch) => ch.type === 'position');
+      const applyChanges = () => {
+        const removedGlobalIds: string[] = [];
+        const removedTransportIds: string[] = [];
+        // 被删除的 widget 节点所属 tab — 删除后其边/节点定义须同步移除
+        const removedWidgetTabIds = new Set<string>();
+        for (const ch of changes) {
+          if (ch.type === 'remove') {
+            const node = get().rfNodes.find((n: Node) => n.id === ch.id);
+            if (node && isGlobalNode(node)) {
+              removedGlobalIds.push(ch.id);
+              if (node.type === 'transport') removedTransportIds.push(ch.id);
+            } else if (node?.data?.tabId) {
+              removedWidgetTabIds.add(node.data.tabId as string);
+            }
           }
         }
-      }
-      set((s: any) => ({
-        rfNodes: applyNodeChanges(changes, s.rfNodes),
-        rfEdges: removedGlobalIds.length
-          ? s.rfEdges.filter((e: Edge) => !removedGlobalIds.includes(e.source) && !removedGlobalIds.includes(e.target))
-          : s.rfEdges,
-      }));
-      // 同步清理被删节点的派生端口表
-      if (removedGlobalIds.length) {
-        get().removeDerived(removedGlobalIds);
-        for (const id of removedTransportIds) {
-          void api.closeTransport(id).catch(() => {});
+        set((s: any) => ({
+          rfNodes: applyNodeChanges(changes, s.rfNodes),
+          rfEdges: removedGlobalIds.length
+            ? s.rfEdges.filter((e: Edge) => !removedGlobalIds.includes(e.source) && !removedGlobalIds.includes(e.target))
+            : s.rfEdges,
+        }));
+        // 同步清理被删节点的派生端口表
+        if (removedGlobalIds.length) {
+          get().removeDerived(removedGlobalIds);
+          for (const id of removedTransportIds) {
+            void api.closeTransport(id).catch(() => {});
+          }
+          get().syncAllTabGraphs();
         }
-        get().syncAllTabGraphs();
+        removedWidgetTabIds.forEach((tabId) => get().syncTabGraph(tabId));
+      };
+      if (removing || moving) {
+        // 删除型批: 取首个被删节点作为徽章归属; 移动/混合删除为中性
+        let target: HistoryTarget = { kind: 'nodes' };
+        if (removing) {
+          const removedId = changes.find(
+            (ch): ch is NodeChange & { id: string } => ch.type === 'remove'
+          )?.id;
+          const ref = refOf(removedId);
+          if (ref) target = { kind: 'node', node: ref };
+        }
+        withHistoryOp(
+          removing ? { opKey: 'opRemoveNodes', target } : { opKey: 'opMoveNodes', target },
+          applyChanges,
+          { coalesceKey: removing ? 'node.remove' : 'node.move' }
+        );
+      } else {
+        applyChanges();
       }
-      removedWidgetTabIds.forEach((tabId) => get().syncTabGraph(tabId));
     },
 
     onEdgesChange: (changes) => {
-      const affected = new Set<string>();
-      // remove change 只有 id (无 source/target) — 必须先在旧边集合里查出端点
-      const oldEdges = get().rfEdges;
-      for (const ch of changes) {
-        let source: string | null | undefined;
-        let target: string | null | undefined;
-        if (ch.type === 'remove') {
-          const edge = oldEdges.find((e: Edge) => e.id === ch.id);
-          source = edge?.source;
-          target = edge?.target;
-        } else {
-          if ('source' in ch) source = (ch as any).source;
-          if ('target' in ch) target = (ch as any).target;
+      // 撤销埋点: 仅记录 remove change (选择变化不入历史), 连发合并为一条
+      const removing = changes.some((ch) => ch.type === 'remove');
+      const applyChanges = () => {
+        const affected = new Set<string>();
+        // remove change 只有 id (无 source/target) — 必须先在旧边集合里查出端点
+        const oldEdges = get().rfEdges;
+        for (const ch of changes) {
+          let source: string | null | undefined;
+          let target: string | null | undefined;
+          if (ch.type === 'remove') {
+            const edge = oldEdges.find((e: Edge) => e.id === ch.id);
+            source = edge?.source;
+            target = edge?.target;
+          } else {
+            if ('source' in ch) source = (ch as any).source;
+            if ('target' in ch) target = (ch as any).target;
+          }
+          if (source) affectedTabsOf([source]).forEach((t) => affected.add(t));
+          if (target) affectedTabsOf([target]).forEach((t) => affected.add(t));
         }
-        if (source) affectedTabsOf([source]).forEach((t) => affected.add(t));
-        if (target) affectedTabsOf([target]).forEach((t) => affected.add(t));
+        set((s: any) => ({
+          rfEdges: applyEdgeChanges(changes, s.rfEdges),
+        }));
+        affected.forEach((tabId) => get().syncTabGraph(tabId));
+      };
+      if (removing) {
+        // 双端点视觉: 取第一条被删边的两端 (连线通常是单条操作)
+        const firstRemovedId = changes.find(
+          (ch): ch is EdgeChange & { id: string } => ch.type === 'remove'
+        )?.id;
+        const victim = get().rfEdges.find((e: Edge) => e.id === firstRemovedId);
+        const fromRef = refOf(victim?.source);
+        const toRef = refOf(victim?.target);
+        withHistoryOp(
+          {
+            opKey: 'opDeleteEdges',
+            detailText: victim ? `${nodeLabelOf(nodeById(victim.source))} → ${nodeLabelOf(nodeById(victim.target))}` : undefined,
+            target: { kind: 'edge', ...(fromRef ? { from: fromRef } : {}), ...(toRef ? { to: toRef } : {}) },
+          },
+          applyChanges,
+          { coalesceKey: 'edge.remove' }
+        );
+      } else {
+        applyChanges();
       }
-      set((s: any) => ({
-        rfEdges: applyEdgeChanges(changes, s.rfEdges),
-      }));
-      affected.forEach((tabId) => get().syncTabGraph(tabId));
     },
 
     onConnect: (connection) => {
-      const newEdge: Edge = {
-        ...connection,
-        id: nanoid(8),
-      };
-      const sourceNode = get().rfNodes.find((n: Node) => n.id === connection.source);
-      const targetNode = get().rfNodes.find((n: Node) => n.id === connection.target);
-      // tabId 推断: widget 节点归属其 tab; 全局节点参与的边归属当前活跃 tab
-      let tabId: string | undefined =
-        (sourceNode && !isGlobalNode(sourceNode) ? (sourceNode.data?.tabId as string) : undefined) ??
-        (targetNode && !isGlobalNode(targetNode) ? (targetNode.data?.tabId as string) : undefined);
-      if (!tabId) tabId = get().activeControlTabId;
-      // RawData 输入端口是动态派生的 (`src:<source>:<handle>`), 连接时它显示的回退端口 'data'
-      // 在入边建立后即消失 — 必须把边的 targetHandle 改写为派生端口 id,
-      // 否则 React Flow 找不到 handle (warning #008), 边无法渲染
-      const targetWidget = targetNode?.data?.widget as WidgetConfig | undefined;
-      if (targetWidget?.kind === 'RawData') {
-        newEdge.targetHandle = rawDataPortId(connection.source, connection.sourceHandle);
-      }
-      set((s: any) => ({
-        rfEdges: addEdge(newEdge, s.rfEdges),
-      }));
-      if (tabId) get().syncTabGraph(tabId);
+      const fromRef = refOf(connection.source);
+      const toRef = refOf(connection.target);
+      const fromLabel = nodeLabelOf(get().rfNodes.find((n: Node) => n.id === connection.source));
+      const toLabel = nodeLabelOf(get().rfNodes.find((n: Node) => n.id === connection.target));
+      return withHistoryOp(
+        {
+          opKey: 'opConnectNodes',
+          detailText: `${fromLabel} → ${toLabel}`,
+          target: {
+            kind: 'edge',
+            ...(fromRef ? { from: fromRef } : {}),
+            ...(toRef ? { to: toRef } : {}),
+          },
+        },
+        () => {
+          const newEdge: Edge = {
+            ...connection,
+            id: nanoid(8),
+          };
+          const sourceNode = get().rfNodes.find((n: Node) => n.id === connection.source);
+          const targetNode = get().rfNodes.find((n: Node) => n.id === connection.target);
+          // tabId 推断: widget 节点归属其 tab; 全局节点参与的边归属当前活跃 tab
+          let tabId: string | undefined =
+            (sourceNode && !isGlobalNode(sourceNode) ? (sourceNode.data?.tabId as string) : undefined) ??
+            (targetNode && !isGlobalNode(targetNode) ? (targetNode.data?.tabId as string) : undefined);
+          if (!tabId) tabId = get().activeControlTabId;
+          // RawData 输入端口是动态派生的 (`src:<source>:<handle>`), 连接时它显示的回退端口 'data'
+          // 在入边建立后即消失 — 必须把边的 targetHandle 改写为派生端口 id,
+          // 否则 React Flow 找不到 handle (warning #008), 边无法渲染
+          const targetWidget = targetNode?.data?.widget as WidgetConfig | undefined;
+          if (targetWidget?.kind === 'RawData') {
+            newEdge.targetHandle = rawDataPortId(connection.source, connection.sourceHandle);
+          }
+          set((s: any) => ({
+            rfEdges: addEdge(newEdge, s.rfEdges),
+          }));
+          if (tabId) get().syncTabGraph(tabId);
+        }
+      );
     },
 
     getTabNodes: (tabId) => {

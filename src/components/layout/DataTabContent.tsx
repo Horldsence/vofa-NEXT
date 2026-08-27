@@ -14,6 +14,7 @@ import {
   Zap as ZapIcon,
   AlertTriangle as AlertTriangleIcon,
   ListTree as ListTreeIcon,
+  History as HistoryIcon,
 } from 'lucide-react';
 import { WaveformChart } from '../displays/waveform/WaveformChart';
 import { RawDataView } from '../displays/rawdata/RawDataView';
@@ -25,6 +26,7 @@ import { CanView } from '../displays/can/CanView';
 import { LogicView } from '../displays/logic/LogicView';
 import { CompileErrorsView } from '../displays/compileErrors/CompileErrorsView';
 import { CompileResultsView } from '../displays/compileResults/CompileResultsView';
+import { OperationHistoryView } from '../displays/history/OperationHistoryView';
 import { FrameDecoder } from '../displays/decoder/FrameDecoder';
 import { Trigger } from '../controls/Trigger';
 import { TableView } from '../displays/widgets/TableView';
@@ -225,6 +227,11 @@ const compileErrorsTabContent = (
 const compileResultsTabContent = (
   <div className="flex h-full w-full">
     <CompileResultsView />
+  </div>
+);
+const operationHistoryTabContent = (
+  <div className="flex h-full w-full">
+    <OperationHistoryView />
   </div>
 );
 
@@ -434,6 +441,8 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       return compileErrorsTabContent;
     case 'compile-results':
       return compileResultsTabContent;
+    case 'operation-history':
+      return operationHistoryTabContent;
     case 'table-view': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'TableView'
@@ -495,6 +504,8 @@ export function DataTabIcon({ type, size = 12 }: { type: string; size?: number }
       return <AlertTriangleIcon size={size} />;
     case 'compile-results':
       return <ListTreeIcon size={size} />;
+    case 'operation-history':
+      return <HistoryIcon size={size} />;
     default:
       return null;
   }

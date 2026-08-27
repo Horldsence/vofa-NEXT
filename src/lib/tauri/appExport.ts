@@ -11,6 +11,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { LazyStore } from '@tauri-apps/plugin-store';
 import type { Node, Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
+import { rebaseHistory } from '../../store/historyStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { useDockStore, type DockNode, type DockCard } from '../../store/dockStore';
 import { useLayoutStore, type SidebarDock } from '../../store/layoutStore';
@@ -541,6 +542,9 @@ export async function applySnapshot(
       if (!currentTabIds.has(tabId)) useAppStore.getState().removeTabGraph(tabId);
     }
   }
+
+  // 7. 快照应用是批量覆盖而非用户单步操作 — 撤销历史重置为新基线
+  rebaseHistory('opImportWorkspace');
 }
 
 // ==================== 导出 / 导入入口 ====================

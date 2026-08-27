@@ -16,6 +16,8 @@ export interface DataTabSlice {
   addCompileErrorsTab: () => void;
   /// 新增 — 编译结果面板 (连接列表)
   addCompileResultsTab: () => void;
+  /// 新增 — 操作历史面板 (撤销/重做记录, 恒定单例)
+  addOperationHistoryTab: () => void;
   /// 新增 — 由控件 id 构造对应窗口 Tab (已存在则激活, 否则新建并激活)
   addWidgetTab: (widget: WidgetConfig) => void;
 }
@@ -124,6 +126,24 @@ export function createDataTabSlice(set: any, get: any): DataTabSlice {
       });
     },
 
+    addOperationHistoryTab: () => {
+      const existing = get().dataTabs.find((t: DataTab) => t.type === 'operation-history');
+      if (existing) {
+        set({ activeDataTabId: existing.id });
+        return;
+      }
+      const tab: DataTab = {
+        id: `operation-history-${Date.now()}`,
+        type: 'operation-history',
+        name: t(get().lang, 'operationHistoryTitle'),
+        closable: true,
+      };
+      set({
+        dataTabs: [...get().dataTabs, tab],
+        activeDataTabId: tab.id,
+      });
+    },
+
     addWidgetTab: (widget) => {
       const tab = widgetToTab(widget);
       if (!tab) return;
@@ -169,7 +189,7 @@ export interface DataPanelEntry {
 
 export function getAvailableDataPanelEntries(
   state: Pick<AppStore, 'dataTabs' | 'widgets' | 'lang'>,
-  actions: Pick<AppStore, 'addCompileErrorsTab' | 'addCompileResultsTab' | 'addCanTab' | 'addLogicTab' | 'addDataTab' | 'setActiveDataTab' | 'addWidgetTab'>,
+  actions: Pick<AppStore, 'addCompileErrorsTab' | 'addCompileResultsTab' | 'addCanTab' | 'addLogicTab' | 'addOperationHistoryTab' | 'addDataTab' | 'setActiveDataTab' | 'addWidgetTab'>,
 ): DataPanelEntry[] {
   const widgetKinds = new Set(state.widgets.map((w) => w.kind));
   // 同一 kind 可有多个 widget (例如多个 Waveform) — 取首个派生 Tab 用作打开目标
@@ -210,6 +230,15 @@ export function getAvailableDataPanelEntries(
       available: true,
       open: () => {
         actions.addLogicTab();
+      },
+      group: 'standalone',
+    },
+    {
+      type: 'operation-history',
+      labelKey: 'menuPanelOpenOperationHistory',
+      available: true,
+      open: () => {
+        actions.addOperationHistoryTab();
       },
       group: 'standalone',
     },
@@ -293,6 +322,8 @@ function standaloneOpener(type: DataTab['type']): ((app: DataTabSlice) => void) 
       return (app) => app.addCanTab();
     case 'logic':
       return (app) => app.addLogicTab();
+    case 'operation-history':
+      return (app) => app.addOperationHistoryTab();
     default:
       return null;
   }

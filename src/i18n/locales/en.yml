@@ -1041,6 +1041,33 @@ dataTabModel3d: 3D Model
 dataTabCommand: Command Sender
 dataTabFrameDecoder: Frame Decoder
 dataTabTrigger: Trigger
+menuPanelOpenOperationHistory: Open Operation History
+operationHistoryTitle: Operation History
+opHistoryInitial: Initial state
+opHistoryEmpty: No operations recorded yet.
+opHistoryClear: Clear history
+opHistoryClearConfirm: Confirm clear?
+opHistoryRedoZone: Undone · redoable
+opHistoryCurrentPosition: Current position
+opAddWidget: Add widget
+opRemoveWidget: Remove widget
+opUpdateWidgetParams: Adjust widget parameters
+opConnectNodes: Connect edges
+opDeleteEdges: Delete edges
+opMoveNodes: Move nodes
+opRemoveNodes: Delete nodes
+opAddTransportNode: Add transport node
+opAddProtocolNode: Add protocol node
+opRemoveGlobalNode: Delete global node
+opUpdateTransportConfig: Update transport config
+opUpdateProtocolConfig: Update protocol config
+opConvertProtocolTo: Convert protocol
+opUpdateProtocolSchema: Edit frame schema
+opAddControlTab: New control tab
+opRemoveControlTab: Delete control tab
+opRenameControlTab: Rename tab
+opImportWorkspace: Import workspace
+opApplyTemplate: Apply template
 addConnection: Add
 pasteConnection: Paste
 colSource: Source

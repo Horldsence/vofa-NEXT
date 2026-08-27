@@ -11,6 +11,7 @@ import { useAppStore } from '../../store/appStore';
 import { isGlobalNode } from '../../store/appStoreHelpers';
 import { useDockStore } from '../../store/dockStore';
 import { applySnapshot, migrateSnapshotToV3, type AppSnapshot } from '../tauri/appExport';
+import { rebaseHistory } from '../../store/historyStore';
 import { notify, formatError } from '../tauri/notifications';
 import { t } from '../../i18n';
 import type { WidgetConfig, DataTab } from '../../types';
@@ -133,6 +134,8 @@ export async function applyTemplate(
       });
     } else {
       mergeTemplate(snap);
+      // 合并模式不走 applySnapshot — 撤销历史同样重置为新基线
+      rebaseHistory('opApplyTemplate');
     }
 
     const isConnected = Object.values(useAppStore.getState().connectionStates).some(

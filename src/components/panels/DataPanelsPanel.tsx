@@ -23,6 +23,7 @@ import {
   Zap as ZapIcon,
   AlertTriangle as AlertTriangleIcon,
   BarChart3 as BarChart3Icon,
+  History as HistoryIcon,
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
@@ -51,6 +52,7 @@ const PANEL_ICONS: Record<DataPanelEntry['type'], LucideIcon> = {
   'compile-errors': AlertTriangleIcon,
   'compile-results': Layers,
   'table-view': BarChart3Icon,
+  'operation-history': HistoryIcon,
 };
 
 export function DataPanelsPanel() {
@@ -61,6 +63,7 @@ export function DataPanelsPanel() {
   const addCompileResultsTab = useAppStore((s) => s.addCompileResultsTab);
   const addCanTab = useAppStore((s) => s.addCanTab);
   const addLogicTab = useAppStore((s) => s.addLogicTab);
+  const addOperationHistoryTab = useAppStore((s) => s.addOperationHistoryTab);
   const addWidgetTab = useAppStore((s) => s.addWidgetTab);
 
   const panelEntries = getAvailableDataPanelEntries(
@@ -70,6 +73,7 @@ export function DataPanelsPanel() {
       addCompileResultsTab,
       addCanTab,
       addLogicTab,
+      addOperationHistoryTab,
       addDataTab: useAppStore.getState().addDataTab,
       setActiveDataTab: useAppStore.getState().setActiveDataTab,
       addWidgetTab,

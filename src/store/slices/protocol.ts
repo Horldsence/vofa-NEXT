@@ -5,6 +5,15 @@ import { t } from '../../i18n';
 import type { ProtocolConfig, ProtocolSchema } from '../../types';
 import { getEffectiveChannels, type ProtocolNodeData } from '../appStoreHelpers';
 import { schemaFromProtocolConfig, schemaPortNames } from '../../lib/utils/protocolSchema';
+import {
+  withHistoryOp,
+  beginHistoryOp,
+  commitHistoryOp,
+  type HistoryTarget,
+} from '../historyStore';
+
+/** 协议类操作目标 — 行首徽章用画布 Protocol 节点同款 (主题色 Binary) */
+const protocolTarget = (): HistoryTarget => ({ kind: 'node', node: { kind: 'protocol' } });
 
 export const DEFAULT_PROTOCOL: ProtocolConfig = {
   kind: 'JustFloat',
@@ -30,6 +39,7 @@ export function createProtocolSlice(set: any, get: any): ProtocolSlice {
 
     setProtocolNodeConfig: async (nodeId, config) => {
       // 1. 更新节点 data (通道数立即按新配置重算)
+      beginHistoryOp();
       const detected = get().detectedChannels[nodeId] ?? null;
       const effective = getEffectiveChannels(config, detected);
       // schema 联动: 预设 (或缺失) → 按新 config 工厂重建; custom → 保留用户块
@@ -43,6 +53,11 @@ export function createProtocolSlice(set: any, get: any): ProtocolSlice {
             : n
         ),
       }));
+      // 文档变更已在上面同步完成 — 立即提交历史 (await 之后的后端调用不属于文档态)
+      commitHistoryOp(
+        { opKey: 'opUpdateProtocolConfig', detailText: config.kind, target: protocolTarget() },
+        { coalesceKey: `protocol.config.${nodeId}` }
+      );
       // 2. 后端运行时引擎 (图同步是权威, 此调用让引擎立即重建;
       //    手动模式 buffer 通道数 + 推送记录复位都在 set_protocol 内一并完成,
       //    自动模式由后端 protocol:channels-detected 事件驱动前端响应)
@@ -59,30 +74,39 @@ export function createProtocolSlice(set: any, get: any): ProtocolSlice {
       get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
     },
 
-    setProtocolNodeConvertTo: (nodeId, convertTo) => {
-      set((s: any) => ({
-        rfNodes: s.rfNodes.map((n: any) =>
-          n.id === nodeId && n.type === 'protocol'
-            ? { ...n, data: { ...n.data, convertTo } }
-            : n
-        ),
-      }));
-      get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
-    },
+    setProtocolNodeConvertTo: (nodeId, convertTo) =>
+      withHistoryOp(
+        {
+          opKey: 'opConvertProtocolTo',
+          detailText: convertTo?.kind ?? undefined,
+          target: protocolTarget(),
+        },
+        () => {
+          set((s: any) => ({
+            rfNodes: s.rfNodes.map((n: any) =>
+              n.id === nodeId && n.type === 'protocol'
+                ? { ...n, data: { ...n.data, convertTo } }
+                : n
+            ),
+          }));
+          get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+        }
+      ),
 
-    setProtocolNodeSchema: (nodeId, schema) => {
-      set((s: any) => ({
-        rfNodes: s.rfNodes.map((n: any) => {
-          if (n.id !== nodeId || n.type !== 'protocol') return n;
-          // custom 下节点端口数跟随 decode 块派生 (摘要显示用; 端口名以 protocolPortNames 为准)
-          const channels = schema.preset === 'custom'
-            ? schemaPortNames(schema.decode).length
-            : (n.data as ProtocolNodeData).channels;
-          return { ...n, data: { ...n.data, schema, channels } };
-        }),
-      }));
-      // 图同步为权威 (NodeKind::Protocol.schema 随图下发, 引擎按 schema 重建)
-      get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
-    },
+    setProtocolNodeSchema: (nodeId, schema) =>
+      withHistoryOp({ opKey: 'opUpdateProtocolSchema', target: protocolTarget() }, () => {
+        set((s: any) => ({
+          rfNodes: s.rfNodes.map((n: any) => {
+            if (n.id !== nodeId || n.type !== 'protocol') return n;
+            // custom 下节点端口数跟随 decode 块派生 (摘要显示用; 端口名以 protocolPortNames 为准)
+            const channels = schema.preset === 'custom'
+              ? schemaPortNames(schema.decode).length
+              : (n.data as ProtocolNodeData).channels;
+            return { ...n, data: { ...n.data, schema, channels } };
+          }),
+        }));
+        // 图同步为权威 (NodeKind::Protocol.schema 随图下发, 引擎按 schema 重建)
+        get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+      }),
   };
 }
