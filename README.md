@@ -91,6 +91,14 @@ The UI features a **dock-style window layout**: control canvases and data views 
 - **FrameDecoder**: block-based byte-stream parser (Header / Length / Id / Field / Bitfield / Checksum / Tail) with multi-frame dispatch via `match_id` and checksum validation.
 - **Custom JS nodes**: user JavaScript runs in a sandboxed iframe; outputs are posted back to the backend graph.
 
+### Operation History · Undo / Redo / Time Travel
+
+- **Snapshot-based undo stack** — canvas actions (node add/remove, wiring, widget config, tab management) are recorded automatically onto a timeline; session-scoped, up to 200 steps.
+- **Shortcuts** — `Ctrl+Z` to undo, `Ctrl+Y` to redo; continuous gestures such as node dragging or slider tweaks coalesce into a single entry.
+- **Operation History panel** — timeline list with newest first and badges colored by node kind (edges show two-tone endpoint dots); clicking any entry jumps straight back to that moment (snapshot rollback). The current entry is highlighted, and entries above it appear grayed out as "Undone · redoable" — click them to redo.
+- **Branch semantics** — editing after an undo discards the redo branch as usual; importing a backup or applying a template rebases the timeline onto a fresh baseline.
+- **Panel entry** — "Open Operation History" in the "＋" menu of the data card title bar; also practiced hands-on in the guided tour.
+
 ### Displays & Widgets
 
 - **Oscilloscope-style waveform** — powered by uPlot, with timebase zoom, cursor measurements, Run/Stop freeze, per-channel independent / shared Y-axis, thumbnail zoom, crosshair, hover-point markers, and cursor snap.
@@ -174,6 +182,7 @@ The default layout looks like this (all panels can be freely rearranged):
 ### Common Actions
 
 - **Settings**: `Ctrl+,` / `Cmd+,` or the gear icon in the activity bar; full-app config export / import is available (backup to a single JSON file).
+- **Undo & time travel**: `Ctrl+Z` to undo, `Ctrl+Y` to redo; clicking any entry in the Operation History panel jumps back to that moment (see Core Features).
 - **Refresh ports**: the refresh button in the status bar or the context menu.
 - **Help & onboarding**: the help icon at the bottom of the activity bar opens the Help Center anytime; a guided tour appears on first launch (can be disabled in Settings).
 
@@ -232,7 +241,8 @@ vofa-next/
 │   │   ├── displays/              # Waveform / Gauge / LED / PieChart / Spectrum /
 │   │   │                          # Image / NumberDisplay / Model3D / TableView /
 │   │   │                          # CanView / CanSender / CanLoadView / LogicView /
-│   │   │                          # RawDataView / CommandSender / FrameDecoder / ...
+│   │   │                          # RawDataView / CommandSender / FrameDecoder /
+│   │   │                          # OperationHistory / ...
 │   │   ├── layout/                # ActivityBar / Sidebar / DockLayout /
 │   │   │                          # DockCardFrame / DataTabContent / NodeEditor /
 │   │   │                          # StatusBar / BufferUsageStats / CanLoadAlarm

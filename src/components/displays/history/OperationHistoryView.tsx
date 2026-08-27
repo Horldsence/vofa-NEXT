@@ -128,7 +128,7 @@ export const OperationHistoryView = memo(function OperationHistoryView() {
   const futureCount = useMemo(() => ordered.filter(({ idx }) => idx > index).length, [ordered, index]);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden">
+    <div className="flex flex-col h-full w-full overflow-hidden" data-tour="operation-history">
       {/* 头部: 标题 + 步骤进度 + 撤销/重做/清空 */}
       <div className="flex items-center gap-2 px-2.5 h-9 border-b border-border-subtle bg-bg-panel-header shrink-0">
         <HistoryIcon size={13} className="text-text-secondary shrink-0" />

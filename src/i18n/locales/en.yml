@@ -875,6 +875,9 @@ tourCompileErrorsContent: Edits recompile instantly. A red triangle in the statu
 tourResultsTitle: Compile Results · Connection Table
 tourResultsContent: The backend's authoritative HIR table - add, remove, edit, copy/paste connections; clicking a node name highlights it on canvas.
 tourActDeleteEdge: Delete one connection via its trash icon
+tourHistoryTitle: Operation History · Undo & Time Travel
+tourHistoryContent: Every edit is recorded here as a timeline - <strong>click any entry to jump straight back to that moment</strong>, or undo/redo step by step via the header buttons or Ctrl+Z / Ctrl+Y.
+tourActHistory: Click any entry in the history list (or the Undo button)
 tourDataTabsTitle: Data Windows · Free Layout
 tourDataTabsContent: Waveform / CAN / logic / compile windows coexist as tabs. <strong>Drag tabs to merge or split</strong>, drag dividers to resize, right-click to close.
 tourCanTitle: CAN Frames · Bus Analysis

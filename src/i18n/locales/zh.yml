@@ -875,6 +875,9 @@ tourCompileErrorsContent: 编辑即时触发后端编译。状态栏红三角一
 tourResultsTitle: 编译结果 · 管理连接
 tourResultsContent: 后端 HIR 权威连接表——增/删/改/复制粘贴皆可，点击节点名可在画布中蓝色高亮对应节点。
 tourActDeleteEdge: 点行尾垃圾桶删除一条连接
+tourHistoryTitle: 操作历史 · 撤销与回溯
+tourHistoryContent: 每次编辑都会记录于此——<strong>点击任意一条直接回到那个时刻</strong>，或用顶部按钮 / Ctrl+Z、Ctrl+Y 逐步撤销重做。
+tourActHistory: 点击历史列表里任意一条（或点顶部撤销按钮）
 tourDataTabsTitle: 数据窗口 · 自由布局
 tourDataTabsContent: 波形/CAN/逻辑/编译等窗口以 Tab 共存。<strong>拖 Tab 合并或拆分窗口</strong>，拖分隔条调宽窄，右键可关闭。
 tourCanTitle: CAN 帧 · 总线分析

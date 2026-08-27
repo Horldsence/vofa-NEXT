@@ -3,7 +3,7 @@
 //! - 聚光灯 (TourSpotlight) 与弹窗 (TourPopover) 均为 React 组件: 弹窗直接使用主题
 //!   token, 整数 left/top 定位, 文字渲染与主应用完全一致
 //! - 遮罩层 pointer-events: none, 高亮区完全可交互 —— 实操步骤由用户真实完成:
-//!   点跳转条 / 拖控件建卡 / 连线 / 删卡 / 编译结果表删边 / 切 CAN 子页
+//!   点跳转条 / 拖控件建卡 / 连线 / 删卡 / 编译结果表删边 / 历史跳转回溯 / 切 CAN 子页
 //! - 门控检测声明式内联在每个步骤的 gate.spec 里 (store 订阅检测节点/边数量跨越,
 //!   点击型用 document 捕获 + closest), 不存在与步骤表分离的索引映射
 //! - store 型基线在步骤激活一帧后快照并武装检测, 避开 prepare 触发的
@@ -153,7 +153,20 @@ export function OnboardingWizard() {
       prepare: () => openDataPanelAndReveal(() => useAppStore.getState().addCompileResultsTab()),
       gate: { spec: { kind: 'edges-decrease' }, actionKey: 'tourActDeleteEdge' },
     },
-    // 10. 数据窗口与布局（旧三步合并）
+    // 10. 操作历史 · 撤销与回溯（动手）— 上一步刚删过一条边, 正好演示记录与跳转
+    {
+      anchor: 'operation-history',
+      titleKey: 'tourHistoryTitle',
+      contentKey: 'tourHistoryContent',
+      side: 'top',
+      align: 'start',
+      prepare: () => openDataPanelAndReveal(() => useAppStore.getState().addOperationHistoryTab()),
+      gate: {
+        spec: { kind: 'click-in', selector: '[data-tour="operation-history"]' },
+        actionKey: 'tourActHistory',
+      },
+    },
+    // 11. 数据窗口与布局（旧三步合并）
     {
       anchor: 'data-tabs',
       titleKey: 'tourDataTabsTitle',
@@ -161,7 +174,7 @@ export function OnboardingWizard() {
       side: 'top',
       align: 'center',
     },
-    // 11. CAN 帧（动手 · 子页签切换, 命中 can-tabs 比整面板更精确）
+    // 12. CAN 帧（动手 · 子页签切换, 命中 can-tabs 比整面板更精确）
     {
       anchor: 'can-view',
       titleKey: 'tourCanTitle',
@@ -174,7 +187,7 @@ export function OnboardingWizard() {
         actionKey: 'tourActCanTab',
       },
     },
-    // 12. 帮助中心收尾
+    // 13. 帮助中心收尾
     {
       anchor: 'help',
       titleKey: 'tourHelpTitle',
