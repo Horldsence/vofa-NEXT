@@ -20,6 +20,7 @@ import { useLayoutStore } from './store/layoutStore';
 import { useUpdateStore } from './store/updateStore';
 import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
+import { openDataPanelAndReveal } from './lib/utils/revealDataTab';
 
 // 重型弹窗 — 懒加载 (各模块仅含 named export, 经 *.lazy.tsx 包装为 default)
 const SettingsModal = lazy(() => import('./components/SettingsModal.lazy'));
@@ -172,18 +173,19 @@ function App() {
           st.toggleSidebar(st.sidebarView);
           break;
         }
-        // 数据面板菜单 (Panel) — 与 src-tauri/crates/menu_shell 的 ids::PANEL_OPEN_* 一一对应
+        // 数据面板菜单 (Panel) — 与 src-tauri/crates/menu_shell 的 ids::PANEL_OPEN_* 一一对应;
+        // 打开后同步把目标 Tab 所在 data 卡片切过去 (与侧边栏/MenuBar 入口行为一致)
         case 'menu:panel-open-compile-errors':
-          useAppStore.getState().addCompileErrorsTab();
+          openDataPanelAndReveal(() => useAppStore.getState().addCompileErrorsTab());
           break;
         case 'menu:panel-open-compile-results':
-          useAppStore.getState().addCompileResultsTab();
+          openDataPanelAndReveal(() => useAppStore.getState().addCompileResultsTab());
           break;
         case 'menu:panel-open-can':
-          useAppStore.getState().addCanTab();
+          openDataPanelAndReveal(() => useAppStore.getState().addCanTab());
           break;
         case 'menu:panel-open-logic':
-          useAppStore.getState().addLogicTab();
+          openDataPanelAndReveal(() => useAppStore.getState().addLogicTab());
           break;
         default:
           break;

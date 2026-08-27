@@ -1008,7 +1008,6 @@ menuPanelOpenCan: Open CAN Frames
 menuPanelOpenLogic: Open Logic Analyzer
 panelOpenSection: Open Data Panel
 panelOpenNoWidget: "no widget on canvas"
-dataPanelsDesc: Open any data panel — click an existing tab to cycle, or create one when no matching widget exists on the canvas.
 dataPanelsStandaloneTitle: Standalone
 dataPanelsDerivedTitle: By Widget
 dataTabWaveform: Waveform

@@ -256,26 +256,46 @@ export function getAvailableDataPanelEntries(
 // 同类控件可有多个, 因此派生面板常有 > 1 个 Tab)。
 // - 已有 ≥ 2 个匹配 Tab: 当前 active 是其一 → 下一个; 否则第一个
 // - 仅 1 个匹配: 激活它
-// - 0 个匹配 (仅派生类型可能, 独立面板的 fixed Tab 始终存在):
-//   找到画布首个同类 widget, addWidgetTab 创建并激活
+// - 0 个匹配: 创建并激活
+//   - 独立类型走对应 add action (注意 can / logic 无固定初始 Tab, 首次
+//     打开必须靠这里兜底创建; compile-errors / results 才有 fixed 初始 Tab)
+//   - 派生类型找到画布首个同类 widget, addWidgetTab 创建并激活
 
 export function cycleDataPanelTab(type: DataTab['type']): void {
   const app = useAppStore.getState();
   const matching = app.dataTabs.filter((tab) => tab.type === type);
   if (matching.length === 0) {
+    // 独立类型: 对应 add action (已存在则切过去, 不存在则创建)
+    const opener = standaloneOpener(type);
+    if (opener) {
+      opener(app);
+      return;
+    }
     // 派生类型: 用首个同类 widget 创建
     const widget = app.widgets.find((w) => widgetTabTypeOfKind(w.kind) === type);
     if (widget) app.addWidgetTab(widget);
-    return;
-  }
-  if (matching.length === 1) {
-    app.setActiveDataTab(matching[0].id);
     return;
   }
   // 多个匹配: 取当前 active 的索引, +1, 越界回到 0
   const currentIdx = matching.findIndex((t) => t.id === app.activeDataTabId);
   const next = matching[(currentIdx + 1) % matching.length];
   app.setActiveDataTab(next.id);
+}
+
+/// 独立面板类型 → 所在 slice 的创建 action (cycleDataPanelTab 兜底用)
+function standaloneOpener(type: DataTab['type']): ((app: DataTabSlice) => void) | null {
+  switch (type) {
+    case 'compile-errors':
+      return (app) => app.addCompileErrorsTab();
+    case 'compile-results':
+      return (app) => app.addCompileResultsTab();
+    case 'can':
+      return (app) => app.addCanTab();
+    case 'logic':
+      return (app) => app.addLogicTab();
+    default:
+      return null;
+  }
 }
 
 /// widget kind → 对应 DataTab type 的辅助 (避免外部引用 widgetTab 模块时的循环耦合)

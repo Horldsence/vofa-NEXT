@@ -26,12 +26,12 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
-import { useDockStore } from '../../store/dockStore';
 import {
   getAvailableDataPanelEntries,
   cycleDataPanelTab,
   type DataPanelEntry,
 } from '../../store/slices/dataTabs';
+import { openDataPanelAndReveal } from '../../lib/utils/revealDataTab';
 import { t } from '../../i18n';
 
 /// 数据面板条目图标 — 唯一对应表, 与 MenuBar 同源
@@ -76,32 +76,19 @@ export function DataPanelsPanel() {
     }
   );
 
-  /// 激活目标 Tab 所在的 Dock 卡片, 视觉上一并跳过去
-  const focusDataCardWithTab = (tabId: string) => {
-    const cards = Object.values(useDockStore.getState().cards).filter((c) => c.kind === 'data');
-    const card = cards.find((c) => c.tabIds.includes(tabId));
-    if (card) useDockStore.getState().setFocusedCard(card.id);
-  };
-
   /// 派生面板分组 + 独立面板分组 — 视觉上独立的两块, 与菜单结构保持一致
   const standalone = panelEntries.filter((e) => e.group === 'standalone');
   const derived = panelEntries.filter((e) => e.group === 'derived');
 
   return (
     <div className="flex flex-col h-full overflow-hidden gap-3">
-      <div className="text-xs text-text-secondary leading-relaxed">
-        {t(lang, 'dataPanelsDesc')}
-      </div>
-
       <Section
         title={t(lang, 'dataPanelsStandaloneTitle')}
         entries={standalone}
         iconForType={PANEL_ICONS}
         onClick={(entry) => {
           // 已在该类型的 Tab 之间轮转 (通常只有一个, 但有兜底)
-          cycleDataPanelTab(entry.type);
-          const target = useAppStore.getState().activeDataTabId;
-          focusDataCardWithTab(target);
+          openDataPanelAndReveal(() => cycleDataPanelTab(entry.type));
         }}
       />
 
@@ -112,14 +99,14 @@ export function DataPanelsPanel() {
         onClick={(entry) => {
           // 派生面板: 已有同类 Tab 轮转 (多个 Waveform 时),
           // 没有时用首个同类 widget 创建
-          if (!entry.available) {
-            // 灰显时强制调一次 open (addWidgetTab / addXTab 内部会判空, 不会重复创建)
-            entry.open();
-          } else {
-            cycleDataPanelTab(entry.type);
-          }
-          const target = useAppStore.getState().activeDataTabId;
-          focusDataCardWithTab(target);
+          openDataPanelAndReveal(() => {
+            if (!entry.available) {
+              // 灰显时强制调一次 open (addWidgetTab / addXTab 内部会判空, 不会重复创建)
+              entry.open();
+            } else {
+              cycleDataPanelTab(entry.type);
+            }
+          });
         }}
       />
     </div>

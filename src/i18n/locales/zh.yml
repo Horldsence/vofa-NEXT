@@ -1009,7 +1009,6 @@ menuPanelOpenCan: 打开 CAN 帧
 menuPanelOpenLogic: 打开逻辑分析仪
 panelOpenSection: 打开数据面板
 panelOpenNoWidget: "画布无对应控件"
-dataPanelsDesc: 一键打开任何数据面板 — 已有 Tab 时点击轮转切换, 无对应控件时自动创建。
 dataPanelsStandaloneTitle: 独立面板
 dataPanelsDerivedTitle: 派生面板
 dataTabWaveform: 波形
