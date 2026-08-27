@@ -276,6 +276,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       ref={wrapperRef}
       onContextMenu={onCanvasContextMenu}
       data-dock-zone="canvas"
+      data-tour="canvas"
     >
       <ReactFlow
         nodes={tabNodes}

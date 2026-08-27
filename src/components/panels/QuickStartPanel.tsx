@@ -72,7 +72,7 @@ export function QuickStartPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden gap-3">
+    <div className="flex flex-col h-full overflow-hidden gap-3" data-tour="quickstart-panel">
       <div className="text-xs text-text-secondary leading-relaxed">
         {t(lang, 'quickStartDesc')}
       </div>

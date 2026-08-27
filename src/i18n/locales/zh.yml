@@ -853,33 +853,46 @@ tourPrev: 上一步
 tourSkip: 跳过
 tourFinish: 完成
 tourWelcomeTitle: 欢迎使用 Vofa Next
-tourWelcomeContent: 本引导将带你快速熟悉核心操作。高亮区域是当前要介绍的功能，点击“下一步”继续；随时可点击右上角跳过。
-tourTransportTitle: 数据接口
-tourTransportContent: 从这里选择串口、CAN、UDP/TCP 或测试数据，并配置端口、波特率等参数。配置好后点击“连接”。
-tourProtocolTitle: 协议引擎
-tourProtocolContent: 根据设备选择解析协议：JustFloat / FireWater 用于通用波形，Slcan / CandleLight 用于 CAN 总线，LogicDecode 用于逻辑分析仪，RawData 仅显示原始字节。
-tourWidgetsTitle: 控件面板
-tourWidgetsContent: 拖拽旋钮、按钮、波形图、仪表盘等控件到上方画布，构建你的交互界面。控件之间可以连线传递数据。
-tourConnectTitle: 连接设备
-tourConnectContent: 参数配置完成后，点击这里的“连接”按钮开始接收数据。连接状态会在底部状态栏显示。
-tourDataTitle: 数据显示区
-tourDataContent: 底部会显示波形、原始数据、CAN 帧、逻辑分析仪等 Tab。点击右侧的 CPU / 电路板图标可新增 CAN 或逻辑分析仪页面。
-tourWindowOrganizeTitle: 多窗口组织
-tourWindowOrganizeContent: 拖动 Tab 到其他窗口的标题栏可合并为一组；拖动 Tab 或标题栏空白处到窗口边缘，可拆分为并排窗口；拖到页面四边可停靠为整行/整列。
-tourWindowResizeTitle: 窗口调整
-tourWindowResizeContent: 拖动窗口之间的分隔条可调整大小；双击控件 Tab 可重命名，右键 Tab 可关闭或关闭其他 Tab。窗口布局会自动保存，下次打开保持不变。
-tourHelpTitle: 帮助中心
-tourHelpContent: 任何时候点击左下角的帮助图标，都可以重新打开帮助中心或本引导。你也能在设置中关闭使用引导。
+tourWelcomeContent: 三分钟跑通核心工作流。高亮区是当前讲解对象，<strong>带勾选框的步骤需要动手完成</strong>；右上角 × 随时退出。
+tourQuickStartTitle: 快速开始 · 模板起步
+tourQuickStartContent: 左侧活动栏的<strong>火箭图标</strong>打开此面板——7 个模板一键生成画布与连线，应用后默认落在<strong>编译结果</strong>页核对。
+tourPaletteTitle: 控件面板 · 素材总览
+tourPaletteContent: 全部素材分<strong>九大分组</strong>——输入、接口、协议、显示、算术、滤波、频域、字符串、自定义。分组头可折叠展开。
+tourJumpbarTitle: 控件面板 · 跳转与搜索
+tourJumpbarContent: 图标条<strong>点击直达分组</strong>（自动展开已折叠项）；下方搜索框按名称即时过滤控件。
+tourActJumpbar: 点击跳转条上任一分类图标
+tourCreateTitle: 新建卡片 · 放进画布
+tourCreateContent: <strong>拖拽</strong>任意行到画布松手落位，或单击该行快速添加；接口与协议节点为全局共享。
+tourActCreate: 从左侧拖一个控件进画布（或单击行添加）
+tourConnectTitle: 连接边 · 数据流
+tourConnectContent: 节点左侧点＝输入、右侧点＝输出，<strong>同色同域才能相连</strong>，合法目标会变绿放大。
+tourActConnect: 把右侧输出点连到某个左侧输入点
+tourDeleteCardTitle: 删除卡片
+tourDeleteCardContent: 悬停头部点 <strong>×</strong>，或选中后按 <strong>Backspace</strong>；关窗≠删卡，双击节点可重开窗口。
+tourActDeleteCard: 用任一方式删除一个节点
+tourCompileErrorsTitle: 编译报错 · 自动定位
+tourCompileErrorsContent: 编辑即时触发后端编译。状态栏红三角一键打开本面板，<strong>定位按钮</strong>飞至红框节点，悬停可见具体原因。
+tourResultsTitle: 编译结果 · 管理连接
+tourResultsContent: 后端 HIR 权威连接表——增/删/改/复制粘贴皆可，点击节点名可在画布中蓝色高亮对应节点。
+tourActDeleteEdge: 点行尾垃圾桶删除一条连接
+tourDataTabsTitle: 数据窗口 · 自由布局
+tourDataTabsContent: 波形/CAN/逻辑/编译等窗口以 Tab 共存。<strong>拖 Tab 合并或拆分窗口</strong>，拖分隔条调宽窄，右键可关闭。
+tourCanTitle: CAN 帧 · 总线分析
+tourCanContent: 已为你自动打开视图。切到 Slcan/CandleLight 协议+硬件即可看真实总线，<strong>顶部提示条</strong>可一键设置协议。
+tourActCanTab: 点击底部任一子页签切换视图
+tourHelpTitle: 帮助中心 · 随时回来
+tourHelpContent: 问号图标随时回到本中心或重放引导；设置里可关闭首启引导与上下文提示条。
+tourNoEdgeSkip: 跳过
 
 # 帮助中心章节
 helpCenterQuickStart: 快速入门
-helpCenterQuickStartDesc: 从连接到查看数据，只需几个步骤。
+helpCenterQuickStartDesc: 从模板起步，几分钟跑通第一条数据通路。
 helpCenterQuickStartSteps: |-
-  在左侧“数据接口”选择串口/CAN/UDP/TCP 或测试数据，配置参数后点击连接
-  在“协议引擎”选择与设备匹配的协议（如 JustFloat / FireWater / CAN / LogicDecode）
-  在“控件面板”拖拽控件到画布，自动从通道源或上游控件连线
-  底部“数据”区会显示波形、原始数据、CAN 帧、逻辑分析仪等 Tab
-  点击左下角帮助图标可随时查看本帮助中心
+  点击左侧活动栏的火箭图标打开「快速开始」，选择一个内置模板（推荐 CAN 或串口）并应用
+  应用后默认停在「编译结果」页——先核对生成的连线，每行都是一条真实生效的边
+  回到画布：从控件面板拖入新控件、连接端口，继续扩展你的数据流
+  底部状态栏实时显示连接与编译状态；出现红色三角点击即可进入「编译错误」面板定位问题
+  左下角问号图标随时可回到本帮助中心，或重放新手引导
 helpTransport: 数据接口
 helpTransportDesc: 配置设备与上位机之间的物理连接。
 helpTransportSteps: |-
@@ -895,21 +908,30 @@ helpProtocolSteps: |-
   Slcan / CandleLight：CAN 协议，解析为 CAN 帧并在 CAN Tab 显示
   LogicDecode：逻辑分析仪协议，采集数字通道并支持协议解码
 helpWidgets: 控件与节点编辑器
-helpWidgetsDesc: 通过拖拽和连线构建数据流。
+helpWidgetsDesc: 九大分组素材库，拖拽放卡、端口连线搭建数据流。
 helpWidgetsSteps: |-
-  从左侧“控件面板”拖拽控件（旋钮、按钮、仪表盘、波形图等）到上方画布
-  每个控件即一个节点，可连接“通道源”或其他控件的输入/输出
-  双击或右键控件可修改参数、标签、绑定关系
-  使用 Knob/Slider/Button 等输入控件可向设备发送数据
-  Waveform/PieChart/Spectrum 等显示控件会自动创建底部数据 Tab
+  「控件面板」按九大分组收纳全部素材——输入控件 / 数据接口 / 协议引擎 / 显示 / 算术 / 滤波器 / 频域 / 字符串处理 / 自定义 JS 控件
+  顶部跳转条点击直达分组（自动展开折叠项），搜索框按名称即时过滤，分组头可折叠/展开
+  把任意一行拖进画布放置节点（落点即位置），或单击该行快速添加
+  按住右侧输出圆点拖到目标左侧输入圆点建立连线；只有同色（同域）端口可以相连，跨域会被弹窗拦截
+  删除节点：悬停头部点 ×，或选中后按 Backspace；关闭数据窗口不等于删节点，双击画布节点可重新打开它的窗口
+helpCompile: 编译反馈：错误与结果
+helpCompileDesc: 每次编辑即时重编译；错误自动高亮定位，结果表可直接增删改连接。
+helpCompileSteps: |-
+  底部状态栏常驻编译指示灯——转圈表示编译中、绿勾表示通过、红三角加计数表示出错，点击红三角直接打开「编译错误」面板
+  「编译错误」面板每个条目对应一个出错节点：点击定位按钮飞回画布，节点以红框标出，悬停红框可见具体原因（如信号域不匹配）
+  面板右上角的刷新按钮触发全量手动重编译；错误修复前条目持续保留，便于逐一处理
+  「编译结果」是固定标签页，展示后端 HIR 权威连接表：每行一条真实生效的边，标注源/目标端点与两侧数据域
+  结果表内可对连接做全生命周期操作：「添加连接」「粘贴连接」、行内编辑、复制与垃圾桶删除——删除会同步移除画布上的边并立即重编译
+  点击行内的节点名会聚焦对应画布卡片并将节点蓝色高亮，再点一次取消高亮
 helpCan: CAN 帧分析
 helpCanDesc: 接收、过滤、发送和分析 CAN 总线数据。
 helpCanSteps: |-
-  协议引擎需设置为 Slcan 或 CandleLight 并连接硬件
-  点击底部“+”添加 CAN 帧 Tab，或在顶部菜单打开
-  在“帧列表”查看实时 CAN 帧，支持按 ID / 方向过滤、选中复制、导出 CSV
-  在“CAN 发送器”手动构造帧并发送
-  在“总线活动”查看各 ID 的收发统计
+  入口：左侧活动栏「面板」→独立面板→CAN 帧；菜单栏的面板菜单同样可打开
+  底部页签切换四个子视图——帧列表 / 发送器 / 总线活动 / 负载分析
+  协议引擎需设为 Slcan 或 CandleLight 并连接硬件；协议不符时顶部提示条可一键跳转设置
+  「帧列表」支持按 ID / 方向过滤、选中复制、导出 CSV
+  「发送器」手动构造帧并发送；「总线活动」查看各 ID 收发统计；「负载分析」评估总线占用率
 helpLogic: 逻辑分析仪
 helpLogicDesc: 采集多路数字信号并查看时序与解码事件。
 helpLogicSteps: |-

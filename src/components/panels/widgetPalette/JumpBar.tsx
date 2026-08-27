@@ -20,7 +20,10 @@ interface JumpBarProps {
 /// 顶部分类跳转条 — memo 隔离: 高亮切换 / 列表滚动互不重渲染
 export const JumpBar = memo(function JumpBar({ targets, activeId, onJump }: JumpBarProps) {
   return (
-    <div className="flex items-center gap-0.5 p-1 rounded-lg bg-bg-panel-header border border-border-subtle flex-shrink-0">
+    <div
+      className="flex items-center gap-0.5 p-1 rounded-lg bg-bg-panel-header border border-border-subtle flex-shrink-0"
+      data-tour="palette-jumpbar"
+    >
       {targets.map((target) => {
         const active = activeId === target.id;
         return (

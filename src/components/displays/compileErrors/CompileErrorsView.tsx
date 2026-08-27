@@ -28,7 +28,7 @@ export const CompileErrorsView = memo(function CompileErrorsView() {
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-bg-editor overflow-hidden">
+    <div className="h-full w-full flex flex-col bg-bg-editor overflow-hidden" data-tour="errors-view">
       {/* Header */}
       <div className="shrink-0 px-4 py-2 border-b border-border flex items-center justify-between bg-bg-panel-header/50 select-none">
         <div className="flex items-center gap-2">

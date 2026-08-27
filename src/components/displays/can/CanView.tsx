@@ -30,7 +30,7 @@ export function CanView() {
   const isCanProtocol = protocolConfig?.kind === 'Slcan' || protocolConfig?.kind === 'CandleLight';
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden bg-bg-editor">
+    <div className="h-full w-full flex flex-col overflow-hidden bg-bg-editor" data-tour="can-view">
       {!isCanProtocol && (
         <ContextualHint
           id="can-protocol-mismatch"
@@ -41,7 +41,10 @@ export function CanView() {
           }}
         />
       )}
-      <PanelTabs tabs={tabs} active={mode} onChange={setMode} />
+      {/* 引导锚点: 包裹子页签条, 供引导检测用户点击切换子视图 */}
+      <div data-tour="can-tabs" className="shrink-0">
+        <PanelTabs tabs={tabs} active={mode} onChange={setMode} />
+      </div>
       <div className="flex-1 overflow-hidden min-h-0">
         {mode === 'list' && <CanFrameList />}
         {mode === 'send' && <CanSender />}

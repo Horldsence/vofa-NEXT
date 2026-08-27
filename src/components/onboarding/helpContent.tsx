@@ -1,12 +1,16 @@
 //! 帮助中心内容配置
 //!
 //! 章节数据集中管理，便于帮助中心和引导复用。
+//! 与首次使用向导 (OnboardingWizard) 的叙事口径保持一致:
+//! 模板起步 → 控件库 → 连线建卡 → 编译反馈 (错误定位 + 结果表增删连接)
+//! → CAN / 逻辑分析仪 → 自定义控件 → 窗口组织。
 
 import {
   Lightbulb,
   Cable,
   Binary,
   LayoutGrid,
+  ListChecks,
   Cpu,
   CircuitBoard,
   BookOpen,
@@ -53,6 +57,14 @@ export const HELP_SECTIONS: HelpSection[] = [
     stepsKey: 'helpWidgetsSteps',
   },
   {
+    /// 新设计一等公民: 编译错误面板 (定位/高亮) + 编译结果表 (HIR 连接的增删改查)
+    id: 'compile',
+    icon: ListChecks,
+    titleKey: 'helpCompile',
+    descKey: 'helpCompileDesc',
+    stepsKey: 'helpCompileSteps',
+  },
+  {
     id: 'can',
     icon: Cpu,
     titleKey: 'helpCan',
@@ -87,14 +99,4 @@ export const HELP_SECTIONS: HelpSection[] = [
     descKey: 'helpWindowResizeDesc',
     stepsKey: 'helpWindowResizeSteps',
   },
-];
-
-/// 引导步骤顺序（从 HELP_SECTIONS 中选取）
-export const WIZARD_STEPS = [
-  'quick-start',
-  'transport',
-  'protocol',
-  'widgets',
-  'can',
-  'logic',
 ];

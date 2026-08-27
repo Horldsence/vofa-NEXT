@@ -232,7 +232,8 @@ function App() {
     <div className="relative flex h-full flex-col bg-bg-window p-2" onContextMenu={onAppContextMenu}>
       {/* Windows: 透明窗口下原生菜单栏无法正确渲染 (白字白底/透视), 由自定义菜单栏接管; 其它平台内部返回 null */}
       <MenuBar />
-      <div className="flex flex-1 min-h-0 gap-2">
+      {/* 引导锚点: 侧栏+中央工作区的共同容器 — 第5步"拖拽建卡"需两处同时处于聚光内 */}
+      <div className="flex flex-1 min-h-0 gap-2" data-tour="tour-workbench">
         <div className="module-card w-12 flex-shrink-0">
           <ActivityBar
             activeView={sidebarVisible ? sidebarView : null}

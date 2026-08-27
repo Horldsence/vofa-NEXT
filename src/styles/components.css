@@ -152,6 +152,17 @@ body.dragging-dock * {
   to { transform: translateY(0) scale(1); opacity: 1; }
 }
 
+/* 使用引导: 弹窗入场 (仅位移+透明, 不缩放文字) 与门控勾选框打勾 */
+@keyframes tour-pop-in {
+  from { transform: translateY(4px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes tour-tick-in {
+  from { transform: scale(0.4); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
 @keyframes notif-slide-in {
   from {
     transform: translateX(20px);

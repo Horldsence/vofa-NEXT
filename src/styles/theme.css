@@ -131,6 +131,7 @@
   --z-context-menu: 60;
   --z-modal: 100;
   --z-toast: 200;
+  --z-tour: 300;
 
   /* ---------- 阴影 ---------- */
   --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.65);

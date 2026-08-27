@@ -23,6 +23,7 @@ dist-ssr
 .DS_Store
 .serena
 .claude
+.zcode
 *.suo
 *.ntvs*
 *.njsproj

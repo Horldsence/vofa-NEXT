@@ -853,33 +853,46 @@ tourPrev: Previous
 tourSkip: Skip
 tourFinish: Finish
 tourWelcomeTitle: Welcome to Vofa Next
-tourWelcomeContent: This tour will guide you through the core features. The highlighted area is what we're introducing. Click Next to continue, or Skip at any time.
-tourTransportTitle: Transport
-tourTransportContent: Choose Serial, CAN, UDP/TCP, or Test Data here, then configure port, baud rate, etc. Click Connect when ready.
-tourProtocolTitle: Protocol Engine
-tourProtocolContent: "Select the parser for your device: JustFloat / FireWater for general waveforms, Slcan / CandleLight for CAN bus, LogicDecode for logic analyzer, RawData to show raw bytes only."
-tourWidgetsTitle: Widget Palette
-tourWidgetsContent: Drag knobs, buttons, waveforms, gauges, and more onto the canvas to build your interactive interface. Widgets can be wired together to pass data.
-tourConnectTitle: Connect Device
-tourConnectContent: After configuring parameters, click Connect here to start receiving data. Connection status is shown in the bottom status bar.
-tourDataTitle: Data Display Area
-tourDataContent: The bottom area shows tabs for Waveform, Raw Data, CAN Frames, Logic Analyzer, etc. Click the CPU / circuit icons on the right to add CAN or Logic Analyzer tabs.
-tourWindowOrganizeTitle: Multi-Window Organization
-tourWindowOrganizeContent: Drag a tab onto another window's title bar to merge them; drag a tab or the title bar to a window's edge to split it into a side-by-side window; drag to the page edges to dock as a full row or column.
-tourWindowResizeTitle: Window Adjustment
-tourWindowResizeContent: Drag the divider between windows to resize them; double-click a control tab to rename it, and right-click a tab to close it or close others. The window layout is saved automatically.
-tourHelpTitle: Help Center
-tourHelpContent: You can reopen the Help Center or this tour anytime by clicking the help icon at the bottom-left. You can also disable the tour in Settings.
+tourWelcomeContent: The core workflow in three minutes. The spotlight marks each topic; steps with a <strong>checkbox are hands-on</strong>. Exit anytime via ×.
+tourQuickStartTitle: Quick Start · Templates
+tourQuickStartContent: The <strong>rocket icon</strong> in the activity bar opens this panel — 7 templates generate a canvas plus wiring in one click, landing on <strong>Compile Results</strong> for review.
+tourPaletteTitle: Widget Palette · Assets
+tourPaletteContent: Every asset lives in <strong>nine groups</strong> — Inputs, Interfaces, Protocol, Displays, Math, Filters, Frequency, Strings, Custom. Headers collapse.
+tourJumpbarTitle: Widget Palette · Jump & Search
+tourJumpbarContent: The icon strip <strong>jumps straight to a group</strong> (auto-expanding it); the search box below filters widgets by name instantly.
+tourActJumpbar: Click any category icon on the jump bar
+tourCreateTitle: New Cards · Onto the Canvas
+tourCreateContent: <strong>Drag</strong> any palette row onto the canvas to place it exactly there, or click the row for a quick add; interfaces and protocol nodes are global.
+tourActCreate: Drag a widget onto the canvas (or click a row)
+tourConnectTitle: Wiring Edges · Data Flow
+tourConnectContent: Left dots are inputs, right dots are outputs — only <strong>same-colored (same-domain) ports connect</strong>; valid targets enlarge and turn green.
+tourActConnect: Wire one output dot to an input dot
+tourDeleteCardTitle: Deleting Cards
+tourDeleteCardContent: Hover a node's header and click <strong>×</strong>, or select it and press <strong>Backspace</strong>. Closing a window never deletes the node - double-click to reopen.
+tourActDeleteCard: Delete any node either way
+tourCompileErrorsTitle: Compile Errors · Auto-Locate
+tourCompileErrorsContent: Edits recompile instantly. A red triangle in the status bar opens this panel; the <strong>Locate button</strong> flies to the red-outlined node - hover for details.
+tourResultsTitle: Compile Results · Connection Table
+tourResultsContent: The backend's authoritative HIR table - add, remove, edit, copy/paste connections; clicking a node name highlights it on canvas.
+tourActDeleteEdge: Delete one connection via its trash icon
+tourDataTabsTitle: Data Windows · Free Layout
+tourDataTabsContent: Waveform / CAN / logic / compile windows coexist as tabs. <strong>Drag tabs to merge or split</strong>, drag dividers to resize, right-click to close.
+tourCanTitle: CAN Frames · Bus Analysis
+tourCanContent: Opened for you already. Switching to Slcan/CandleLight protocol plus hardware shows real bus traffic; the <strong>hint bar</strong> jumps into protocol settings.
+tourActCanTab: Click any sub-tab below to switch views
+tourHelpTitle: Help Center · Come Back Anytime
+tourHelpContent: The question-mark icon reopens this center or replays the tour; Settings disables the first-launch tour and contextual hints.
+tourNoEdgeSkip: Skip
 
 # Help Center sections
 helpCenterQuickStart: Quick Start
-helpCenterQuickStartDesc: From connecting to viewing data in a few steps.
+helpCenterQuickStartDesc: From a template to your first live data path in minutes.
 helpCenterQuickStartSteps: |-
-  In Transport on the left, choose Serial/CAN/UDP/TCP or Test Data, configure parameters, and click Connect
-  In Protocol Engine, select the matching protocol (e.g. JustFloat / FireWater / CAN / LogicDecode)
-  Drag widgets from the Widget Palette onto the canvas and connect them to channel sources or upstream widgets
-  The bottom Data area shows Waveform, Raw Data, CAN Frames, Logic Analyzer, etc.
-  Click the help icon at the bottom-left to reopen this Help Center
+  Click the rocket icon in the activity bar to open Quick Start, pick a built-in template (CAN or Serial recommended) and apply it
+  After applying you land on Compile Results first - review every generated connection, each row being a real, live edge
+  Back on the canvas, drag in more widgets and wire their ports to extend your data flow
+  The status bar tracks connection & compile state live; when a red triangle appears, click it to jump into the Compile Errors panel and locate the fault
+  The question-mark icon at the bottom-left reopens this Help Center or replays the tour anytime
 helpTransport: Transport
 helpTransportDesc: Configure the physical connection between the device and the app.
 helpTransportSteps: |-
@@ -895,21 +908,30 @@ helpProtocolSteps: |-
   Slcan / CandleLight: CAN protocols, parsed into CAN frames and shown in the CAN tab
   LogicDecode: logic-analyzer protocol, captures digital channels and supports protocol decoding
 helpWidgets: Widgets & Node Editor
-helpWidgetsDesc: Build data flows by dragging and connecting nodes.
+helpWidgetsDesc: A nine-group asset library - drag to place cards, wire ports to build data flow.
 helpWidgetsSteps: |-
-  Drag widgets (Knob, Button, Gauge, Waveform, etc.) from the Widget Palette onto the canvas
-  Each widget is a node; connect inputs/outputs to channel sources or other widgets
-  Double-click or right-click a widget to edit parameters, labels, and bindings
-  Input widgets like Knob/Slider/Button can send data to the device
-  Display widgets like Waveform/PieChart/Spectrum automatically create bottom data tabs
+  The palette organizes every building block into nine groups - Inputs / Data Interfaces / Protocol Engine / Displays / Arithmetic / Filters / Frequency / String ops / Custom JS widgets
+  Use the top jump bar to hop straight to a group (auto-expanding collapsed ones) or the search box to filter by name; group headers collapse/expand
+  Drag any row onto the canvas to place a node exactly there, or click the row once to drop it into a common spot
+  Wire nodes by holding an output dot and dropping it onto another node's input dot; only same-colored (same-domain) ports connect, cross-domain attempts are blocked with a toast
+  Delete a node via its header × or by selecting it and pressing Backspace; closing a data window never deletes the node - double-click it on canvas to reopen its window
+helpCompile: Compile Feedback - Errors & Results
+helpCompileDesc: Every edit recompiles instantly; faults highlight themselves, and the results table edits connections directly.
+helpCompileSteps: |-
+  The status bar hosts a permanent compile indicator - spinner means compiling, green check means ok, red triangle with a count means errors; click the triangle to open the Compile Errors panel
+  Each entry targets one failing node - hit Locate to fly there on canvas, see it outlined in red, hover for the exact reason (e.g. domain mismatch)
+  The refresh button top-right forces a full manual recompile; entries persist until fixed so you can work through them one by one
+  Compile Results is a permanent tab showing the backend's authoritative HIR connection table - one row per live edge with source/target endpoints and both domains
+  Manage connections across their whole lifecycle in the table - Add Connection, Paste Connection, inline edit, copy and trash-delete; deletions remove the edge on canvas and recompile instantly
+  Clicking a row's node name focuses that canvas card and outlines the node in blue; click again to clear the highlight
 helpCan: CAN Frame Analysis
 helpCanDesc: Receive, filter, send, and analyze CAN bus data.
 helpCanSteps: |-
-  Protocol Engine must be set to Slcan or CandleLight with hardware connected
-  Click the bottom "+" to add a CAN Frame tab, or open it from the menu
-  View real-time CAN frames in Frame List; filter by ID / direction, select, copy, export CSV
-  Use CAN Sender to construct and transmit frames manually
-  Use Bus Activity to see RX/TX statistics per ID
+  Open via activity bar Panels → Standalone Panels → CAN Frames, or the menu bar's Panel menu
+  Bottom pills switch the four sub-views - Frame List / Sender / Bus Activity / Load Analysis
+  The protocol engine must be Slcan or CandleLight with hardware attached; otherwise use the top hint bar to jump into settings
+  Frame List supports ID/direction filters, selection copy and CSV export
+  Sender constructs and transmits frames manually; Bus Activity shows per-ID RX/TX stats; Load Analysis estimates bus utilization
 helpLogic: Logic Analyzer
 helpLogicDesc: Capture multi-channel digital signals and view timing plus decoded events.
 helpLogicSteps: |-

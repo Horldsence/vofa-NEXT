@@ -427,7 +427,7 @@ export function WidgetPalette() {
     activeSection === 'filter' || activeSection === 'fft' ? 'math' : activeSection;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden gap-1.5">
+    <div className="flex flex-col h-full overflow-hidden gap-1.5" data-tour="palette-root">
       <JumpBar targets={jumpTargets} activeId={jumpActive} onJump={jumpTo} />
 
       {/* 搜索框 — 按 label/title 子串过滤, 命中项所在分组自动展开 (搜索态禁用折叠) */}
@@ -458,6 +458,7 @@ export function WidgetPalette() {
         onWheel={cancelJump}
         onTouchStart={cancelJump}
         className="flex-1 min-h-0 overflow-y-auto"
+        data-tour="palette-list"
       >
         {items.length === 0 && isSearching ? (
           <div className="flex items-center justify-center h-full text-xs text-text-secondary italic px-2 text-center">

@@ -264,7 +264,7 @@ export const CompileResultsView = memo(function CompileResultsView() {
 
       {/* 列显隐勾选已移除 — 默认全部显示 */}
 
-      <div className="flex-1 overflow-auto border border-border rounded">
+      <div className="flex-1 overflow-auto border border-border rounded" data-tour="results-table">
         <table className="w-full text-left text-xs text-text-secondary">
           <thead className="bg-bg-panel-header sticky top-0 border-b border-border">
             <tr>
