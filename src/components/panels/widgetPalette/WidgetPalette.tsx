@@ -49,6 +49,8 @@ import {
   CaseLower,
   Eraser,
   ArrowLeftRight,
+  Braces,
+  ListOrdered,
 } from 'lucide-react';
 import type { WidgetConfig, TransportConfig, MathOp, StrOp } from '../../../types';
 import { isUnaryMathOp, WIDGET_CATEGORY_COLORS } from '../../../types';
@@ -181,6 +183,10 @@ export function WidgetPalette() {
       { key: 'str-lower', kind: 'Str', op: 'lower', icon: <CaseLower size={14} />, label: t(lang, 'strLower'), title: `${t(lang, 'strLower')} — ${t(lang, 'strLowerDesc')}` },
       { key: 'str-trim', kind: 'Str', op: 'trim', icon: <Eraser size={14} />, label: t(lang, 'strTrim'), title: `${t(lang, 'strTrim')} — ${t(lang, 'strTrimDesc')}` },
       { key: 'str-reverse', kind: 'Str', op: 'reverse', icon: <ArrowLeftRight size={14} />, label: t(lang, 'strReverse'), title: `${t(lang, 'strReverse')} — ${t(lang, 'strReverseDesc')}` },
+      { key: 'str-format', kind: 'Str', op: 'format', icon: <Braces size={14} />, label: t(lang, 'strFormat'), title: `${t(lang, 'strFormat')} — ${t(lang, 'strFormatDesc')}` },
+      { key: 'str-parse', kind: 'Str', op: 'parse', icon: <ListOrdered size={14} />, label: t(lang, 'strParse'), title: `${t(lang, 'strParse')} — ${t(lang, 'strParseDesc')}` },
+      { key: 'str-encode-hex', kind: 'Str', op: 'encode_hex', icon: <Binary size={14} />, label: t(lang, 'strEncodeHex'), title: `${t(lang, 'strEncodeHex')} — ${t(lang, 'strEncodeHexDesc')}` },
+      { key: 'TextOut', kind: 'TextOut', icon: <Send size={14} />, label: t(lang, 'textOut'), title: `${t(lang, 'textOut')} — ${t(lang, 'textOutDesc')}` },
     ];
 
     const customItems: PaletteEntry[] = [

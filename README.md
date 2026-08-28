@@ -87,6 +87,9 @@ The UI features a **dock-style window layout**: control canvases and data views 
 - Node kinds: `ChannelSource`, `Input`, `Math`, `Filter`, `SpectrumSink`, `FrameDecoder`, `Custom` (JS), `Sink`.
 - **Math nodes**: Add / Sub / Mul / Div / Avg / Min / Max / Abs / Neg / Square / Sqrt / Sin / Cos / Tan / Log.
 - **Filter nodes**: Lowpass / Highpass / Bandpass / Bandstop (FIR coefficients or IIR biquad), with cross-frame state persistence.
+- **String nodes**: substring ops (Mid / Left / Replace …) plus conversion ops — **Format** (`{0:.2}` template → text), **Parse** (extract the first number from text, decimal or 0x hex), **EncodeHex** — bridging waveform channels and text protocols in both directions. RawData sources expose their bytes as UTF-8 text through the `str` port.
+- **TextOut node**: sends graph-produced text back out of any transport (dynamic send-back). Rate-limited by value change + minimum interval; manual "Send now" button included.
+- **Protocol conversion chain**: each Protocol node can re-encode its decoded frames into another protocol and push them along its `out` port — e.g. JustFloat → FireWater feeding another transport; RawData passes raw bytes through unchanged.
 - **SpectrumSink**: block-based FFT with selectable window (Hann / Hamming / Blackman / Rect) and output modes (Magnitude / Power / PSD / dB), driven by an independent 30 FPS ticker.
 - **FrameDecoder**: block-based byte-stream parser (Header / Length / Id / Field / Bitfield / Checksum / Tail) with multi-frame dispatch via `match_id` and checksum validation.
 - **Custom JS nodes**: user JavaScript runs in a sandboxed iframe; outputs are posted back to the backend graph.

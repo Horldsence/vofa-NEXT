@@ -22,6 +22,7 @@ connecting: 连接中...
 connected: 已连接
 disconnected: 已断开
 notConnected: 未连接
+connError: 连接错误
 startTestData: 开始生成
 stopTestData: 停止生成
 testDataRunning: 运行中
@@ -662,6 +663,26 @@ strTrim: 去空白
 strTrimDesc: 去除首尾空白字符
 strReverse: 反转
 strReverseDesc: 按字符反转字符串
+strFormat: 格式化
+strFormatDesc: 按模板格式化数值 ({N} 引用第 N 路, {N:.2} 定精度)
+strParse: 解析数值
+strParseDesc: 从文本扫描首个数字 (十进制 / 0x 十六进制), 未命中返回 0
+strEncodeHex: HEX 编码
+strEncodeHexDesc: UTF-8 字节的大写 HEX 文本
+strTmpl: 模板
+textOut: 文本下发
+textOutDesc: 把图内文本写回目标传输口 (动态发送回传, 限速)
+textOutTarget: 目标传输
+textOutNoTarget: 请选择目标传输
+textOutNewline: 换行后缀
+textOutNlNone: 无换行
+textOutNlLf: LF (\n)
+textOutNlCrlf: CRLF (\r\n)
+textOutNlCr: CR (\r)
+textOutInterval: 最小发送间隔 (ms)
+textOutSendNow: 立即发送
+rawDataNoInputTitle: 未连接输入
+rawDataNoInputHint: 拖一条源端口连线到本卡片，即可查看对应字节流
 strPortPos: 位置 (从 1 起)
 strPortLen: 长度 (0 = 到末尾)
 strPortSize: 字数 (0 = 全部)
@@ -1310,6 +1331,7 @@ closeHintGotIt: 知道了
 nodeOpenWindowHint: 双击打开窗口
 domainBytes: 字节域
 convertTo: 协议转换 (convert_to)
+convertRawDataHint: RawData 不产帧 — convert_to 不生效，原始字节仍从 out 口透传
 convertNone: 无转换
 cmdNoByteRoute: 未连接字节路由 — 请将 loopbackOut 端口连到 Transport.tx 或 FrameDecoder.in
 noTransportNode: 无数据接口节点 — 请先从控件面板拖入「数据接口」

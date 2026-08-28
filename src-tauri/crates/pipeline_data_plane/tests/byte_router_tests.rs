@@ -281,6 +281,47 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
     );
 }
 
+/// RawData + convert_to: 不产帧、重编码产物为空 → 原始字节仍沿 out 边透传
+/// (修复点: 旧逻辑 convert_to 分支吞掉空产物后原文被静默丢弃)
+#[tokio::test]
+async fn rawdata_with_convert_to_still_passthrough_out() {
+    use vofa_core::config::TestDataConfig;
+    // tp.rx → pr.in (RawData + convert_to=FireWater), pr.out → dec.in (FrameDecoder)
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(TestDataConfig::default()),
+                },
+            ),
+            node(
+                "pr",
+                NodeKind::Protocol {
+                    config: ProtocolConfig::RawData,
+                    convert_to: Some(ProtocolConfig::FireWater { channels: Some(2) }),
+                    schema: None,
+                },
+            ),
+            u8_decoder("dec"),
+        ],
+        vec![edge("tp", "rx", "pr", "in"), edge("pr", "out", "dec", "in")],
+    );
+    let graph =
+        node_engine::CompiledGraph::compile("t1".into(), vec![u8_decoder("dec")], vec![]).unwrap();
+    plane.eval.graphs.lock().insert("t1".into(), graph);
+
+    let mut cache = DecoderFeedCache::new();
+    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
+    assert_eq!(summary.frames, 0, "RawData 不产帧");
+    assert!(summary.decoders_fed, "设置 convert_to 后原文仍应透传而非丢弃");
+    assert_eq!(
+        plane.source_texts.lock().get("pr").map(String::as_str),
+        Some(",8"),
+        "文本缓存照常写入"
+    );
+}
+
 /// RawData 节点被用户编辑 decode 块后 (schema preset=Custom, config 仍为 RawData):
 /// 走 SchemaEngine 产帧, 不写 source_texts, 原始字节不沿 out 边透传
 #[tokio::test]

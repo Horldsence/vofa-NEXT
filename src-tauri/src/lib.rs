@@ -8,7 +8,8 @@ pub use cmd_pipeline::*;
 pub use cmd_rawdata::*;
 
 pub use app_state::{
-    custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker, AppState,
+    custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker,
+    textout_sender_ticker, AppState,
 };
 pub use menu_shell::ids;
 pub use menu_shell::{build_menu, on_menu_event};
@@ -80,6 +81,19 @@ pub fn run() {
             };
             tauri::async_runtime::spawn(text_output_ticker(eval_state_for_text));
 
+            // 启动 TextOut 发送 ticker (图内字符串限速写回目标 Transport 的 tx)
+            let (eval_state_for_textout, transport_for_textout) = {
+                let state = app.state::<AppState>();
+                (
+                    state.eval_state(),
+                    std::sync::Arc::clone(&state.data_plane.transport),
+                )
+            };
+            tauri::async_runtime::spawn(textout_sender_ticker(
+                eval_state_for_textout,
+                transport_for_textout,
+            ));
+
             // 启动频谱分析 ticker (30 FFT 计算 + 推送 SpectrumBatch)
             let eval_state_for_spectrum = {
                 let state = app.state::<AppState>();
@@ -112,6 +126,7 @@ pub fn run() {
             close_transport,
             send_raw,
             send_string,
+            send_text_out_now,
             send_widget_value,
             send_and_capture,
             get_connection_state,

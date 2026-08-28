@@ -87,6 +87,9 @@ export const api = {
 
   sendString: (nodeId: string, text: string) => invoke<void>('send_string', { nodeId, text }),
 
+  /// TextOut 手动发送: 立即把图内当前文本发往该 TextOut 节点的目标 Transport
+  sendTextOutNow: (nodeId: string) => invoke<void>('send_text_out_now', { nodeId }),
+
   /// protocolNode: Auto 编码所用的 Protocol 节点 id (Manual 模式可传 null)
   sendWidgetValue: (nodeId: string, protocolNode: string | null, binding: WidgetBinding, value: number) =>
     invoke<void>('send_widget_value', { nodeId, protocolNode, binding, value }),

@@ -294,37 +294,39 @@ async fn feed_protocol(
         )
     };
 
-    // RawData 协议不产帧: 原始字节 UTF-8 lossy 解码缓存到 source_texts
-    // (ProtocolSource "str" 端口数据源, latest-value 覆盖写)
+    // RawData 协议不产帧: 原始字节写 source_texts 文本缓存
+    // (ProtocolSource "str" 端口数据源, 正式入口见 frame_dispatch::cache_source_text)
     if is_raw_data {
-        let text = String::from_utf8_lossy(data);
-        plane
-            .source_texts
-            .lock()
-            .insert(proto_id.to_string(), text.into_owned());
+        super::frame_dispatch::cache_source_text(plane, proto_id, data);
     }
 
     // convert_to: 输出引擎重编码 → 沿本节点 out 边继续下推 (协议转换链)
-    if let Some(ce) = convert_engine {
-        let mut bytes = Vec::new();
-        for f in &out.frames {
-            bytes.extend_from_slice(&ce.lock().encode_frame(f));
+    let converted = match convert_engine {
+        Some(ce) => {
+            let mut bytes = Vec::new();
+            for f in &out.frames {
+                bytes.extend_from_slice(&ce.lock().encode_frame(f));
+            }
+            bytes
         }
-        if !bytes.is_empty() {
-            Box::pin(route_inner(
-                plane,
-                app,
-                proto_id,
-                &bytes,
-                0,
-                dec_cache,
-                summary,
-                depth + 1,
-            ))
-            .await;
-        }
+        None => Vec::new(),
+    };
+    if !converted.is_empty() {
+        Box::pin(route_inner(
+            plane,
+            app,
+            proto_id,
+            &converted,
+            0,
+            dec_cache,
+            summary,
+            depth + 1,
+        ))
+        .await;
     } else if is_raw_data && !data.is_empty() {
-        // RawData 无 convert_to: 原始字节沿本节点 out 边透传下推 (可接 FrameDecoder 等)
+        // RawData 不产帧 (无论是否设置 convert_to, 重编码产物恒为空):
+        // 原始字节沿本节点 out 边透传下推 (可接 FrameDecoder / 其他 Transport.tx),
+        // 避免设置 convert_to 后原文被静默丢弃
         Box::pin(route_inner(
             plane,
             app,

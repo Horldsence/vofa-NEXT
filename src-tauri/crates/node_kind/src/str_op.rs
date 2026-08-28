@@ -12,6 +12,13 @@
 //! - 越界/空输入不报错：截取越界返回可用部分或空串；
 //!   DELETE/REPLACE 的 POS 超出长度时为 no-op（返回原串）
 //! - 字符串索引按 `chars()` 字符计，不用字节索引（多字节字符安全）
+//!
+//! 转换算子（数值 ↔ 文本，源间互转的桥）：
+//! - FORMAT：模板字符串（`tmpl` 参数 / fmt 端口动态输入）引用 `{N}`、精度 `{N:.P}`，
+//!   把最多 4 路数值通道格式化为文本（发往文本协议设备的桥）
+//! - PARSE：从 POS 起（1-based 字符）扫描首个数字 token（十进制含指数 / 0x 十六进制，
+//!   十六进制不取符号），解析为 f32；未命中返回 0.0（对齐 FIND 未找到语义）
+//! - ENCODE_HEX：输入串 UTF-8 字节的大写 HEX 表示（二进制观测 / 文本化）
 
 mod eval;
 mod input_ports;
@@ -40,6 +47,14 @@ pub enum StrOp {
     Lower,
     Trim,
     Reverse,
+    /// 数值 → 文本格式化：模板 `{N}` 引用第 N 路 (0-based)、`{N:.P}` 定精度、
+    /// `{{`/`}}` 字面转义；无法解析的 `{N}` 片段原样输出
+    Format,
+    /// 文本 → 数值解析（见模块头转换算子说明）
+    Parse,
+    /// UTF-8 字节 → 大写 HEX 文本
+    #[serde(rename = "encode_hex")]
+    EncodeHex,
 }
 
 /// 字符串操作结果 — 文本或数值
@@ -90,6 +105,12 @@ impl StrOp {
     /// 输出端口 "result" 的域：`Len`/`Find`/`Contains` = F32，其余 = String
     pub const fn output_domain(&self) -> PortDomain {
         output_domain_for(*self)
+    }
+
+    /// 该 (op, 输入端口) 是否取内联回退文本 [`crate::node_kind::NodeKind::Str::tmpl`] —
+    /// 单一事实源：仅 FORMAT 的 "fmt" 端口。lowering / 快慢两条求值路径共用。
+    pub fn uses_inline_text_default(self, port: &str) -> bool {
+        matches!(self, Self::Format) && port == "fmt"
     }
 
     /// 字符串操作评估 — 输入顺序与 `input_ports()` 一致

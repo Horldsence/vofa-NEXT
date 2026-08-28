@@ -357,6 +357,188 @@ fn test_compiled_eval_str_equivalence() {
     }
 }
 
+/// RawData 字符串通路等价性: ProtocolSource "str" 端口 → Str(Mid) 链
+///
+/// 逐帧轮换 source_texts, 断言快慢路径 ValuesMap + StringValuesMap 一致,
+/// 并证明文本缓存经帧间更新进入求值 (RawData 协议 → 字符串平面的正式契约)。
+#[test]
+fn test_compiled_eval_rawdata_str_equivalence() {
+    let nodes = vec![
+        make_protocol_source_named("ps1", "t1", "proto1", &["str"]),
+        make_str_num(
+            "mid1",
+            "t1",
+            node_kind::StrOp::Mid,
+            node_kind::StrNumParams {
+                pos: 7.0,
+                len: 5.0,
+                size: 0.0,
+            },
+        ),
+    ];
+    let edges = vec![edge("e1", "ps1", "str", "mid1", "str")];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+    // 逐帧轮换的源文本 (含空串边界)
+    let texts_per_frame = ["hello world", "raw bytes text", "你好世界 abc", ""];
+    let custom_outputs = HashMap::new();
+    let decoder_states = HashMap::new();
+    let mut fs_a = HashMap::new();
+    let mut fs_b = HashMap::new();
+
+    let compiled = g.compiled();
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
+
+    for frame_idx in 0..120usize {
+        let texts = source_texts(&[("proto1", texts_per_frame[frame_idx % 4])]);
+        // 老路径: evaluate_into
+        let mut out_a = ValuesMap::default();
+        let mut out_str_a = StringValuesMap::default();
+        g.evaluate_into(
+            &empty_frames(),
+            &texts,
+            &HashMap::new(),
+            &custom_outputs,
+            &mut fs_a,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut out_a,
+            &mut out_str_a,
+        );
+        // 新路径: compiled.run + materialize / materialize_str (每帧清零)
+        slots.fill(0.0);
+        written.fill(false);
+        str_slots.iter_mut().for_each(String::clear);
+        str_written.fill(false);
+        compiled.run(
+            &empty_frames(),
+            &texts,
+            &HashMap::new(),
+            &custom_outputs,
+            &mut fs_b,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut slots,
+            &mut written,
+            &mut str_slots,
+            &mut str_written,
+        );
+        let mut out_b = ValuesMap::default();
+        compiled.materialize(&slots, &written, &mut out_b);
+        let mut out_str_b = StringValuesMap::default();
+        compiled.materialize_str(&str_slots, &str_written, &mut out_str_b);
+        assert_eq!(out_a, out_b, "帧 {frame_idx} 数值输出不一致");
+        assert_eq!(out_str_a, out_str_b, "帧 {frame_idx} 字符串输出不一致");
+        // ps1 的 "str" 端口物化为最新源文本 (ProtocolSourceStr 快路径特殊分支覆盖)
+        let expected = texts_per_frame[frame_idx % 4];
+        assert_eq!(
+            out_str_a.get("ps1").and_then(|p| p.get("str")).map(String::as_str),
+            Some(expected)
+        );
+        assert!(out_str_a.contains_key("mid1"), "Mid 节点应参与求值");
+    }
+}
+
+/// 转换算子等价性: Format (tmpl 内联回退) / Parse (pos 缺省) / EncodeHex 混合图 —
+/// 逐帧断言快慢路径 ValuesMap + StringValuesMap 一致, 且模板缺省值确实参与求值
+#[test]
+#[allow(clippy::literal_string_with_formatting_args)] // 模板字面量本就是被测对象
+fn test_compiled_eval_convert_ops_equivalence() {
+    let nodes = vec![
+        make_input("knob1", "t1"),
+        // fmt1: tmpl 为内联回退 (fmt 端口未连接), in0 ← knob1
+        NodeDef {
+            id: "fmt1".into(),
+            tab_id: "t1".into(),
+            kind: node_kind::NodeKind::Str {
+                op: node_kind::StrOp::Format,
+                num: node_kind::StrNumParams::default(),
+                tmpl: "T={0:.2}V".to_string(),
+            },
+        },
+        // p1: Parse 从文本提取数值; pos 未连接走 StrNumParams.pos 默认 1
+        make_str_num(
+            "p1",
+            "t1",
+            node_kind::StrOp::Parse,
+            node_kind::StrNumParams::default(),
+        ),
+        // hx: EncodeHex
+        make_str("hx", "t1", node_kind::StrOp::EncodeHex),
+    ];
+    let edges = vec![
+        edge("e1", "knob1", "value", "fmt1", "in0"),
+        edge("e2", "fmt1", "result", "p1", "str"),
+    ];
+    let g = CompiledGraph::compile("t1".into(), nodes, edges).unwrap();
+
+    let custom_outputs = HashMap::new();
+    let decoder_states = HashMap::new();
+    let mut fs_a = HashMap::new();
+    let mut fs_b = HashMap::new();
+
+    let compiled = g.compiled();
+    let mut slots = vec![0.0f32; compiled.slot_count()];
+    let mut written = vec![false; compiled.slot_count()];
+    let mut str_slots = vec![String::new(); compiled.str_slot_count()];
+    let mut str_written = vec![false; compiled.str_slot_count()];
+
+    for frame_idx in 0..40u16 {
+        let mut input_values = HashMap::new();
+        input_values.insert("knob1".to_string(), f32::from(frame_idx));
+        let mut out_a = ValuesMap::default();
+        let mut out_str_a = StringValuesMap::default();
+        g.evaluate_into(
+            &empty_frames(),
+            &empty_texts(),
+            &input_values,
+            &custom_outputs,
+            &mut fs_a,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut out_a,
+            &mut out_str_a,
+        );
+        slots.fill(0.0);
+        written.fill(false);
+        str_slots.iter_mut().for_each(String::clear);
+        str_written.fill(false);
+        compiled.run(
+            &empty_frames(),
+            &empty_texts(),
+            &input_values,
+            &custom_outputs,
+            &mut fs_b,
+            &decoder_states,
+            &mut HashMap::new(),
+            &mut HashMap::new(),
+            &mut slots,
+            &mut written,
+            &mut str_slots,
+            &mut str_written,
+        );
+        let mut out_b = ValuesMap::default();
+        compiled.materialize(&slots, &written, &mut out_b);
+        let mut out_str_b = StringValuesMap::default();
+        compiled.materialize_str(&str_slots, &str_written, &mut out_str_b);
+        assert_eq!(out_a, out_b, "帧 {frame_idx} 数值输出不一致");
+        assert_eq!(out_str_a, out_str_b, "帧 {frame_idx} 字符串输出不一致");
+        // fmt1 的 tmpl 内联回退生效: 输出形如 T=13.00V (帧 13)
+        let expected_fmt = format!("T={:.2}V", f32::from(frame_idx));
+        assert_eq!(
+            out_str_a.get("fmt1").and_then(|p| p.get("result")).map(String::as_str),
+            Some(expected_fmt.as_str()),
+            "帧 {frame_idx} Format 内联模板应展开 knob 值"
+        );
+    }
+}
+
 /// Trigger 等价性: auto rising (number 规则) + auto level (string 规则 → Str 链)
 /// + manual (string 规则) 混合图 — 100 帧逐帧断言 ValuesMap + StringValuesMap 一致
 ///   (trigger_states 两份独立状态, 仿 fs_a/fs_b 模式; 覆盖"未激活帧不写槽位"语义)

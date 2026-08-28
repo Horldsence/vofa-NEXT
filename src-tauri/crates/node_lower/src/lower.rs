@@ -12,7 +12,7 @@ use node_kind::NodeKind;
 use node_hir::TypedGraph;
 use node_plane::ValueMir;
 
-use crate::ops::CompiledOp;
+use crate::ops::{CompiledOp, TextOutSpec};
 
 /// 槽位表拆解产物 (names + index)
 pub type SlotTable = (Vec<(String, String)>, FxHashMap<(String, String), usize>);
@@ -66,6 +66,8 @@ pub struct LowerCtx<'a> {
     pub ops: Vec<CompiledOp>,
     /// ProtocolSource 帧源表 (去重): node_id → frame_sources 下标
     pub frame_sources: Vec<String>,
+    /// TextOut 发送规格 (编译期收集, 供发送 ticker / 手动命令)
+    pub textouts: Vec<TextOutSpec>,
 }
 
 impl LowerCtx<'_> {
@@ -120,6 +122,8 @@ pub struct SlotPlan {
     pub str_slot_names: Vec<(String, String)>,
     /// (node_id, port) → 字符串槽位下标
     pub str_slot_index: FxHashMap<(String, String), usize>,
+    /// TextOut 发送规格表 — 发送 ticker / 手动命令的消费入口
+    pub textouts: Vec<TextOutSpec>,
 }
 
 /// 值平面 lowering: 遍历拓扑序按节点 kind 分配输出槽位 + 生成平坦操作序列
@@ -130,6 +134,7 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> SlotPlan {
         str_slots: SlotArena::new(),
         ops: Vec::new(),
         frame_sources: Vec::new(),
+        textouts: Vec::new(),
     };
 
     for &ix in &mir.order {
@@ -157,5 +162,6 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> SlotPlan {
         frame_sources: ctx.frame_sources,
         str_slot_names,
         str_slot_index,
+        textouts: ctx.textouts,
     }
 }

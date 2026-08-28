@@ -38,6 +38,9 @@ interface ChannelOption {
   label?: string;
 }
 
+/// 选中源连接状态 (null = 该通道无固定连接语义, 不显示徽章)
+export type RawDataConnState = 'Connected' | 'Connecting' | 'Disconnected' | 'Error';
+
 interface Props {
   // state
   grouping: RawDataGrouping;
@@ -54,10 +57,7 @@ interface Props {
   modeCount: number;
   droppedBytes: number;
   channelOptions: ChannelOption[];
-  /// 串口选择 (字节源 = 发送目标) — 仅全局模式渲染
-  transportOptions: { id: string; label: string }[];
-  selectedTransport: string | null;
-  onTransportChange: (id: string) => void;
+  connState: RawDataConnState | null;
   selectionCount: number;
   copyFeedback: boolean;
   userScrolledRef: React.MutableRefObject<boolean>;
@@ -93,9 +93,7 @@ export function RawDataViewHeader({
   modeCount,
   droppedBytes,
   channelOptions,
-  transportOptions,
-  selectedTransport,
-  onTransportChange,
+  connState,
   selectionCount,
   copyFeedback,
   userScrolledRef,
@@ -179,17 +177,25 @@ export function RawDataViewHeader({
           )}
         </div>
 
-        {channel === 'global' && transportOptions.length > 0 && (
-          <select
-            className="bg-bg-input border border-border rounded px-1 py-0.5 text-xs font-mono text-text-primary transition-colors hover:border-accent focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 cursor-pointer max-w-[140px]"
-            value={selectedTransport ?? ''}
-            onChange={(e) => onTransportChange(e.target.value)}
-            title={t(lang, 'targetTransport')}
+        {/* 选中源连接状态徽章 — Connected 不显示 (避免常驻噪音); Error 红灯 */}
+        {connState && connState !== 'Connected' && (
+          <span
+            className={`flex items-center gap-1 text-[10px] font-mono px-1.5 py-0.5 rounded-sm border shrink-0 ${
+              connState === 'Error'
+                ? 'text-red border-red/40 bg-red/10'
+                : connState === 'Connecting'
+                  ? 'text-yellow border-yellow/40 bg-yellow/10'
+                  : 'text-text-secondary border-border bg-bg-input'
+            }`}
+            title={t(lang, connState === 'Error' ? 'connError' : connState === 'Connecting' ? 'connecting' : 'notConnected')}
           >
-            {transportOptions.map((tr) => (
-              <option key={tr.id} value={tr.id}>{tr.label}</option>
-            ))}
-          </select>
+            <span
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                connState === 'Error' ? 'bg-red animate-pulse' : connState === 'Connecting' ? 'bg-yellow animate-pulse' : 'bg-text-muted'
+              }`}
+            />
+            {t(lang, connState === 'Error' ? 'connError' : connState === 'Connecting' ? 'connecting' : 'notConnected')}
+          </span>
         )}
 
         {channelOptions.length > 0 && (
@@ -200,7 +206,6 @@ export function RawDataViewHeader({
               onChange={(e) => onChannelChange(e.target.value)}
               className="bg-bg-input border border-border rounded px-1 py-0.5 text-xs font-mono text-text-primary transition-colors hover:border-accent focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 cursor-pointer max-w-[160px]"
             >
-              <option value="global">{t(lang, 'rawDataGlobal')}</option>
               {channelOptions.map((o) => (
                 <option key={o.key} value={o.key}>
                   {o.label ?? (o.sourceHandle || sourceLabel(o.sourceId))}

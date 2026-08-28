@@ -48,6 +48,70 @@ Vec<NodeDef> + Vec<Edge>
 - **RawData 关联通道边** (Sink 的 `src:` 动态端口) 只是用户意图标记,
   按源端域归类参与对应平面拓扑; 字符串源不参与任何平面 (订阅旁路)。
 
+### 字符串平面的正式通路 (`source_texts`)
+
+RawData 协议不产帧, 其原始字节走一条与 `source_frames` 对称的正式通道进入
+字符串平面:
+
+```
+Transport.rx 字节 ──► byte_router::route_bytes
+                         │ RawData 预设 (或 schema preset=RawData)
+                         ▼
+   frame_dispatch::cache_source_text → source_texts[proto_id]  (UTF-8 lossy, latest-value)
+                         │
+                         ▼ 值平面求值 (ProtocolSource 的 "str" 端口, String 域)
+   CompiledOp::ProtocolSourceStr (快) / protocol_source arm (慢) ──► 字符串槽位
+                         │
+                         ▼ 下游消费: Str 算子链 / Trigger / Custom / TextOut …
+   materialize_str ──► graph_string_outputs ──► text_output_ticker (前端显示/回发桥)
+```
+
+- 写入口唯一: `frame_dispatch::cache_source_text` (自定义 schema 的 RawData 不写,
+  走 SchemaEngine 产帧语义, 见 byte_router_tests)。
+- 无缓存时对应槽位不写 → 快照保持上次值 (对齐 Trigger 未激活帧语义)。
+
+## 源间交互与互相转化
+
+同一 tab 内不同源之间的交互有三条既有机制 + 一个发送桥:
+
+1. **域校验边连线**: F32/String/Bytes 三类域一致即可连; 跨源链路经全局 BytePlan
+   合并重算, Transport.rx → 另一 Transport.tx 的转发直接在字节平面成立。
+2. **convert_to 重编码链**: Protocol 解析出帧后按 convert_to 目标协议重编码,
+   沿自身 out 边递归下推 (深度上限 16), 实现协议间互转。
+3. **inject_bytes**: 前端可向任意节点字节入口注入数据 (FrameDecoder.in /
+   Protocol.in / Transport.tx), 无需真实连接。
+4. **TextOut 发送桥** (新增): 图内动态字符串写回传输口, 见下节。
+
+### convert_to 语义表
+
+| 本端协议 | convert_to 行为 |
+|---|---|
+| JustFloat / FireWater / 自定义 schema (产帧) | 帧 → convert 引擎重编码 → out 边下推 |
+| Slcan / CandleLight / LogicDecode | 同上 (有帧则转) |
+| **RawData (preset)** | 不产帧, 重编码产物恒为空 → **原始字节从 out 口透传** (UI 有提示); 不静默丢弃 |
+
+## 动态发送回传 (TextOut 桥)
+
+图内字符串 → 传输口的单向桥, 复用通用发布管道, 不在求值热路径做 IO:
+
+```
+[值平面求值] TextOut op: 上游 str 槽位 ──透传──► str_slot(tout,"text")
+                    │ (materialize_str 发布点, 与其它字符串输出同生命周期)
+                    ▼
+        graph_string_outputs["tout"]["text"]
+                    │ 读取 (锁内收集, 锁外 IO)
+                    ▼
+        app_state::tickers::textout_sender_ticker (10ms tick)
+        ── 变化且距上次 ≥ min_interval_ms 才发送 (未到窗口挂起待补发)
+        ── transport.send(target_transport, text + newline_suffix)
+```
+
+- 规格 (`TextOutSpec { target_transport, newline_suffix, min_interval_ms }`)
+  在 lowering 编译期收集于 `SlotPlan.textouts`, 快慢两条求值路径行为一致
+  (TextOut 参与 eval_order, 其 "text" 槽位为无输出端口的透传写)。
+- 手动触发: `send_text_out_now(node_id)` 命令立即读当前文本发送一次;
+  目标未打开时报错并按窗口节奏限频重试 (ticker 侧仅记日志)。
+
 ## 关键类型
 
 | 类型 | 模块 | 职责 |
@@ -67,12 +131,29 @@ Vec<NodeDef> + Vec<Edge>
 - **慢路径**: `CompiledGraph::evaluate_into` — 逐节点 map 语义参考实现。
 - `equiv_tests` 持续校验两路径输出一致; 任何 lowering/求值改动必须保持该网全绿。
 
+### 字符串算子表 (StrOp)
+
+字符串平面同时承担 数值 ↔ 文本 的互转 (源间转化的桥), 算子分四类
+(`node_kind::str_op`, 端口表 = 单一事实源, 前端 `STR_OP_PORTS` 镜像):
+
+| 类别 | 算子 | 说明 |
+|---|---|---|
+| 纯文本 | LEN/FIND/CONTAINS/LEFT/RIGHT/MID/CONCAT/INSERT/DELETE/REPLACE/UPPER/LOWER/TRIM/REVERSE | 1-based 字符索引; 多字节安全 |
+| 文本 → 数值 | PARSE | 从 POS 起扫描首个数字 token (十进制含指数 / 0x 十六进制, 十六进制无符号); 未命中 0.0 |
+| 数值 → 文本 | FORMAT | 模板 `{N}` 引用第 N 路 / `{N:.P}` 定精度 / `{{` `}}` 转义; fmt 口未连接用 `tmpl` 参数内联回退 |
+| 编码 | ENCODE_HEX | UTF-8 字节 → 大写 HEX 文本 |
+
+典型互转链: 波形通道 → FORMAT 模板文本 → TextOut 发往文本协议设备;
+RawData(str) → MID/PARSE → 提取数值回波形通道。
+
 ## 扩展指南
 
 - **新增节点类型**: `node_kind` 加 NodeKind 变体 + `port_domain` 域表 →
   `node_lower/src/kinds/` 加一个 `lower_*` 函数并在 `lower_node` 分派 →
   `node_lower::ops` 加 `CompiledOp` 变体 → `node_eval::CompiledEval::run`
-  与门面 `evaluate` 各加一个执行臂。
+  与门面 `evaluate` 各加一个执行臂。若节点**有输入但无输出端口且依赖拓扑序**
+  (如 TextOut), 让它参与 eval_order 即可 — 无输出端口天然不会被下游引用;
+  若需要编译期收集规格 (如 TextOutSpec), 在 `SlotPlan` 加字段。
 - **新增平面**: `EdgeClass` 加分类 + `node_plane` 加一个投影函数 (子图谓词 +
   `topo` 排序) + 对应后端产物。
 - **环诊断**: `CompileError::Cycle` / `ByteCycle` 携带完整环路径

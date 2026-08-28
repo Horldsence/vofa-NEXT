@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Unplug } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
-import { rawDataBuffer, RawDataBuffer } from '../../../lib/buffers/dataBuffer';
+import { RawDataBuffer } from '../../../lib/buffers/dataBuffer';
 import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
-import { acquireRawDataTransport, releaseRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
-import { classifyRawDataChannel } from '../../../lib/utils/rawDataChannel';
+import { acquireRawDataTransport, releaseRawDataTransport, refreshRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
+import { classifyRawDataChannel, resolveRawDataChannelKey } from '../../../lib/utils/rawDataChannel';
 import { FilteredRawDataBuffer, parseSearchPattern } from '../../../lib/buffers/filteredRawDataBuffer';
 import type { RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
 import { perfEvent } from '../../../lib/utils/perfLog';
@@ -11,7 +12,7 @@ import { useSelection } from '../../../lib/hooks/useSelection';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { rawDataPortId } from '../../../lib/utils/nodeDef';
 import { traceTransportSource } from '../../../store/appStoreHelpers';
-import '../../../i18n';
+import { t } from '../../../i18n';
 import type { RawDataGrouping, RawDataRepr, DirectionFilter, HexColorMode, AppendMode, SendPanelMode } from './rawDataViewHelpers';
 import { byteToHex, byteToAscii, formatTime } from './rawDataViewHelpers';
 import { DroppedInfoPopover } from '../../common/DroppedInfoPopover';
@@ -23,39 +24,21 @@ import { RawDataViewSettings } from './RawDataViewSettings';
 import { getRawDataViewPrefs } from '../../../lib/buffers/rawDataViewStore';
 
 /// 原始数据显示 — Grid/Line × HEX/ASCII 四视图, 支持虚拟滚动、文本选中/行选中复制、时间戳、发送
-/// widgetId 存在时展示通道选择器: FrameDecoder 的 raw 口 = 该节点独立整帧字节流,
-/// field 口及其他数值源 = 数值流 (graphOutputs)
+/// 纯端口制: 每张卡片独立的输入选择 (存 RawDataConfig.selectedInput), 选择器只列该卡片
+/// 已连接的端口 (Transport.rx / Protocol.out / FrameDecoder.raw / 数值口); 无连线时空态引导。
+/// FrameDecoder 的 raw 口 = 该节点独立整帧字节流, field 口及其他数值源 = 数值流 (graphOutputs)
 export function RawDataView({ widgetId }: { widgetId?: string }) {
   const lang = useAppStore((s) => s.lang);
   const clearData = useAppStore((s) => s.clearData);
   const sendText = useAppStore((s) => s.sendText);
   const rfEdges = useAppStore((s) => s.rfEdges);
   const widgets = useAppStore((s) => s.widgets);
+  const updateWidget = useAppStore((s) => s.updateWidget);
   const graphOutputs = useAppStore((s) => s.graphOutputs);
   const graphOutputsTick = useAppStore((s) => s.graphOutputsTick);
-  // 目标 Transport (字节源 = 发送目标; null = 自动取第一个)
   // 注意: 选择器必须返回稳定引用 (filter 每次产新数组会触发 useSyncExternalStore 死循环),
   // 故订阅 rfNodes 原始数组, 用 useMemo 派生
   const rfNodes = useAppStore((s) => s.rfNodes);
-  const transportNodes = useMemo(
-    () => rfNodes.filter((n) => n.type === 'transport' && n.data?.global === true),
-    [rfNodes]
-  );
-  const rawDataSourceNodeId = useAppStore((s) => s.rawDataSourceNodeId);
-  const setRawDataSourceNodeId = useAppStore((s) => s.setRawDataSourceNodeId);
-  const transportOptions = useMemo(
-    () =>
-      transportNodes.map((n) => {
-        const cfg = (n.data as { config?: { kind?: string } }).config;
-        return { id: n.id, label: `${cfg?.kind ?? '?'} (${n.id.slice(-4)})` };
-      }),
-    [transportNodes]
-  );
-  const effectiveTransportId =
-    rawDataSourceNodeId && transportOptions.some((o) => o.id === rawDataSourceNodeId)
-      ? rawDataSourceNodeId
-      : (transportOptions[0]?.id ?? null);
-
   // 持久化 key: widgetId 存在时按控件独立保存, 否则共享 'global' 配置
   const persistKey = widgetId ?? 'global';
 
@@ -63,7 +46,6 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const [repr, setRepr] = useState<RawDataRepr>(() => getRawDataViewPrefs(persistKey).repr);
   const [directionFilter, setDirectionFilter] = useState<DirectionFilter>(() => getRawDataViewPrefs(persistKey).directionFilter);
   const [searchTerm, setSearchTerm] = useState('');
-  const [channel, setChannel] = useState<string>('global');
   const [autoScroll, setAutoScroll] = useState(() => getRawDataViewPrefs(persistKey).autoScroll);
   const [showTimestamp, setShowTimestamp] = useState(() => getRawDataViewPrefs(persistKey).showTimestamp);
   const [showOffset, setShowOffset] = useState(() => getRawDataViewPrefs(persistKey).showOffset);
@@ -105,6 +87,29 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     return options;
   }, [widgetId, rfEdges, rfNodes]);
 
+  // 纯端口制通道选择 (单一事实源 = 控件配置 RawDataConfig.selectedInput):
+  // 配置选中且该连线仍存在 → 用它; 否则回退第一个已连接端口; 无连线 → '' (空态)。
+  // 切换选择经 onChannelChange 写回配置, 触发操作历史与图同步 (Sink 节点无参数变化, 重编译无害)
+  const ownWidget = useMemo(() => {
+    const w = widgets.find((w) => w.kind === 'RawData' && w.params.id === widgetId);
+    return w?.kind === 'RawData' ? w : undefined;
+  }, [widgets, widgetId]);
+  const channel = useMemo(
+    () => resolveRawDataChannelKey(ownWidget?.params.selectedInput, channelOptions) ?? '',
+    [channelOptions, ownWidget]
+  );
+
+  const onChannelChange = useCallback(
+    (key: string) => {
+      if (!ownWidget) return;
+      updateWidget(ownWidget.params.id, {
+        kind: 'RawData',
+        params: { ...ownWidget.params, selectedInput: key },
+      });
+    },
+    [ownWidget, updateWidget]
+  );
+
   const sourceLabel = useCallback(
     (id: string) => {
       const w = widgets.find((w) => w.params.id === id);
@@ -127,23 +132,30 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const isByteSrc = channelInfo?.kind === 'byte-source';
   const isNum = !!selectedChannel && !isDec && !isByteSrc;
 
-  // 发送目标: 全局模式 = 头部选择器选中的 Transport;
-  // 单通道模式 = 通道连线上溯到的 Transport (锁定, 不可改), 溯源失败回退全局选择
-  const channelTransportId = useMemo(() => {
-    if (channel === 'global' || !selectedChannel) return null;
+  // 发送目标 = 选中通道沿连线溯源到的 Transport (字节源/数值口均可上溯);
+  // 溯源失败 (如自定义控件数值口) → null, 发送面板禁用
+  const sendTargetId = useMemo(() => {
+    if (!selectedChannel) return null;
     return traceTransportSource(selectedChannel.sourceId, rfEdges, rfNodes);
-  }, [channel, selectedChannel, rfEdges, rfNodes]);
-  const sendTargetId =
-    channel === 'global' ? effectiveTransportId : (channelTransportId ?? effectiveTransportId);
-  const sendTargetLabel =
-    transportOptions.find((o) => o.id === sendTargetId)?.label ?? null;
+  }, [selectedChannel, rfEdges, rfNodes]);
 
-  // 切换控件 / 通道消失时回退到 global
-  useEffect(() => setChannel('global'), [widgetId]);
-  useEffect(() => {
-    if (channel === 'global') return;
-    if (channelOptions.length === 0 || !channelOptions.some((o) => o.key === channel)) setChannel('global');
-  }, [channelOptions, channel]);
+  // 面板状态徽章的可观察 Transport: 字节源 = 通道字节源; 数值口 = 发送上溯目标;
+  // FrameDecoder raw 口 = null (节点旁路, 无固定连接语义)
+  const viewTransportId = isByteSrc
+    ? (channelInfo?.transportId ?? null)
+    : isNum
+      ? sendTargetId
+      : null;
+  const viewConnState = useAppStore((s) =>
+    viewTransportId ? (s.connectionStates[viewTransportId] ?? 'Disconnected') : null
+  );
+  const sendTargetLabel = sendTargetId
+    ? (() => {
+        const n = rfNodes.find((n) => n.id === sendTargetId);
+        const cfg = (n?.data as { config?: { kind?: string } } | undefined)?.config;
+        return n ? `${cfg?.kind ?? '?'} (${sendTargetId.slice(-4)})` : null;
+      })()
+    : null;
 
   const nodeBufferKey = isDec && selectedChannel ? selectedChannel.sourceId : null;
   const isFiltered = directionFilter !== 'all' || searchTerm.trim() !== '';
@@ -164,11 +176,11 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     return () => releaseRawDataNode(nodeBufferKey);
   }, [nodeBufferKey]);
 
-  // 字节源通道 buffer: 与全局选中源一致时复用全局 rawDataBuffer (避免重复订阅),
-  // 否则按 Transport 引用计数获取独立 buffer; 上溯失败 (无 transportId) 用空 buffer 占位
+  // 字节源通道 buffer: 按 Transport 引用计数获取 (同 Transport 多卡片自动共享同一订阅);
+  // 上溯失败 (无 transportId) 用空 buffer 占位。全局 rawDataBuffer 不再参与视图,
+  // 仅保留给统计/导出 (BufferUsageStats / appExport)
   const byteTransportId = isByteSrc ? (channelInfo?.transportId ?? null) : null;
-  const reuseGlobalBuffer = byteTransportId !== null && byteTransportId === effectiveTransportId;
-  const transportBufferKey = byteTransportId && !reuseGlobalBuffer ? byteTransportId : null;
+  const transportBufferKey = byteTransportId ?? null;
   const [transportBuffer, setTransportBuffer] = useState<RawDataBuffer | null>(null);
   useEffect(() => {
     if (!transportBufferKey) {
@@ -179,15 +191,34 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     setTransportBuffer(acquired);
     return () => releaseRawDataTransport(transportBufferKey);
   }, [transportBufferKey]);
+
+  // 重连自愈 — 修复「来源刷新后 rawdata 不显示数据」:
+  // 后端订阅组建立后不随 Transport 重连自动失效, 但旧组可能已死亡
+  // (建组时目标尚未就绪 / 推送通道被关闭) 且无任何重建触发。监听选中源的
+  // transport:state, 翻转为 Connected 时重建订阅组 (引用计数与 buffer 实例
+  // 保持, 收集器跨重连稳定 → 历史数据不丢)。
+  const prevConnRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      byteTransportId &&
+      viewConnState === 'Connected' &&
+      prevConnRef.current !== 'Connected'
+    ) {
+      refreshRawDataTransport(byteTransportId);
+    }
+    prevConnRef.current = viewConnState;
+  }, [viewConnState, byteTransportId]);
   const emptyByteBufferRef = useRef<RawDataBuffer | null>(null);
-  if (!emptyByteBufferRef.current) emptyByteBufferRef.current = new RawDataBuffer();
+  // 惰性取空 buffer (占位: 无 transportId / 无连线时保持订阅链类型完整)
+  const getEmptyByteBuffer = useCallback((): RawDataBuffer => {
+    if (!emptyByteBufferRef.current) emptyByteBufferRef.current = new RawDataBuffer();
+    return emptyByteBufferRef.current;
+  }, []);
   const byteSourceBuffer = !isByteSrc
     ? null
-    : reuseGlobalBuffer
-      ? rawDataBuffer
-      : byteTransportId
-        ? transportBuffer
-        : emptyByteBufferRef.current;
+    : byteTransportId
+      ? transportBuffer
+      : getEmptyByteBuffer();
 
   // 过滤模式: 本地增量过滤视图 (复用源 buffer 既有数据, 零额外 IPC)
   const [filteredBuffer, setFilteredBuffer] = useState<FilteredRawDataBuffer | null>(null);
@@ -199,7 +230,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     const t0 = performance.now();
     perfEvent(`rawdata filter ON dir=${filterOptions.directionFilter} search="${filterOptions.searchTerm}"`);
     const buf = new FilteredRawDataBuffer(
-      nodeBuffer ?? byteSourceBuffer ?? rawDataBuffer,
+      nodeBuffer ?? byteSourceBuffer ?? getEmptyByteBuffer(),
       filterOptions.directionFilter,
       parseSearchPattern(filterOptions.searchTerm)
     );
@@ -226,7 +257,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     }
   }, []);
 
-  const buffer = filteredBuffer ?? nodeBuffer ?? byteSourceBuffer ?? rawDataBuffer;
+  const buffer = filteredBuffer ?? nodeBuffer ?? byteSourceBuffer ?? getEmptyByteBuffer();
 
   // 强制重新渲染的版本号
   const [version, setVersion] = useState(0);
@@ -328,7 +359,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       return;
     }
     clearData();
-    if (buffer !== rawDataBuffer) buffer.clear();
+    buffer.clear();
     clearSelection();
     userScrolledRef.current = false;
   };
@@ -396,6 +427,19 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     [selection]
   );
 
+  // 无连线空态: 纯端口制下没有可显示的输入 → 引导用户先建立连线, 不订阅任何数据
+  if (!selectedChannel) {
+    return (
+      <div className="h-full flex flex-col items-center justify-center gap-2 text-text-secondary">
+        <Unplug size={22} className="opacity-50" />
+        <span className="text-xs">{t(lang, 'rawDataNoInputTitle')}</span>
+        <span className="text-[10px] opacity-70 px-6 text-center break-all">
+          {t(lang, 'rawDataNoInputHint')}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       <RawDataViewHeader
@@ -418,14 +462,12 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
         userScrolledRef={userScrolledRef}
         lang={lang}
         sourceLabel={sourceLabel}
-        transportOptions={transportOptions}
-        selectedTransport={effectiveTransportId}
-        onTransportChange={setRawDataSourceNodeId}
+        connState={viewConnState}
         onGroupingChange={setGrouping}
         onReprChange={setRepr}
         onDirectionFilterChange={setDirectionFilter}
         onSearchTermChange={setSearchTerm}
-        onChannelChange={setChannel}
+        onChannelChange={onChannelChange}
         onAutoScrollChange={setAutoScroll}
         onShowTimestampChange={setShowTimestamp}
         onShowSettingsChange={setShowSettings}

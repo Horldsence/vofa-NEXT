@@ -208,7 +208,11 @@ export type StrOp =
   | 'upper'    // 转大写
   | 'lower'    // 转小写
   | 'trim'     // 去除首尾空白
-  | 'reverse'; // 按字符反转
+  | 'reverse'  // 按字符反转
+  // 转换算子 (数值 ↔ 文本):
+  | 'format'       // 模板格式化: {N} 引用第 N 路 / {N:.P} 定精度 (fmt 未连接用 tmpl 参数)
+  | 'parse'        // 从 pos 起 (1-based 字符) 扫描首个数字 token (十进制/0x 十六进制), 未命中 0
+  | 'encode_hex';  // UTF-8 字节大写 HEX 文本
 
 /// 字符串操作端口描述
 export interface StrOpPort {
@@ -258,6 +262,19 @@ const STR_IN_STR1_STR2_POS_LEN: StrOpPort[] = [
   { id: 'pos', label: 'pos', domain: 'time' },
   { id: 'len', label: 'len', domain: 'time' },
 ];
+// FORMAT: 模板端口 (未连接回退 StrConfig.tmpl 参数) + in0..in3 数值引用 (未连接取 0)
+const STR_IN_FMT_NUM4: StrOpPort[] = [
+  { id: 'fmt', label: 'fmt', domain: 'string' },
+  { id: 'in0', label: 'in0', domain: 'time' },
+  { id: 'in1', label: 'in1', domain: 'time' },
+  { id: 'in2', label: 'in2', domain: 'time' },
+  { id: 'in3', label: 'in3', domain: 'time' },
+];
+// PARSE: 源文本 + 1-based 扫描起点 (pos 内联回退默认 1)
+const STR_IN_STR_POS: StrOpPort[] = [
+  { id: 'str', label: 'str', domain: 'string' },
+  { id: 'pos', label: 'pos', domain: 'time' },
+];
 
 /// 全部字符串操作的端口元数据表
 ///
@@ -280,6 +297,11 @@ export const STR_OP_PORTS: Record<StrOp, StrOpMeta> = {
   lower: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
   trim: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
   reverse: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
+  // 转换算子 — format 的模板经 tmpl 参数编辑, in0..in3 无配置字段 (只读展示上游值,
+  // 未连接恒取 0); parse 复用 pos 字段作内联回退
+  format: { inputs: STR_IN_FMT_NUM4, outputDomain: 'string', inlineNumPorts: [] },
+  parse: { inputs: STR_IN_STR_POS, outputDomain: 'time', inlineNumPorts: ['pos'] },
+  encode_hex: { inputs: STR_IN_STR, outputDomain: 'string', inlineNumPorts: [] },
 };
 
 // ============ 3D 模型显示 ============

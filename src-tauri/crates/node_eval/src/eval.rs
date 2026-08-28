@@ -52,6 +52,11 @@ impl CompiledEval {
         self.plan.str_slot_names.len()
     }
 
+    /// TextOut 发送规格表 (发送 ticker / 手动命令的消费入口)
+    pub fn textouts(&self) -> &[node_lower::TextOutSpec] {
+        &self.plan.textouts
+    }
+
     /// 平坦操作序列只读视图 — 编译期结构断言/诊断用
     pub fn ops(&self) -> &[CompiledOp] {
         &self.plan.ops
@@ -243,24 +248,29 @@ impl CompiledEval {
                 CompiledOp::Str {
                     op,
                     str_inputs,
+                    str_defaults,
                     num_inputs,
                     num_defaults,
                     text_out,
                     num_out,
                 } => {
-                    // 输入收集: None 字符串槽位 = "" (未连接/上游无值),
+                    // 输入收集: None 字符串槽位 = str_defaults[i] (未连接 → 内联回退文本,
+                    // 当前仅 FORMAT 的 fmt 端口取模板, 其余空串 — 与 evaluate_into 一致),
                     // None 数值槽位 = num_defaults[i] (内联回退) — 与 evaluate_into 一致。
-                    // 端口表最大 arity: str ≤ 2 / num ≤ 2, 栈数组覆盖, 超出走堆 (防御)
+                    // 端口表最大 arity: str ≤ 2 / num ≤ 2 (FORMAT 数值 4 路走堆兜底)
                     let mut stack_str: [&str; 2] = ["", ""];
                     let mut heap_str;
-                    let str_buf: &mut [&str] = if str_inputs.len() <= 2 {
+                    let str_buf: &mut [&str] = if str_inputs.len() <= 4 {
                         &mut stack_str[..str_inputs.len()]
                     } else {
                         heap_str = vec![""; str_inputs.len()];
                         &mut heap_str
                     };
                     for (i, s) in str_inputs.iter().enumerate() {
-                        str_buf[i] = s.map_or("", |s| str_slots[s].as_str());
+                        str_buf[i] = s.map_or(
+                            str_defaults.get(i).map_or("", String::as_str),
+                            |slot| str_slots[slot].as_str(),
+                        );
                     }
                     let mut stack_num = [0.0f32; 2];
                     let mut heap_num;
@@ -339,6 +349,24 @@ impl CompiledEval {
                         }
                         slots[*matched] = if r.matched { 1.0 } else { 0.0 };
                         written[*matched] = true;
+                    }
+                }
+                CompiledOp::TextOut { input, out } => {
+                    // 上游字符串透传写本节点槽位 (未连接不写 → 无值不发)
+                    if let Some(src) = input {
+                        if src != out {
+                            // 不同槽位: split_at_mut 同时可变借用两端, 零分配拷贝
+                            let (lo, hi) = (*src.min(out), *src.max(out));
+                            let (low, high) = str_slots.split_at_mut(hi);
+                            let (from, to) = if *src == lo {
+                                (&mut low[lo], &mut high[0])
+                            } else {
+                                (&mut high[0], &mut low[lo])
+                            };
+                            to.clear();
+                            to.push_str(from);
+                        }
+                        str_written[*out] = true;
                     }
                 }
                 CompiledOp::TextInput { text, out } => {

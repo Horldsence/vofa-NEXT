@@ -13,9 +13,10 @@ interface StrWidgetProps {
   onRemove: () => void;
 }
 
-/// op → i18n label key (strLen / strFind / ...); op 均为全小写单词
+/// op → i18n label key; op 为全小写 (下划线转驼峰): len → strLen, encode_hex → strEncodeHex
 function opLabelKey(op: string): string {
-  return `str${op.charAt(0).toUpperCase()}${op.slice(1)}`;
+  const camel = op.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+  return `str${camel.charAt(0).toUpperCase()}${camel.slice(1)}`;
 }
 
 /// 内联数值端口 → i18n label key (端口 id 与 StrConfig 字段同名: pos/len/size)
@@ -60,9 +61,11 @@ export const StrWidget = memo(function StrWidget({ widget }: StrWidgetProps) {
   const numConnected = new Map(numPorts.map((p) => [p.id, isPortConnected(edges, id, p.id)]));
   const anyConnected =
     meta.inputs.some((p) => isPortConnected(edges, id, p.id));
+  // FORMAT 模板: fmt 端口未连接 → 可编辑 tmpl 参数; 已连接 → 上游文本 (strPorts 行展示)
+  const fmtUnconnected = op === 'format' && !isPortConnected(edges, id, 'fmt');
 
   /// 内联框编辑: 端口 id 与 StrConfig 字段同名 (pos/len/size), 写回后经 updateWidget 同步图
-  const handleInlineChange = (portId: 'pos' | 'len' | 'size', raw: string) => {
+  const handleInlineChange = (portId: string, raw: string) => {
     const n = parseFloat(raw);
     if (!Number.isFinite(n) || n < 0) return;
     updateWidget(id, { kind: 'Str', params: { ...widget.params, [portId]: n } });
@@ -84,6 +87,20 @@ export const StrWidget = memo(function StrWidget({ widget }: StrWidgetProps) {
           </div>
         )}
 
+        {/* FORMAT 模板编辑 (fmt 未连接时) */}
+        {fmtUnconnected && (
+          <input
+            type="text"
+            value={widget.params.tmpl ?? ''}
+            placeholder="{0:.2}"
+            onChange={(e) =>
+              updateWidget(id, { kind: 'Str', params: { ...widget.params, tmpl: e.target.value } })
+            }
+            title={t(lang, 'strFormatDesc')}
+            className="w-full px-1.5 py-1 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
+          />
+        )}
+
         {!anyConnected && (
           <div className="flex items-center gap-1 justify-center p-1 text-[10px] text-text-secondary opacity-70">
             <Plus size={10} />
@@ -91,7 +108,8 @@ export const StrWidget = memo(function StrWidget({ widget }: StrWidgetProps) {
           </div>
         )}
 
-        {/* 输入端口当前值: 字符串端口纯展示, inlineNumPorts 数值端口渲染内联框 */}
+        {/* 输入端口当前值: 字符串端口纯展示; inlineNumPorts 数值端口渲染内联框;
+            无配置字段的数值端口 (format 的 in0..in3) 只读展示上游实时值 */}
         <div className="flex flex-col gap-0.5 border-t border-dashed border-border pt-1 mt-0.5">
           {strPorts.map((p) => (
             <div key={p.id} className="flex justify-between items-center gap-1 text-[10px] px-0.5 py-px">
@@ -102,23 +120,28 @@ export const StrWidget = memo(function StrWidget({ widget }: StrWidgetProps) {
             </div>
           ))}
           {numPorts.map((p) => {
-            const portId = p.id as 'pos' | 'len' | 'size';
             const connected = numConnected.get(p.id) ?? false;
+            const editable = meta.inlineNumPorts.includes(p.id);
+            const labelKey = INLINE_PORT_LABEL_KEY[p.id] ?? p.label;
             return (
               <div key={p.id} className="flex justify-between items-center gap-1 text-[10px] px-0.5 py-px">
                 <span className="text-text-secondary font-mono flex-shrink-0">
-                  {t(lang, INLINE_PORT_LABEL_KEY[p.id] ?? p.label)}
+                  {t(lang, labelKey)}
                 </span>
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  disabled={connected}
-                  value={connected ? numInputs[p.id] : widget.params[portId]}
-                  onChange={(e) => handleInlineChange(portId, e.target.value)}
-                  title={connected ? t(lang, INLINE_PORT_LABEL_KEY[p.id] ?? p.label) : undefined}
-                  className="w-16 px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono text-right focus:outline-none focus:border-accent disabled:opacity-60 disabled:cursor-default"
-                />
+                {editable ? (
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    disabled={connected}
+                    value={connected ? numInputs[p.id] : widget.params[p.id as 'pos' | 'len' | 'size']}
+                    onChange={(e) => handleInlineChange(p.id, e.target.value)}
+                    title={connected ? t(lang, labelKey) : undefined}
+                    className="w-16 px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono text-right focus:outline-none focus:border-accent disabled:opacity-60 disabled:cursor-default"
+                  />
+                ) : (
+                  <span className="text-text-secondary font-mono">{numInputs[p.id]}</span>
+                )}
               </div>
             );
           })}

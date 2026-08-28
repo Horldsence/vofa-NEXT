@@ -222,6 +222,103 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
 #[allow(dead_code)]
 fn _force_import(_: StreamGroupState) {}
 
+/// TextOut 发送循环 — 图内字符串 (TextOut 节点) 限速写回目标 Transport 的 tx
+///
+/// 数据来源: `graph_string_outputs[textout_id]["text"]` (通用 materialize_str 发布点写入);
+/// 规格: `CompiledEval::textouts()` (编译期收集 target_transport / newline / min_interval)。
+///
+/// 发送条件: 文本相对上次已发送值发生变化, 且距上次发送 ≥ min_interval_ms;
+/// 未到窗口时保持 dirty, 下轮窗口满足后补发。目标未打开等发送失败按 min_interval
+/// 节奏重试并限频记日志。无 TextOut / 无变化时空转 (10ms tick)。
+pub async fn textout_sender_ticker(
+    state: GraphEvalState,
+    transport: std::sync::Arc<tokio::sync::Mutex<transport_core::TransportManager>>,
+) {
+    use std::time::Instant;
+
+    /// 单节点发送状态机
+    struct NodeTx {
+        sent_value: String,
+        last_send: Option<Instant>,
+        dirty: bool,
+        err_logged: bool,
+    }
+    let mut txs: HashMap<String, NodeTx> = HashMap::new();
+    log::debug!("TextOut 发送 ticker 已启动 (10ms tick)");
+
+    loop {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // 锁内仅收集待发列表 (锁外执行 IO)
+        // (textout node_id 状态键, 目标 transport id, 已含换行的 payload, min_interval_ms)
+        let mut candidates: Vec<(String, String, String, u32)> = Vec::new();
+        {
+            let graphs = state.graphs.lock();
+            if graphs.values().all(|g| g.compiled().textouts().is_empty()) {
+                continue;
+            }
+            let out = state.graph_string_outputs.lock();
+            for g in graphs.values() {
+                for spec in g.compiled().textouts() {
+                    if let Some(text) = out.get(&*spec.node_id).and_then(|p| p.get("text")) {
+                        let mut value =
+                            String::with_capacity(text.len() + spec.newline_suffix.len());
+                        value.push_str(text);
+                        value.push_str(spec.newline_suffix);
+                        candidates.push((
+                            spec.node_id.to_string(),
+                            spec.target_transport.to_string(),
+                            value,
+                            spec.min_interval_ms,
+                        ));
+                    }
+                }
+            }
+        }
+        if candidates.is_empty() {
+            continue;
+        }
+
+        let now = Instant::now();
+        for (node_id, target, value, interval_ms) in candidates {
+            let min_wait = Duration::from_millis(u64::from(interval_ms));
+            let entry = txs.entry(node_id.clone()).or_insert(NodeTx {
+                sent_value: String::new(),
+                last_send: None,
+                dirty: false,
+                err_logged: false,
+            });
+            if entry.sent_value != value {
+                entry.dirty = true;
+            }
+            if !entry.dirty {
+                continue;
+            }
+            if entry
+                .last_send
+                .is_some_and(|t| now.duration_since(t) < min_wait)
+            {
+                continue; // 未到窗口: 保持 dirty 待补发
+            }
+            let send_result = transport.lock().await.send(&target, value.as_bytes());
+            match send_result {
+                Ok(()) => {
+                    entry.sent_value = value;
+                    entry.last_send = Some(now);
+                    entry.err_logged = false;
+                }
+                Err(_e) => {
+                    entry.last_send = Some(now); // 失败也按窗口节奏重试
+                    if !entry.err_logged {
+                        log::warn!("TextOut {node_id}: 目标不可达, 将按间隔重试");
+                    }
+                    entry.err_logged = true;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -66,10 +66,12 @@ function strWidget(op: StrOp): WidgetConfig {
 const STR_OPS: StrOp[] = [
   'len', 'find', 'contains', 'left', 'right', 'mid', 'concat',
   'insert', 'delete', 'replace', 'upper', 'lower', 'trim', 'reverse',
+  // 转换算子 (数值 ↔ 文本)
+  'format', 'parse', 'encode_hex',
 ];
 
 describe('getWidgetPorts - Str 字符串操作', () => {
-  it('STR_OP_PORTS 覆盖全部 14 个 op', () => {
+  it('STR_OP_PORTS 覆盖全部 17 个 op', () => {
     expect(Object.keys(STR_OP_PORTS).sort()).toEqual([...STR_OPS].sort());
   });
 

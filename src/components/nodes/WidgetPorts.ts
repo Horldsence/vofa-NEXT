@@ -150,6 +150,12 @@ export function getWidgetPorts(widget: WidgetConfig): {
         inputs: [{ id: 'text', label: 'text', domain: 'string' }],
         outputs: [],
       };
+    case 'TextOut':
+      // 文本下发: 单字符串输入 "text" (String 域, 动态发送回传的消费端)
+      return {
+        inputs: [{ id: 'text', label: 'text', domain: 'string' }],
+        outputs: [],
+      };
     case 'Str': {
       const meta = STR_OP_PORTS[widget.params.op];
       return {

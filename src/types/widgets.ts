@@ -123,6 +123,10 @@ export interface CustomConfig {
 export interface RawDataConfig {
   id: string;
   label: string;
+  /// 该卡片选中的输入端口 key (`src:<sourceId>:<sourceHandle>`, 见 rawDataPortId 约定)。
+  /// 每张 RawData 卡片独立选择, 互不共用; 仅在该连线存在时生效, 失效/缺省回退第一个已连接端口。
+  /// 可选: 旧保存数据无此字段 (serde/TS 均按缺省处理)
+  selectedInput?: string;
 }
 
 /// 文本展示控件 — 接收字符串端口输入, 节点内直接渲染
@@ -142,7 +146,7 @@ export interface TextInputConfig {
   placeholder: string;
 }
 
-/// 字符串操作控件 — 对字符串输入做截取/拼接/替换等操作
+/// 字符串操作控件 — 对字符串输入做截取/拼接/替换/格式化等操作
 /// 端口表见 STR_OP_PORTS (与后端 StrOp::input_ports 一致);
 /// pos/len/size 为对应数值端口未连接时的内联回退值 (已连接则由后端用上游值)
 export interface StrConfig {
@@ -155,6 +159,9 @@ export interface StrConfig {
   len: number;
   /// size 内联回退值 (默认 0 = 全部)
   size: number;
+  /// FORMAT 模板文本 — "fmt" 端口未连接时的内联回退 ({N} 引用第 N 路, {N:.P} 定精度);
+  /// 仅 op === 'format' 使用。可选: 旧保存数据无此字段 (后端 serde default 兜底空串)
+  tmpl?: string;
 }
 
 /// 触发器匹配类型 — 与后端 TriggerMatchType 对齐
@@ -241,7 +248,22 @@ export type WidgetConfig =
   | { kind: 'Trigger'; params: TriggerConfig }
   | { kind: 'TextDisplay'; params: TextDisplayConfig }
   | { kind: 'TextInput'; params: TextInputConfig }
-  | { kind: 'Str'; params: StrConfig };
+  | { kind: 'Str'; params: StrConfig }
+  | { kind: 'TextOut'; params: TextOutConfig };
+
+/// 文本下发控件 — 动态发送回传: 把图内字符串 (text 输入口) 写回目标 Transport 的 tx
+/// 后端求值经通用字符串发布进入 graph_string_outputs, 由发送 ticker 按 minIntervalMs
+/// 限速发送; Send 按钮走 send_text_out_now 强制立即发送一次
+export interface TextOutConfig {
+  id: string;
+  label: string;
+  /// 目标 Transport 全局节点 id ('' = 未选择, 不发送)
+  targetTransport: string;
+  /// 发送时附加的换行后缀
+  newline: 'none' | 'lf' | 'crlf' | 'cr';
+  /// 自动发送最小间隔 ms (值变化限速)
+  minIntervalMs: number;
+}
 
 /// 获取控件所属类别 (用于 palette 分组与着色)
 export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
@@ -281,6 +303,9 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'TextDisplay':
       return 'display';
     case 'Str':
+      return 'string';
+    case 'TextOut':
+      // 文本下发: 消费字符串域输出, 归入字符串组 (节点卡片与 Str 同色系)
       return 'string';
   }
 }

@@ -18,6 +18,14 @@ const STATE_DOT: Record<string, string> = {
   Error: 'bg-red',
 };
 
+/// 连接状态 → i18n label key (未连接提示 / 错误红字)
+const STATE_LABEL_KEY: Record<string, string> = {
+  Disconnected: 'notConnected',
+  Connecting: 'connecting',
+  Connected: 'connected',
+  Error: 'connError',
+};
+
 /// 传输配置摘要 (单行)
 function configSummary(config: TransportConfig): string {
   switch (config.kind) {
@@ -88,9 +96,19 @@ export const TransportNode = memo(function TransportNode({ id, data }: NodeProps
           <Cable size={11} />
           {t(lang, kindLabelKey[config.kind])}
         </span>
+        {/* 未连接/错误文字提示 — Connected 仅保留绿点 (避免常驻噪音), Error 红字 */}
+        {connectionState !== 'Connected' && (
+          <span
+            className={`text-[9px] normal-case tracking-normal flex-shrink-0 mr-1 ${
+              connectionState === 'Error' ? 'text-red' : 'text-text-secondary'
+            }`}
+          >
+            {t(lang, STATE_LABEL_KEY[connectionState] ?? 'notConnected')}
+          </span>
+        )}
         <span
           className={`w-2 h-2 rounded-full inline-block flex-shrink-0 mr-1 ${STATE_DOT[connectionState]}`}
-          title={connectionState}
+          title={t(lang, STATE_LABEL_KEY[connectionState] ?? 'notConnected')}
         />
         <button
           className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"

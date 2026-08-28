@@ -133,7 +133,11 @@ pub fn make_str_num(id: &str, tab_id: &str, op: StrOp, num: StrNumParams) -> Nod
     NodeDef {
         id: id.to_string(),
         tab_id: tab_id.to_string(),
-        kind: NodeKind::Str { op, num },
+        kind: NodeKind::Str {
+            op,
+            num,
+            tmpl: String::new(),
+        },
     }
 }
 

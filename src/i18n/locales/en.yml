@@ -22,6 +22,7 @@ connecting: Connecting...
 connected: Connected
 disconnected: Disconnected
 notConnected: Not connected
+connError: Connection error
 startTestData: Start Generation
 stopTestData: Stop Generation
 testDataRunning: Running
@@ -662,6 +663,26 @@ strTrim: Trim
 strTrimDesc: Trim leading and trailing whitespace
 strReverse: Reverse
 strReverseDesc: Reverse by character
+strFormat: Format
+strFormatDesc: Format numbers via template ({N} = input N, {N:.2} with precision)
+strParse: Parse Number
+strParseDesc: Scan first number from text (decimal / 0x hex), miss returns 0
+strEncodeHex: Encode HEX
+strEncodeHexDesc: Uppercase HEX of UTF-8 bytes
+strTmpl: Template
+textOut: Text Out
+textOutDesc: Send graph text back to a transport (dynamic send, rate-limited)
+textOutTarget: Target transport
+textOutNoTarget: Select target transport
+textOutNewline: Newline suffix
+textOutNlNone: No newline
+textOutNlLf: LF (\n)
+textOutNlCrlf: CRLF (\r\n)
+textOutNlCr: CR (\r)
+textOutInterval: Min send interval (ms)
+textOutSendNow: Send now
+rawDataNoInputTitle: No input connected
+rawDataNoInputHint: Drag a source port connection onto this card to view its byte stream
 strPortPos: Pos (1-based)
 strPortLen: Len (0 = to end)
 strPortSize: Size (0 = all)
@@ -1310,6 +1331,7 @@ closeHintGotIt: Got it
 nodeOpenWindowHint: Double-click to open window
 domainBytes: Bytes
 convertTo: Convert to (convert_to)
+convertRawDataHint: RawData produces no frames — convert_to is ignored and original bytes pass through the out port
 convertNone: No conversion
 cmdNoByteRoute: No byte route — connect loopbackOut to Transport.tx or FrameDecoder.in
 noTransportNode: No transport node — drag a "Data Interface" node from the palette first

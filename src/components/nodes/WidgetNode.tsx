@@ -11,6 +11,7 @@ import type { WidgetConfig, DomainType } from '../../types';
 import type { Lang } from '../../i18n';
 import { getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
+import { resolveRawDataStatusTransport } from '../../lib/utils/rawDataChannel';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { Knob } from '../controls/Knob';
 import { ButtonWidget } from '../controls/ButtonWidget';
@@ -31,6 +32,7 @@ import { IFFTWidget } from '../displays/widgets/IFFTWidget';
 import { TextDisplay } from '../displays/widgets/TextDisplay';
 import { TextInput } from '../controls/TextInput';
 import { StrWidget } from '../displays/widgets/StrWidget';
+import { TextOutWidget } from '../displays/widgets/TextOutWidget';
 
 /// 端口 id 用 `src:<sourceId>:<sourceHandle>` (稳定, 不随源节点 label 变化),
 /// label 取源节点的输出端口名 (handle)。尚未连接任何边时回退到单个默认端口, 便于用户建立第一条连接。
@@ -72,6 +74,41 @@ function domainLabel(lang: Lang, domain: DomainType): string {
         ? t(lang, 'domainString')
         : t(lang, 'domainTime');
 }
+
+/// RawData 卡片的源连接状态提示 — 生效输入端口的 Transport 未连接时灰字提示,
+/// Error 红字 (无法正确使用); Connected 不显示 (绿点噪音)。
+/// 无连线 / FrameDecoder raw 口 (无固定连接语义) 也不显示。
+const RawDataConnHint = memo(function RawDataConnHint({ nodeId }: { nodeId: string }) {
+  const lang = useAppStore((s) => s.lang);
+  const selectedInput = useAppStore((s) => {
+    const w = s.widgets.find((w) => w.kind === 'RawData' && w.params.id === nodeId);
+    return w?.kind === 'RawData' ? w.params.selectedInput : undefined;
+  });
+  const rfNodes = useAppStore((s) => s.rfNodes);
+  const widgets = useAppStore((s) => s.widgets);
+  const rfEdges = useAppStore((s) => s.rfEdges);
+  const transportId = resolveRawDataStatusTransport(nodeId, selectedInput, rfEdges, rfNodes, widgets);
+  const connState = useAppStore((s) =>
+    transportId ? (s.connectionStates[transportId] ?? 'Disconnected') : null
+  );
+  if (!transportId || connState === 'Connected' || connState === null) return null;
+  const isError = connState === 'Error';
+  return (
+    <span
+      className={`flex items-center gap-1 text-[9px] ${
+        isError ? 'text-red' : 'text-text-secondary'
+      }`}
+      title={t(lang, isError ? 'connError' : 'notConnected')}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+          isError ? 'bg-red' : 'bg-text-muted'
+        }`}
+      />
+      {t(lang, isError ? 'connError' : 'notConnected')}
+    </span>
+  );
+});
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
 export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
@@ -231,6 +268,13 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
             onRemove={onRemove}
           />
         );
+      case 'TextOut':
+        return (
+          <TextOutWidget
+            widget={widget as Extract<WidgetConfig, { kind: 'TextOut' }>}
+            onRemove={onRemove}
+          />
+        );
       case 'Model3D':
     case 'Spectrum':
     case 'Waveform':
@@ -243,6 +287,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
           <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">
             <span>{widget.kind}</span>
             <span className="text-blue text-[9px]">↗ {t(lang, 'nodeOpenWindowHint')}</span>
+            {widget.kind === 'RawData' && <RawDataConnHint nodeId={id} />}
           </div>
         );
       default:

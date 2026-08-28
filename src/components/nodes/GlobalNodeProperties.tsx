@@ -6,6 +6,7 @@ import { Plug, PlugZap, Play, Square } from 'lucide-react';
 import { TransportConfigForm } from '../panels/transport/TransportConfigForm';
 import { ProtocolConfigForm } from '../panels/protocol/ProtocolConfigForm';
 import { useConnectAction } from '../panels/transport/useConnectAction';
+import { isRawDataPreset } from '../../lib/utils/protocolSchema';
 import { downstreamProtocolOf, type ProtocolNodeData, type TransportNodeData } from '../../store/appStoreHelpers';
 import type { ProtocolConfig } from '../../types';
 
@@ -164,6 +165,12 @@ const ProtocolProperties = memo(function ProtocolProperties({ node }: { node: No
             <option key={k.value} value={k.value}>{k.label}</option>
           ))}
         </select>
+        {/* RawData 预设不产帧: 提示 convert_to 不生效、原文透传 (后端语义) */}
+        {isRawDataPreset(data) && (
+          <div className="mt-1 text-[10px] text-text-secondary opacity-80 break-all">
+            {t(lang, 'convertRawDataHint')}
+          </div>
+        )}
         {convertTo && (convertTo.kind === 'JustFloat' || convertTo.kind === 'FireWater') && (
           <div className="mt-2">
             <ProtocolConfigForm

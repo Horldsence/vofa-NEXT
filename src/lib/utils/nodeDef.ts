@@ -52,7 +52,8 @@ export type NodeKind =
   | { kind: 'Input' }
   | { kind: 'TextInput'; params: { text: string } }
   | { kind: 'Math'; params: { op: MathOp; input_count: number } }
-  | { kind: 'Str'; params: { op: StrOp; num: { pos: number; len: number; size: number } } }
+  | { kind: 'Str'; params: { op: StrOp; num: { pos: number; len: number; size: number }; tmpl?: string } }
+  | { kind: 'TextOut'; params: { target_transport: string; newline: 'none' | 'lf' | 'crlf' | 'cr'; min_interval_ms: number } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
   | { kind: 'Filter'; params: { config: NodeFilterConfig } }
   | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
@@ -125,7 +126,8 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     }
 
     case 'Str':
-      // 字符串操作: pos/len/size 为数值端口未连接时的内联回退值 (后端 StrNumParams)
+      // 字符串操作: pos/len/size 为数值端口未连接时的内联回退值 (后端 StrNumParams);
+      // tmpl 为 FORMAT 模板 ("fmt" 端口未连接时的内联回退), 旧数据无此字段回退空串
       return {
         kind: 'Str',
         params: {
@@ -135,6 +137,18 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
             len: widget.params.len,
             size: widget.params.size,
           },
+          tmpl: widget.params.tmpl ?? '',
+        },
+      };
+
+    case 'TextOut':
+      // 文本下发: 目标 transport + 换行模式 + 最小发送间隔 (动态回传桥接参数)
+      return {
+        kind: 'TextOut',
+        params: {
+          target_transport: widget.params.targetTransport,
+          newline: widget.params.newline,
+          min_interval_ms: widget.params.minIntervalMs,
         },
       };
 

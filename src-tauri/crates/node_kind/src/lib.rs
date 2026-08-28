@@ -24,7 +24,7 @@ pub use decoder_block::{
     LengthUnit,
 };
 pub use math_op::MathOp;
-pub use node_kind::{is_protocol_source, is_raw_data_handle, NodeKind};
+pub use node_kind::{is_protocol_source, is_raw_data_handle, NewlineMode, NodeKind};
 pub use ports::{
     port_domain, PortDomain, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, LOOPBACK_OUT_HANDLE,
     PROTOCOL_IN_HANDLE, PROTOCOL_OUT_HANDLE, RAW_DATA_PORT_PREFIX, TRANSPORT_RX_HANDLE,
@@ -32,3 +32,9 @@ pub use ports::{
 };
 pub use spec::{protocol_source_port_names, NodeDef};
 pub use str_op::{str_num_default, StrNumParams, StrOp, StrResult};
+
+/// 判断 (StrOp, 输入端口) 是否取内联回退文本 (`NodeKind::Str::tmpl`, 仅 FORMAT "fmt") —
+/// lowering / 快慢两条求值路径共用的单一事实源
+pub fn uses_str_inline_text(op: StrOp, port: &str) -> bool {
+    op.uses_inline_text_default(port)
+}

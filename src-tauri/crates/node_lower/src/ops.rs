@@ -5,11 +5,14 @@
 //! 执行见 [`crate::eval::CompiledEval::run`]。
 
 use dsp_filter::FilterConfig;
-use node_kind::{MathOp, StrOp};
+use node_kind::{MathOp, NewlineMode, StrOp};
 use node_trigger::TriggerRuleDef;
 
 /// 编译期槽位操作 — 平坦操作序列 (拓扑序 == eval_order), 逐帧评估零字符串哈希
 pub enum CompiledOp {
+    /// TextOut: 上游字符串槽位 → 本节点 "text" 字符串槽位 (透传写, 供通用发布;
+    /// input = None 表示未连接, 不写槽位 → 不触发发送)
+    TextOut { input: Option<usize>, out: usize },
     /// ProtocolSource: source_frames[frame_sources[src]].channels[ch] → slot
     /// (源缺失/通道越界写 0.0, 与未连接语义一致)
     ProtocolSource { src: usize, ch: usize, slot: usize },
@@ -54,7 +57,9 @@ pub enum CompiledOp {
     /// Ifft: 读 ifft_states[node_id] 的下一个重建采样 → out 槽位 (环形播放, 时域)
     Ifft { node_id: String, out: usize },
     /// Str: 按 StrOp::input_ports() 端口表紧凑拆分输入 (只含同 domain 端口, 按端口表顺序):
-    /// - str_inputs[i] = 第 i 个 String 端口的上游字符串槽位 (None = 未连接/上游无槽位 → "")
+    /// - str_inputs[i] = 第 i 个 String 端口的上游字符串槽位 (None = 未连接/上游无槽位 → str_defaults[i])
+    /// - str_defaults[i] = 第 i 个 String 端口的内联回退文本 (编译期捕获; 仅 FORMAT 的
+    ///   "fmt" 端口取 NodeKind::Str.tmpl, 其余为空串)
     /// - num_inputs[i] = 第 i 个 F32 端口的上游数值槽位 (None → num_defaults[i])
     /// - num_defaults[i] = 第 i 个 F32 端口的内联回退值 (编译期从 StrNumParams 捕获)
     ///
@@ -62,6 +67,7 @@ pub enum CompiledOp {
     Str {
         op: StrOp,
         str_inputs: Vec<Option<usize>>,
+        str_defaults: Box<[String]>,
         num_inputs: Vec<Option<usize>>,
         num_defaults: Vec<f32>,
         text_out: Option<usize>,
@@ -87,4 +93,29 @@ pub enum CompiledOp {
     },
     /// TextInput: 文本输入源 — 参数 text 每帧原样写入 out 字符串槽位 (覆盖写)
     TextInput { text: String, out: usize },
+}
+
+/// TextOut 发送规格 — 编译期收集 (TextOut 发送 ticker / 手动命令共用)
+#[derive(Debug, Clone)]
+pub struct TextOutSpec {
+    /// TextOut 节点 id (graph_string_outputs 的键)
+    pub node_id: Box<str>,
+    /// 目标 Transport 全局节点 id
+    pub target_transport: Box<str>,
+    /// 换行后缀 (编译期从 [`NewlineMode`] 解出)
+    pub newline_suffix: &'static str,
+    /// 自动发送最小间隔 ms
+    pub min_interval_ms: u32,
+}
+
+impl TextOutSpec {
+    /// 从 TextOut 节点定义构造规格
+    pub fn from_kind(node_id: &str, target_transport: &str, newline: NewlineMode, min_interval_ms: u32) -> Self {
+        Self {
+            node_id: node_id.into(),
+            target_transport: target_transport.into(),
+            newline_suffix: newline.suffix(),
+            min_interval_ms,
+        }
+    }
 }

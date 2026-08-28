@@ -16,6 +16,7 @@ mod math;
 mod protocol_source;
 mod str;
 mod text_input;
+mod textout;
 mod trigger;
 
 use custom::lower_custom;
@@ -27,6 +28,7 @@ use math::lower_math;
 use protocol_source::lower_protocol_source;
 use str::lower_str;
 use text_input::lower_text_input;
+use textout::lower_textout;
 use trigger::lower_trigger;
 
 /// 按节点 kind 分派 lowering (输入: 值平面拓扑序中的节点)
@@ -43,7 +45,9 @@ pub fn lower_node(node: &NodeDef, ctx: &mut LowerCtx) {
         NodeKind::Filter { config } => lower_filter(node, config, ctx),
         NodeKind::FrameDecoder { .. } => lower_frame_decoder(node, ctx),
         NodeKind::Ifft => lower_ifft(node, ctx),
-        NodeKind::Str { op, num } => lower_str(node, *op, num, ctx),
+        NodeKind::Str { op, num, tmpl } => lower_str(node, *op, num, tmpl, ctx),
+        // TextOut 参与 eval_order (无输出端口, 透传写自身 "text" 槽位 + 收集发送规格)
+        NodeKind::TextOut { .. } => lower_textout(node, ctx),
         NodeKind::Trigger {
             mode,
             edge,

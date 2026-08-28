@@ -1,7 +1,8 @@
 //! Str arm — input_ports 拆分 str/num → op.evaluate → StrResult 分派
 //! str ≤ 2 / num ≤ 2 走栈数组,超出走堆兜底;StrOp::evaluate 的 str_inputs 紧凑对齐
+//! 未连接字符串端口的内联回退: 仅 FORMAT 的 "fmt" 端口取 `tmpl` 参数 (对称于快路径 str_defaults)
 
-use node_kind::{str_num_default, NodeKind, PortDomain, StrResult};
+use node_kind::{str_num_default, uses_str_inline_text, NodeKind, PortDomain, StrResult};
 
 use crate::compile::CompiledGraph;
 use node_eval::{node_out_entry, node_out_str_entry, set_port, set_str_port};
@@ -15,7 +16,7 @@ impl NodeArm for StrArm {
         let Some(node) = graph.value_def(node_id) else {
             return;
         };
-        let NodeKind::Str { op, num } = &node.kind else {
+        let NodeKind::Str { op, num, tmpl } = &node.kind else {
             return;
         };
         let ports = op.input_ports();
@@ -41,7 +42,18 @@ impl NodeArm for StrArm {
         for (name, domain) in ports {
             match domain {
                 PortDomain::String => {
-                    str_inputs[si] = graph.resolve_str_input(node_id, name, ctx.out_str);
+                    // 已连接走上游快照; 未连接走内联回退文本 (仅 fmt ← tmpl)
+                    let linked = graph
+                        .string_input_index
+                        .get(node_id)
+                        .is_some_and(|p| p.contains_key(*name));
+                    str_inputs[si] = if linked {
+                        graph.resolve_str_input(node_id, name, ctx.out_str)
+                    } else if uses_str_inline_text(*op, name) {
+                        tmpl.as_str()
+                    } else {
+                        ""
+                    };
                     si += 1;
                 }
                 PortDomain::F32 => {

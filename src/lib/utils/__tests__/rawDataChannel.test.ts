@@ -17,7 +17,7 @@ vi.hoisted(() => {
   g.localStorage = localStorageMock;
 });
 
-import { classifyRawDataChannel } from '../rawDataChannel';
+import { classifyRawDataChannel, resolveRawDataChannelKey, resolveRawDataStatusTransport } from '../rawDataChannel';
 import type { Node, Edge } from '@xyflow/react';
 import type { WidgetConfig } from '../../../types';
 
@@ -107,5 +107,119 @@ describe('classifyRawDataChannel', () => {
       [DECODER_WIDGET]
     );
     expect(info).toEqual({ kind: 'numeric', transportId: null });
+  });
+});
+
+describe('resolveRawDataChannelKey - 纯端口制选择解析', () => {
+  const OPTIONS = [
+    { key: 'src:transport-1:rx' },
+    { key: 'src:protocol-1:out' },
+    { key: 'src:w-math:result' },
+  ];
+
+  it('配置选中且连线仍存在 → 保持该卡片的独立选择', () => {
+    expect(resolveRawDataChannelKey('src:protocol-1:out', OPTIONS)).toBe('src:protocol-1:out');
+  });
+
+  it('无配置 (旧数据) → 回退第一个已连接端口', () => {
+    expect(resolveRawDataChannelKey(undefined, OPTIONS)).toBe('src:transport-1:rx');
+    expect(resolveRawDataChannelKey('', OPTIONS)).toBe('src:transport-1:rx');
+  });
+
+  it('配置失效 (连线已删除) → 回退第一个已连接端口', () => {
+    expect(resolveRawDataChannelKey('src:gone:rx', OPTIONS)).toBe('src:transport-1:rx');
+  });
+
+  it('无任何连线 → null (视图渲染空态引导)', () => {
+    expect(resolveRawDataChannelKey('src:transport-1:rx', [])).toBeNull();
+    expect(resolveRawDataChannelKey(undefined, [])).toBeNull();
+  });
+
+  it('不同卡片配置互不影响 (各自解析各自的 key)', () => {
+    // 卡片 A 选中 protocol out, 卡片 B 无配置 — 同一 options 下各自成立
+    expect(resolveRawDataChannelKey('src:protocol-1:out', OPTIONS)).toBe('src:protocol-1:out');
+    expect(resolveRawDataChannelKey(undefined, OPTIONS.slice(1))).toBe('src:protocol-1:out');
+  });
+});
+
+describe('resolveRawDataStatusTransport - 卡片状态提示的可观察 Transport', () => {
+  const RAW_WIDGET = {
+    kind: 'RawData',
+    params: { id: 'w-raw', label: 'Raw' },
+  } as unknown as WidgetConfig;
+
+  // w-raw 的入边: transport rx 直连 + protocol out (两条候选通道)
+  // 另含 protocol 的上游字节边 (transport.rx → protocol.in) — 状态提示需沿边上溯
+  const CARD_EDGES: Edge[] = [
+    BYTE_EDGE,
+    {
+      id: 'e1',
+      source: 'transport-1',
+      sourceHandle: 'rx',
+      target: 'w-raw',
+      targetHandle: 'src:transport-1:rx',
+    },
+    {
+      id: 'e2',
+      source: 'protocol-1',
+      sourceHandle: 'out',
+      target: 'w-raw',
+      targetHandle: 'src:protocol-1:out',
+    },
+  ];
+  const CARD_NODES = [TRANSPORT_NODE, PROTOCOL_NODE];
+
+  it('默认 (无 selectedInput) → 第一个入边的源 Transport', () => {
+    expect(
+      resolveRawDataStatusTransport('w-raw', undefined, CARD_EDGES, CARD_NODES, [RAW_WIDGET])
+    ).toBe('transport-1');
+  });
+
+  it('配置选中 protocol out → 沿字节边上溯到 Transport', () => {
+    expect(
+      resolveRawDataStatusTransport(
+        'w-raw',
+        'src:protocol-1:out',
+        CARD_EDGES,
+        CARD_NODES,
+        [RAW_WIDGET]
+      )
+    ).toBe('transport-1');
+  });
+
+  it('配置失效 (连线已删) → 回退第一个入边', () => {
+    expect(
+      resolveRawDataStatusTransport(
+        'w-raw',
+        'src:gone:rx',
+        CARD_EDGES,
+        CARD_NODES,
+        [RAW_WIDGET]
+      )
+    ).toBe('transport-1');
+  });
+
+  it('FrameDecoder raw 口 → null (节点旁路, 无固定连接语义)', () => {
+    const decEdges: Edge[] = [
+      {
+        id: 'e3',
+        source: 'w-dec',
+        sourceHandle: 'raw',
+        target: 'w-raw',
+        targetHandle: 'src:w-dec:raw',
+      },
+    ];
+    expect(
+      resolveRawDataStatusTransport('w-raw', 'src:w-dec:raw', decEdges, [], [
+        RAW_WIDGET,
+        DECODER_WIDGET,
+      ])
+    ).toBeNull();
+  });
+
+  it('无任何连线 → null (空态, 无状态可提示)', () => {
+    expect(
+      resolveRawDataStatusTransport('w-raw', undefined, [], CARD_NODES, [RAW_WIDGET])
+    ).toBeNull();
   });
 });

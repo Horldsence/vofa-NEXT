@@ -248,7 +248,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
     case 'RawData':
       return {
         kind: 'RawData',
-        params: { id, label: 'Raw Data' },
+        params: { id, label: 'Raw Data', selectedInput: '' },
       };
     case 'Trigger':
       return {
@@ -305,6 +305,18 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           pos: 1,
           len: 0,
           size: 0,
+          tmpl: '',
+        },
+      };
+    case 'TextOut':
+      return {
+        kind: 'TextOut',
+        params: {
+          id,
+          label: 'TextOut',
+          targetTransport: '',
+          newline: 'none',
+          minIntervalMs: 50,
         },
       };
   }

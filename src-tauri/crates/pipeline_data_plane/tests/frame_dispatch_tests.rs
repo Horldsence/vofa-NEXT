@@ -4,7 +4,7 @@
 
 use app_state::AppState;
 use node_engine::CompiledGraph;
-use node_kind::{NodeDef, NodeKind};
+use node_kind::{NodeDef, NodeKind, StrNumParams};
 use pipeline_data_plane::{frame_dispatch, DataPlaneState};
 use vofa_core::DataFrame;
 
@@ -79,4 +79,89 @@ fn on_frames_skips_unrelated_graphs() {
     // 图引用的是 "other" 源, 不被 "pt" 触发 → 快照无 src_other 输出
     let snap = plane.eval.output_snapshot.lock();
     assert!(snap.values.get("src_other").is_none());
+}
+
+/// RawData 文本缓存 → ProtocolSource "str" 端口 (值平面字符串通路端到端)
+#[test]
+fn cache_source_text_feeds_str_port() {
+    use node_kind::StrOp;
+    let state = AppState::new();
+    let plane = state.data_plane;
+    let graph = CompiledGraph::compile(
+        "t1".into(),
+        vec![
+            NodeDef {
+                id: "src1".into(),
+                tab_id: "t1".into(),
+                kind: NodeKind::ProtocolSource {
+                    node_id: "rd".into(),
+                    channels: 1,
+                    port_names: Some(vec!["str".to_string()]),
+                },
+            },
+            NodeDef {
+                id: "mid1".into(),
+                tab_id: "t1".into(),
+                kind: NodeKind::Str {
+                    op: StrOp::Upper,
+                    num: StrNumParams::default(),
+                    tmpl: String::new(),
+                },
+            },
+        ],
+        vec![buffer_graph::Edge {
+            id: "e1".into(),
+            source: "src1".into(),
+            source_handle: "str".into(),
+            target: "mid1".into(),
+            target_handle: "str".into(),
+        }],
+    )
+    .unwrap();
+    plane.eval.graphs.lock().insert("t1".into(), graph);
+
+    // 多字节字符 (证明按字符而非字节的安全解码) + latest-value 覆盖
+    frame_dispatch::cache_source_text(&plane, "rd", "你好 world".as_bytes());
+    frame_dispatch::refresh_snapshot(&plane);
+    let out = plane.eval.graph_string_outputs.lock();
+    // 直通端口: src1 的 str 口 = 缓存的原始文本
+    assert_eq!(
+        out.get("src1").and_then(|p| p.get("str")),
+        Some(&"你好 world".to_string()),
+        "RawData 文本应经 ProtocolSource 的 str 端口进入字符串平面"
+    );
+    // 下游求值: Str(Upper) 消费该文本后的输出
+    assert_eq!(
+        out.get("mid1").and_then(|p| p.get("result")),
+        Some(&"你好 WORLD".to_string()),
+        "下游 Str 节点应消费 RawData 文本参与求值"
+    );
+}
+
+/// 非 UTF-8 字节 lossy 解码为 U+FFFD 替换符; 空数据覆盖写空文本 (latest-value 语义)
+#[test]
+fn cache_source_text_lossy_and_overwrite() {
+    let state = AppState::new();
+    let plane = state.data_plane;
+
+    frame_dispatch::cache_source_text(&plane, "rd", &[0x68, 0xFF, 0x69]);
+    assert_eq!(
+        plane.source_texts.lock().get("rd").map(String::as_str),
+        Some("h\u{FFFD}i"),
+        "非法 UTF-8 字节应替换为 U+FFFD 而非报错"
+    );
+
+    frame_dispatch::cache_source_text(&plane, "rd", b"");
+    assert_eq!(
+        plane.source_texts.lock().get("rd").map(String::as_str),
+        Some(""),
+        "空批次按空文本覆盖 (保持既有 latest-value 行为)"
+    );
+
+    // 多源隔离: 其他源缓存不受影响
+    frame_dispatch::cache_source_text(&plane, "rd2", b"other");
+    assert_eq!(
+        plane.source_texts.lock().get("rd").map(String::as_str),
+        Some("")
+    );
 }

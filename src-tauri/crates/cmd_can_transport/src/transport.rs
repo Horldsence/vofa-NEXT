@@ -85,6 +85,47 @@ pub async fn send_string(state: State<'_, AppState>, node_id: String, text: Stri
     send_raw(state, node_id, text.into_bytes()).await
 }
 
+/// TextOut 手动发送 — 立即把 textout 节点当前图内文本发往其目标 Transport
+///
+/// 与自动 ticker 共用数据源 (`graph_string_outputs[node]["text"]`) 与换行后缀;
+/// 典型场景: 前端 Send 按钮在值未变化时也强制发送一次。
+#[tauri::command]
+pub async fn send_text_out_now(
+    state: State<'_, AppState>,
+    node_id: String,
+) -> Result<()> {
+    // 找到该 TextOut 的编译规格 (target_transport + newline 后缀; 图重编译间隙容错跳过)
+    let spec = {
+        let graphs = state.data_plane.eval.graphs.lock();
+        graphs
+            .values()
+            .find_map(|g| {
+                g.compiled()
+                    .textouts()
+                    .iter()
+                    .find(|s| &*s.node_id == node_id.as_str())
+                    .cloned()
+            })
+            .ok_or_else(|| Error::Config(ConfigError::ProtocolNodeNotFound {
+                node_id: node_id.clone(),
+            }))?
+    };
+    let text = state
+        .data_plane
+        .eval
+        .graph_string_outputs
+        .lock()
+        .get(&node_id)
+        .and_then(|p| p.get("text"))
+        .cloned()
+        .unwrap_or_default();
+    let mut payload = text;
+    payload.push_str(spec.newline_suffix);
+    let target = spec.target_transport.to_string();
+    state.transport.lock().await.send(&target, payload.as_bytes())?;
+    Ok(())
+}
+
 /// 发送控件值 (根据绑定模式自动编码)
 ///
 /// - `node_id`: 目标 Transport 节点 id

@@ -16,4 +16,4 @@ mod ops;
 pub mod kinds;
 
 pub use lower::{lower_value_plane, LowerCtx, SlotArena, SlotPlan};
-pub use ops::CompiledOp;
+pub use ops::{CompiledOp, TextOutSpec};

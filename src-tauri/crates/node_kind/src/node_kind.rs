@@ -55,8 +55,14 @@ pub enum NodeKind {
     /// 算术节点 — 输出端口 "result"
     Math { op: MathOp, input_count: usize },
     /// 字符串操作节点 — 输出端口固定 "result"（域由 op 决定）
-    /// 输入端口见 `StrOp::input_ports`，`num`：未连接数值端口的内联回退值
-    Str { op: StrOp, num: StrNumParams },
+    /// 输入端口见 `StrOp::input_ports`，`num`：未连接数值端口的内联回退值；
+    /// `tmpl`：FORMAT 算子的模板文本（"fmt" 端口未连接时的内联回退，其余 op 忽略）
+    Str {
+        op: StrOp,
+        num: StrNumParams,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        tmpl: String,
+    },
     /// 自定义 JS 节点 — 输入/输出端口由用户代码定义
     Custom {
         inputs: Vec<String>,
@@ -107,6 +113,50 @@ pub enum NodeKind {
     /// 前端文本框内容作为参数 `text` 经 `update_tab_graph` 同步
     /// 输出端口固定 "str"（String），无输入端口
     TextInput { text: String },
+    /// 文本下发节点（TextOut）— 动态发送回传: 图内字符串写回目标 Transport 的 tx
+    ///
+    /// 本体不产出值（不进 eval_order, 同 Sink）; 输入端口固定 "text"（String 域）,
+    /// 求值时上游字符串透传写入本节点同名槽位 → 经通用 materialize_str 发布到
+    /// `graph_string_outputs[node_id]["text"]`, 由 app_state 的 TextOut 发送 ticker
+    /// 按 `min_interval_ms` 限速发往 `target_transport`（手动触发走 send_text_out_now 命令）。
+    TextOut {
+        /// 目标 Transport 全局节点 id
+        target_transport: String,
+        /// 发送时附加的换行模式
+        #[serde(default)]
+        newline: NewlineMode,
+        /// 自动发送最小间隔 ms（值变化限速; 发布未到期时挂起待下轮窗口补发）
+        #[serde(default = "default_textout_interval")]
+        min_interval_ms: u32,
+    },
+}
+
+/// 文本下发换行模式 — 发送时附加到文本末尾
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum NewlineMode {
+    #[default]
+    None,
+    Lf,
+    Crlf,
+    Cr,
+}
+
+impl NewlineMode {
+    /// 该模式对应的换行后缀
+    pub const fn suffix(self) -> &'static str {
+        match self {
+            Self::None => "",
+            Self::Lf => "\n",
+            Self::Crlf => "\r\n",
+            Self::Cr => "\r",
+        }
+    }
+}
+
+/// TextOut 默认最小发送间隔 (50ms ≈ 20 Hz 上限, 防止高频流刷爆串口)
+const fn default_textout_interval() -> u32 {
+    50
 }
 
 /// 协议帧源节点是否参与字节源标记边（Sink 视角）

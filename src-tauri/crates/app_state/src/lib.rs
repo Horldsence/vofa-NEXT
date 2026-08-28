@@ -20,4 +20,7 @@ mod app_state;
 mod tickers;
 
 pub use app_state::AppState;
-pub use tickers::{custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker};
+pub use tickers::{
+    custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker,
+    textout_sender_ticker,
+};

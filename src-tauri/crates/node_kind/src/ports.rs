@@ -47,6 +47,7 @@ pub enum PortDomain {
 ///   （chN 帧通道不经 Protocol 本体暴露，数值平面用 ProtocolSource）
 /// - FrameDecoder: 输入 "in" 与旧名 "loopbackIn" = Bytes，其余输出 = F32
 /// - Sink/Custom: 输出 "loopbackOut" = Bytes（CommandSender 命令字节出口）
+/// - TextOut: 输入 "text" = String（动态发送回传, 目标 Transport 发送）
 /// - ProtocolSource: 输出 "str"（RawData 原始字节文本）= String；
 ///   其余输出（"ch0".."chN" 或 port_names 命名端口）= F32；其余节点按现有语义全 F32
 pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain {
@@ -70,6 +71,8 @@ pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain
         }
         NodeKind::Trigger { .. } if is_output && handle == "text" => PortDomain::String,
         NodeKind::TextInput { .. } if is_output && handle == "str" => PortDomain::String,
+        // TextOut 的 "text" 输入口 (动态发送回传的字符串消费端)
+        NodeKind::TextOut { .. } if !is_output && handle == "text" => PortDomain::String,
         // ProtocolSource 的 "str" 端口（RawData 原始字节 UTF-8 文本）属字符串平面
         NodeKind::ProtocolSource { .. } if is_output && handle == "str" => PortDomain::String,
         NodeKind::Str { op, .. } => {
@@ -149,6 +152,7 @@ mod tests {
         NodeKind::Str {
             op,
             num: StrNumParams::default(),
+            tmpl: String::new(),
         }
     }
 

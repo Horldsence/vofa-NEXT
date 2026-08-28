@@ -15,6 +15,7 @@ mod math;
 mod protocol_source;
 mod str;
 mod text_input;
+mod textout;
 mod trigger;
 
 pub use custom::CustomArm;
@@ -26,10 +27,11 @@ pub use math::MathArm;
 pub use protocol_source::ProtocolSourceArm;
 pub use str::StrArm;
 pub use text_input::TextInputArm;
+pub use textout::TextOutArm;
 pub use trigger::TriggerArm;
 
 /// 按 NodeKind variant 分派到对应 arm;Sink / SpectrumSink / Transport / Protocol
-/// 无值平面输出,返回 None 由主循环跳过
+/// 无值平面输出,返回 None 由主循环跳过 (TextOut 参与求值序: 透传写自身槽位)
 pub fn arm_for(kind: &NodeKind) -> Option<Box<dyn NodeArm>> {
     match kind {
         NodeKind::Input => Some(Box::new(InputArm)),
@@ -42,6 +44,7 @@ pub fn arm_for(kind: &NodeKind) -> Option<Box<dyn NodeArm>> {
         NodeKind::Trigger { .. } => Some(Box::new(TriggerArm)),
         NodeKind::ProtocolSource { .. } => Some(Box::new(ProtocolSourceArm)),
         NodeKind::TextInput { .. } => Some(Box::new(TextInputArm)),
+        NodeKind::TextOut { .. } => Some(Box::new(TextOutArm)),
         NodeKind::Sink
         | NodeKind::SpectrumSink { .. }
         | NodeKind::Transport { .. }

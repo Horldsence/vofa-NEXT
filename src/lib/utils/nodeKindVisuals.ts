@@ -72,6 +72,7 @@ export const WIDGET_KIND_ICONS: Record<WidgetConfig['kind'], LucideIcon> = {
   FFT: Activity,
   IFFT: Activity,
   Str: Type,
+  TextOut: Send,
   Custom: Code2,
 };
 

@@ -21,6 +21,7 @@ fn str_node_graph(tab_id: &str) -> CompiledGraph {
             kind: NodeKind::Str {
                 op: StrOp::Upper,
                 num: StrNumParams::default(),
+                tmpl: String::new(),
             },
         }],
         vec![],
@@ -49,6 +50,61 @@ fn on_frames_publishes_str_outputs() {
     // Str 字符串域输出端口恒 written (无字符串源时输入缺省 "" → Upper("") = "")
     let ports = str_out.get("up1").expect("up1 应有字符串输出");
     assert_eq!(ports.get("result"), Some(&String::new()));
+}
+
+/// TextOut 桥接: 图内字符串 (TextInput → TextOut) 经通用发布进入 graph_string_outputs,
+/// 且编译规格 (目标/换行后缀/间隔) 正确收集 — 发送 ticker 的数据契约端到端验证
+#[test]
+fn textout_publishes_to_string_outputs_with_specs() {
+    let state = AppState::new();
+    let plane = state.data_plane;
+    let graph = CompiledGraph::compile(
+        "t1".into(),
+        vec![
+            NodeDef {
+                id: "textin".into(),
+                tab_id: "t1".into(),
+                kind: node_kind::NodeKind::TextInput {
+                    text: "hello".into(),
+                },
+            },
+            NodeDef {
+                id: "tout".into(),
+                tab_id: "t1".into(),
+                kind: node_kind::NodeKind::TextOut {
+                    target_transport: "tp1".into(),
+                    newline: node_kind::NewlineMode::Lf,
+                    min_interval_ms: 20,
+                },
+            },
+        ],
+        vec![buffer_graph::Edge {
+            id: "e1".into(),
+            source: "textin".into(),
+            source_handle: "str".into(),
+            target: "tout".into(),
+            target_handle: "text".into(),
+        }],
+    )
+    .unwrap();
+    // 编译期规格收集
+    {
+        let specs = graph.compiled().textouts();
+        assert_eq!(specs.len(), 1);
+        assert_eq!(&*specs[0].node_id, "tout");
+        assert_eq!(&*specs[0].target_transport, "tp1");
+        assert_eq!(specs[0].newline_suffix, "\n");
+        assert_eq!(specs[0].min_interval_ms, 20);
+    }
+    plane.eval.graphs.lock().insert("t1".into(), graph);
+
+    frame_dispatch::on_frames(&plane, "pt", &[DataFrame::with_timestamp(1, vec![1.0])]);
+    let str_out = plane.eval.graph_string_outputs.lock();
+    assert_eq!(
+        str_out.get("tout").and_then(|p| p.get("text")),
+        Some(&"hello".to_string()),
+        "TextOut 应把上游文本透传进通用字符串发布"
+    );
 }
 
 /// 清理语义: 图重编译 (graphs_version 变化) 后批尾发布点清空过期节点条目 (同 f32 快照)
