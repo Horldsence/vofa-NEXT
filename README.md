@@ -141,6 +141,13 @@ The UI features a **dock-style window layout**: control canvases and data views 
 - Native OS notifications via `tauri-plugin-notification`.
 - Structured logging via `tauri-plugin-log` (stdout / log dir / webview).
 
+### AI Assistant
+
+- **Streaming AI chat** — a dockable chat panel (right side by default; drag its title bar to re-dock left / bottom or float, layout persisted) with **Markdown rendering** (tables, code highlighting, copyable code blocks / messages) and multi-session management (create / rename / delete, history persisted on the Rust side across restarts).
+- **26+ LLM providers** — OpenAI / Anthropic / Gemini / DeepSeek / Qwen / Kimi / GLM / Ollama / OpenRouter etc., with [**OrcaRouter**](https://orcarouter.ai) as the featured default (one key for all vendors; [get an API key via our referral link](https://www.orcarouter.ai/ref/ref_1f7582998bdadbe7e0f3) to support the project).
+- **Tool calling (MCP client)** — the model can call tools from external MCP servers (stdio / HTTP) during a conversation, with per-call tracing.
+- **MCP server (inbound)** — the app exposes its own capabilities (serial send, waveform read, node-graph editing…) as MCP tools at `http://127.0.0.1:{port}/mcp`, so Claude Desktop / other MCP clients can drive VOFA-NEXT directly.
+
 ## Usage Guide
 
 ### Quick Start

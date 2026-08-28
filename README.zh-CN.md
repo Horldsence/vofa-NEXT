@@ -139,6 +139,13 @@ VOFA-NEXT 是一款面向嵌入式调试场景的桌面串口助手。前端基�
 - 通过 `tauri-plugin-notification` 的原生系统通知。
 - 通过 `tauri-plugin-log` 的结构化日志（stdout / 日志目录 / webview）。
 
+### AI 助手
+
+- **流式 AI 对话** —— 可停靠对话面板(默认右侧,拖动标题栏可重新停靠到左侧 / 底部或浮动为小窗,布局持久化),支持 **Markdown 渲染**(表格、代码高亮、代码块 / 消息一键复制)与多会话管理(新建 / 重命名 / 删除,历史由 Rust 后端持久化,重启不丢)。
+- **26+ LLM 服务商** —— OpenAI / Anthropic / Gemini / DeepSeek / 通义 / Kimi / GLM / Ollama / OpenRouter 等,并以 [**OrcaRouter**](https://orcarouter.ai) 为重点推荐的默认适配器(一把 Key 调用全厂商模型,[通过推广链接注册获取 API Key](https://www.orcarouter.ai/ref/ref_1f7582998bdadbe7e0f3)即可支持本项目)。
+- **工具调用(MCP 客户端)** —— 对话中模型可调用外部 MCP server(stdio / HTTP)提供的工具,单次调用全程可追踪。
+- **MCP 服务(入站)** —— 本应用把自身能力(串口发送、波形读取、节点图编辑…)暴露为 MCP 工具(`http://127.0.0.1:{port}/mcp`),Claude Desktop 等外部 AI 客户端可直接操控 VOFA-NEXT。
+
 ## 使用指引
 
 ### 快速上手
