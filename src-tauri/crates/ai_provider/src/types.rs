@@ -98,6 +98,8 @@ pub struct AdapterInfo {
 
 /// 支持的适配器注册表 (genai 原生协议)。
 pub const ADAPTERS: &[AdapterInfo] = &[
+    // OrcaRouter: OpenAI 兼容聚合网关 (模型需 `厂商/模型` 命名, 如 openai/gpt-4o-mini)
+    AdapterInfo { id: "orcarouter", label: "OrcaRouter", default_base_url: "https://api.orcarouter.ai/v1" },
     AdapterInfo { id: "openai", label: "OpenAI", default_base_url: "https://api.openai.com/v1" },
     AdapterInfo { id: "anthropic", label: "Anthropic Claude", default_base_url: "https://api.anthropic.com" },
     AdapterInfo { id: "gemini", label: "Google Gemini", default_base_url: "https://generativelanguage.googleapis.com" },
@@ -118,13 +120,14 @@ pub const fn list_adapters() -> &'static [AdapterInfo] {
     ADAPTERS
 }
 
-/// 适配器字符串 → genai `AdapterKind`;`openai_compatible` 复用 OpenAI 协议。
+/// 适配器字符串 → genai `AdapterKind`;`openai_compatible` / `orcarouter`
+/// 复用 OpenAI 协议。
 ///
 /// # Errors
 /// 未知适配器字符串返回 [`AiError::UnknownAdapter`]。
 pub fn adapter_kind_from_str(adapter: &str) -> vofa_core::Result<AdapterKind> {
     let kind = match adapter {
-        "openai" | "openai_compatible" => AdapterKind::OpenAI,
+        "openai" | "openai_compatible" | "orcarouter" => AdapterKind::OpenAI,
         "openai_responses" => AdapterKind::OpenAIResp,
         "anthropic" => AdapterKind::Anthropic,
         "gemini" => AdapterKind::Gemini,

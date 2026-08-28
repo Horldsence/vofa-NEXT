@@ -56,6 +56,21 @@ pub enum AiError {
         /// 实际达到的轮次上限。
         rounds: u32,
     },
+
+    /// 指定 id 的对话会话不存在。
+    #[error("AI 会话 [{id}] 不存在")]
+    UnknownSession {
+        /// 会话 id。
+        id: String,
+    },
+
+    /// 会话历史文件读写失败。
+    #[error("AI 会话持久化失败: {source}")]
+    Persist {
+        /// 底层 IO 错误。
+        #[source]
+        source: std::io::Error,
+    },
 }
 
 impl Error for AiError {
@@ -68,6 +83,8 @@ impl Error for AiError {
             Self::ProviderRequest { .. } => "AiProviderRequest",
             Self::Cancelled => "AiCancelled",
             Self::MaxToolRounds { .. } => "AiMaxToolRounds",
+            Self::UnknownSession { .. } => "AiUnknownSession",
+            Self::Persist { .. } => "AiPersist",
         }
     }
 }

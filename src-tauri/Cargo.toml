@@ -13,6 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 members = [
   "crates/ai_chat",
   "crates/ai_provider",
+  "crates/ai_session",
   "crates/app_state",
   "crates/automotive_can",
   "crates/automotive_diag",
@@ -165,6 +166,7 @@ buffer_graph = { path = "crates/buffer_graph" }
 buffer_raw = { path = "crates/buffer_raw" }
 ai_provider = { path = "crates/ai_provider" }
 ai_chat = { path = "crates/ai_chat" }
+ai_session = { path = "crates/ai_session" }
 mcp_client = { path = "crates/mcp_client" }
 mcp_server = { path = "crates/mcp_server" }
 cmd_ai = { path = "crates/cmd_ai" }

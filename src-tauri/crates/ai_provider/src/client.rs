@@ -27,6 +27,10 @@ fn adapter_needs_key(adapter: &str) -> bool {
     !matches!(adapter, "ollama")
 }
 
+/// OrcaRouter 官方 API 端点 (适配器 base_url 为空时的兜底;
+/// genai 对 OpenAI 协议的默认端点是 OpenAI 官方, 不适用于聚合网关)。
+pub const ORCAROUTER_ENDPOINT: &str = "https://api.orcarouter.ai/v1";
+
 /// 按配置构建 genai 客户端 (校验适配器 / key / 自定义端点)。
 ///
 /// # Errors
@@ -50,9 +54,14 @@ pub fn build_client(cfg: &AiProviderConfig) -> Result<Client> {
     let mut builder = Client::builder()
         .with_auth_resolver_fn(move |_model_iden| Ok(Some(AuthData::from_single(api_key.clone()))));
 
-    // 自定义端点: 覆盖 resolved target 的 endpoint (OpenAI 兼容网关 / 自建代理)
-    if !cfg.base_url.is_empty() {
-        let base_url = cfg.base_url.clone();
+    // 自定义端点: 覆盖 resolved target 的 endpoint (OpenAI 兼容网关 / 自建代理);
+    // orcarouter 端点为空时兜底官方 API
+    let base_url = if cfg.base_url.is_empty() {
+        (cfg.adapter == "orcarouter").then(|| ORCAROUTER_ENDPOINT.to_string())
+    } else {
+        Some(cfg.base_url.clone())
+    };
+    if let Some(base_url) = base_url {
         builder = builder.with_service_target_resolver_fn(move |mut target: ServiceTarget| {
             target.endpoint = Endpoint::from_owned(base_url.clone());
             Ok(target)
@@ -243,4 +252,38 @@ pub fn validate_config(cfg: &AiProviderConfig) -> Result<()> {
         .into());
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::adapter_kind_from_str;
+
+    fn config(adapter: &str, base_url: &str) -> AiProviderConfig {
+        AiProviderConfig {
+            adapter: adapter.to_string(),
+            base_url: base_url.to_string(),
+            api_key: "sk-test".to_string(),
+            model: "openai/gpt-4o-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+        }
+    }
+
+    /// orcarouter 映射到 OpenAI 协议;空 base_url 校验通过 (官方端点兜底)。
+    #[test]
+    fn orcarouter_maps_to_openai_and_validates_with_empty_base_url() {
+        assert!(matches!(
+            adapter_kind_from_str("orcarouter").unwrap(),
+            genai::adapter::AdapterKind::OpenAI
+        ));
+        validate_config(&config("orcarouter", "")).expect("orcarouter 空 base_url 应合法");
+    }
+
+    /// openai_compatible 仍必须提供 base_url;未知适配器仍报错。
+    #[test]
+    fn compatible_requires_base_url_and_unknown_adapter_fails() {
+        assert!(validate_config(&config("openai_compatible", "")).is_err());
+        assert!(validate_config(&config("nope", "")).is_err());
+    }
 }

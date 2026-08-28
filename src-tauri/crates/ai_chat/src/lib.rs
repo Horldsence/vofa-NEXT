@@ -13,9 +13,11 @@
 //! [`runner::ToolExecutor`] 抽象,二者均可 mock,循环逻辑可离线单测。
 
 pub mod events;
+pub mod recorder;
 pub mod runner;
 
 pub use events::{AiChatEvent, EventSink};
+pub use recorder::TurnRecorder;
 pub use runner::{
     ChatPayload, ChatTaskRegistry, GenaiTurnProvider, ToolExecutor, TurnProvider, run_chat,
 };
