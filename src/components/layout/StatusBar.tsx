@@ -11,13 +11,13 @@ import { UpdateIndicator } from './UpdateIndicator';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePrimaryProtocolConfig, usePrimaryTransportConfig } from '../../lib/hooks/usePrimaryNodes';
 import CompileStatusIndicator from './CompileStatusIndicator';
-import { useAiChatStore } from '../../store/aiChatStore';
+import { useLayoutStore } from '../../store/layoutStore';
 
-/// AI 对话面板开关 — 状态栏右侧常驻入口 (面板本身关闭不丢会话)
+/// AI 对话面板开关 — 状态栏右侧常驻入口 (面板可见性持久化, 会话在后端不丢失)
 function AiPanelToggle() {
   const lang = useAppStore((s) => s.lang);
-  const visible = useAiChatStore((s) => s.panelVisible);
-  const setPanelVisible = useAiChatStore((s) => s.setPanelVisible);
+  const visible = useLayoutStore((s) => s.aiPanelVisible);
+  const setAiPanelVisible = useLayoutStore((s) => s.setAiPanelVisible);
   return (
     <button
       className={`w-6 h-6 flex items-center justify-center rounded transition-colors duration-150 shrink-0 ${
@@ -26,7 +26,7 @@ function AiPanelToggle() {
           : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
       }`}
       title={t(lang, 'aiChat')}
-      onClick={() => setPanelVisible(!visible)}
+      onClick={() => setAiPanelVisible(!visible)}
     >
       <Sparkles size={12} />
     </button>

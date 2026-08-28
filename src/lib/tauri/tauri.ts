@@ -2,8 +2,9 @@ import { invoke, Channel } from '@tauri-apps/api/core';
 import type {
   AiAdapterInfo,
   AiChatEvent,
-  AiChatMessage,
+  AiChatSession,
   AiProviderConfig,
+  AiSessionMeta,
   CanLoadSnapshot,
   ConnectionState,
   DecoderBlock,
@@ -326,19 +327,24 @@ export const api = {
   /// 支持的 LLM provider 适配器清单 (设置 UI 下拉)
   aiListProviders: () => invoke<AiAdapterInfo[]>('ai_list_providers'),
 
-  /// 发起一次对话 (可含多轮 MCP 工具调用); 增量事件经 onEvent 推送, 返回 task_id
+  /// 发起一次对话 (可含多轮 MCP 工具调用); 增量事件经 onEvent 推送, 返回 task_id。
+  /// 会话所有权在后端: text 非空时追加用户条目, regenerate 时截断待重试回合
   aiChatSend: (
+    sessionId: string,
+    text: string | null,
+    regenerate: boolean,
     config: AiProviderConfig,
     system: string | null,
-    messages: AiChatMessage[],
     maxToolRounds: number,
     useMcpTools: boolean,
     onEvent: Channel<AiChatEvent>,
   ) =>
     invoke<string>('ai_chat_send', {
+      sessionId,
+      text,
+      regenerate,
       config,
       system: system ?? null,
-      messages,
       maxToolRounds,
       useMcpTools,
       onEvent,
@@ -346,6 +352,28 @@ export const api = {
 
   /// 取消进行中的对话任务, 返回任务是否存在
   aiChatCancel: (taskId: string) => invoke<boolean>('ai_chat_cancel', { taskId }),
+
+  /// 全部对话会话摘要
+  chatListSessions: () => invoke<AiSessionMeta[]>('chat_list_sessions'),
+
+  /// 新建会话
+  chatCreateSession: (title: string) => invoke<AiChatSession>('chat_create_session', { title }),
+
+  /// 读取单个会话 (含全部条目); 不存在返回 null
+  chatGetSession: (sessionId: string) =>
+    invoke<AiChatSession | null>('chat_get_session', { sessionId }),
+
+  /// 重命名会话
+  chatRenameSession: (sessionId: string, title: string) =>
+    invoke<void>('chat_rename_session', { sessionId, title }),
+
+  /// 删除会话
+  chatDeleteSession: (sessionId: string) =>
+    invoke<void>('chat_delete_session', { sessionId }),
+
+  /// 清空会话条目 (保留会话本身)
+  chatClearSession: (sessionId: string) =>
+    invoke<void>('chat_clear_session', { sessionId }),
 
   /// 全部外部 MCP server 配置
   mcpListServers: () => invoke<McpServerConfig[]>('mcp_list_servers'),

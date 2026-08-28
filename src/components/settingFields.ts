@@ -426,6 +426,7 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
     control: {
       kind: 'select',
       options: [
+        { value: 'orcarouter', label: 'OrcaRouter' },
         { value: 'openai_compatible', label: 'OpenAI 兼容 / Compatible' },
         { value: 'openai', label: 'OpenAI' },
         { value: 'anthropic', label: 'Anthropic Claude' },

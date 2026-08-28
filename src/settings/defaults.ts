@@ -181,7 +181,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     parseChannelCap: 256,
   },
   ai: {
-    adapter: 'openai_compatible',
+    adapter: 'orcarouter',
     baseUrl: '',
     apiKey: '',
     model: '',
@@ -193,6 +193,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
     mcpServerPort: 8765,
   },
 };
+
+/// OrcaRouter 推广链接 (合作伙伴中心; 应用内"获取 API Key"与 README 共用)
+export const ORCAROUTER_REFERRAL_URL = 'https://www.orcarouter.ai/ref/ref_1f7582998bdadbe7e0f3';
 
 /// 设置分类元数据 — 用于 SettingsModal 渲染左侧导航
 export interface SettingCategoryMeta {

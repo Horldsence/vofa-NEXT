@@ -1,20 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
+  Check,
   ChevronDown,
+  Copy,
   Eraser,
+  Pencil,
   Plug,
   Plus,
+  RotateCcw,
   Send,
   Square,
   Trash2,
   Wrench,
   X,
 } from 'lucide-react';
-import { useAppStore } from '../../../store/appStore';
-import { useAiChatStore } from '../../../store/aiChatStore';
-import { t } from '../../../i18n';
-import type { AiToolRun } from '../../../types';
+import { useAppStore } from '../../store/appStore';
+import { useAiChatStore } from '../../store/aiChatStore';
+import { useLayoutStore } from '../../store/layoutStore';
+import { dockDrag } from '../../lib/dockDrag';
+import { t } from '../../i18n';
+import { AiMarkdown } from './AiMarkdown';
+import type { AiToolRun, AiViewItem } from '../../types';
 
 /// 工具名缩短展示 (去掉 mcp_ 前缀与 server 段)
 function shortToolName(name: string): string {
@@ -55,6 +62,182 @@ function ToolRunCard({ run }: { run: AiToolRun }) {
             <pre className="whitespace-pre-wrap break-all max-h-40 overflow-y-auto">{run.content}</pre>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/// 助手消息气泡 — Markdown 渲染 + 悬停操作 (复制 / 错误重试)
+function AssistantBubble({ item, canRetry }: { item: AiViewItem; canRetry: boolean }) {
+  const lang = useAppStore((s) => s.lang);
+  const regenerate = useAiChatStore((s) => s.regenerate);
+  const [copied, setCopied] = useState(false);
+  const hasText = item.text.length > 0;
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(item.text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* 剪贴板不可用时静默 */
+    }
+  };
+
+  return (
+    <div className="flex justify-start group">
+      <div
+        className={`max-w-[92%] rounded-lg px-2.5 py-1.5 space-y-1.5 ${
+          item.error ? 'bg-danger/10 text-danger border border-danger/30' : 'bg-bg-hover'
+        }`}
+      >
+        {item.tools && item.tools.length > 0 && (
+          <div className="space-y-1">
+            {item.tools.map((run) => (
+              <ToolRunCard key={run.id} run={run} />
+            ))}
+          </div>
+        )}
+        {hasText && <AiMarkdown text={item.text} />}
+        {/* 悬停操作条 — 复制原文 / 错误条目重试 (仅最后一条可重试, 与后端 truncate 语义一致) */}
+        <div
+          className={`flex items-center gap-0.5 -mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
+            item.error ? 'justify-end' : ''
+          }`}
+        >
+          {hasText && (
+            <button
+              className="p-0.5 rounded text-text-secondary hover:text-text-primary"
+              onClick={() => void onCopy()}
+              title={t(lang, 'aiCopy')}
+            >
+              {copied ? <Check size={11} className="text-success" /> : <Copy size={11} />}
+            </button>
+          )}
+          {item.error && canRetry && (
+            <button
+              className="p-0.5 rounded text-text-secondary hover:text-text-primary disabled:opacity-40"
+              onClick={() => void regenerate()}
+              disabled={!canRetry}
+              title={t(lang, 'aiRetry')}
+            >
+              <RotateCcw size={11} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/// 会话下拉 — 列表 (最近活动优先) / 新建 / 行内重命名 / 删除
+function SessionMenu() {
+  const lang = useAppStore((s) => s.lang);
+  const { sessions, activeSessionId, createSession, switchSession, renameSession, deleteSession } =
+    useAiChatStore();
+  const [open, setOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+
+  const sorted = useMemo(() => [...sessions].sort((a, b) => b.updated_at - a.updated_at), [sessions]);
+  const activeTitle = sessions.find((s) => s.id === activeSessionId)?.title ?? t(lang, 'aiSessionNew');
+
+  const commitRename = async () => {
+    if (renamingId && draft.trim()) await renameSession(renamingId, draft.trim());
+    setRenamingId(null);
+  };
+
+  const onDelete = async (id: string) => {
+    await deleteSession(id);
+    // 删空后自动补一个默认会话, 面板保持可用
+    if (useAiChatStore.getState().sessions.length === 0) {
+      await createSession(t(lang, 'aiSessionNew'));
+    }
+  };
+
+  return (
+    <div className="relative min-w-0">
+      <button
+        className="flex items-center gap-1 px-1.5 h-5 rounded text-[11px] text-text-secondary hover:bg-bg-hover hover:text-text-primary min-w-0"
+        onClick={() => setOpen((v) => !v)}
+        title={t(lang, 'aiSessionSwitch')}
+      >
+        <span className="max-w-[140px] truncate">{activeTitle}</span>
+        <ChevronDown size={11} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-6 z-30 w-56 max-w-[80vw] rounded-lg border border-border-subtle bg-bg-panel shadow-lg py-1 flex flex-col">
+            <div className="max-h-56 overflow-y-auto">
+              {sorted.length === 0 && (
+                <div className="px-2 py-1.5 text-[11px] text-text-secondary">{t(lang, 'aiSessionEmpty')}</div>
+              )}
+              {sorted.map((s) => (
+                <div
+                  key={s.id}
+                  className={`group flex items-center gap-1 px-2 py-1 text-xs hover:bg-bg-hover cursor-pointer ${
+                    s.id === activeSessionId ? 'text-accent' : 'text-text-primary'
+                  }`}
+                  onClick={() => {
+                    if (s.id !== activeSessionId) void switchSession(s.id);
+                    setOpen(false);
+                  }}
+                >
+                  {renamingId === s.id ? (
+                    <input
+                      autoFocus
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.nativeEvent.isComposing) void commitRename();
+                        if (e.key === 'Escape') setRenamingId(null);
+                      }}
+                      onBlur={() => void commitRename()}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex-1 min-w-0 bg-bg-input rounded px-1 outline-none focus:ring-1 ring-accent"
+                    />
+                  ) : (
+                    <>
+                      <span className="flex-1 min-w-0 truncate">{s.title}</span>
+                      <button
+                        className="p-0.5 rounded text-text-secondary opacity-0 group-hover:opacity-100 hover:text-text-primary"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRenamingId(s.id);
+                          setDraft(s.title);
+                        }}
+                        title={t(lang, 'aiSessionRename')}
+                      >
+                        <Pencil size={10} />
+                      </button>
+                      <button
+                        className="p-0.5 rounded text-text-secondary opacity-0 group-hover:opacity-100 hover:text-danger"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void onDelete(s.id);
+                        }}
+                        title={t(lang, 'aiSessionDelete')}
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              className="w-full flex items-center gap-1 px-2 py-1.5 text-xs text-text-secondary hover:bg-bg-hover hover:text-text-primary border-t border-border-subtle"
+              onClick={() => {
+                void createSession(t(lang, 'aiSessionNew'));
+                setOpen(false);
+              }}
+            >
+              <Plus size={11} />
+              {t(lang, 'aiSessionNew')}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );
@@ -190,12 +373,15 @@ function McpDrawer({ onClose }: { onClose: () => void }) {
   );
 }
 
-/// AI 对话底部面板 — 流式对话 + MCP 工具调用展示 + 本地 MCP server 管理
+/// AI 对话面板 — 可停靠 (右/左/下/浮动), 流式对话 + Markdown 渲染 +
+/// 多会话 (后端持有) + MCP 工具调用展示 + 本地 MCP server 管理
 export function AiChatPanel() {
   const lang = useAppStore((s) => s.lang);
   const {
     viewItems,
     streaming,
+    streamingSessionId,
+    activeSessionId,
     streamingText,
     reasoningText,
     toolRuns,
@@ -204,24 +390,34 @@ export function AiChatPanel() {
     serverPort,
     send,
     cancel,
-    clear,
-    setPanelVisible,
+    clearSession,
+    createSession,
+    refreshSessions,
     refreshTools,
     refreshServerStatus,
     startLocalServer,
   } = useAiChatStore();
+  const setAiPanelVisible = useLayoutStore((s) => s.setAiPanelVisible);
+  const draggingAiPanel = useLayoutStore((s) => s.draggingAiPanel);
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const pinnedBottom = useRef(true);
 
-  // 打开面板: 拉取工具/状态, 并按需自启本地 MCP server (opt-in 语义)
+  // 打开面板: 拉取会话/工具/状态, 并按需自启本地 MCP server (opt-in 语义);
+  // 首次使用 (无任何会话) 时自动建一个默认会话
   useEffect(() => {
     refreshServerStatus();
     refreshTools();
     if (!useAiChatStore.getState().serverRunning) {
       startLocalServer();
     }
+    void (async () => {
+      await refreshSessions();
+      if (useAiChatStore.getState().sessions.length === 0) {
+        await createSession(t(useAppStore.getState().lang, 'aiSessionNew'));
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -247,14 +443,29 @@ export function AiChatPanel() {
     }
   };
 
+  // 流式气泡只在发起它的会话内显示 (切走再切回仍可见)
+  const showStreaming = streaming && streamingSessionId === activeSessionId;
+
   return (
-    <div className="relative h-full flex flex-col overflow-hidden">
-      {/* 标题栏 */}
-      <div className="flex items-center gap-2 px-3 h-8 border-b border-border-subtle shrink-0">
-        <Bot size={13} className="text-accent" />
-        <span className="text-xs font-medium">{t(lang, 'aiChat')}</span>
+    <div
+      className={`relative h-full flex flex-col overflow-hidden ${
+        draggingAiPanel ? 'ring-2 ring-inset ring-accent' : ''
+      }`}
+    >
+      {/* 标题栏 — 同时作为拖拽把手 (拖到窗口边缘停靠, 松手空白处浮动) */}
+      <div
+        className="flex items-center gap-1.5 px-2 h-8 border-b border-border-subtle shrink-0 select-none cursor-grab active:cursor-grabbing"
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          if ((e.target as HTMLElement).closest('button, input')) return;
+          dockDrag.begin(e, { kind: 'ai-panel', label: t(lang, 'aiChat') });
+        }}
+      >
+        <Bot size={13} className="text-accent shrink-0" />
+        <span className="text-xs font-medium shrink-0">{t(lang, 'aiChat')}</span>
+        <SessionMenu />
         <button
-          className="flex items-center gap-1 px-1.5 h-5 rounded text-[11px] text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+          className="flex items-center gap-1 px-1.5 h-5 rounded text-[11px] text-text-secondary hover:bg-bg-hover hover:text-text-primary shrink-0"
           onClick={() => setDrawerOpen(true)}
           title={t(lang, 'aiMcpServers')}
         >
@@ -262,17 +473,17 @@ export function AiChatPanel() {
           {t(lang, 'aiToolCount').replace('{n}', String(tools.length))}
         </button>
         <span
-          className={`text-[10px] px-1.5 h-4 flex items-center rounded ${
+          className={`text-[10px] px-1.5 h-4 flex items-center rounded shrink-0 ${
             serverRunning ? 'bg-success/15 text-success' : 'bg-bg-hover text-text-secondary'
           }`}
           title={serverRunning ? `127.0.0.1:${serverPort ?? ''}/mcp` : t(lang, 'aiServerStopped')}
         >
           {serverRunning ? `MCP :${serverPort ?? ''}` : t(lang, 'aiServerStopped')}
         </span>
-        <div className="ml-auto flex items-center gap-0.5">
+        <div className="ml-auto flex items-center gap-0.5 shrink-0">
           <button
             className="p-1 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary disabled:opacity-40"
-            onClick={clear}
+            onClick={() => void clearSession()}
             disabled={streaming || viewItems.length === 0}
             title={t(lang, 'aiClear')}
           >
@@ -280,7 +491,7 @@ export function AiChatPanel() {
           </button>
           <button
             className="p-1 rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary"
-            onClick={() => setPanelVisible(false)}
+            onClick={() => setAiPanelVisible(false)}
             title={t(lang, 'aiClose')}
           >
             <X size={13} />
@@ -297,36 +508,25 @@ export function AiChatPanel() {
           pinnedBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
         }}
       >
-        {viewItems.length === 0 && !streaming && (
+        {viewItems.length === 0 && !showStreaming && (
           <div className="h-full flex items-center justify-center text-text-secondary">{t(lang, 'aiPlaceholder')}</div>
         )}
-        {viewItems.map((item, i) => (
-          <div key={i} className={`flex ${item.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div
-              className={`max-w-[85%] rounded-lg px-2.5 py-1.5 space-y-1.5 ${
-                item.role === 'user'
-                  ? 'bg-accent text-accent-foreground'
-                  : item.error
-                    ? 'bg-danger/10 text-danger border border-danger/30'
-                    : 'bg-bg-hover'
-              }`}
-            >
-              {item.tools && item.tools.length > 0 && (
-                <div className="space-y-1">
-                  {item.tools.map((run) => (
-                    <ToolRunCard key={run.id} run={run} />
-                  ))}
-                </div>
-              )}
-              {item.text && <div className="whitespace-pre-wrap break-words">{item.text}</div>}
+        {viewItems.map((item, i) =>
+          item.role === 'user' ? (
+            <div key={i} className="flex justify-end">
+              <div className="max-w-[85%] rounded-lg px-2.5 py-1.5 bg-accent text-accent-foreground whitespace-pre-wrap break-words">
+                {item.text}
+              </div>
             </div>
-          </div>
-        ))}
+          ) : (
+            <AssistantBubble key={i} item={item} canRetry={!!item.error && i === viewItems.length - 1 && !streaming} />
+          )
+        )}
 
         {/* 流式中的回合 */}
-        {streaming && (
+        {showStreaming && (
           <div className="flex justify-start">
-            <div className="max-w-[85%] rounded-lg px-2.5 py-1.5 space-y-1.5 bg-bg-hover">
+            <div className="max-w-[92%] rounded-lg px-2.5 py-1.5 space-y-1.5 bg-bg-hover">
               {toolRuns.map((run) => (
                 <ToolRunCard key={run.id} run={run} />
               ))}
@@ -335,10 +535,8 @@ export function AiChatPanel() {
                   {reasoningText}
                 </div>
               )}
-              <div className="whitespace-pre-wrap break-words">
-                {streamingText}
-                <span className="inline-block w-1.5 h-3 ml-0.5 align-text-bottom bg-accent animate-pulse" />
-              </div>
+              {streamingText && <AiMarkdown text={streamingText} />}
+              <span className="inline-block w-1.5 h-3 align-text-bottom bg-accent animate-pulse" />
             </div>
           </div>
         )}
@@ -366,7 +564,7 @@ export function AiChatPanel() {
           <button
             className="h-7 px-2.5 rounded bg-accent text-accent-foreground text-xs flex items-center gap-1 shrink-0 disabled:opacity-40"
             onClick={onSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || !activeSessionId}
           >
             <Send size={11} />
             {t(lang, 'aiSend')}

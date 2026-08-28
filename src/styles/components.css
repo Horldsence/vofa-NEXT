@@ -1050,3 +1050,81 @@ body.dragging-dock * {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ============ AI 回复 Markdown (AiMarkdown) ============ */
+/* 相邻块级间距 (Tailwind preflight 归零了原生 margin, 不用 space-y 以兼容嵌套) */
+.ai-md > * + * {
+  margin-top: 0.4rem;
+}
+/* 行内代码 (代码块内的 code 由 hljs 主题接管) */
+.ai-md :not(pre) > code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--color-bg-hover);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 4px;
+  padding: 0.5px 4px;
+}
+
+/* highlight.js 暗色主题 — 仅覆盖常用 token, 配色对齐 app 暗色 token
+   (rehype-highlight 输出 hljs-* 类; 直接依赖完整 hljs 主题需引入 highlight.js 包) */
+.ai-md .hljs {
+  color: #c9d1d9;
+}
+.ai-md .hljs-comment,
+.ai-md .hljs-quote {
+  color: #7d8590;
+  font-style: italic;
+}
+.ai-md .hljs-keyword,
+.ai-md .hljs-selector-tag,
+.ai-md .hljs-doctag,
+.ai-md .hljs-meta .hljs-keyword {
+  color: #ff7b72;
+}
+.ai-md .hljs-string,
+.ai-md .hljs-regexp,
+.ai-md .hljs-meta .hljs-string {
+  color: #a5d6a7;
+}
+.ai-md .hljs-number,
+.ai-md .hljs-literal {
+  color: #f2cc60;
+}
+.ai-md .hljs-title,
+.ai-md .hljs-title.class_,
+.ai-md .hljs-title.function_,
+.ai-md .hljs-section {
+  color: #d2a8ff;
+}
+.ai-md .hljs-attr,
+.ai-md .hljs-attribute,
+.ai-md .hljs-variable,
+.ai-md .hljs-template-variable,
+.ai-md .hljs-type {
+  color: #79c0ff;
+}
+.ai-md .hljs-built_in,
+.ai-md .hljs-symbol,
+.ai-md .hljs-name,
+.ai-md .hljs-selector-id,
+.ai-md .hljs-selector-class {
+  color: #7ee787;
+}
+.ai-md .hljs-meta {
+  color: #8b949e;
+}
+.ai-md .hljs-deletion {
+  color: #ffa198;
+  background: rgba(255, 129, 130, 0.15);
+}
+.ai-md .hljs-addition {
+  color: #7ee787;
+  background: rgba(63, 185, 80, 0.15);
+}
+.ai-md .hljs-emphasis {
+  font-style: italic;
+}
+.ai-md .hljs-strong {
+  font-weight: 600;
+}

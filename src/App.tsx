@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo } from 'react';
+import { lazy, Suspense, useEffect, useMemo, type ReactNode } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,9 +17,8 @@ import { useAppStore } from './store/appStore';
 import { useHistoryStore } from './store/historyStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useOnboardingStore } from './store/onboardingStore';
-import { useLayoutStore } from './store/layoutStore';
-import { useAiChatStore } from './store/aiChatStore';
-import { AiChatPanel } from './components/panels/bottom/AiChatPanel';
+import { useLayoutStore, AI_FLOAT_MIN_W, AI_FLOAT_MIN_H } from './store/layoutStore';
+import { AiChatPanel } from './components/ai/AiChatPanel';
 import { useUpdateStore } from './store/updateStore';
 import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
@@ -53,17 +52,31 @@ function App() {
   const autoCheckUpdate = useSettingsStore((s) => s.settings.general.autoCheckUpdate);
   const updateDialogOpen = useUpdateStore((s) => s.dialogOpen);
   const statusBarVisible = useSettingsStore((s) => s.settings.appearance.statusBarVisible);
-  const aiPanelVisible = useAiChatStore((s) => s.panelVisible);
   const hasOpenedOnboarding = useOnboardingStore((s) => s.hasOpenedThisSession);
   const openOnboarding = useOnboardingStore((s) => s.openWizard);
   const isWizardOpen = useOnboardingStore((s) => s.isWizardOpen);
   const isHelpOpen = useOnboardingStore((s) => s.isHelpOpen);
   const isCustomEditorOpen = useAppStore((s) => s.customEditorState.open);
 
-  // 布局编排 (侧边栏停靠; 中央区模块树由 dockStore 负责)
+  // 布局编排 (侧边栏与 AI 面板停靠; 中央区模块树由 dockStore 负责)
   const sidebarDock = useLayoutStore((s) => s.sidebarDock);
   const draggingSidebar = useLayoutStore((s) => s.draggingSidebar);
   const dockEdgeHover = useLayoutStore((s) => s.dockEdgeHover);
+  const aiPanelVisible = useLayoutStore((s) => s.aiPanelVisible);
+  const aiDock = useLayoutStore((s) => s.aiDock);
+  const aiFloatRect = useLayoutStore((s) => s.aiFloatRect);
+  const draggingAiPanel = useLayoutStore((s) => s.draggingAiPanel);
+  const aiDockEdgeHover = useLayoutStore((s) => s.aiDockEdgeHover);
+
+  // 浮动窗口渲染位置 clamp 到窗口内 (窗口缩小后仍可见; store 原值不动)
+  const floatPos = useMemo(() => {
+    const maxX = Math.max(8, window.innerWidth - aiFloatRect.w - 8);
+    const maxY = Math.max(8, window.innerHeight - aiFloatRect.h - 8);
+    return {
+      x: Math.min(Math.max(aiFloatRect.x, 8), maxX),
+      y: Math.min(Math.max(aiFloatRect.y, 8), maxY),
+    };
+  }, [aiFloatRect.x, aiFloatRect.y, aiFloatRect.w, aiFloatRect.h]);
 
   // 全局默认右键菜单
   const defaultMenuItems = useMemo(
@@ -242,50 +255,113 @@ function App() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  // 中央区 — Dock 布局树 (卡片可拆分/合并/重排, 尺寸比例跟随卡片)
-  const centerNode = (
-    <Panel key="center" id="center" order={sidebarDock === 'left' ? 2 : 1} className="min-w-0">
-      <DockLayout />
-    </Panel>
+  // 主横向面板组 — 按停靠位置拼装: [左侧停靠面板…] 中央 Dock [右侧停靠面板…]
+  // (AI 面板 left/right 与侧边栏同级; bottom/float 在下方单独处理)
+  const aiDockedSide = aiPanelVisible && (aiDock === 'left' || aiDock === 'right') ? aiDock : null;
+  const sidebarSide = sidebarVisible ? sidebarDock : null;
+  const bottomDocked = aiPanelVisible && aiDock === 'bottom';
+  const handleClass = 'w-2 rounded-full bg-transparent hover:bg-accent/50 transition-colors';
+
+  const mainGroupItems: ReactNode[] = [];
+  let panelOrder = 0;
+  const nextOrder = () => ++panelOrder;
+  const resizeHandle = (key: string) => (
+    <PanelResizeHandle key={key} className={handleClass} />
   );
-  const sidebarNode = sidebarVisible ? (
-    <Panel key="sidebar" id="sidebar" order={sidebarDock === 'left' ? 1 : 2} defaultSize={18} minSize={12} maxSize={35}>
+  const sidebarPanel = (ord: number) => (
+    <Panel key="sidebar" id="sidebar" order={ord} defaultSize={18} minSize={12} maxSize={35}>
       <div className="module-card h-full w-full">
         <Sidebar view={sidebarView} />
       </div>
     </Panel>
-  ) : null;
-  const mainHandle = sidebarVisible ? (
-    <PanelResizeHandle
-      key="main-handle"
-      className="w-2 rounded-full bg-transparent hover:bg-accent/50 transition-colors"
-    />
-  ) : null;
+  );
+  const aiPanelNode = (ord: number) => (
+    <Panel key="ai-panel" id="ai-panel" order={ord} defaultSize={24} minSize={14} maxSize={55}>
+      <div className="module-card h-full w-full">
+        <AiChatPanel />
+      </div>
+    </Panel>
+  );
+  if (sidebarSide === 'left') mainGroupItems.push(sidebarPanel(nextOrder()), resizeHandle('main-handle-l'));
+  if (aiDockedSide === 'left') mainGroupItems.push(aiPanelNode(nextOrder()), resizeHandle('ai-handle-l'));
+  mainGroupItems.push(
+    <Panel key="center" id="center" order={nextOrder()} className="min-w-0">
+      <DockLayout />
+    </Panel>
+  );
+  if (aiDockedSide === 'right') mainGroupItems.push(resizeHandle('ai-handle-r'), aiPanelNode(nextOrder()));
+  if (sidebarSide === 'right') mainGroupItems.push(resizeHandle('main-handle-r'), sidebarPanel(nextOrder()));
+
+  // 工作台行 — bottom 停靠时被纵向 PanelGroup 包裹, 否则直接占满剩余高度
+  const workbench = (
+    <div className={`flex min-h-0 gap-2 ${bottomDocked ? 'h-full' : 'flex-1'}`} data-tour="tour-workbench">
+      <div className="module-card w-12 flex-shrink-0">
+        <ActivityBar
+          activeView={sidebarVisible ? sidebarView : null}
+          onSelect={toggleSidebar}
+        />
+      </div>
+      <div className="flex-1 min-w-0">
+        <PanelGroup key={`${sidebarDock}:${aiDock}`} direction="horizontal" autoSaveId="sp-main">
+          {mainGroupItems}
+        </PanelGroup>
+      </div>
+    </div>
+  );
 
   return (
     <div className="relative flex h-full flex-col bg-bg-window p-2" onContextMenu={onAppContextMenu}>
       {/* Windows: 透明窗口下原生菜单栏无法正确渲染 (白字白底/透视), 由自定义菜单栏接管; 其它平台内部返回 null */}
       <MenuBar />
-      {/* 引导锚点: 侧栏+中央工作区的共同容器 — 第5步"拖拽建卡"需两处同时处于聚光内 */}
-      <div className="flex flex-1 min-h-0 gap-2" data-tour="tour-workbench">
-        <div className="module-card w-12 flex-shrink-0">
-          <ActivityBar
-            activeView={sidebarVisible ? sidebarView : null}
-            onSelect={toggleSidebar}
+      {bottomDocked ? (
+        // AI 面板停靠底部 — 工作台与对话面板纵向分栏
+        <PanelGroup direction="vertical" autoSaveId="sp-ai-bottom" className="flex-1 min-h-0">
+          <Panel minSize={30} className="min-h-0">
+            {workbench}
+          </Panel>
+          <PanelResizeHandle className="h-2 rounded-full bg-transparent hover:bg-accent/50 transition-colors" />
+          <Panel defaultSize={34} minSize={15} maxSize={70} className="min-h-0">
+            <div className="module-card h-full w-full">
+              <AiChatPanel />
+            </div>
+          </Panel>
+        </PanelGroup>
+      ) : (
+        workbench
+      )}
+      {/* AI 面板浮动 — 标题栏拖动重停靠 (dockDrag), 右下角把手调尺寸 */}
+      {aiPanelVisible && aiDock === 'float' && (
+        <div
+          className="absolute z-50"
+          style={{ left: floatPos.x, top: floatPos.y, width: aiFloatRect.w, height: aiFloatRect.h }}
+        >
+          <div className="module-card h-full w-full shadow-2xl">
+            <AiChatPanel />
+          </div>
+          <div
+            className="absolute -right-0.5 -bottom-0.5 w-3.5 h-3.5 cursor-nwse-resize rounded-sm hover:bg-accent/60"
+            onPointerDown={(e) => {
+              if (e.button !== 0) return;
+              e.preventDefault();
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const start = useLayoutStore.getState().aiFloatRect;
+              const onMove = (ev: PointerEvent) => {
+                useLayoutStore.getState().setAiFloatRect({
+                  x: start.x,
+                  y: start.y,
+                  w: Math.max(AI_FLOAT_MIN_W, start.w + ev.clientX - startX),
+                  h: Math.max(AI_FLOAT_MIN_H, start.h + ev.clientY - startY),
+                });
+              };
+              const onUp = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', onUp);
+              };
+              window.addEventListener('pointermove', onMove);
+              window.addEventListener('pointerup', onUp);
+            }}
           />
-        </div>
-        <div className="flex-1 min-w-0">
-          <PanelGroup key={sidebarDock} direction="horizontal" autoSaveId="sp-main">
-            {(sidebarDock === 'left'
-              ? [sidebarNode, mainHandle, centerNode]
-              : [centerNode, mainHandle, sidebarNode]
-            ).filter(Boolean)}
-          </PanelGroup>
-        </div>
-      </div>
-      {aiPanelVisible && (
-        <div className="module-card flex-shrink-0 mt-2 h-[300px] min-h-[180px]">
-          <AiChatPanel />
         </div>
       )}
       {statusBarVisible && (
@@ -314,6 +390,36 @@ function App() {
                 width: '18%',
                 height: 'calc(100% - 12px)',
               }}
+            />
+          )}
+        </>
+      )}
+
+      {/* AI 面板拖拽时: 左/右/下边缘热区 + 松手空白处浮动 */}
+      {draggingAiPanel && (
+        <>
+          {(['left', 'right', 'bottom'] as const).map((edge) => (
+            <div
+              key={edge}
+              data-dock-zone="ai-dock"
+              data-dock-edge={edge}
+              className={
+                edge === 'bottom'
+                  ? 'absolute left-0 right-0 bottom-0 h-24 z-40'
+                  : `absolute top-0 bottom-0 w-20 z-40 ${edge === 'left' ? 'left-0' : 'right-0'}`
+              }
+            />
+          ))}
+          {aiDockEdgeHover && (
+            <div
+              className="snap-drop-zone visible"
+              style={
+                aiDockEdgeHover === 'left'
+                  ? { top: 6, left: 6, width: '18%', height: 'calc(100% - 12px)' }
+                  : aiDockEdgeHover === 'right'
+                    ? { top: 6, left: '82%', width: '18%', height: 'calc(100% - 12px)' }
+                    : { bottom: 6, left: 6, width: 'calc(100% - 12px)', height: '32%' }
+              }
             />
           )}
         </>

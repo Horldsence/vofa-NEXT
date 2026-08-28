@@ -14,10 +14,11 @@
 //! - `data-dock-zone="merge"`     + data-dock-card + data-dock-kind  → 标题栏 Tab 合并
 //! - `data-dock-zone="page-edge"` + data-dock-edge                    → 页面边缘条带
 //! - `data-dock-zone="sidebar-dock"` + data-dock-edge                 → 侧边栏停靠
+//! - `data-dock-zone="ai-dock"`   + data-dock-edge                    → AI 面板边缘停靠
 //! - `data-dock-zone="canvas"`                                        → 控件画布投放
 
 import { useDockStore, type CardKind, type DragTabPayload, type SnapEdge } from '../store/dockStore';
-import { useLayoutStore, type SidebarDock } from '../store/layoutStore';
+import { useLayoutStore, type AiDockEdge, type SidebarDock } from '../store/layoutStore';
 import type { FilterPresetKind, MathOp, StrOp, TransportConfig, WidgetConfig } from '../types';
 
 /// 从控件面板拖出的控件参数 (拖到画布)
@@ -36,6 +37,7 @@ export type DockDragSpec =
   | { kind: 'tab'; tab: DragTabPayload; label: string }
   | { kind: 'card'; cardId: string; label: string }
   | { kind: 'sidebar'; label: string }
+  | { kind: 'ai-panel'; label: string }
   | { kind: 'widget'; widget: WidgetDragSpec; label: string };
 
 export interface GhostState {
@@ -51,6 +53,7 @@ type Hover =
   | { type: 'merge'; cardId: string }
   | { type: 'page-edge'; edge: SnapEdge }
   | { type: 'sidebar-dock'; edge: SidebarDock }
+  | { type: 'ai-dock'; edge: AiDockEdge }
   | { type: 'canvas'; el: Element };
 
 interface ActiveDrag {
@@ -146,6 +149,7 @@ function activate(spec: DockDragSpec) {
   if (spec.kind === 'tab') st.setDraggingTab(spec.tab);
   else if (spec.kind === 'card') st.setDraggingCard(spec.cardId);
   else if (spec.kind === 'sidebar') useLayoutStore.getState().setDraggingSidebar(true);
+  else if (spec.kind === 'ai-panel') useLayoutStore.getState().setDraggingAiPanel(true);
   // 拖拽期间全局禁止文字选择 — 防止经过 select-text 区域 (如 RawData 数值视图) 时误选
   document.body.classList.add('dragging-dock');
 }
@@ -201,6 +205,13 @@ function cleanupListeners() {
 /// 提交落点 — 复用 store 既有动作 (内部会清理 dragging* 状态)
 function commit(d: ActiveDrag) {
   const h = d.hover;
+  // AI 面板: 边缘热区 → 停靠; 其余任意位置松手 → 浮动 (标题栏落点即新位置)
+  if (d.spec.kind === 'ai-panel') {
+    const ls = useLayoutStore.getState();
+    if (h?.type === 'ai-dock') ls.setAiDock(h.edge);
+    else ls.dropAiToFloat(d.lastX, d.lastY);
+    return;
+  }
   if (!h) return;
   const st = useDockStore.getState();
   switch (h.type) {
@@ -237,6 +248,8 @@ function finish() {
   const ls = useLayoutStore.getState();
   if (ls.draggingSidebar) ls.setDraggingSidebar(false);
   if (ls.dockEdgeHover) ls.setDockEdgeHover(null);
+  if (ls.draggingAiPanel) ls.setDraggingAiPanel(false);
+  if (ls.aiDockEdgeHover) ls.setAiDockEdgeHover(null);
 }
 
 /// 命中测试: 找指针下最近的投放区。控件拖拽会命中 canvas, 其余拖拽穿透到卡片/页面区;
@@ -308,6 +321,10 @@ function hitTest(x: number, y: number): Hover | null {
       if (!useLayoutStore.getState().draggingSidebar || !edge) return null;
       return { type: 'sidebar-dock', edge: edge as SidebarDock };
     }
+    case 'ai-dock': {
+      if (!useLayoutStore.getState().draggingAiPanel || !edge) return null;
+      return { type: 'ai-dock', edge: edge as AiDockEdge };
+    }
     case 'canvas':
       return { type: 'canvas', el: zone };
     default:
@@ -344,6 +361,9 @@ function applyHover(h: Hover | null) {
       break;
     case 'sidebar-dock':
       ls.setDockEdgeHover(h.edge);
+      break;
+    case 'ai-dock':
+      ls.setAiDockEdgeHover(h.edge);
       break;
     case 'canvas':
       emitCanvasHover(true);

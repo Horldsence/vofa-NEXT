@@ -86,3 +86,30 @@ export interface AiToolRun {
   /** 是否已收到结果 */
   done: boolean;
 }
+
+/// 对话视图条目 — 与后端 `ai_session::ViewItemDto` 对齐 (user / assistant 含工具卡片)。
+export interface AiViewItem {
+  role: 'user' | 'assistant';
+  text: string;
+  tools?: AiToolRun[];
+  /** 错误条目 (仅 UI 展示, 不入 LLM 历史) */
+  error?: boolean;
+}
+
+/// 对话会话 — 与后端 `ai_session::ChatSession` 对齐 (历史所有权在后端)。
+export interface AiChatSession {
+  id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
+  items: AiViewItem[];
+}
+
+/// 会话摘要 — 与后端 `ai_session::SessionMeta` 对齐。
+export interface AiSessionMeta {
+  id: string;
+  title: string;
+  created_at: number;
+  updated_at: number;
+  item_count: number;
+}

@@ -81,7 +81,16 @@ describe('dockDrag 指针拖拽控制器', () => {
   beforeEach(() => {
     __resetForTests();
     useDockStore.setState({ root: INITIAL_ROOT, cards: INITIAL_CARDS });
-    useLayoutStore.setState({ sidebarDock: 'left', draggingSidebar: false, dockEdgeHover: null });
+    useLayoutStore.setState({
+      sidebarDock: 'left',
+      draggingSidebar: false,
+      dockEdgeHover: null,
+      aiPanelVisible: false,
+      aiDock: 'right',
+      aiFloatRect: { x: 220, y: 120, w: 400, h: 480 },
+      draggingAiPanel: false,
+      aiDockEdgeHover: null,
+    });
     document.body.innerHTML = '';
     // jsdom 未实现 elementFromPoint — 默认返回 null (无投放区), 需要时用 spyOn 覆盖
     document.elementFromPoint = () => null;
@@ -224,6 +233,37 @@ describe('dockDrag 指针拖拽控制器', () => {
     expect(useLayoutStore.getState().draggingSidebar).toBe(false);
     expect(useLayoutStore.getState().dockEdgeHover).toBeNull();
     vi.restoreAllMocks();
+  });
+
+  it('AI 面板拖拽: 悬停边缘热区 → 预览 + 释放后停靠对应边', () => {
+    const zone = makeZone({ 'data-dock-zone': 'ai-dock', 'data-dock-edge': 'bottom' });
+
+    dockDrag.begin({ clientX: 10, clientY: 10, button: 0 }, { kind: 'ai-panel', label: 'AI' });
+    moveTo(40, 40);
+    expect(useLayoutStore.getState().draggingAiPanel).toBe(true);
+
+    vi.spyOn(document, 'elementFromPoint').mockReturnValue(zone);
+    moveTo(100, 100);
+    expect(useLayoutStore.getState().aiDockEdgeHover).toBe('bottom');
+
+    releaseAt(100, 100);
+    expect(useLayoutStore.getState().aiDock).toBe('bottom');
+    expect(useLayoutStore.getState().draggingAiPanel).toBe(false);
+    expect(useLayoutStore.getState().aiDockEdgeHover).toBeNull();
+    vi.restoreAllMocks();
+  });
+
+  it('AI 面板拖拽: 空白处释放 → 浮动且落点成为浮窗位置 (clamp 窗口内)', () => {
+    dockDrag.begin({ clientX: 10, clientY: 10, button: 0 }, { kind: 'ai-panel', label: 'AI' });
+    moveTo(400, 300);
+    releaseAt(400, 300);
+
+    const st = useLayoutStore.getState();
+    expect(st.aiDock).toBe('float');
+    expect(st.aiFloatRect.x).toBeGreaterThanOrEqual(8);
+    expect(st.aiFloatRect.y).toBeGreaterThanOrEqual(8);
+    expect(st.aiFloatRect.w).toBe(400);
+    expect(st.draggingAiPanel).toBe(false);
   });
 
   it('未悬停有效投放区时释放 → 取消拖拽, 不产生落点', () => {

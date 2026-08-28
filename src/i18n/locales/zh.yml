@@ -144,6 +144,13 @@ aiServerName: 名称 (如 filesystem)
 aiServerCommand: 启动命令 (如 npx -y @modelcontextprotocol/server-filesystem)
 aiDeleteServer: 删除服务器
 aiServerStopped: 本地 MCP 未运行
+aiSessionSwitch: 切换会话
+aiSessionNew: 新会话
+aiSessionRename: 重命名会话
+aiSessionDelete: 删除会话
+aiSessionEmpty: 暂无会话
+aiCopy: 复制
+aiRetry: 重新生成
 
 # 控件区
 controlArea: 控件区
@@ -584,6 +591,8 @@ settingAiMcpTools: 启用 MCP 工具
 settingAiMcpToolsDesc: 对话时自动把已启用外部 MCP server 的工具提供给模型
 settingAiMcpServerPort: 本地 MCP 端口
 settingAiMcpServerPortDesc: 对外暴露本应用能力的 MCP 服务端口 (仅监听 127.0.0.1)
+settingAiOrcaHint: OrcaRouter 聚合网关 — 模型名需带厂商前缀, 如 openai/gpt-4o-mini、anthropic/claude-sonnet-4
+settingAiOrcaGetKey: 获取 API Key · 支持项目
 
 # About 弹窗
 about: 关于

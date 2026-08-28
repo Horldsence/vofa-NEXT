@@ -6,7 +6,7 @@
 //! - 底部 Reset / Done 按钮
 //! - ESC 关闭, 点击遮罩关闭
 
-import { useEffect, useMemo, useRef, useState, useActionState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useActionState } from 'react';
 import {
   X,
   Search,
@@ -25,7 +25,10 @@ import {
   Upload,
   RefreshCw,
   Sparkles,
+  ExternalLink,
 } from 'lucide-react';
+import { openUrl } from '@tauri-apps/plugin-opener';
+import { ORCAROUTER_REFERRAL_URL } from '../settings/defaults';
 import { getVersion } from '@tauri-apps/api/app';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAppStore } from '../store/appStore';
@@ -460,13 +463,30 @@ export function SettingsModal() {
                     </div>
                   )}
                   {fields.map((def) => (
-                    <div key={`${def.category}-${def.field}`} className="flex items-start justify-between gap-6 py-2.5 border-b border-border last:border-b-0">
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-text-primary mb-0.5">{t(lang, def.labelKey)}</div>
-                        <div className="text-xs text-text-secondary leading-relaxed">{t(lang, def.descKey)}</div>
+                    <Fragment key={`${def.category}-${def.field}`}>
+                      <div className="flex items-start justify-between gap-6 py-2.5 border-b border-border last:border-b-0">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm text-text-primary mb-0.5">{t(lang, def.labelKey)}</div>
+                          <div className="text-xs text-text-secondary leading-relaxed">{t(lang, def.descKey)}</div>
+                        </div>
+                        <div className="flex-shrink-0 min-w-[200px] flex items-center justify-end">{renderControl(def)}</div>
                       </div>
-                      <div className="flex-shrink-0 min-w-[200px] flex items-center justify-end">{renderControl(def)}</div>
-                    </div>
+                      {/* OrcaRouter 重点提示: 命名空间模型名 + 推广链接获取 API Key */}
+                      {cat === 'ai' && def.field === 'apiKey' && settings.ai.adapter === 'orcarouter' && (
+                        <div className="flex items-center gap-2 my-2 px-3 py-2 rounded border border-accent/25 bg-accent/5">
+                          <span className="flex-1 min-w-0 text-xs text-text-secondary leading-relaxed">
+                            {t(lang, 'settingAiOrcaHint')}
+                          </span>
+                          <button
+                            className="flex-shrink-0 px-2 py-1 rounded bg-accent text-accent-foreground text-xs flex items-center gap-1"
+                            onClick={() => void openUrl(ORCAROUTER_REFERRAL_URL)}
+                          >
+                            <ExternalLink size={11} />
+                            {t(lang, 'settingAiOrcaGetKey')}
+                          </button>
+                        </div>
+                      )}
+                    </Fragment>
                   ))}
                 </div>
               );
