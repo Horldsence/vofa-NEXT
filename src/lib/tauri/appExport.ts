@@ -135,7 +135,8 @@ export function collectSnapshot(): AppSnapshot {
     version: 3,
     exportedAt: new Date().toISOString(),
     sections: ALL_BACKUP_SECTIONS,
-    settings: useSettingsStore.getState().settings,
+    // 导出剥离 API key — 密钥不入备份文件 (明文扩散面)
+    settings: stripApiKey(useSettingsStore.getState().settings),
     widgets: app.widgets,
     controlTabs: app.controlTabs,
     dataTabs: app.dataTabs,
@@ -405,15 +406,28 @@ function applyDataCapacity(settings: AppSettings) {
   logicSampleBuffer.setCapacity(data.logicBufferSamples);
 }
 
+/// 剥离 AI API key — 钥匙串之外的任何副本 (磁盘 / 备份文件) 都不携带密钥
+function stripApiKey(settings: AppSettings): AppSettings {
+  return { ...settings, ai: { ...settings.ai, apiKey: '' } };
+}
+
 /// 恢复设置到 settings store, 并同步应用到磁盘 / 主题 / 容量
 async function applySettings(settings: AppSettings): Promise<void> {
+  // 导入文件中的密钥 (旧版备份) 迁入钥匙串, 不再落盘
+  if (settings.ai.apiKey) {
+    try {
+      await api.aiKeychainSet(settings.ai.adapter, settings.ai.apiKey);
+    } catch (e) {
+      console.warn('[appExport] 密钥迁入钥匙串失败:', e);
+    }
+  }
   useSettingsStore.setState({ settings });
   applyAppearance(settings.appearance);
   applyDataCapacity(settings);
   // 持久化到磁盘 (settings.json), 保证重启后仍生效
   try {
     const store = new LazyStore('settings.json');
-    await store.set('app', settings);
+    await store.set('app', stripApiKey(settings));
   } catch (e) {
     console.warn('[appExport] 设置持久化失败:', e);
   }

@@ -151,6 +151,18 @@ aiSessionDelete: Delete session
 aiSessionEmpty: No sessions yet
 aiCopy: Copy
 aiRetry: Regenerate
+aiErrMissingApiKey: Missing API key for "{adapter}" — set it in Settings → AI
+aiErrMissingBaseUrl: The "OpenAI-compatible" adapter requires a custom Base URL
+aiErrMissingModel: No model configured for "{adapter}"
+aiErrUnknownAdapter: "Unsupported model provider: {adapter}"
+aiErrProviderRequest: Request to {adapter} / {model} failed
+aiErrMaxToolRounds: Tool-call loop exceeded {rounds} rounds without a final answer
+aiErrCancelled: Chat cancelled
+aiErrKeyring: Failed to access the system keychain
+aiErrUnknownSession: Session not found (it may have been deleted)
+aiErrPersist: Failed to write chat history
+aiSendBlocked: Cannot send —
+aiOpenSettings: Open Settings
 
 # Control Area
 controlArea: Controls
@@ -576,7 +588,7 @@ settingAiAdapterDesc: LLM provider protocol (OpenAI-compatible works with any se
 settingAiBaseUrl: Custom Base URL
 settingAiBaseUrlDesc: Service API endpoint; leave empty for the provider default; required for OpenAI-compatible (e.g. https://api.deepseek.com/v1)
 settingAiApiKey: API Key
-settingAiApiKeyDesc: Provider secret (stored in plain text in local settings, only sent to the configured provider)
+settingAiApiKeyDesc: Provider secret (stored in the system keychain, never written to settings; only sent to the configured provider)
 settingAiModel: Model
 settingAiModelDesc: e.g. gpt-4o-mini / deepseek-chat / glm-4.7 / qwen-max
 settingAiTemperature: Temperature

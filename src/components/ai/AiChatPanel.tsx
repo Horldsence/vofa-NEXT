@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   Bot,
   Check,
   ChevronDown,
@@ -18,7 +19,10 @@ import {
 import { useAppStore } from '../../store/appStore';
 import { useAiChatStore } from '../../store/aiChatStore';
 import { useLayoutStore } from '../../store/layoutStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { dockDrag } from '../../lib/dockDrag';
+import { formatAiKindError } from '../../lib/ai/aiErrors';
+import { checkAiProviderSettings } from '../../settings/aiProvider';
 import { t } from '../../i18n';
 import { AiMarkdown } from './AiMarkdown';
 import type { AiToolRun, AiViewItem } from '../../types';
@@ -73,6 +77,10 @@ function AssistantBubble({ item, canRetry }: { item: AiViewItem; canRetry: boole
   const regenerate = useAiChatStore((s) => s.regenerate);
   const [copied, setCopied] = useState(false);
   const hasText = item.text.length > 0;
+  // 错误条目: 按 kind 本地化为主行, 后端原始描述降级为次要信息 (排查用)
+  const errView = item.error
+    ? formatAiKindError(item.error_kind ?? '', item.error_data, item.text, lang)
+    : null;
 
   const onCopy = async () => {
     try {
@@ -98,7 +106,16 @@ function AssistantBubble({ item, canRetry }: { item: AiViewItem; canRetry: boole
             ))}
           </div>
         )}
-        {hasText && <AiMarkdown text={item.text} />}
+        {errView ? (
+          <>
+            <div className="break-words">{errView.summary}</div>
+            {errView.detail && (
+              <div className="break-all opacity-70 line-clamp-3">{errView.detail}</div>
+            )}
+          </>
+        ) : (
+          hasText && <AiMarkdown text={item.text} />
+        )}
         {/* 悬停操作条 — 复制原文 / 错误条目重试 (仅最后一条可重试, 与后端 truncate 语义一致) */}
         <div
           className={`flex items-center gap-0.5 -mb-0.5 opacity-0 group-hover:opacity-100 transition-opacity ${
@@ -399,6 +416,10 @@ export function AiChatPanel() {
   } = useAiChatStore();
   const setAiPanelVisible = useLayoutStore((s) => s.setAiPanelVisible);
   const draggingAiPanel = useLayoutStore((s) => s.draggingAiPanel);
+  const openSettings = useSettingsStore((s) => s.open);
+  const aiSettings = useSettingsStore((s) => s.settings.ai);
+  // 发送前检查: 配置缺失时输入区上方常驻横幅并禁用发送
+  const sendIssue = useMemo(() => checkAiProviderSettings(aiSettings), [aiSettings]);
   const [input, setInput] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -542,6 +563,23 @@ export function AiChatPanel() {
         )}
       </div>
 
+      {/* 发送前检查未通过 — 内联横幅 (点击直达设置) */}
+      {sendIssue && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-subtle bg-warning/10 text-warning text-[11px] shrink-0">
+          <AlertCircle size={11} className="shrink-0" />
+          <span className="flex-1 min-w-0 truncate">
+            {t(lang, 'aiSendBlocked')}
+            {formatAiKindError(sendIssue.kind, sendIssue.params, '', lang).summary}
+          </span>
+          <button
+            className="px-1.5 py-0.5 rounded bg-warning/15 hover:bg-warning/25 shrink-0"
+            onClick={() => openSettings('ai')}
+          >
+            {t(lang, 'aiOpenSettings')}
+          </button>
+        </div>
+      )}
+
       {/* 输入区 */}
       <div className="flex items-end gap-2 px-3 py-2 border-t border-border-subtle shrink-0">
         <textarea
@@ -564,7 +602,7 @@ export function AiChatPanel() {
           <button
             className="h-7 px-2.5 rounded bg-accent text-accent-foreground text-xs flex items-center gap-1 shrink-0 disabled:opacity-40"
             onClick={onSend}
-            disabled={!input.trim() || !activeSessionId}
+            disabled={!input.trim() || !activeSessionId || !!sendIssue}
           >
             <Send size={11} />
             {t(lang, 'aiSend')}

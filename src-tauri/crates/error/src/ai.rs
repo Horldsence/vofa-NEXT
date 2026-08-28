@@ -71,6 +71,13 @@ pub enum AiError {
         #[source]
         source: std::io::Error,
     },
+
+    /// 系统钥匙串 (keychain / credential manager) 访问失败。
+    #[error("系统钥匙串访问失败: {details}")]
+    Keyring {
+        /// 底层错误描述。
+        details: String,
+    },
 }
 
 impl Error for AiError {
@@ -85,6 +92,7 @@ impl Error for AiError {
             Self::MaxToolRounds { .. } => "AiMaxToolRounds",
             Self::UnknownSession { .. } => "AiUnknownSession",
             Self::Persist { .. } => "AiPersist",
+            Self::Keyring { .. } => "AiKeyring",
         }
     }
 }

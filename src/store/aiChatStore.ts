@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { Channel } from '@tauri-apps/api/core';
 import { api } from '../lib/tauri/tauri';
+import { notify } from '../lib/tauri/notifications';
+import { formatAiKindError } from '../lib/ai/aiErrors';
+import { checkAiProviderSettings } from '../settings/aiProvider';
 import { useSettingsStore } from './settingsStore';
+import { useAppStore } from './appStore';
+import { t } from '../i18n';
 import type {
   AiChatEvent,
   AiSessionMeta,
@@ -71,6 +76,21 @@ function providerConfigFromSettings() {
   };
 }
 
+/** 命令级失败 (invoke reject 的结构化错误对象) → 本地错误条目 (kind/data 透传, 渲染时本地化) */
+function errorItemFromRejection(err: unknown): AiViewItem {
+  if (err && typeof err === 'object' && 'kind' in err) {
+    const e = err as { message?: string; kind?: string; data?: Record<string, string> };
+    return {
+      role: 'assistant',
+      text: e.message ?? String(err),
+      error: true,
+      error_kind: e.kind,
+      error_data: e.data,
+    };
+  }
+  return { role: 'assistant', text: err instanceof Error ? err.message : String(err), error: true };
+}
+
 export const useAiChatStore = create<AiChatState>()((set, get) => {
   /** 后端条目 → 视图条目 (同构, 仅收紧类型) */
   const toViewItems = (items: AiViewItem[]): AiViewItem[] =>
@@ -83,7 +103,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
   const startTask = async (
     sessionId: string,
     payload: { text: string | null; regenerate: boolean },
-    failLocal: (message: string) => void
+    failLocal: (err: unknown) => void
   ) => {
     const ai = useSettingsStore.getState().settings.ai;
     const channel = new Channel<AiChatEvent>();
@@ -131,7 +151,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
       );
       set({ taskId });
     } catch (e) {
-      failLocal(e instanceof Error ? e.message : String(e));
+      failLocal(e);
     }
   };
 
@@ -259,6 +279,15 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
       const body = text.trim();
       if (streaming || !body || !activeSessionId) return;
 
+      // 发送前检查 (与后端 validate_config 同规则): 配置缺失直接拦截, 不发请求
+      const issue = checkAiProviderSettings(useSettingsStore.getState().settings.ai);
+      if (issue) {
+        const lang = useAppStore.getState().lang;
+        const view = formatAiKindError(issue.kind, issue.params, '', lang);
+        notify.error(t(lang, 'aiSendBlocked'), view.summary, { source: 'ai-send' });
+        return;
+      }
+
       set({
         viewItems: [...viewItems, { role: 'user', text: body }],
         streaming: true,
@@ -271,8 +300,8 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
       await startTask(
         activeSessionId,
         { text: body, regenerate: false },
-        // 命令级失败 (配置错误等): 后端未写入, 本地呈现错误条目
-        (message) =>
+        // 命令级失败: 后端未写入, 本地呈现结构化错误条目 (kind/data 透传供本地化)
+        (err) =>
           set((s) => ({
             streaming: false,
             streamingSessionId: null,
@@ -280,7 +309,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
             reasoningText: '',
             toolRuns: [],
             taskId: null,
-            viewItems: [...s.viewItems, { role: 'assistant', text: message, error: true }],
+            viewItems: [...s.viewItems, errorItemFromRejection(err)],
           }))
       );
     },
@@ -288,6 +317,14 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
     regenerate: async () => {
       const { streaming, activeSessionId, viewItems } = get();
       if (streaming || !activeSessionId) return;
+      // 重发同样走发送前检查 (配置可能已失效)
+      const issue = checkAiProviderSettings(useSettingsStore.getState().settings.ai);
+      if (issue) {
+        const lang = useAppStore.getState().lang;
+        const view = formatAiKindError(issue.kind, issue.params, '', lang);
+        notify.error(t(lang, 'aiSendBlocked'), view.summary, { source: 'ai-send' });
+        return;
+      }
       // 本地乐观截断: 移除最后一条用户条目之后的条目 (与后端 truncate 对称)
       let lastUser = -1;
       for (let i = viewItems.length - 1; i >= 0; i--) {
@@ -308,7 +345,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
       await startTask(
         activeSessionId,
         { text: null, regenerate: true },
-        (message) =>
+        (err) =>
           set((s) => ({
             streaming: false,
             streamingSessionId: null,
@@ -316,7 +353,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
             reasoningText: '',
             toolRuns: [],
             taskId: null,
-            viewItems: [...s.viewItems, { role: 'assistant', text: message, error: true }],
+            viewItems: [...s.viewItems, errorItemFromRejection(err)],
           }))
       );
     },

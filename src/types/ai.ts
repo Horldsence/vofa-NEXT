@@ -45,7 +45,22 @@ export type AiChatEvent =
   | { type: 'tool_result'; id: string; name: string; content: string; is_error: boolean }
   | { type: 'done'; rounds: number }
   | { type: 'cancelled' }
-  | { type: 'error'; message: string };
+  | {
+      type: 'error';
+      message: string;
+      /** 错误种类 (后端 error::AppError::kind(), 供本地化; 旧事件为空) */
+      kind?: string;
+      /** 结构化字段 (adapter / model / rounds 等, 供本地化插值) */
+      data?: Record<string, string>;
+    };
+
+/** 命令级错误 — 后端 AppError 的 IPC 序列化形态 */
+export interface AiIpcError {
+  kind: string;
+  message: string;
+  source?: { message: string };
+  data?: Record<string, string>;
+}
 
 /// 外部 MCP server 传输方式。
 export type McpTransport =
@@ -94,6 +109,10 @@ export interface AiViewItem {
   tools?: AiToolRun[];
   /** 错误条目 (仅 UI 展示, 不入 LLM 历史) */
   error?: boolean;
+  /** 错误种类 (后端 error::AppError::kind(), 供本地化展示) */
+  error_kind?: string;
+  /** 错误结构化字段 (adapter / model / rounds 等) */
+  error_data?: Record<string, string>;
 }
 
 /// 对话会话 — 与后端 `ai_session::ChatSession` 对齐 (历史所有权在后端)。

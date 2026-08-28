@@ -375,6 +375,18 @@ export const api = {
   chatClearSession: (sessionId: string) =>
     invoke<void>('chat_clear_session', { sessionId }),
 
+  /// 读取适配器的 API key (系统钥匙串); 未设置返回 null
+  aiKeychainGet: (adapter: string) =>
+    invoke<string | null>('ai_keychain_get', { adapter }),
+
+  /// 写入适配器的 API key (系统钥匙串, 覆盖旧值)
+  aiKeychainSet: (adapter: string, key: string) =>
+    invoke<void>('ai_keychain_set', { adapter, key }),
+
+  /// 删除适配器的 API key (不存在时静默)
+  aiKeychainDelete: (adapter: string) =>
+    invoke<void>('ai_keychain_delete', { adapter }),
+
   /// 全部外部 MCP server 配置
   mcpListServers: () => invoke<McpServerConfig[]>('mcp_list_servers'),
 

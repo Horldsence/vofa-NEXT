@@ -9,7 +9,7 @@ use ai_provider::{
     ToolSpecDto, chat_turn_stream, validate_config,
 };
 use async_trait::async_trait;
-use error::AiError;
+use error::{AiError, Error as _};
 use futures::{Stream, StreamExt};
 use parking_lot::Mutex;
 use serde_json::Value;
@@ -144,6 +144,15 @@ fn tool_message(call: &ToolCallDto, content: String) -> ChatMessageDto {
     }
 }
 
+/// `vofa_core::Error` → 终止事件 — kind 与结构化字段随事件下发, 供前端本地化。
+fn error_event(e: &vofa_core::Error) -> AiChatEvent {
+    AiChatEvent::Error {
+        message: e.to_string(),
+        kind: e.kind().to_string(),
+        data: serde_json::to_value(e.data_fields()).unwrap_or_default(),
+    }
+}
+
 /// 收集一轮流式事件:增量实时回调,返回聚合产物。
 ///
 /// 取消标志置位时立即返回 [`AiError::Cancelled`]。
@@ -179,10 +188,10 @@ async fn collect_turn(
                         // 以流末捕获的聚合值为准 (完整且按序)
                         outcome = end;
                     }
-                    Err(e) => {
-                        on_event(AiChatEvent::Error { message: e.to_string() });
-                        return Err(e);
-                    }
+            Err(e) => {
+                on_event(error_event(&e));
+                return Err(e);
+            }
                 }
             }
         }
@@ -266,10 +275,9 @@ pub async fn run_chat(
         }
     }
 
-    on_event(AiChatEvent::Error {
-        message: AiError::MaxToolRounds { rounds }.to_string(),
-    });
-    Err(AiError::MaxToolRounds { rounds }.into())
+    let err = AiError::MaxToolRounds { rounds }.into();
+    on_event(error_event(&err));
+    Err(err)
 }
 
 #[cfg(test)]

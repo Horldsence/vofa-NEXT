@@ -140,6 +140,8 @@ pub async fn ai_chat_send(
                 text: body.to_string(),
                 tools: None,
                 error: None,
+                error_kind: None,
+                error_data: None,
             }],
         )?;
     }
@@ -203,6 +205,35 @@ pub async fn ai_chat_send(
 #[tauri::command]
 pub fn ai_chat_cancel(state: State<'_, AiState>, task_id: String) -> bool {
     state.registry.cancel(&task_id)
+}
+
+// ============ API key 钥匙串 (密钥不落 settings.json) ============
+
+/// 读取适配器的 API key;未设置返回 None。
+///
+/// # Errors
+/// 钥匙串访问失败。
+#[tauri::command]
+pub async fn ai_keychain_get(adapter: String) -> Result<Option<String>> {
+    crate::keychain::get_key(&adapter)
+}
+
+/// 写入适配器的 API key (已存在则覆盖)。
+///
+/// # Errors
+/// 钥匙串访问失败。
+#[tauri::command]
+pub async fn ai_keychain_set(adapter: String, key: String) -> Result<()> {
+    crate::keychain::set_key(&adapter, &key)
+}
+
+/// 删除适配器的 API key (不存在时静默)。
+///
+/// # Errors
+/// 钥匙串访问失败。
+#[tauri::command]
+pub async fn ai_keychain_delete(adapter: String) -> Result<()> {
+    crate::keychain::delete_key(&adapter)
 }
 
 // ============ 对话会话 (后端持有, 前端薄视图) ============

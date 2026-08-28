@@ -92,3 +92,67 @@ describe('settingsStore', () => {
     expect(pipelineConfigCalls()).toHaveLength(0);
   });
 });
+
+describe('settingsStore API key 钥匙串集成', () => {
+  beforeEach(() => {
+    tauriMock.fileStore.clear();
+    vi.clearAllMocks();
+    useSettingsStore.setState({ settings: DEFAULT_SETTINGS, loaded: false });
+  });
+
+  function keychainCalls(cmd: string): [string, string][] {
+    return (tauriMock.invoke.mock.calls as unknown as [string, ...unknown[]][])
+      .filter(([c]) => c === cmd)
+      .map(([, args]) => args as { adapter: string; key?: string })
+      .map((a) => [a.adapter, a.key ?? '']);
+  }
+
+  it('load 时从钥匙串水合当前适配器的 API key', async () => {
+    tauriMock.seedFile(STORE_FILE, STORE_KEY, {});
+    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => Promise<unknown>) => void })
+      .mockImplementation(async (cmd: string) => (cmd === 'ai_keychain_get' ? 'sk-stored' : undefined));
+
+    await useSettingsStore.getState().load();
+
+    expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-stored');
+  });
+
+  it('旧版明文 key 自动迁入钥匙串 (仅当钥匙串为空)', async () => {
+    tauriMock.seedFile(STORE_FILE, STORE_KEY, { ai: { apiKey: 'sk-legacy' } });
+    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => Promise<unknown>) => void })
+      .mockImplementation(async (cmd: string) => (cmd === 'ai_keychain_get' ? null : undefined));
+
+    await useSettingsStore.getState().load();
+
+    expect(keychainCalls('ai_keychain_set')).toContainEqual(['orcarouter', 'sk-legacy']);
+    expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-legacy');
+  });
+
+  it('持久化剥离 API key — settings.json 恒为空串', async () => {
+    useSettingsStore.setState({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ai: { ...DEFAULT_SETTINGS.ai, adapter: 'orcarouter', apiKey: 'sk-secret', model: 'openai/gpt-4o-mini' },
+      },
+    });
+    useSettingsStore.getState().update('general', 'language', 'en');
+    await vi.waitFor(() => {
+      const saved = tauriMock.fileStore.get(STORE_FILE)?.get(STORE_KEY) as { ai?: { apiKey?: string } } | undefined;
+      expect(saved?.ai?.apiKey).toBe('');
+    });
+    // 内存中保留真实值 (随请求传给后端)
+    expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-secret');
+  });
+
+  it('update apiKey 写入钥匙串; 切换适配器水合对应密钥', () => {
+    useSettingsStore.getState().update('ai', 'apiKey', 'sk-new');
+    expect(keychainCalls('ai_keychain_set')).toContainEqual(['orcarouter', 'sk-new']);
+
+    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => Promise<unknown>) => void })
+      .mockImplementation(async (cmd: string) => (cmd === 'ai_keychain_get' ? 'sk-deepseek' : undefined));
+    useSettingsStore.getState().update('ai', 'adapter', 'deepseek');
+    return vi.waitFor(() => {
+      expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-deepseek');
+    });
+  });
+});

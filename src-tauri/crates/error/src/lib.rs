@@ -160,8 +160,10 @@ impl Error for AppError {
             Self::Serde(_) => "Serde",
             Self::Automotive(_) => "Automotive",
             Self::Graph(_) => "Graph",
-            Self::Ai(_) => "Ai",
-            Self::Mcp(_) => "Mcp",
+            // AI / MCP 错误透传内层细粒度种类 (如 AiMissingApiKey / McpPersist),
+            // 供前端本地化与结构化处理
+            Self::Ai(inner) => inner.kind(),
+            Self::Mcp(inner) => inner.kind(),
             Self::Plugin(_) => "Plugin",
             Self::Other(_) => "Other",
         }
@@ -201,56 +203,84 @@ impl serde::Serialize for SourceView<'_> {
     }
 }
 
-/// 变体字段的透传视图 — 前端可读结构化数据(port / host / edge_id 等)。
-struct DataView<'a>(&'a AppError);
-
-impl serde::Serialize for DataView<'_> {
-    fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
-        let map: std::collections::BTreeMap<&'static str, String> = match self.0 {
-            AppError::PortNotFound(PortNotFoundError { port })
-            | AppError::PortAlreadyOpen(PortAlreadyOpenError { port })
-            | AppError::PortNotOpen(PortNotOpenError { port }) => {
+impl AppError {
+    /// 变体结构化字段透传 — 前端可读数据 (port / host / adapter / model 等)。
+    ///
+    /// IPC 序列化 ([`DataView`]) 与 AI 错误事件的 `data` 字段共用,
+    /// 仅供展示 / 本地化, 不承载敏感信息。
+    pub fn data_fields(&self) -> std::collections::BTreeMap<&'static str, String> {
+        match self {
+            Self::PortNotFound(PortNotFoundError { port })
+            | Self::PortAlreadyOpen(PortAlreadyOpenError { port })
+            | Self::PortNotOpen(PortNotOpenError { port }) => {
                 std::collections::BTreeMap::from([("port", port.clone())])
             }
-            AppError::Transport(
+            Self::Transport(
                 TransportError::SerialOpen { port, .. }
                 | TransportError::SlcanOpen { port, .. }
                 | TransportError::CandleOpen { port, .. },
             ) => std::collections::BTreeMap::from([("port", port.clone())]),
-            AppError::Transport(TransportError::TcpConnect { host, port, .. }) => {
+            Self::Transport(TransportError::TcpConnect { host, port, .. }) => {
                 std::collections::BTreeMap::from([
                     ("host", host.clone()),
                     ("port", port.to_string()),
                 ])
             }
-            AppError::Transport(
+            Self::Transport(
                 TransportError::TcpListen { addr, .. }
                 | TransportError::UdpBind { addr, .. }
                 | TransportError::UdpConnect { addr, .. },
             ) => std::collections::BTreeMap::from([("addr", addr.clone())]),
-            AppError::Transport(TransportError::CanEncode { id, details }) => {
+            Self::Transport(TransportError::CanEncode { id, details }) => {
                 std::collections::BTreeMap::from([
                     ("id", format!("{id:X}")),
                     ("details", details.clone()),
                 ])
             }
-            AppError::Config(
+            Self::Config(
                 ConfigError::NodeNotFound { node_id }
                 | ConfigError::ProtocolNodeNotFound { node_id },
             ) => std::collections::BTreeMap::from([("node_id", node_id.clone())]),
-            AppError::Config(
+            Self::Config(
                 ConfigError::StreamGroupNotFound { key }
                 | ConfigError::StreamGroupTypeMismatch { key },
             ) => std::collections::BTreeMap::from([("key", key.clone())]),
-            AppError::Config(ConfigError::StreamGroupFull { key, max }) => {
+            Self::Config(ConfigError::StreamGroupFull { key, max }) => {
                 std::collections::BTreeMap::from([("key", key.clone()), ("max", max.to_string())])
             }
-            AppError::Config(ConfigError::UrlParse { url, .. }) => {
+            Self::Config(ConfigError::UrlParse { url, .. }) => {
                 std::collections::BTreeMap::from([("url", url.clone())])
             }
+            Self::Ai(
+                AiError::MissingApiKey { adapter }
+                | AiError::UnknownAdapter { adapter }
+                | AiError::MissingModel { adapter },
+            ) => {
+                std::collections::BTreeMap::from([("adapter", adapter.clone())])
+            }
+            Self::Ai(AiError::ProviderRequest { adapter, model, .. }) => {
+                std::collections::BTreeMap::from([
+                    ("adapter", adapter.clone()),
+                    ("model", model.clone()),
+                ])
+            }
+            Self::Ai(AiError::MaxToolRounds { rounds }) => {
+                std::collections::BTreeMap::from([("rounds", rounds.to_string())])
+            }
+            Self::Ai(AiError::UnknownSession { id }) => {
+                std::collections::BTreeMap::from([("id", id.clone())])
+            }
             _ => std::collections::BTreeMap::new(),
-        };
-        map.serialize(s)
+        }
+    }
+}
+
+/// 变体字段的透传视图 — 前端可读结构化数据(port / host / edge_id 等)。
+struct DataView<'a>(&'a AppError);
+
+impl serde::Serialize for DataView<'_> {
+    fn serialize<S: Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        self.0.data_fields().serialize(s)
     }
 }
 
@@ -269,6 +299,17 @@ mod tests {
         let msg = e.to_string();
         assert!(msg.contains("COM3"));
         assert!(msg.contains("denied"));
+    }
+
+    #[test]
+    fn ai_app_error_kind_delegates_to_inner() {
+        let e: AppError = AiError::MissingApiKey { adapter: "openai".into() }.into();
+        assert_eq!(e.kind(), "AiMissingApiKey");
+        let e: AppError = McpError::Persist {
+            source: std::io::Error::other("x"),
+        }
+        .into();
+        assert_eq!(e.kind(), "McpPersist");
     }
 
     #[test]
@@ -323,6 +364,30 @@ mod tests {
         assert!(v["message"].as_str().unwrap().contains("COM3"));
         assert!(v["source"]["message"].as_str().unwrap().contains("boom"));
         assert_eq!(v["data"]["port"], "COM3");
+    }
+
+    #[test]
+    fn ai_error_data_fields_expose_structured_params() {
+        let e: AppError = AiError::MissingApiKey { adapter: "orcarouter".into() }.into();
+        assert_eq!(e.data_fields().get("adapter").map(String::as_str), Some("orcarouter"));
+
+        let e: AppError = AiError::ProviderRequest {
+            adapter: "orcarouter".into(),
+            model: "openai/gpt-4o-mini".into(),
+            source: Box::new(std::io::Error::other("401")),
+        }
+        .into();
+        let fields = e.data_fields();
+        assert_eq!(fields.get("adapter").map(String::as_str), Some("orcarouter"));
+        assert_eq!(fields.get("model").map(String::as_str), Some("openai/gpt-4o-mini"));
+
+        let e: AppError = AiError::MaxToolRounds { rounds: 8 }.into();
+        assert_eq!(e.data_fields().get("rounds").map(String::as_str), Some("8"));
+        // 顶层 kind 委托内层细粒度种类 (IPC 错误对象与 AI 错误事件共用)
+        assert_eq!(e.kind(), "AiMaxToolRounds");
+
+        let e: AppError = AiError::Keyring { details: "locked".into() }.into();
+        assert_eq!(e.kind(), "AiKeyring");
     }
 
     #[test]

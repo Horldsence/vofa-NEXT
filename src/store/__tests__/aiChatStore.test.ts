@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tauriMock } from '../../test/setup';
 import { useAiChatStore } from '../aiChatStore';
+import { useSettingsStore } from '../settingsStore';
+import { DEFAULT_SETTINGS } from '../../settings/defaults';
 
 /// 多会话 store — 历史所有权在后端, 前端只做乐观视图 + 终态对账
 
@@ -40,6 +42,13 @@ describe('aiChatStore 多会话 (后端持有)', () => {
     tauriMock.invoke.mockReset();
     mockInvokeReturn(undefined);
     useAiChatStore.setState(RESET);
+    // 发送前检查需要可用配置 (默认值为空 → 会被拦截)
+    useSettingsStore.setState({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ai: { ...DEFAULT_SETTINGS.ai, adapter: 'orcarouter', apiKey: 'sk-test', model: 'openai/gpt-4o-mini' },
+      },
+    });
   });
 
   it('refreshSessions 拉取摘要并水合当前会话条目', async () => {
@@ -119,16 +128,44 @@ describe('aiChatStore 多会话 (后端持有)', () => {
     expect(s.viewItems[1].tools?.[0].done).toBe(true);
   });
 
-  it('命令级失败 (配置错误): 流式态复位 + 本地错误条目', async () => {
+  it('命令级失败 (配置错误): 流式态复位 + 结构化错误条目', async () => {
     useAiChatStore.setState({ ...RESET, activeSessionId: 's1' });
-    mockInvokeReject(new Error('缺少 API key'));
+    mockInvokeReject({
+      kind: 'AiMissingApiKey',
+      message: 'provider [orcarouter] 缺少 API key',
+      data: { adapter: 'orcarouter' },
+    });
 
     await useAiChatStore.getState().send('你好');
 
     const s = useAiChatStore.getState();
     expect(s.streaming).toBe(false);
     expect(s.viewItems).toHaveLength(2);
-    expect(s.viewItems[1]).toMatchObject({ role: 'assistant', error: true });
+    expect(s.viewItems[1]).toMatchObject({
+      role: 'assistant',
+      error: true,
+      error_kind: 'AiMissingApiKey',
+      error_data: { adapter: 'orcarouter' },
+    });
+  });
+
+  it('发送前检查: 缺 API key 时拦截, 不发请求也不污染视图', async () => {
+    useAiChatStore.setState({ ...RESET, activeSessionId: 's1' });
+    useSettingsStore.setState({
+      settings: {
+        ...DEFAULT_SETTINGS,
+        ai: { ...DEFAULT_SETTINGS.ai, adapter: 'orcarouter', apiKey: '', model: 'openai/gpt-4o-mini' },
+      },
+    });
+
+    await useAiChatStore.getState().send('你好');
+
+    const s = useAiChatStore.getState();
+    expect(s.streaming).toBe(false);
+    expect(s.viewItems).toHaveLength(0);
+    expect(
+      (tauriMock.invoke.mock.calls as unknown as [string][]).some(([cmd]) => cmd === 'ai_chat_send')
+    ).toBe(false);
   });
 
   it('regenerate 乐观截断最后一条用户之后的条目, 后端走 regenerate 通道', async () => {

@@ -149,6 +149,10 @@ rmcp = { version = "3.1", default-features = false, features = [
 ] }
 # axum: 本地 MCP server 的 HTTP 宿主 (rmcp streamable-http server 传输为 tower service,
 # 需要 HTTP 框架挂载), 仅监听 127.0.0.1
+# keyring: 系统凭据库 (macOS Keychain / Windows Credential Manager / libsecret) —
+# AI provider 的 API key 存钥匙串而非明文 settings.json; 自研加密落盘仍可被提取,
+# 系统凭据库才是正确方案
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 futures = "0.3"
 async-trait = "0.1"

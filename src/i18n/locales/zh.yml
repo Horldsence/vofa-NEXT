@@ -151,6 +151,18 @@ aiSessionDelete: 删除会话
 aiSessionEmpty: 暂无会话
 aiCopy: 复制
 aiRetry: 重新生成
+aiErrMissingApiKey: 「{adapter}」缺少 API Key,请在 设置 → AI 中填写
+aiErrMissingBaseUrl: 「OpenAI 兼容」适配器需要填写自定义端点 (Base URL)
+aiErrMissingModel: 「{adapter}」未配置模型名
+aiErrUnknownAdapter: 不支持的模型服务商:{adapter}
+aiErrProviderRequest: 请求 {adapter} / {model} 失败
+aiErrMaxToolRounds: 工具调用循环超过 {rounds} 轮仍未得到最终回答
+aiErrCancelled: 对话已取消
+aiErrKeyring: 系统钥匙串访问失败
+aiErrUnknownSession: 会话不存在 (可能已被删除)
+aiErrPersist: 对话记录写入失败
+aiSendBlocked: 无法发送 —
+aiOpenSettings: 打开设置
 
 # 控件区
 controlArea: 控件区
@@ -576,7 +588,7 @@ settingAiAdapterDesc: 选择 LLM 服务商协议 (OpenAI 兼容可接入任意�
 settingAiBaseUrl: 自定义端点 (Base URL)
 settingAiBaseUrlDesc: 服务 API 地址;留空用服务商默认;选"OpenAI 兼容"时必填 (如 https://api.deepseek.com/v1)
 settingAiApiKey: API Key
-settingAiApiKeyDesc: 服务商密钥 (明文保存在本机设置文件中, 仅随请求发送给所配服务商)
+settingAiApiKeyDesc: 服务商密钥 (保存到系统钥匙串, 不写入设置文件; 仅随请求发送给所配服务商)
 settingAiModel: 模型名
 settingAiModelDesc: 如 gpt-4o-mini / deepseek-chat / glm-4.7 / qwen-max
 settingAiTemperature: 温度

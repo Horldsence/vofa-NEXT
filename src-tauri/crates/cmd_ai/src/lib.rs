@@ -8,13 +8,15 @@
 //! - MCP client 连接管理器 (配置持久化在 app config dir / `mcp_servers.json`)
 //! - 聚合工具缓存 (前端刷新后, 对话按缓存快照选择工具)
 //! - 本地 MCP server 句柄 (启停)
+//! - API key 钥匙串存取 (`ai_keychain_*`, 密钥不落 settings.json)
 
 mod commands;
+pub mod keychain;
 
 pub use commands::{
     AiState, McpServerStatus, ai_chat_cancel, ai_chat_send, ai_list_providers, chat_clear_session,
     chat_create_session, chat_delete_session, chat_get_session, chat_list_sessions,
     chat_rename_session, mcp_add_server, mcp_call_tool, mcp_connection_states, mcp_list_servers,
     mcp_list_tools, mcp_remove_server, mcp_server_start, mcp_server_status, mcp_server_stop,
-    mcp_set_server_enabled,
+    mcp_set_server_enabled, ai_keychain_delete, ai_keychain_get, ai_keychain_set,
 };

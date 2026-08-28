@@ -3,6 +3,8 @@
 //! 会话以"视图条目流"形式存储 (而非 LLM 消息流):视图条目保留了工具调用卡片
 //! 等展示信息, 恢复会话时前端可直接渲染;LLM 历史由 [`crate::history`] 按需派生。
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -50,6 +52,12 @@ pub struct ViewItemDto {
     /// 错误条目标记 (仅 UI 展示, 不入 LLM 历史)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<bool>,
+    /// 错误种类 ([`error::AppError::kind()`]) — 前端按此本地化展示。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<String>,
+    /// 错误结构化字段 (adapter / model / rounds 等, 供本地化插值)。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_data: Option<BTreeMap<String, String>>,
 }
 
 /// 对话会话 — 持久化与恢复的完整单元。

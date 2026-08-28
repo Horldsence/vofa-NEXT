@@ -7,16 +7,47 @@
 //! - `Error` 事件单独产出一条 error 条目 (不进 LLM 历史, 见 `ai_session::history`)
 //! - 未收到结果的工具调用在收束时标记为失败, 避免持久化"永远运行中"的卡片
 
+use std::collections::BTreeMap;
+
 use ai_session::{ToolRunDto, ViewItemDto, ViewRoleDto};
+use serde_json::Value;
 
 use crate::events::AiChatEvent;
+
+/// 终止错误 — 原始描述 + 本地化所需的结构化字段。
+#[derive(Debug, Default)]
+struct TurnError {
+    message: String,
+    kind: String,
+    data: Value,
+}
+
+impl TurnError {
+    fn from_event(message: &str, kind: &str, data: &Value) -> Self {
+        Self {
+            message: message.to_string(),
+            kind: kind.to_string(),
+            data: data.clone(),
+        }
+    }
+
+    /// 事件 data (JSON) → 字符串映射 (仅保留字符串字段, 与前端对齐)。
+    fn data_map(&self) -> Option<BTreeMap<String, String>> {
+        let obj = self.data.as_object()?;
+        let map: BTreeMap<String, String> = obj
+            .iter()
+            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
+            .collect();
+        (!map.is_empty()).then_some(map)
+    }
+}
 
 /// 单次助手回合的聚合器。
 #[derive(Debug, Default)]
 pub struct TurnRecorder {
     text: String,
     tools: Vec<ToolRunDto>,
-    error: Option<String>,
+    error: Option<TurnError>,
 }
 
 impl TurnRecorder {
@@ -53,7 +84,9 @@ impl TurnRecorder {
                     run.done = true;
                 }
             }
-            AiChatEvent::Error { message } => self.error = Some(message.clone()),
+            AiChatEvent::Error { message, kind, data } => {
+                self.error = Some(TurnError::from_event(message, kind, data));
+            }
             AiChatEvent::ReasoningDelta { .. } | AiChatEvent::Done { .. }
             | AiChatEvent::Cancelled => {}
         }
@@ -80,14 +113,18 @@ impl TurnRecorder {
                 text: self.text.clone(),
                 tools: (!tools.is_empty()).then_some(tools),
                 error: None,
+                error_kind: None,
+                error_data: None,
             });
         }
-        if let Some(message) = &self.error {
+        if let Some(err) = &self.error {
             out.push(ViewItemDto {
                 role: ViewRoleDto::Assistant,
-                text: message.clone(),
+                text: err.message.clone(),
                 tools: None,
                 error: Some(true),
+                error_kind: (!err.kind.is_empty()).then(|| err.kind.clone()),
+                error_data: err.data_map(),
             });
         }
         out
@@ -135,20 +172,44 @@ mod tests {
         assert_eq!(tools[0].content, "42");
     }
 
-    /// Error 事件产出独立 error 条目 (排在回合条目之后, 与前端一致)。
+    /// Error 事件产出独立 error 条目 (排在回合条目之后, 与前端一致),
+    /// kind / 结构化字段随条目持久化供前端本地化。
     #[test]
     fn error_event_produces_error_item() {
         let mut rec = TurnRecorder::new();
         rec.record(&AiChatEvent::Delta { text: "part".into() });
         rec.record(&AiChatEvent::Error {
-            message: "网络中断".into(),
+            message: "LLM 请求失败 [orcarouter/openai/gpt-4o-mini]: 401".into(),
+            kind: "AiProviderRequest".into(),
+            data: serde_json::json!({"adapter": "orcarouter", "model": "openai/gpt-4o-mini"}),
         });
 
         let items = rec.finish();
         assert_eq!(items.len(), 2);
         assert_eq!(items[0].text, "part");
-        assert_eq!(items[1].text, "网络中断");
+        assert_eq!(items[1].text, "LLM 请求失败 [orcarouter/openai/gpt-4o-mini]: 401");
         assert_eq!(items[1].error, Some(true));
+        assert_eq!(items[1].error_kind.as_deref(), Some("AiProviderRequest"));
+        let data = items[1].error_data.as_ref().unwrap();
+        assert_eq!(data.get("adapter").map(String::as_str), Some("orcarouter"));
+        assert_eq!(data.get("model").map(String::as_str), Some("openai/gpt-4o-mini"));
+    }
+
+    /// 缺少 kind 的旧事件 → error_kind 不落盘 (前端回退显示原始描述)。
+    #[test]
+    fn error_without_kind_keeps_raw_message_only() {
+        let mut rec = TurnRecorder::new();
+        rec.record(&AiChatEvent::Error {
+            message: "boom".into(),
+            kind: String::new(),
+            data: Value::Null,
+        });
+
+        let items = rec.finish();
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].text, "boom");
+        assert!(items[0].error_kind.is_none());
+        assert!(items[0].error_data.is_none());
     }
 
     /// 取消时未完成的工具调用收束为失败, 不残留"运行中"状态。

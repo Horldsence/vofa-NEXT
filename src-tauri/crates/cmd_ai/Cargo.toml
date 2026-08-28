@@ -9,6 +9,7 @@ workspace = true
 
 [dependencies]
 ai_provider = { workspace = true }
+keyring = { workspace = true }
 ai_chat = { workspace = true }
 ai_session = { workspace = true }
 mcp_client = { workspace = true }

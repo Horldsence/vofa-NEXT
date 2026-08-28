@@ -259,6 +259,8 @@ mod tests {
             text: text.to_string(),
             tools: None,
             error: None,
+            error_kind: None,
+            error_data: None,
         }
     }
 
@@ -268,6 +270,8 @@ mod tests {
             text: text.to_string(),
             tools: None,
             error: None,
+            error_kind: None,
+            error_data: None,
         }
     }
 
@@ -293,6 +297,8 @@ mod tests {
                         done: true,
                     }]),
                     error: None,
+                    error_kind: None,
+                    error_data: None,
                 },
             ],
         };

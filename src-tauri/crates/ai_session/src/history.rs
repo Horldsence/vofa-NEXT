@@ -76,6 +76,8 @@ mod tests {
             text: text.to_string(),
             tools: None,
             error: None,
+            error_kind: None,
+            error_data: None,
         }
     }
 
@@ -99,6 +101,8 @@ mod tests {
                 text: "你好!".to_string(),
                 tools: None,
                 error: None,
+                error_kind: None,
+                error_data: None,
             },
         ];
         let history = derive_history(&items);
@@ -118,12 +122,16 @@ mod tests {
                 text: String::new(),
                 tools: Some(vec![run("c1", true)]),
                 error: None,
+                error_kind: None,
+                error_data: None,
             },
             ViewItemDto {
                 role: ViewRoleDto::Assistant,
                 text: "结果是 42".to_string(),
                 tools: None,
                 error: None,
+                error_kind: None,
+                error_data: None,
             },
         ];
         let history = derive_history(&items);
@@ -147,12 +155,16 @@ mod tests {
                 text: "partial".to_string(),
                 tools: Some(vec![run("c1", false)]),
                 error: None,
+                error_kind: None,
+                error_data: None,
             },
             ViewItemDto {
                 role: ViewRoleDto::Assistant,
                 text: "请求失败".to_string(),
                 tools: None,
                 error: Some(true),
+                error_kind: Some("AiProviderRequest".to_string()),
+                error_data: None,
             },
         ];
         let history = derive_history(&items);

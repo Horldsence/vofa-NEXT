@@ -87,7 +87,8 @@ export interface AppSettings {
     maxStreamShards: number;
     parseChannelCap: number;
   };
-  /// AI 对话与 MCP — api_key 随请求传给后端 (明文存 settings.json, 后端不持久化)
+  /// AI 对话与 MCP — api_key 存系统钥匙串 (ai_keychain_*), 磁盘副本恒为空串;
+  /// 运行时随请求传给后端, 后端不持久化
   ai: {
     /** LLM 适配器标识 (见后端 ai_list_providers) */
     adapter: string;

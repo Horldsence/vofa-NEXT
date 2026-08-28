@@ -40,11 +40,19 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。两条�
 - **react-markdown + remark-gfm + rehype-highlight**(前端):AI 回复 Markdown 渲染。
   组件化输出、不注入原始 HTML(XSS 安全);自研解析既不安全工作量也大,
   `rehype-highlight`(highlight.js)补齐代码块高亮。
+- **keyring 3**:系统凭据库(macOS Keychain / Windows Credential Manager / libsecret)。
+  AI provider 的 API key 存钥匙串而非明文 settings.json;自研加密落盘仍可被提取,
+  系统凭据库才是正确方案。
 
 ### 对话事件契约(`Channel<AiChatEvent>`,`tag = "type"`)
 
 `delta` / `reasoning_delta`(增量)→ `tool_call` / `tool_result`(工具回合)→
 `done` / `cancelled` / `error`(终止)。前端 `src/types/ai.ts` 严格对齐。
+
+`error` 事件携带 `kind`(`AppError::kind()`,如 `AiProviderRequest`)与 `data`
+(adapter / model / rounds 等结构化字段),前端 `src/lib/ai/aiErrors.ts` 按 kind
+本地化展示,原始描述降级为次要信息;错误条目持久化时同样保留 `error_kind` /
+`error_data`。命令级失败(IPC reject)为同一形态的 `{ kind, message, data }`。
 
 ### 会话与历史(后端持有)
 
@@ -127,9 +135,16 @@ Ollama / OpenRouter 等)照旧,完整清单见设置下拉(与 `ai_provider::ADA
   (adapter 默认 `orcarouter` / baseUrl / apiKey / model / temperature / maxTokens /
   systemPrompt / maxToolRounds / mcpToolsEnabled / mcpServerPort)
 
+## API key 存储
+
+密钥经 `ai_keychain_*` 命令存系统钥匙串(`service = "vofa-next"`,
+`user = "ai-api-key-{adapter}"`,按适配器隔离);settings.json 与配置备份文件中
+恒为空串,启动时从钥匙串水合,旧版本明文自动迁移。发送前前端按后端
+`validate_config` 同规则预检(`src/settings/aiProvider.ts`),配置缺失在面板
+内联提示并禁用发送。
+
 ## 已知限制(后续拓展方向)
 
-- API key 明文存于 settings.json(未接系统 keychain)
 - 工具入参 schema 在对话侧未做校验(交由 provider 与 server)
 - 对话历史无条数上限策略(全量 JSON 落盘,会话极多时可考虑分文件 / 截断策略)
 - 流式中切换会话后,流式气泡不在新会话内显示(回合仍写入发起它的会话)

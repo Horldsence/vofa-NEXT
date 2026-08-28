@@ -37,6 +37,29 @@ function getStore(): LazyStore {
 /// 防抖保存计时器
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+/// API key 不入 settings.json — 真实值存系统钥匙串, 磁盘副本恒为空串。
+/// 运行内存中的 settings.ai.apiKey 保留真实值 (随请求传给后端)。
+function sanitizeForPersist(settings: AppSettings): AppSettings {
+  return { ...settings, ai: { ...settings.ai, apiKey: '' } };
+}
+
+/// 启动水合: 从钥匙串读取当前适配器的 API key;
+/// 兼容迁移 — 旧版本明文存于 settings.json 的 key 迁入钥匙串 (仅当钥匙串为空)
+async function hydrateApiKey(settings: AppSettings): Promise<AppSettings> {
+  try {
+    const legacy = settings.ai.apiKey;
+    let stored = await api.aiKeychainGet(settings.ai.adapter);
+    if (!stored && legacy) {
+      await api.aiKeychainSet(settings.ai.adapter, legacy);
+      stored = legacy;
+    }
+    return { ...settings, ai: { ...settings.ai, apiKey: stored ?? '' } };
+  } catch (e) {
+    console.warn('[settings] 钥匙串读取失败, API key 不可用:', e);
+    return { ...settings, ai: { ...settings.ai, apiKey: '' } };
+  }
+}
+
 interface SettingsStore {
   settings: AppSettings;
   isOpen: boolean;
@@ -185,16 +208,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const raw = await getStore().get<AppSettings>(STORE_KEY);
       if (raw) {
         // 与默认值合并, 防止新版本缺失字段
-        const merged = migrateSettings(deepMergeSettings(DEFAULT_SETTINGS, raw));
+        const merged = await hydrateApiKey(migrateSettings(deepMergeSettings(DEFAULT_SETTINGS, raw)));
         set({ settings: merged, loaded: true });
         applyAppearance(merged.appearance);
         applyDataCapacity(merged);
         applyPipelineConfig(merged);
       } else {
-        set({ loaded: true });
-        applyAppearance(DEFAULT_SETTINGS.appearance);
-        applyDataCapacity(DEFAULT_SETTINGS);
-        applyPipelineConfig(DEFAULT_SETTINGS);
+        const merged = await hydrateApiKey(DEFAULT_SETTINGS);
+        set({ settings: merged, loaded: true });
+        applyAppearance(merged.appearance);
+        applyDataCapacity(merged);
+        applyPipelineConfig(merged);
       }
     } catch (e) {
       console.warn('[settings] 加载失败, 使用默认值:', e);
@@ -221,7 +245,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         if (saveTimer) clearTimeout(saveTimer);
         saveTimer = setTimeout(() => {
           getStore()
-            .set(STORE_KEY, get().settings)
+            .set(STORE_KEY, sanitizeForPersist(get().settings))
             .catch((e: unknown) => console.warn('[settings] 保存失败:', e));
         }, 300);
         // 立即应用 appearance 变更
@@ -244,6 +268,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     } else {
       commit();
     }
+    // AI 分类副作用: 密钥入钥匙串 (磁盘剥离), 切换服务商时水合对应密钥
+    if (category === 'ai' && field === 'apiKey') {
+      api.aiKeychainSet(get().settings.ai.adapter, String(value)).catch((e: unknown) =>
+        console.warn('[settings] 钥匙串写入失败:', e)
+      );
+    } else if (category === 'ai' && field === 'adapter') {
+      api.aiKeychainGet(String(value))
+        .then((key) =>
+          set((s) => ({ settings: { ...s.settings, ai: { ...s.settings.ai, apiKey: key ?? '' } } }))
+        )
+        .catch((e: unknown) => console.warn('[settings] 钥匙串读取失败:', e));
+    }
   },
 
   reset: () => {
@@ -251,10 +287,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     applyAppearance(DEFAULT_SETTINGS.appearance);
     applyDataCapacity(DEFAULT_SETTINGS);
     applyPipelineConfig(DEFAULT_SETTINGS);
+    // 全量重置: 清掉当前适配器的钥匙串密钥
+    api.aiKeychainDelete(get().settings.ai.adapter).catch((e: unknown) =>
+      console.warn('[settings] 钥匙串删除失败:', e)
+    );
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       getStore()
-        .set(STORE_KEY, DEFAULT_SETTINGS)
+        .set(STORE_KEY, sanitizeForPersist(DEFAULT_SETTINGS))
         .catch((e: unknown) => console.warn('[settings] 保存失败:', e));
     }, 300);
   },
@@ -270,10 +310,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     if (category === 'appearance') applyAppearance(settings.appearance);
     if (category === 'data') applyDataCapacity(settings);
     if (category === 'performance') applyPipelineConfig(settings);
+    // AI 分类重置: 同步清掉当前适配器的钥匙串密钥
+    if (category === 'ai') {
+      api.aiKeychainDelete(get().settings.ai.adapter).catch((e: unknown) =>
+        console.warn('[settings] 钥匙串删除失败:', e)
+      );
+    }
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       getStore()
-        .set(STORE_KEY, get().settings)
+        .set(STORE_KEY, sanitizeForPersist(get().settings))
         .catch((e: unknown) => console.warn('[settings] 保存失败:', e));
     }, 300);
   },
