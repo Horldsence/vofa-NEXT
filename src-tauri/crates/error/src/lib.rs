@@ -17,12 +17,14 @@ use std::error::Error as StdError;
 use serde::ser::{SerializeMap, Serializer};
 use thiserror::Error as ThisError;
 
+mod ai;
 mod compile;
 mod config;
 mod port;
 mod protocol;
 mod transport;
 
+pub use ai::{AiError, McpError};
 pub use compile::{CompileError, CompileReport, PortDomain};
 pub use config::ConfigError;
 pub use port::{PortAlreadyOpenError, PortNotFoundError, PortNotOpenError};
@@ -111,6 +113,14 @@ pub enum AppError {
     #[error("图编译错误: {0}")]
     Graph(Boxed),
 
+    /// AI 对话错误 (LLM provider 调用 / 消息转换)。
+    #[error(transparent)]
+    Ai(#[from] AiError),
+
+    /// MCP 桥接错误 (外部 server 连接 / 本地 server 生命周期)。
+    #[error(transparent)]
+    Mcp(#[from] McpError),
+
     /// 第三方插件错误 (不可控边界)。
     #[error(transparent)]
     Plugin(#[from] PluginError),
@@ -150,6 +160,8 @@ impl Error for AppError {
             Self::Serde(_) => "Serde",
             Self::Automotive(_) => "Automotive",
             Self::Graph(_) => "Graph",
+            Self::Ai(_) => "Ai",
+            Self::Mcp(_) => "Mcp",
             Self::Plugin(_) => "Plugin",
             Self::Other(_) => "Other",
         }

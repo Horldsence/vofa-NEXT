@@ -6,8 +6,11 @@ use error::ConfigError;
 use node_engine::BytePlan;
 use node_kind::NodeDef;
 use notify_events::emit_graph_derived;
+use pipeline_data_plane::DataPlaneState;
 use pipeline_data_plane::data_plane::{byte_router, frame_dispatch};
 use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
+use std::collections::HashMap;
+use std::sync::Arc;
 use tauri::{ipc::Channel, AppHandle, Emitter, State};
 use vofa_core::{Error, Result};
 
@@ -27,13 +30,13 @@ use compile_queue::global as _global_queue;
 /// 简单合并策略: 全局节点表按 id 覆盖合并 (任何 tab 提交后重建全局平面);
 /// 孤儿节点 (图删除后残留) 的运行时资源由 `DataPlaneState::reconcile` 清理。
 fn rebuild_byte_plan(
-    state: &AppState,
+    graphs: &Arc<parking_lot::Mutex<HashMap<String, node_engine::CompiledGraph>>>,
     candidate: &std::collections::HashMap<String, NodeDef>,
     new_tab: Option<(&str, &node_engine::CompiledGraph)>,
 ) -> Result<BytePlan> {
     let mut byte_edges: Vec<Edge> = Vec::new();
     {
-        let graphs = state.graphs.lock();
+        let graphs = graphs.lock();
         for (tab_id, g) in graphs.iter() {
             if new_tab.is_some_and(|(id, _)| id == tab_id) {
                 continue; // 本 tab 用新图的边
@@ -81,6 +84,32 @@ pub async fn apply_tab_graph(
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
 ) -> Result<GraphDerived> {
+    apply_tab_graph_parts(
+        &state.graphs,
+        &state.graphs_version,
+        &state.data_plane,
+        app,
+        tab_id,
+        nodes,
+        edges,
+    )
+    .await
+}
+
+/// [`apply_tab_graph`] 的部件版 — 只依赖图状态三件套
+/// (tab 图表 / 全局版本号 / 数据平面), 供 MCP server 等非 Tauri-State
+/// 场景直接复用同一条提交路径。
+// 参数类型与 AppState.graphs 字段完全一致 (std hasher), 不做 hasher 泛型化
+#[allow(clippy::implicit_hasher)]
+pub async fn apply_tab_graph_parts(
+    graphs: &Arc<parking_lot::Mutex<HashMap<String, node_engine::CompiledGraph>>>,
+    graphs_version: &Arc<std::sync::atomic::AtomicU64>,
+    data_plane: &DataPlaneState,
+    app: Option<&AppHandle>,
+    tab_id: String,
+    nodes: Vec<NodeDef>,
+    edges: Vec<Edge>,
+) -> Result<GraphDerived> {
     // 1. ProtocolSource 自动注入 (后端单一权威 — 前端不再下发 ProtocolSource NodeDef)
     let mut compile_nodes = nodes.clone();
     compile_nodes.extend(inject_protocol_sources(&nodes, &edges));
@@ -110,7 +139,7 @@ pub async fn apply_tab_graph(
     // 3. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
     // ProtocolSource 是 tab 数值平面的帧源引用, 不参与字节平面, 不进全局表
     // (避免与全局 Protocol 定义同 id 冲突)
-    let mut candidate = state.data_plane.global_nodes.lock().clone();
+    let mut candidate = data_plane.global_nodes.lock().clone();
     candidate.retain(|_, n| n.tab_id != tab_id);
     for n in &nodes {
         if matches!(n.kind, node_kind::NodeKind::ProtocolSource { .. }) {
@@ -120,28 +149,26 @@ pub async fn apply_tab_graph(
     }
 
     // 4. 全局字节平面重建 (失败则不提交任何状态)
-    let plan = rebuild_byte_plan(state, &candidate, Some((&tab_id, &compiled)))?;
+    let plan = rebuild_byte_plan(graphs, &candidate, Some((&tab_id, &compiled)))?;
 
     // 5. 派生数据计算 (本次图变化涉及的全部节点的输出端口表 / 通道数)
     let derived_nodes = compute_derived(&candidate.values().cloned().collect::<Vec<_>>());
 
     // 6. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号
-    state.graphs.lock().insert(tab_id.clone(), compiled);
-    *state.data_plane.global_nodes.lock() = candidate;
-    *state.data_plane.byte_plan.lock() = plan;
-    state
-        .graphs_version
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    graphs.lock().insert(tab_id.clone(), compiled);
+    *data_plane.global_nodes.lock() = candidate;
+    *data_plane.byte_plan.lock() = plan;
+    graphs_version.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     // 7. 同步 Protocol 节点运行时状态 + FrameDecoder 状态清理 + 孤儿资源清理
-    state.data_plane.sync_protocol_states();
-    state.data_plane.reconcile().await;
-    sync_decoders_now(&state.eval_state());
+    data_plane.sync_protocol_states();
+    data_plane.reconcile().await;
+    sync_decoders_now(&data_plane.eval.clone());
 
     // 8. 立即快照评估一次: 图结构/参数变更必须即时反映到输出,
     //    不能依赖 transport 数据流 — 无数据流时 manual Trigger 改 command、
     //    Str 节点内联框编辑也要立即出结果 (同 set_input_value 语义)
-    frame_dispatch::refresh_snapshot(&state.data_plane);
+    frame_dispatch::refresh_snapshot(data_plane);
 
     let derived = GraphDerived {
         nodes: derived_nodes,
@@ -184,7 +211,7 @@ pub async fn apply_remove_tab_graph(
     candidate.retain(|_, n| n.tab_id != tab_id);
     // 在移动 candidate 前计算派生数据 (后置消费者仍需遍历)
     let derived_nodes = compute_derived(&candidate.values().cloned().collect::<Vec<_>>());
-    let plan = rebuild_byte_plan(state, &candidate, None)?;
+    let plan = rebuild_byte_plan(&state.graphs, &candidate, None)?;
     *state.data_plane.global_nodes.lock() = candidate;
     *state.data_plane.byte_plan.lock() = plan;
     state

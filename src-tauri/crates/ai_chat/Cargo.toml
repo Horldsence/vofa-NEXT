@@ -1,0 +1,23 @@
+[package]
+name = "ai_chat"
+description = "VOFA-NEXT AI 对话编排 — 多轮工具调用循环 / 流式事件分发 / 任务取消"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ai_provider = { workspace = true }
+mcp_client = { workspace = true }
+async-trait = { workspace = true }
+futures = { workspace = true }
+parking_lot = "0.12"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+error = { workspace = true }
+vofa_core = { workspace = true }
+
+[dev-dependencies]

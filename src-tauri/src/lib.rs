@@ -1,4 +1,5 @@
 // 直接引用 cmd_* crates 中的 Tauri 命令
+pub use cmd_ai::*;
 pub use cmd_buffer::*;
 pub use cmd_can_load::*;
 pub use cmd_can_transport::*;
@@ -59,6 +60,13 @@ pub fn run() {
             let menu = build_menu(app)?;
             #[cfg(not(target_os = "windows"))]
             app.set_menu(menu)?;
+
+            // AI 状态: MCP server 配置持久化在 app config dir
+            let ai_config_dir = app
+                .path()
+                .app_config_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            app.manage(cmd_ai::AiState::new(ai_config_dir));
 
             // 启动图输出 ticker (60 FPS 推送快照到前端)
             let eval_state_for_ticker = {
@@ -222,6 +230,20 @@ pub fn run() {
             // 应用更新
             check_update,
             download_and_install_update,
+            // AI 对话 + MCP
+            ai_list_providers,
+            ai_chat_send,
+            ai_chat_cancel,
+            mcp_list_servers,
+            mcp_add_server,
+            mcp_remove_server,
+            mcp_set_server_enabled,
+            mcp_list_tools,
+            mcp_connection_states,
+            mcp_call_tool,
+            mcp_server_status,
+            mcp_server_start,
+            mcp_server_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

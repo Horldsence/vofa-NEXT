@@ -124,8 +124,26 @@ rxFrames: RX Frames
 txFrames: TX Frames
 
 # AI
-aiPlaceholder: AI features coming soon...
+aiPlaceholder: Configure a provider and API key in Settings to start chatting; enabled MCP tools are offered to the model automatically
 inputMessage: Type a message...
+
+# AI chat panel
+aiToolCount: Tools {n}
+aiToolRunning: calling...
+aiToolDone: done
+aiToolFailed: failed
+aiStop: Stop
+aiSend: Send
+aiClear: Clear chat
+aiClose: Close
+aiMcpServers: MCP Servers
+aiMcpServersHint: Chat can use tools from enabled servers
+aiNoServers: No external MCP servers configured
+aiAddServer: Add server
+aiServerName: Name (e.g. filesystem)
+aiServerCommand: Command (e.g. npx -y @modelcontextprotocol/server-filesystem)
+aiDeleteServer: Delete server
+aiServerStopped: local MCP not running
 
 # Control Area
 controlArea: Controls
@@ -543,6 +561,29 @@ settingMaxStreamShards: Max Stream Shards
 settingMaxStreamShardsDesc: Maximum shards per subscription stream; more shards improve push concurrency
 settingParseChannelCap: Parse Channel Capacity
 settingParseChannelCapDesc: Buffer capacity of the parse pipeline; takes effect on the next connection
+
+# AI (settings category + chat panel)
+settingsAi: AI
+settingAiAdapter: Model Provider
+settingAiAdapterDesc: LLM provider protocol (OpenAI-compatible works with any self-hosted gateway)
+settingAiBaseUrl: Custom Base URL
+settingAiBaseUrlDesc: Service API endpoint; leave empty for the provider default; required for OpenAI-compatible (e.g. https://api.deepseek.com/v1)
+settingAiApiKey: API Key
+settingAiApiKeyDesc: Provider secret (stored in plain text in local settings, only sent to the configured provider)
+settingAiModel: Model
+settingAiModelDesc: e.g. gpt-4o-mini / deepseek-chat / glm-4.7 / qwen-max
+settingAiTemperature: Temperature
+settingAiTemperatureDesc: Sampling temperature (0-2); leave empty for the provider default
+settingAiMaxTokens: Max Output Tokens
+settingAiMaxTokensDesc: Maximum tokens per reply; leave empty for the provider default
+settingAiSystemPrompt: System Prompt
+settingAiSystemPromptDesc: System-level instruction for the model (describe your device protocol for better context)
+settingAiMaxToolRounds: Tool Round Limit
+settingAiMaxToolRoundsDesc: Maximum tool-call loop rounds (model calls tool -> result fed back) per chat
+settingAiMcpTools: Enable MCP Tools
+settingAiMcpToolsDesc: Expose tools from enabled external MCP servers to the model during chat
+settingAiMcpServerPort: Local MCP Port
+settingAiMcpServerPortDesc: Port of the MCP server exposing this app's capabilities (listens on 127.0.0.1 only)
 
 # About dialog
 about: About

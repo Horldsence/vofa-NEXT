@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
-import { RefreshCw, Settings, Info } from 'lucide-react';
+import { RefreshCw, Settings, Info, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
 import { BufferUsageStats } from './BufferUsageStats';
 import { CanLoadAlarm } from './CanLoadAlarm';
@@ -11,6 +11,27 @@ import { UpdateIndicator } from './UpdateIndicator';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePrimaryProtocolConfig, usePrimaryTransportConfig } from '../../lib/hooks/usePrimaryNodes';
 import CompileStatusIndicator from './CompileStatusIndicator';
+import { useAiChatStore } from '../../store/aiChatStore';
+
+/// AI 对话面板开关 — 状态栏右侧常驻入口 (面板本身关闭不丢会话)
+function AiPanelToggle() {
+  const lang = useAppStore((s) => s.lang);
+  const visible = useAiChatStore((s) => s.panelVisible);
+  const setPanelVisible = useAiChatStore((s) => s.setPanelVisible);
+  return (
+    <button
+      className={`w-6 h-6 flex items-center justify-center rounded transition-colors duration-150 shrink-0 ${
+        visible
+          ? 'text-accent bg-accent/10'
+          : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
+      }`}
+      title={t(lang, 'aiChat')}
+      onClick={() => setPanelVisible(!visible)}
+    >
+      <Sparkles size={12} />
+    </button>
+  );
+}
 
 /// 底部状态栏 — 显示连接状态、统计数据
 ///
@@ -214,6 +235,7 @@ export const StatusBar = memo(function StatusBar() {
       >
         <RefreshCw size={12} />
       </button>
+      <AiPanelToggle />
     </div>
   );
 });

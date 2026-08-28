@@ -87,6 +87,29 @@ export interface AppSettings {
     maxStreamShards: number;
     parseChannelCap: number;
   };
+  /// AI 对话与 MCP — api_key 随请求传给后端 (明文存 settings.json, 后端不持久化)
+  ai: {
+    /** LLM 适配器标识 (见后端 ai_list_providers) */
+    adapter: string;
+    /** 自定义端点 (空 = provider 默认; openai_compatible 必填) */
+    baseUrl: string;
+    /** API key */
+    apiKey: string;
+    /** 模型名 */
+    model: string;
+    /** 采样温度 (null = provider 默认) */
+    temperature: number | null;
+    /** 最大生成 token (null = provider 默认) */
+    maxTokens: number | null;
+    /** 系统提示词 (空 = 不发送) */
+    systemPrompt: string;
+    /** 工具调用循环最大轮次 */
+    maxToolRounds: number;
+    /** 对话中是否启用 MCP 工具 */
+    mcpToolsEnabled: boolean;
+    /** 本地 MCP server 端口 (127.0.0.1, 供外部 AI 客户端连接) */
+    mcpServerPort: number;
+  };
 }
 
 /// 默认设置 — 与项目当前行为保持一致
@@ -157,6 +180,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxStreamShards: 4,
     parseChannelCap: 256,
   },
+  ai: {
+    adapter: 'openai_compatible',
+    baseUrl: '',
+    apiKey: '',
+    model: '',
+    temperature: null,
+    maxTokens: null,
+    systemPrompt: '',
+    maxToolRounds: 10,
+    mcpToolsEnabled: true,
+    mcpServerPort: 8765,
+  },
 };
 
 /// 设置分类元数据 — 用于 SettingsModal 渲染左侧导航
@@ -173,6 +208,7 @@ export const SETTING_CATEGORIES: SettingCategoryMeta[] = [
   { key: 'serial', icon: 'Usb' },
   { key: 'notifications', icon: 'Bell' },
   { key: 'performance', icon: 'Gauge' },
+  { key: 'ai', icon: 'Sparkles' },
 ];
 
 /// 浅合并: 用任意子路径更新设置 (path 例如 'appearance.uiFontSize')

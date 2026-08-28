@@ -1,10 +1,17 @@
 import { invoke, Channel } from '@tauri-apps/api/core';
 import type {
+  AiAdapterInfo,
+  AiChatEvent,
+  AiChatMessage,
+  AiProviderConfig,
   CanLoadSnapshot,
   ConnectionState,
   DecoderBlock,
   FrameDecoderManualResult,
   InputFormat,
+  McpServerConfig,
+  McpServerStatus,
+  McpToolInfo,
   PortInfo,
   ProtocolConfig,
   ProtocolSchema,
@@ -314,4 +321,61 @@ export const api = {
     invoke<void>('set_pipeline_config', { config }),
 
   getPipelineConfig: () => invoke<PipelineConfig>('get_pipeline_config'),
+
+  // ===== AI 对话 + MCP =====
+  /// 支持的 LLM provider 适配器清单 (设置 UI 下拉)
+  aiListProviders: () => invoke<AiAdapterInfo[]>('ai_list_providers'),
+
+  /// 发起一次对话 (可含多轮 MCP 工具调用); 增量事件经 onEvent 推送, 返回 task_id
+  aiChatSend: (
+    config: AiProviderConfig,
+    system: string | null,
+    messages: AiChatMessage[],
+    maxToolRounds: number,
+    useMcpTools: boolean,
+    onEvent: Channel<AiChatEvent>,
+  ) =>
+    invoke<string>('ai_chat_send', {
+      config,
+      system: system ?? null,
+      messages,
+      maxToolRounds,
+      useMcpTools,
+      onEvent,
+    }),
+
+  /// 取消进行中的对话任务, 返回任务是否存在
+  aiChatCancel: (taskId: string) => invoke<boolean>('ai_chat_cancel', { taskId }),
+
+  /// 全部外部 MCP server 配置
+  mcpListServers: () => invoke<McpServerConfig[]>('mcp_list_servers'),
+
+  /// 新增外部 MCP server 配置
+  mcpAddServer: (config: McpServerConfig) => invoke<void>('mcp_add_server', { config }),
+
+  /// 删除外部 MCP server 配置 (同时断连)
+  mcpRemoveServer: (id: string) => invoke<void>('mcp_remove_server', { id }),
+
+  /// 启用 / 禁用外部 MCP server
+  mcpSetServerEnabled: (id: string, enabled: boolean) =>
+    invoke<void>('mcp_set_server_enabled', { id, enabled }),
+
+  /// 刷新聚合工具列表 (自动连接已启用未连接的 server) 并更新对话工具缓存
+  mcpListTools: () => invoke<McpToolInfo[]>('mcp_list_tools'),
+
+  /// 各 server 的连接状态 [(server_id, connected)]
+  mcpConnectionStates: () => invoke<[string, boolean][]>('mcp_connection_states'),
+
+  /// 手动调用一个聚合工具 (前缀名)
+  mcpCallTool: (name: string, args: unknown) =>
+    invoke<string>('mcp_call_tool', { name, arguments: args }),
+
+  /// 本地 MCP server 状态
+  mcpServerStatus: () => invoke<McpServerStatus>('mcp_server_status'),
+
+  /// 启动本地 MCP server (返回实际端口; 已运行则直接返回)
+  mcpServerStart: (port: number) => invoke<number>('mcp_server_start', { port }),
+
+  /// 停止本地 MCP server (未运行时静默)
+  mcpServerStop: () => invoke<void>('mcp_server_stop'),
 };

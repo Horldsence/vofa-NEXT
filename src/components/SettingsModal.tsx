@@ -24,6 +24,7 @@ import {
   Download,
   Upload,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { getVersion } from '@tauri-apps/api/app';
 import { useSettingsStore } from '../store/settingsStore';
@@ -47,6 +48,7 @@ const CATEGORY_ICONS: Record<keyof AppSettings, React.ReactNode> = {
   serial: <Usb size={16} />,
   notifications: <Bell size={16} />,
   performance: <Gauge size={16} />,
+  ai: <Sparkles size={16} />,
 };
 
 const CATEGORY_LABEL_KEY: Record<keyof AppSettings, string> = {
@@ -57,6 +59,7 @@ const CATEGORY_LABEL_KEY: Record<keyof AppSettings, string> = {
   serial: 'settingsSerial',
   notifications: 'settingsNotifications',
   performance: 'settingsPerformance',
+  ai: 'settingsAi',
 };
 
 export function SettingsModal() {

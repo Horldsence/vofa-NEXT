@@ -18,6 +18,8 @@ import { useHistoryStore } from './store/historyStore';
 import { useSettingsStore } from './store/settingsStore';
 import { useOnboardingStore } from './store/onboardingStore';
 import { useLayoutStore } from './store/layoutStore';
+import { useAiChatStore } from './store/aiChatStore';
+import { AiChatPanel } from './components/panels/bottom/AiChatPanel';
 import { useUpdateStore } from './store/updateStore';
 import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
@@ -51,6 +53,7 @@ function App() {
   const autoCheckUpdate = useSettingsStore((s) => s.settings.general.autoCheckUpdate);
   const updateDialogOpen = useUpdateStore((s) => s.dialogOpen);
   const statusBarVisible = useSettingsStore((s) => s.settings.appearance.statusBarVisible);
+  const aiPanelVisible = useAiChatStore((s) => s.panelVisible);
   const hasOpenedOnboarding = useOnboardingStore((s) => s.hasOpenedThisSession);
   const openOnboarding = useOnboardingStore((s) => s.openWizard);
   const isWizardOpen = useOnboardingStore((s) => s.isWizardOpen);
@@ -280,6 +283,11 @@ function App() {
           </PanelGroup>
         </div>
       </div>
+      {aiPanelVisible && (
+        <div className="module-card flex-shrink-0 mt-2 h-[300px] min-h-[180px]">
+          <AiChatPanel />
+        </div>
+      )}
       {statusBarVisible && (
         <div className="module-card flex-shrink-0 mt-2">
           <StatusBar />

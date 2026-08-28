@@ -11,6 +11,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
 members = [
+  "crates/ai_chat",
+  "crates/ai_provider",
   "crates/app_state",
   "crates/automotive_can",
   "crates/automotive_diag",
@@ -35,6 +37,8 @@ members = [
   "crates/error",
   "crates/logic_decoder",
   "crates/logic_types",
+  "crates/mcp_client",
+  "crates/mcp_server",
   "crates/menu_shell",
   "crates/notify_events",
   "crates/node_engine",
@@ -127,6 +131,26 @@ significant_drop_tightening = "allow"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+# genai: 多 LLM provider 聚合客户端 (OpenAI/Anthropic/Gemini/DeepSeek/通义/Kimi/GLM/
+# Ollama 等 26+ 原生协议), 内部复用 reqwest+rustls, 流式与工具调用完备 —
+# 避免 AI 对话层手写各家 provider 协议 (AI 功能统一规划在后端的基础设施)
+genai = "0.6"
+# rmcp: Model Context Protocol 官方 Rust SDK — MCP client (stdio/streamable-http)
+# 与 server (streamable-http) 双向能力, MCP 协议不在本仓库自研
+rmcp = { version = "3.1", default-features = false, features = [
+  "macros",
+  "server",
+  "transport-streamable-http-server",
+  "client",
+  "transport-child-process",
+  "transport-streamable-http-client-reqwest",
+  "reqwest",
+] }
+# axum: 本地 MCP server 的 HTTP 宿主 (rmcp streamable-http server 传输为 tower service,
+# 需要 HTTP 框架挂载), 仅监听 127.0.0.1
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+futures = "0.3"
+async-trait = "0.1"
 base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "sync", "time", "fs"] }
 log = "0.4"
@@ -139,6 +163,11 @@ buffer_ring = { path = "crates/buffer_ring" }
 buffer_databuffer = { path = "crates/buffer_databuffer" }
 buffer_graph = { path = "crates/buffer_graph" }
 buffer_raw = { path = "crates/buffer_raw" }
+ai_provider = { path = "crates/ai_provider" }
+ai_chat = { path = "crates/ai_chat" }
+mcp_client = { path = "crates/mcp_client" }
+mcp_server = { path = "crates/mcp_server" }
+cmd_ai = { path = "crates/cmd_ai" }
 cmd_buffer = { path = "crates/cmd_buffer" }
 cmd_can_load = { path = "crates/cmd_can_load" }
 cmd_can_transport = { path = "crates/cmd_can_transport" }
@@ -199,6 +228,7 @@ subscription = { workspace = true }
 menu_shell = { workspace = true }
 update_flow = { workspace = true }
 cmd_buffer = { workspace = true }
+cmd_ai = { workspace = true }
 cmd_can_load = { workspace = true }
 cmd_can_transport = { workspace = true }
 cmd_debug = { workspace = true }

@@ -3,6 +3,7 @@
 // should import from 'types' (this file) as before.
 
 export * from './common';
+export * from './ai';
 export * from './transport';
 export * from './errors';
 export * from './can';
