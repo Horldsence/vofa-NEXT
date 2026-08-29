@@ -792,8 +792,6 @@ domainString: String
 domainMismatchTitle: Domain mismatch
 domainMismatchMsg: Ports of different domains cannot be connected (time / freq / bytes / string are mutually exclusive)
 connectionRejectedTitle: Cannot connect
-brokenEdgeRemovedTitle: Broken wire removed
-brokenEdgeRemovedMsg: A wire referencing a non-existent port was removed automatically (it could not be selected or deleted before)
 
 # 3D Model widget
 model3d: 3D Model

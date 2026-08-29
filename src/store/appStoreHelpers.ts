@@ -26,7 +26,6 @@ import {
   getEffectiveChannels,
   schemaFromProtocolConfig,
 } from '../lib/utils/protocolSchema';
-import { edgeHandlesValid } from '../lib/utils/connectionRules';
 import { getWidgetPorts } from '../components/nodes/WidgetPorts';
 import {
   normalizeModel3DConfig,
@@ -157,6 +156,20 @@ export function isGlobalNode(n: Node): boolean {
 ///
 /// 返回: 用户可读的错误文案; 成功为 undefined
 async function doSyncTabGraph(tabId: string, allowConflictRetry = true): Promise<string | undefined> {
+  // 采纳护栏: 提交在途期间本 tab 的 graph:source 回声暂缓采纳 (在途提交的
+  // 响应/冲突路径已收敛) — 否则回声会把画布刚落、尚未提交的变更覆盖掉
+  activeSyncs.add(tabId);
+  try {
+    return await doSyncTabGraphOnce(tabId, allowConflictRetry);
+  } finally {
+    activeSyncs.delete(tabId);
+  }
+}
+
+async function doSyncTabGraphOnce(
+  tabId: string,
+  allowConflictRetry: boolean
+): Promise<string | undefined> {
   const state = useAppStore.getState();
   // 本 tab 可见节点 = 本 tab widget 节点 + 全部全局节点
   const tabNodeIds = new Set(
@@ -359,7 +372,7 @@ function jsonDeepEqual(a: unknown, b: unknown): boolean {
 }
 
 /// widget 配置记录 → WidgetConfig (归一化旧形态; 未知 kind 返回 null —
-/// 画布无法渲染, 引用它的边由 tabNodeIds 过滤剔除)
+/// 调用方以记录原样构造占位节点, 画布仍可见、边端点仍存在)
 export function widgetFromRecord(rec: WidgetRecordPayload): WidgetConfig | null {
   if (!(rec.kind in KNOWN_WIDGET_KINDS)) return null;
   const params = (rec.params ?? {}) as Record<string, unknown>;
@@ -370,6 +383,18 @@ export function widgetFromRecord(rec: WidgetRecordPayload): WidgetConfig | null 
     return { kind: 'Model3D', params: normalizeModel3DConfig(params as never) };
   }
   return { kind: rec.kind, params } as unknown as WidgetConfig;
+}
+
+/// 记录 → 画布可渲染的 WidgetConfig (未知 kind 按原样落为占位控件 —
+/// 后端是存储权威, 前端不认识也不丢弃)
+export function widgetOrPlaceholder(rec: WidgetRecordPayload): WidgetConfig {
+  return (
+    widgetFromRecord(rec) ??
+    ({
+      kind: rec.kind,
+      params: (rec.params ?? {}) as Record<string, unknown>,
+    } as unknown as WidgetConfig)
+  );
 }
 
 /// 由 NodeDef 构造全局 Transport/Protocol 画布节点 (配置完整在 NodeDef 中;
@@ -411,14 +436,16 @@ export function globalNodeFromDef(
 }
 
 /**
- * 采纳后端权威源图 — `graph:source` 事件 / 版本冲突重试 / 启动水合共用
+ * 采纳后端权威源图 — `graph:source` 事件 / 版本冲突重试共用
  *
- * 画布是源图的投影, 三层收敛:
- * - 边: 该 tab 的边替换为权威集 (handle 失效的悬空边剔除并触发一次纠正同步);
+ * 画布是源图的**纯投影**, 前端不做任何连线有效性判断 (编译权威在后端):
+ * - 边: 该 tab 的边逐字替换为事件边集 — 后端编译认可的连线画布必须保留,
+ *   不存在"前端认为悬空就删除"的路径;
  * - 全局节点: 缺失的 transport/protocol 自动补建 (配置完整在 NodeDef 中);
  * - widget: 事件携带配置记录时 (后端单一权威), 该 tab 的 widget 节点集合
  *   整体收敛到记录集 — 外部提交的纯 widget 图完整渲染, 外部删除同样生效;
- *   事件未携带记录 (旧契约) 时画布 widget 保持不动。
+ *   未知 kind 落为占位控件 (不丢弃); 事件未携带记录 (旧契约) 时画布 widget
+ *   保持不动。
  * 事件携带位置表时, 已有节点的画布位置跟随更新。
  */
 export function adoptSourceGraph(event: GraphSourceEventPayload): void {
@@ -438,8 +465,7 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
 
   if (records) {
     for (const rec of records) {
-      const widget = widgetFromRecord(rec);
-      if (!widget) continue;
+      const widget = widgetOrPlaceholder(rec);
       const existing = state.rfNodes.find((n) => n.id === rec.id);
       const pos = positions?.[rec.id];
       if (existing) {
@@ -497,60 +523,41 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
     }
   }
 
-  // 4. 该 tab 可见范围内的边替换为权威集
+  // 4. 该 tab 的边逐字采纳 — 后端编译认可即保留, 前端不判断端口有效性;
+  //    仅按 tab 归属划分替换范围 (其他 tab 的边不动)
   const keptNodes = removedWidgetIds.size
     ? state.rfNodes.filter((n) => !removedWidgetIds.has(n.id))
     : state.rfNodes;
-  const nodesForCheck = [
+  const scopedNodes = [
     ...keptNodes,
     ...nodeUpdates.values(),
     ...posUpdates.values(),
     ...addedWidgetNodes,
     ...addedGlobalNodes,
   ];
-  const checkCtx = {
-    nodes: nodesForCheck,
-    derivedPorts: state.derivedPorts,
-    detectedChannels: state.detectedChannels,
-  };
   const tabNodeIds = new Set(
-    nodesForCheck
+    scopedNodes
       .filter((n) => isGlobalNode(n) || n.data?.tabId === event.tab_id)
       .map((n) => n.id)
   );
   const isTabEdge = (e: { source: string; target: string }) =>
     tabNodeIds.has(e.source) && tabNodeIds.has(e.target);
 
-  const adopted: Edge[] = [];
-  let dropped = 0;
-  for (const e of event.edges) {
-    if (!tabNodeIds.has(e.source) || !tabNodeIds.has(e.target)) {
-      // 其他 tab 的边不动; 但 widget 配置记录在场时 (新契约), 本 tab 事件内的
-      // 边端点必然可见 (缺失的全局节点已补建) — 不可见即画布无法渲染的 widget,
-      // 计入悬空边触发纠正同步, 让后端源图随画布视图收敛
-      if (records) dropped += 1;
-      continue;
-    }
-    const edge: Edge = {
-      id: e.id,
-      source: e.source,
-      sourceHandle: e.source_handle,
-      target: e.target,
-      targetHandle: e.target_handle,
-    };
-    if (!edgeHandlesValid(checkCtx, edge)) {
-      dropped += 1; // 悬空边 (handle 不存在) — 剔除, 纠正同步覆盖后端残留
-      continue;
-    }
-    adopted.push(edge);
-  }
+  const adopted: Edge[] = event.edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    sourceHandle: e.source_handle,
+    target: e.target,
+    targetHandle: e.target_handle,
+  }));
 
   const keyOf = (e: Edge) =>
     `${e.id}|${e.source}|${e.sourceHandle ?? ''}|${e.target}|${e.targetHandle ?? ''}`;
   const oldEdges = removedWidgetIds.size
     ? state.rfEdges.filter((e) => !removedWidgetIds.has(e.source) && !removedWidgetIds.has(e.target))
     : state.rfEdges;
-  const oldKeys = new Set(oldEdges.filter(isTabEdge).map(keyOf));  const edgesChanged =
+  const oldKeys = new Set(oldEdges.filter(isTabEdge).map(keyOf));
+  const edgesChanged =
     oldKeys.size !== adopted.length || adopted.some((e) => !oldKeys.has(keyOf(e)));
   if (
     !edgesChanged &&
@@ -593,8 +600,6 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
     );
   }
   useAppStore.setState({ rfNodes, rfEdges: [...others, ...adopted], widgets, controlTabs });
-  // 纠正同步: 后端源图中仍存在的失效边被本次视图覆盖 (一次性收敛, 无循环)
-  if (dropped > 0) void syncTabGraphToBackend(event.tab_id);
 }
 
 // ---- Transport 协议热更新 ----
@@ -749,8 +754,8 @@ export async function hydrateWorkspaceFromBackend(): Promise<boolean> {
       if (node) globalNodes.set(def.id, node);
     }
     for (const rec of g.widgets) {
-      const widget = widgetFromRecord(rec);
-      if (!widget) continue; // 未知 kind — 画布无法渲染, 其边因端点缺失被过滤
+      // 未知 kind 落为占位控件 — 画布是后端状态的投影, 不因前端不认识而丢弃
+      const widget = widgetOrPlaceholder(rec);
       widgets.push(widget);
       widgetNodes.push({
         id: rec.id,

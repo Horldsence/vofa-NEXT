@@ -22,6 +22,8 @@ import { useAppStore } from '../appStore';
 import {
   hydrateWorkspaceFromBackend,
   syncWorkspaceMeta,
+  syncTabGraphToBackend,
+  isSyncInFlight,
 } from '../appStoreHelpers';
 import type { WorkspaceSnapshotPayload } from '../../lib/tauri/tauri';
 
@@ -130,7 +132,7 @@ describe('hydrateWorkspaceFromBackend (启动水合)', () => {
     expect(s.rfEdges).toEqual([
       { id: 'e1', source: 'transport-1', sourceHandle: 'rx', target: 'w-gauge', targetHandle: 'value' },
     ]);
-    expect(s.widgets.map((w) => w.params.id)).toEqual(['w-gauge']);
+    expect(s.widgets.map((w) => w.params.id)).toEqual(['w-gauge', 'w-ghost']);
   });
 
   it('数据面板水合 + fixed 两页兜底注入; 未知 kind 剔除', async () => {
@@ -143,9 +145,40 @@ describe('hydrateWorkspaceFromBackend (启动水合)', () => {
     expect(ids).toContain('compile-errors-fixed');
     // 快照缺 compile-results-fixed → 兜底补入
     expect(ids).toContain('compile-results-fixed');
-    // 未知 kind 的 widget 不建节点
-    expect(s.rfNodes.some((n) => n.id === 'w-ghost')).toBe(false);
-    expect(s.widgets.some((w) => w.params.id === 'w-ghost')).toBe(false);
+    // 未知 kind 的 widget 落为占位控件 (投影语义: 后端是存储权威, 不丢弃)
+    const ghost = s.rfNodes.find((n) => n.id === 'w-ghost');
+    expect((ghost?.data as { widget: { kind: string } }).widget.kind).toBe('FutureWidget');
+    expect(s.widgets.some((w) => w.params.id === 'w-ghost')).toBe(true);
+  });
+});
+
+describe('isSyncInFlight (采纳护栏)', () => {
+  beforeEach(() => {
+    tauriMock.invoke.mockClear();
+    useAppStore.setState({
+      controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
+      activeControlTabId: 'default',
+    } as never);
+  });
+
+  it('提交在途期间护栏生效, 结束后释放', async () => {
+    let release!: (v: unknown) => void;
+    (tauriMock.invoke as unknown as {
+      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
+    }).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        })
+    );
+
+    const done = syncTabGraphToBackend('default');
+    await Promise.resolve(); // 提交链在微任务中启动 — 先等护栏置位
+    expect(isSyncInFlight('default')).toBe(true);
+
+    release({ nodes: [] });
+    await done;
+    expect(isSyncInFlight('default')).toBe(false);
   });
 });
 

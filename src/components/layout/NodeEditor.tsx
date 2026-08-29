@@ -235,23 +235,8 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     [lang]
   );
 
-  // 悬空边自愈 — 引用不存在 handle 的边 React Flow 渲染不出路径 (error #008),
-  // 点不中也删不掉; 从错误信息提取边 id 移除, 画布不留死线 (模板/旧快照残留兜底)
-  const selfHealBrokenEdge = useCallback(
-    (code: string, message: string) => {
-      if (code !== '008') return;
-      const match = /edge id: (.+)\.$/.exec(message);
-      const edgeId = match?.[1];
-      if (!edgeId) return;
-      const state = useAppStore.getState();
-      if (!state.rfEdges.some((e) => e.id === edgeId)) return;
-      state.onEdgesChange([{ id: edgeId, type: 'remove' }]);
-      notify.warn(t(lang, 'brokenEdgeRemovedTitle'), t(lang, 'brokenEdgeRemovedMsg'), {
-        source: 'broken-edge',
-      });
-    },
-    [lang]
-  );
+  // 连线有效性不做前端自愈 — 后端编译是连线唯一权威, graph:source 回声即真值;
+  // 渲染层瞬时错误 (#008) 只说明端口重测尚未完成, 据此删边会误删后端认可的连线
 
   return (
     <div
@@ -268,7 +253,6 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        onError={selfHealBrokenEdge}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={{ interactionWidth: 40, style: { strokeWidth: 2 } }}
         fitView

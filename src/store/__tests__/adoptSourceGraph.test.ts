@@ -111,27 +111,27 @@ describe('adoptSourceGraph (画布 = 权威源图的投影)', () => {
     expect(val?.targetHandle).toBe('value');
   });
 
-  it('悬空边 (handle 不存在) 被剔除并触发纠正同步', async () => {
+  it('后端编译认可的连线逐字采纳, 不做前端有效性判断 (含瞬时不渲染的端口)', () => {
     (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({
       nodes: [],
       version: 7,
     });
+    const danglingEdge = {
+      id: 'e-dangling',
+      source: 'protocol-1',
+      source_handle: 'ch1',
+      target: 'w-gauge',
+      target_handle: 'nope',
+    };
     adoptSourceGraph({
       ...SOURCE_EVENT,
-      edges: [
-        ...SOURCE_EVENT.edges,
-        // 悬空: gauge 没有 nope 输入口
-        { id: 'e-dangling', source: 'protocol-1', source_handle: 'ch1', target: 'w-gauge', target_handle: 'nope' },
-      ],
+      edges: [...SOURCE_EVENT.edges, danglingEdge],
     });
 
+    // 前端不判断端口存在性 — 边保留, 是否有效由后端编译权威裁决
     expect(
       useAppStore.getState().rfEdges.some((e) => e.id === 'e-dangling')
-    ).toBe(false);
-    // 纠正同步: 后端源图中残留的悬空边被本次视图覆盖
-    await vi.waitFor(() => {
-      expect(tauriMock.invoke).toHaveBeenCalledWith('update_tab_graph', expect.anything());
-    });
+    ).toBe(true);
   });
 
   it('缺失的全局节点 (NodeDef) 自动补建', () => {
@@ -248,11 +248,7 @@ describe('adoptSourceGraph (widget 配置记录收敛 — 配置模型后端权�
     expect(useAppStore.getState().controlTabs[0].widgets).toEqual(['w-gauge']);
   });
 
-  it('未知 widget kind 的记录不建节点, 引用它的边被剔除并触发纠正同步', async () => {
-    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({
-      nodes: [],
-      version: 8,
-    });
+  it('未知 widget kind 落为占位控件 (不丢弃), 引用它的边保留', () => {
     adoptSourceGraph({
       ...SOURCE_EVENT,
       widgets: [
@@ -265,16 +261,18 @@ describe('adoptSourceGraph (widget 配置记录收敛 — 配置模型后端权�
       ],
       edges: [
         ...SOURCE_EVENT.edges,
-        { id: 'e-ghost', source: 'protocol-1', source_handle: 'ch1', target: 'w-ghost', target_handle: 'value' },
+        { id: 'e-ghost', source: 'protocol-1', source_handle: 'ch1', target: 'w-ghost', target_handle: 'in' },
       ],
     });
 
-    expect(useAppStore.getState().rfNodes.some((n) => n.id === 'w-ghost')).toBe(false);
-    expect(useAppStore.getState().rfEdges.some((e) => e.id === 'e-ghost')).toBe(false);
-    // 纠正同步: 画布视图覆盖后端残留的 ghost 边
-    await vi.waitFor(() => {
-      expect(tauriMock.invoke).toHaveBeenCalledWith('update_tab_graph', expect.anything());
-    });
+    // 占位节点存在 (通用卡片渲染, 后端是存储权威)
+    const ghost = useAppStore.getState().rfNodes.find((n) => n.id === 'w-ghost');
+    expect(ghost?.type).toBe('widget');
+    expect((ghost?.data as { widget: { kind: string } }).widget.kind).toBe('FutureWidget');
+    // 边逐字保留 — 前端不删除后端认可的连线
+    expect(useAppStore.getState().rfEdges.some((e) => e.id === 'e-ghost')).toBe(true);
+    // 占位控件记录随 widgets 数组收敛, 再次同步时按原样回传
+    expect(useAppStore.getState().widgets.some((w) => w.params.id === 'w-ghost')).toBe(true);
   });
 
   it('事件位置表驱动已有节点位置跟随', () => {

@@ -792,8 +792,6 @@ domainString: 字符串
 domainMismatchTitle: 域不匹配
 domainMismatchMsg: 不同域的端口不能直连 (时域 / 频域 / 字节域 / 字符串域两两互斥)
 connectionRejectedTitle: 无法连接
-brokenEdgeRemovedTitle: 已移除失效连线
-brokenEdgeRemovedMsg: 一条引用了不存在端口的连线已自动清除 (该连线此前无法选中或删除)
 
 # 3D 模型控件
 model3d: 3D 模型

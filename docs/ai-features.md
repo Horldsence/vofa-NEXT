@@ -161,8 +161,11 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
 - 提交成功后 emit **`graph:source` {tab_id, version, nodes, edges, widgets,
   positions}**,前端画布按此收敛 (`adoptSourceGraph`:边替换为权威集、补建缺失
   全局节点、widget 节点集合收敛到配置记录 — 外部提交的**纯 widget 图可完整
-  渲染**,外部删除同样生效;未知 widget kind 的记录被画布剔除,引用它的边
-  触发一次纠正同步让后端源图随画布视图收敛);
+  渲染**,外部删除同样生效);
+- **画布是纯投影, 前端不做连线有效性判断** — 后端编译认可的连线画布逐字
+  保留, 不存在"前端认为悬空就删除"的路径;未知 widget kind 的记录落为
+  占位控件 (通用卡片 + 默认端口) 而非丢弃;本 tab 提交在途期间的 graph:source
+  自回声暂缓采纳, 由提交响应自身收敛;
 - 前端整图提交携带 `base_version` 乐观并发基线,版本被其他写入方推进时后端
   返回 `GraphVersionConflict`,前端拉取权威源图合并后重试一次(多写入方防互踩);
 - `update_tab_graph` 成功响应与 `graph:derived` 事件携带新版本号;
@@ -249,9 +252,8 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
 - 流式中切换会话后,流式气泡不在新会话内显示(回合仍写入发起它的会话)
 - 前端托管工具依赖 webview 存活(聊天面板本身就在其中,实际恒成立),
   15s 超时兜底;webview 处于后台且被系统挂起时可能超时
-- widget 配置的 schema 校验在前端水合时进行(后端以 `Value` 透传):
-  外部写入方提交未知 kind 的记录时,该控件在画布上被剔除,
-  其边经一次纠正同步收敛 — 写入方需参照 `get_workspace` 返回的
-  config 形态构造 params
+- 后端以 `Value` 透传 widget params, schema 语义由前端定义:外部写入方提交
+  未知 kind 的记录时,该控件在画布上落为占位卡片(渲染不出控件本体),
+  写入方需参照 `get_workspace` 返回的 config 形态构造 params
 - 工作区持久化不含窗口停靠布局(localStorage)与应用设置(settings.json);
   传输连接状态属运行态,重启后不自动重连
