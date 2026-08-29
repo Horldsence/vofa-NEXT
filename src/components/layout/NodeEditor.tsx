@@ -19,15 +19,13 @@ import { notify } from '../../lib/tauri/notifications';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
-import type { WidgetConfig, MathOp, StrOp, FilterPresetKind, DomainType } from '../../types';
+import type { WidgetConfig, MathOp, StrOp, FilterPresetKind } from '../../types';
 import { isUnaryMathOp } from '../../types';
 import { WidgetNode } from '../nodes/WidgetNode';
-import { getWidgetPorts } from '../nodes/WidgetPorts';
 import { TransportNode } from '../nodes/TransportNode';
 import { ProtocolNode } from '../nodes/ProtocolNode';
 import { GlobalNodeProperties } from '../nodes/GlobalNodeProperties';
-import { isRawDataPreset } from '../../lib/utils/protocolSchema';
-import type { ProtocolNodeData } from '../../store/appStoreHelpers';
+import { validateConnection } from '../../lib/utils/connectionRules';
 import { Maximize, LayoutGrid } from 'lucide-react';
 
 interface NodeEditorProps {
@@ -201,44 +199,9 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     return () => dockDrag.registerCanvasHandler(el, null);
   }, [createFromDrop]);
 
-  // 端口域解析: 全局节点按端口表 (rx/tx/in/out=字节, chN=时域, str=字符串); 控件端口按 getWidgetPorts 的 domain 标注
-  const resolveDomain = useCallback(
-    (nodeId: string | null, handleId: string | null | undefined, kind: 'source' | 'target'): DomainType | null => {
-      if (!nodeId || !handleId) return null;
-      const node = useAppStore.getState().rfNodes.find((n: Node) => n.id === nodeId);
-      if (!node) return null;
-      if (node.type === 'transport') {
-        if (kind === 'source' && handleId === 'rx') return 'bytes';
-        if (kind === 'target' && handleId === 'tx') return 'bytes';
-        return null;
-      }
-      if (node.type === 'protocol') {
-        if (handleId === 'in' || handleId === 'out') return 'bytes';
-        // RawData 预设的 str 口是字符串域 (UTF-8 lossy 文本); custom schema 的同名端口除外
-        if (kind === 'source' && handleId === 'str'
-          && isRawDataPreset(node.data as unknown as ProtocolNodeData)) return 'string';
-        if (kind === 'source' && /^ch\d+$/.test(handleId)) return 'time';
-        return null;
-      }
-      const widget = node.data?.widget as WidgetConfig | undefined;
-      if (!widget) return null;
-      // RawData 输入端口是动态派生的 (src:<source>:<handle>), 静态端口表查不到 — 一律按时域。
-      // 注: RawData 实际同时接受字节域/时域源 (见 isValidConnection 的 RawData 特判),
-      // 此处返回 time 只是让频域输出在通用校验下仍被拦截
-      if (widget.kind === 'RawData') return 'time';
-      // FrameDecoder 旧版回环字节输入口 (兼容旧图数据)
-      if (widget.kind === 'FrameDecoder' && kind === 'target' && handleId === 'loopbackIn') return 'bytes';
-      const ports = getWidgetPorts(widget);
-      const list = kind === 'source' ? ports.outputs : ports.inputs;
-      return list.find((p) => p.id === handleId)?.domain ?? null;
-    },
-    []
-  );
-
-  // 连线校验: 时域/频域/字节域端口必须同域, 跨域阻止并提示
-  // (字节口: Transport rx/tx, Protocol in/out, FrameDecoder in, Command loopbackOut)
-  // 例外: RawData 是字节/时域双域 Sink — Transport rx / Protocol out 等字节源可直连
-  // (通道显示该接口原始字节流), 仅频域源仍阻止
+  // 连线校验 — 统一规则单一权威 (lib/utils/connectionRules): 节点存在 / 同 tab /
+  // 端口存在 / 域匹配 (time/freq/bytes/string 同域; RawData 是 bytes/time 双域 Sink
+  // 仅拒 freq)。与后端编译校验同域规则, 手动拖拽在此前置拦截并提示。
   const isValidConnection = useCallback(
     (conn: {
       source?: string | null;
@@ -246,28 +209,48 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       sourceHandle?: string | null;
       targetHandle?: string | null;
     }) => {
-      const sd = resolveDomain(conn.source ?? null, conn.sourceHandle, 'source');
-      const targetNode = useAppStore.getState().rfNodes.find((n: Node) => n.id === conn.target);
-      const targetWidget = targetNode?.data?.widget as WidgetConfig | undefined;
-      if (targetWidget?.kind === 'RawData') {
-        if (sd === 'freq') {
-          notify.warn(t(lang, 'domainMismatchTitle'), t(lang, 'domainMismatchMsg'), {
-            source: 'domain-mismatch',
-          });
-          return false;
+      if (!conn.source || !conn.target) return false;
+      const state = useAppStore.getState();
+      const check = validateConnection(
+        {
+          nodes: state.rfNodes,
+          derivedPorts: state.derivedPorts,
+          detectedChannels: state.detectedChannels,
+        },
+        {
+          source: conn.source,
+          target: conn.target,
+          sourceHandle: conn.sourceHandle,
+          targetHandle: conn.targetHandle,
         }
-        return true;
-      }
-      const td = resolveDomain(conn.target ?? null, conn.targetHandle, 'target');
-      if (sd && td && sd !== td) {
-        notify.warn(t(lang, 'domainMismatchTitle'), t(lang, 'domainMismatchMsg'), {
+      );
+      if (!check.ok) {
+        notify.warn(t(lang, 'connectionRejectedTitle'), check.message ?? t(lang, 'domainMismatchMsg'), {
           source: 'domain-mismatch',
         });
         return false;
       }
       return true;
     },
-    [resolveDomain, lang]
+    [lang]
+  );
+
+  // 悬空边自愈 — 引用不存在 handle 的边 React Flow 渲染不出路径 (error #008),
+  // 点不中也删不掉; 从错误信息提取边 id 移除, 画布不留死线 (模板/旧快照残留兜底)
+  const selfHealBrokenEdge = useCallback(
+    (code: string, message: string) => {
+      if (code !== '008') return;
+      const match = /edge id: (.+)\.$/.exec(message);
+      const edgeId = match?.[1];
+      if (!edgeId) return;
+      const state = useAppStore.getState();
+      if (!state.rfEdges.some((e) => e.id === edgeId)) return;
+      state.onEdgesChange([{ id: edgeId, type: 'remove' }]);
+      notify.warn(t(lang, 'brokenEdgeRemovedTitle'), t(lang, 'brokenEdgeRemovedMsg'), {
+        source: 'broken-edge',
+      });
+    },
+    [lang]
   );
 
   return (
@@ -285,6 +268,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
+        onError={selfHealBrokenEdge}
         nodeTypes={nodeTypes}
         defaultEdgeOptions={{ interactionWidth: 40, style: { strokeWidth: 2 } }}
         fitView

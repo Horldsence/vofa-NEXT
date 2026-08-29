@@ -18,6 +18,19 @@ pub enum ConfigError {
     #[error("图编译失败: {0}")]
     GraphCompile(Boxed),
 
+    /// 前端整图提交的基线版本过期 (期间有其他写入方推进了图版本)。
+    /// 携带后端当前版本, 前端据此拉取权威源图、合并本地态后重试。
+    #[error("图版本冲突: 基线过期 (后端当前 v{current})")]
+    GraphVersionConflict { current: u64 },
+
+    /// 拓扑 op 未命中任何连线 (按 edge_id 或 source/target 组合查找)。
+    #[error("未找到匹配的连线")]
+    GraphEdgeNotFound,
+
+    /// 拓扑 op 无法推断默认端口 (widget 端口表在前端, 需调用方显式指定 handle)。
+    #[error("节点 {node_id} 无法推断默认{direction}端口, 请显式指定 handle (参考 get_workspace 端口表)")]
+    GraphPortUnresolved { node_id: String, direction: &'static str },
+
     #[error("流订阅组不存在: {key}")]
     StreamGroupNotFound { key: String },
 

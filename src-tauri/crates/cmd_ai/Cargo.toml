@@ -15,6 +15,7 @@ ai_session = { workspace = true }
 mcp_client = { workspace = true }
 mcp_server = { workspace = true }
 app_state = { workspace = true }
+can_types = { workspace = true }
 error = { workspace = true }
 vofa_core = { workspace = true }
 serde = { workspace = true }

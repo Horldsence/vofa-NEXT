@@ -28,7 +28,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { ORCAROUTER_REFERRAL_URL } from '../settings/defaults';
+import { ORCAROUTER_OFFERS_URL, ORCAROUTER_REFERRAL_URL } from '../settings/defaults';
 import { getVersion } from '@tauri-apps/api/app';
 import { useSettingsStore } from '../store/settingsStore';
 import { useAppStore } from '../store/appStore';
@@ -471,19 +471,32 @@ export function SettingsModal() {
                         </div>
                         <div className="flex-shrink-0 min-w-[200px] flex items-center justify-end">{renderControl(def)}</div>
                       </div>
-                      {/* OrcaRouter 重点提示: 命名空间模型名 + 推广链接获取 API Key */}
+                      {/* OrcaRouter 重点提示: 命名空间模型名 + 推广链接获取 API Key + 免费模型入口 */}
                       {cat === 'ai' && def.field === 'apiKey' && settings.ai.adapter === 'orcarouter' && (
-                        <div className="flex items-center gap-2 my-2 px-3 py-2 rounded border border-accent/25 bg-accent/5">
-                          <span className="flex-1 min-w-0 text-xs text-text-secondary leading-relaxed">
-                            {t(lang, 'settingAiOrcaHint')}
-                          </span>
-                          <button
-                            className="flex-shrink-0 px-2 py-1 rounded bg-accent text-accent-foreground text-xs flex items-center gap-1"
-                            onClick={() => void openUrl(ORCAROUTER_REFERRAL_URL)}
-                          >
-                            <ExternalLink size={11} />
-                            {t(lang, 'settingAiOrcaGetKey')}
-                          </button>
+                        <div className="my-2 px-3 py-2 rounded border border-accent/25 bg-accent/5 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="flex-1 min-w-0 text-xs text-text-secondary leading-relaxed">
+                              {t(lang, 'settingAiOrcaHint')}
+                            </span>
+                            <button
+                              className="flex-shrink-0 px-2 py-1 rounded bg-accent text-accent-foreground text-xs flex items-center gap-1"
+                              onClick={() => void openUrl(ORCAROUTER_REFERRAL_URL)}
+                            >
+                              <ExternalLink size={11} />
+                              {t(lang, 'settingAiOrcaGetKey')}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-text-secondary leading-relaxed">
+                            <Sparkles size={11} className="flex-shrink-0 text-accent" />
+                            <span className="flex-shrink-0">{t(lang, 'settingAiOrcaFreeModels')}</span>
+                            <button
+                              className="text-accent hover:text-accent-hover hover:underline truncate text-left"
+                              onClick={() => void openUrl(ORCAROUTER_OFFERS_URL)}
+                              title={ORCAROUTER_OFFERS_URL}
+                            >
+                              {ORCAROUTER_OFFERS_URL}
+                            </button>
+                          </div>
                         </div>
                       )}
                     </Fragment>

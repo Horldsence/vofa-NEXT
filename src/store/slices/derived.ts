@@ -26,6 +26,8 @@ export interface GraphDerivedPayload {
     ports: NodeDerivedPort[];
     effective_channels?: number | null;
   }>;
+  /// 提交成功后的全局图版本号 (前端下次提交作为 base_version 冲突检测基线)
+  version?: number;
 }
 
 export interface DerivedSlice {

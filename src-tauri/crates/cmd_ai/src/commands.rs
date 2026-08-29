@@ -2,11 +2,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ai_chat::{
-    AiChatEvent, ChatPayload, ChatTaskRegistry, EventSink, GenaiTurnProvider, ToolExecutor,
-    TurnRecorder, run_chat,
+    run_chat, AiChatEvent, ChatPayload, ChatTaskRegistry, EventSink, GenaiTurnProvider,
+    ToolExecutor, TurnRecorder,
 };
-use ai_provider::{AdapterInfo, AiProviderConfig, ToolSpecDto, validate_config};
-use ai_session::{ChatSession, SessionMeta, SessionStore, ViewItemDto, ViewRoleDto, derive_history};
+use ai_provider::{validate_config, AdapterInfo, AiProviderConfig, ToolSpecDto};
+use ai_session::{
+    derive_history, ChatSession, SessionMeta, SessionStore, ViewItemDto, ViewRoleDto,
+};
 use app_state::AppState;
 use error::{McpError, Result};
 use mcp_client::{McpManager, McpServerConfig, McpToolInfo};
@@ -14,7 +16,10 @@ use mcp_server::{McpServerHandle, Toolbox};
 use parking_lot::Mutex;
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{AppHandle, Manager, State, ipc::Channel};
+use tauri::{ipc::Channel, AppHandle, Manager, State};
+
+use crate::native_executor::{NativeToolExecutor, PendingCalls, ToolOutcome};
+use crate::skills::{self, Lang};
 
 /// AI 功能全局状态 (Tauri managed)。
 pub struct AiState {
@@ -28,6 +33,8 @@ pub struct AiState {
     tool_cache: Mutex<Vec<McpToolInfo>>,
     /// 本地 MCP server 句柄。
     server: Mutex<Option<McpServerHandle>>,
+    /// 前端托管工具调用注册表 (call_id → 回执发送端)。
+    pending_frontend: PendingCalls,
 }
 
 impl AiState {
@@ -48,6 +55,7 @@ impl AiState {
             mcp: Arc::new(mcp),
             tool_cache: Mutex::new(Vec::new()),
             server: Mutex::new(None),
+            pending_frontend: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
 }
@@ -80,19 +88,38 @@ impl ToolExecutor for McpToolExecutor {
     }
 }
 
-/// 无工具执行器 — 纯对话。
-struct NoopExecutor;
+/// 组合执行器 — 内置原生工具 + 外部 MCP 工具;同名时内置优先。
+/// 两者皆无时 tools() 为空, 行为等同纯对话 (模型不会发起工具调用)。
+struct CompositeExecutor {
+    native: Option<NativeToolExecutor>,
+    mcp: Option<McpToolExecutor>,
+}
 
 #[async_trait::async_trait]
-impl ToolExecutor for NoopExecutor {
+impl ToolExecutor for CompositeExecutor {
     fn tools(&self) -> Vec<ToolSpecDto> {
-        Vec::new()
+        let mut out = Vec::new();
+        if let Some(n) = &self.native {
+            out.extend(n.tools());
+        }
+        if let Some(m) = &self.mcp {
+            out.extend(m.tools());
+        }
+        out
     }
 
-    async fn call(&self, name: &str, _arguments: Value) -> Result<String> {
+    async fn call(&self, name: &str, arguments: Value) -> Result<String> {
+        if let Some(n) = &self.native {
+            if NativeToolExecutor::handles(name) {
+                return n.call(name, arguments).await;
+            }
+        }
+        if let Some(m) = &self.mcp {
+            return m.call(name, arguments).await;
+        }
         Err(McpError::ToolFailed {
             tool: name.to_string(),
-            details: "本次对话未启用 MCP 工具".to_string(),
+            details: "工具不存在".to_string(),
         }
         .into())
     }
@@ -113,11 +140,15 @@ pub fn ai_list_providers() -> Vec<AdapterInfo> {
 /// 产物落盘。返回 task_id 供 `ai_chat_cancel` 取消。错误事件同样走 Channel,
 /// 命令本身只在配置/参数非法时失败。
 ///
+/// 工具来源两组独立开关:`use_builtin_tools` 启用内置原生工具 (软件自有能力 +
+/// 知识库, 系统提示词按 `ui_lang` 注入索引);`use_mcp_tools` 启用外部 MCP 工具。
+///
 /// # Errors
 /// 配置校验失败 (缺 key / 未知适配器 / 缺模型名) 或会话落盘失败。
 #[tauri::command]
 pub async fn ai_chat_send(
     state: State<'_, AiState>,
+    app: AppHandle,
     session_id: String,
     text: Option<String>,
     regenerate: bool,
@@ -125,6 +156,8 @@ pub async fn ai_chat_send(
     system: Option<String>,
     max_tool_rounds: u32,
     use_mcp_tools: bool,
+    use_builtin_tools: bool,
+    ui_lang: Option<String>,
     on_event: Channel<AiChatEvent>,
 ) -> Result<String> {
     validate_config(&config)?;
@@ -153,11 +186,14 @@ pub async fn ai_chat_send(
             .unwrap_or_default(),
     );
 
+    let lang = ui_lang.as_deref().map(Lang::parse).unwrap_or(Lang::Zh);
+
     let (task_id, cancel_rx) = state.registry.register();
     let registry = Arc::clone(&state.registry);
     let sessions = Arc::clone(&state.sessions);
     let mcp = Arc::clone(&state.mcp);
-    let tools = if use_mcp_tools {
+    let pending_frontend = Arc::clone(&state.pending_frontend);
+    let mcp_tools = if use_mcp_tools {
         state.tool_cache.lock().clone()
     } else {
         Vec::new()
@@ -173,21 +209,41 @@ pub async fn ai_chat_send(
             let _ = on_event.send(event);
         });
         let provider = GenaiTurnProvider;
-        let use_tools = !tools.is_empty();
-        let mcp_executor = McpToolExecutor { tools, mcp };
-        let noop_executor = NoopExecutor;
-        let executor: &dyn ToolExecutor = if use_tools {
-            &mcp_executor
-        } else {
-            &noop_executor
+
+        // 内置工具: toolbox 从 AppState 提取共享句柄, pending 注册表接收前端回执
+        let native = use_builtin_tools.then(|| {
+            let app_state: State<AppState> = app.state();
+            NativeToolExecutor::new(
+                Toolbox::from_state(&app_state),
+                app.clone(),
+                pending_frontend,
+                lang,
+            )
+        });
+        let mcp_executor = (!mcp_tools.is_empty()).then(|| McpToolExecutor {
+            tools: mcp_tools,
+            mcp,
+        });
+        let executor = CompositeExecutor {
+            native,
+            mcp: mcp_executor,
         };
+
+        // 系统提示词: 启用内置工具时注入基础约定 + 知识库索引 (用户提示词在后)
+        let system = if use_builtin_tools {
+            Some(skills::compose_system_prompt(lang, system.as_deref()))
+        } else {
+            system
+        };
+
         let payload = ChatPayload {
             config,
             system,
             messages: history,
             max_tool_rounds,
         };
-        if let Err(e) = run_chat(payload, &provider, executor, cancel_rx, Arc::clone(&sink)).await {
+        if let Err(e) = run_chat(payload, &provider, &executor, cancel_rx, Arc::clone(&sink)).await
+        {
             // 取消/超轮次的专用事件已在循环内发出, 这里只记日志
             log::warn!("AI 对话任务结束 (含错误): {e}");
         }
@@ -199,6 +255,31 @@ pub async fn ai_chat_send(
         registry.remove(&spawned_task_id);
     });
     Ok(task_id)
+}
+
+/// 前端托管工具回执 — `toolHost` 执行完 `ai_tool_invoke` 事件后调用。
+/// 返回是否存在该 pending 调用 (已超时清理时为 false, 回执被丢弃)。
+#[tauri::command]
+pub fn ai_tool_resolve(
+    state: State<'_, AiState>,
+    call_id: String,
+    ok: bool,
+    result: Value,
+) -> bool {
+    if let Some(tx) = state.pending_frontend.lock().remove(&call_id) {
+        let content = match result {
+            Value::String(s) => s,
+            other => other.to_string(),
+        };
+        let _ = tx.send(if ok {
+            ToolOutcome::Ok(content)
+        } else {
+            ToolOutcome::Err(content)
+        });
+        true
+    } else {
+        false
+    }
 }
 
 /// 取消进行中的对话任务;返回是否存在该任务。
@@ -387,11 +468,7 @@ pub fn mcp_server_status(state: State<'_, AiState>) -> McpServerStatus {
 /// # Errors
 /// 端口被占用 ([`McpError::ServerStart`])。
 #[tauri::command]
-pub async fn mcp_server_start(
-    state: State<'_, AiState>,
-    app: AppHandle,
-    port: u16,
-) -> Result<u16> {
+pub async fn mcp_server_start(state: State<'_, AiState>, app: AppHandle, port: u16) -> Result<u16> {
     {
         let mut guard = state.server.lock();
         if let Some(handle) = guard.as_mut() {

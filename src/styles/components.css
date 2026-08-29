@@ -312,6 +312,117 @@ body.dragging-dock * {
     0 2px 12px rgba(0, 0, 0, 0.30);
 }
 
+/* ============ AI 面板 ============ */
+/* 内部覆盖层 (MCP server 抽屉) — 跟随全局亚克力开关 (applyAppearance 写入
+   :root[data-acrylic]): 关闭时实色 (与 dock 卡片主体一致), 开启时半透明 +
+   backdrop 模糊, 透出面板底层内容形成玻璃质感 */
+.ai-overlay-acrylic {
+  background-color: var(--color-bg-surface);
+}
+
+[data-acrylic='true'] .ai-overlay-acrylic {
+  background-color: color-mix(in srgb, var(--color-bg-surface) 88%, transparent);
+  backdrop-filter: blur(var(--widget-acrylic-blur)) saturate(var(--widget-acrylic-saturate));
+  -webkit-backdrop-filter: blur(var(--widget-acrylic-blur)) saturate(var(--widget-acrylic-saturate));
+}
+
+/* --- 入场动画 --- */
+/* 面板按停靠方向滑入 (打开面板 / 切换停靠位置时随容器重挂载播放) */
+@keyframes ai-panel-in-x {
+  from { opacity: 0; transform: translateX(var(--ai-slide-from, 28px)); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ai-panel-in-y {
+  from { opacity: 0; transform: translateY(28px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ai-panel-in-float {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-ai-in-right {
+  animation: ai-panel-in-x 220ms var(--ease-out-cubic);
+  --ai-slide-from: 28px;
+}
+
+.animate-ai-in-left {
+  animation: ai-panel-in-x 220ms var(--ease-out-cubic);
+  --ai-slide-from: -28px;
+}
+
+.animate-ai-in-bottom {
+  animation: ai-panel-in-y 220ms var(--ease-out-cubic);
+}
+
+.animate-ai-in-float {
+  animation: ai-panel-in-float 180ms var(--ease-out-cubic);
+  transform-origin: bottom right;
+}
+
+/* MCP 抽屉 / 会话下拉 / 消息气泡 / 提示横幅 / 工具卡片展开 — 微入场 */
+@keyframes ai-drawer-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes ai-menu-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ai-msg-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ai-banner-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ai-tool-expand {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-ai-drawer-in {
+  animation: ai-drawer-in 160ms var(--ease-out-cubic);
+}
+
+.animate-ai-menu-in {
+  animation: ai-menu-in 120ms var(--ease-out-cubic);
+  transform-origin: top left;
+}
+
+.animate-ai-msg-in {
+  animation: ai-msg-in 160ms var(--ease-out-cubic);
+}
+
+.animate-ai-banner-in {
+  animation: ai-banner-in 150ms var(--ease-out-cubic);
+}
+
+.animate-ai-tool-expand {
+  animation: ai-tool-expand 120ms var(--ease-out-cubic);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ai-in-right,
+  .animate-ai-in-left,
+  .animate-ai-in-bottom,
+  .animate-ai-in-float,
+  .animate-ai-drawer-in,
+  .animate-ai-menu-in,
+  .animate-ai-msg-in,
+  .animate-ai-banner-in,
+  .animate-ai-tool-expand {
+    animation: none;
+  }
+}
+
 /* ============ 拖拽吸附投放区提示 ============ */
 .snap-drop-zone {
   position: absolute;

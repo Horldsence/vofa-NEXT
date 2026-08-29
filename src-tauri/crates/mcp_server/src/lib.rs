@@ -13,5 +13,6 @@
 //! 仅监听 `127.0.0.1` — 不对局域网暴露。
 
 pub mod server;
+pub mod tools;
 
-pub use server::{McpServerHandle, Toolbox, VofaMcpServer, start};
+pub use server::{start, McpServerHandle, Toolbox, VofaMcpServer};

@@ -1,5 +1,6 @@
 use app_state::{
-    AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, StringOutputSnapshot,
+    AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, SourceGraphs, SourceNodeHint,
+    StringOutputSnapshot, TabSourceGraph,
 };
 use buffer_graph::Edge;
 use error::ConfigError;
@@ -16,7 +17,7 @@ use vofa_core::{Error, Result};
 
 use crate::{
     compile_queue, compute_derived, inject_protocol_sources, CompileState, GraphCompileEvent,
-    GraphDerived,
+    GraphSourceEvent, GraphDerived, GRAPH_SOURCE_EVENT,
 };
 
 // 全局队列入口保留 (供后续 LWW 后台 worker 接入, 当前同步实现不直接调用)
@@ -60,9 +61,12 @@ fn rebuild_byte_plan(
 /// 2. 全局字节平面: 该 tab 节点按 id 覆盖合并进全局节点表, 所有 tab 的
 ///    字节边合并重算全局 BytePlan 存入 DataPlaneState, 并同步 protocol_states
 ///
-/// 任一层编译失败 (循环/端口域不匹配等) 返回错误, 旧图与旧平面保留。
-/// 提交成功后返回 [`GraphDerived`] (本次图变化涉及的全部节点派生端口表 / 通道数),
-/// 同时 emit `graph:derived` 事件给前端。
+/// 任一层编译失败 (循环/端口域不匹配等) 返回真实编译错误, 旧图与旧平面保留。
+/// `base_version` 提供时做乐观并发检查: 与当前图版本不符返回
+/// `GraphVersionConflict` (期间有其他写入方 — 拓扑 op / MCP — 推进了版本)。
+/// 提交成功后返回 [`GraphDerived`] (派生端口表 + 新版本号),
+/// 同时 emit `graph:derived` 与 `graph:source` (权威源图) 事件给前端。
+#[allow(clippy::implicit_hasher)]
 #[tauri::command]
 pub async fn update_tab_graph(
     state: State<'_, AppState>,
@@ -70,55 +74,93 @@ pub async fn update_tab_graph(
     tab_id: String,
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
+    node_hints: Option<HashMap<String, SourceNodeHint>>,
+    base_version: Option<u64>,
 ) -> Result<GraphDerived> {
-    apply_tab_graph(&state, Some(&app), tab_id, nodes, edges).await
+    apply_tab_graph(
+        &state,
+        Some(&app),
+        tab_id,
+        nodes,
+        edges,
+        node_hints.unwrap_or_default(),
+        base_version,
+    )
+    .await
 }
 
 /// `update_tab_graph` 的实现本体 (抽出以便不依赖 Tauri State 地测试)
 ///
-/// `app`: Tauri AppHandle, 用于 emit `graph:derived` 与 `graph:compile` 事件; 测试时可传 None
+/// `app`: Tauri AppHandle, 用于 emit `graph:derived` / `graph:compile` /
+/// `graph:source` 事件; 测试时可传 None
+#[allow(clippy::implicit_hasher)]
 pub async fn apply_tab_graph(
     state: &AppState,
     app: Option<&AppHandle>,
     tab_id: String,
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
+    node_hints: HashMap<String, SourceNodeHint>,
+    base_version: Option<u64>,
 ) -> Result<GraphDerived> {
     apply_tab_graph_parts(
         &state.graphs,
         &state.graphs_version,
         &state.data_plane,
+        &state.source_graphs,
         app,
         tab_id,
         nodes,
         edges,
+        node_hints,
+        base_version,
     )
     .await
 }
 
-/// [`apply_tab_graph`] 的部件版 — 只依赖图状态三件套
-/// (tab 图表 / 全局版本号 / 数据平面), 供 MCP server 等非 Tauri-State
-/// 场景直接复用同一条提交路径。
+/// [`apply_tab_graph`] 的部件版 — 只依赖图状态四件套
+/// (tab 图表 / 全局版本号 / 数据平面 / 源图存储), 供 MCP server、
+/// 拓扑 op 等非 Tauri-State 场景直接复用同一条提交路径。
+///
+/// 成功后把 `(nodes, edges, hints)` 写入源图存储并 emit `graph:source`;
+/// 编译失败源图存储不变。
 // 参数类型与 AppState.graphs 字段完全一致 (std hasher), 不做 hasher 泛型化
 #[allow(clippy::implicit_hasher)]
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_tab_graph_parts(
     graphs: &Arc<parking_lot::Mutex<HashMap<String, node_engine::CompiledGraph>>>,
     graphs_version: &Arc<std::sync::atomic::AtomicU64>,
     data_plane: &DataPlaneState,
+    source_graphs: &SourceGraphs,
     app: Option<&AppHandle>,
     tab_id: String,
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
+    node_hints: HashMap<String, SourceNodeHint>,
+    base_version: Option<u64>,
 ) -> Result<GraphDerived> {
+    // 0. 乐观并发检查 — base_version 过期说明期间有其他写入方推进了图,
+    //    整图替换会覆盖掉那批变更, 必须拒绝 (前端据此拉取权威源图合并重试)
+    if let Some(base) = base_version {
+        let current = graphs_version.load(std::sync::atomic::Ordering::Relaxed);
+        if current != base {
+            return Err(Error::Config(ConfigError::GraphVersionConflict {
+                current,
+            }));
+        }
+    }
+
     // 1. ProtocolSource 自动注入 (后端单一权威 — 前端不再下发 ProtocolSource NodeDef)
     let mut compile_nodes = nodes.clone();
     compile_nodes.extend(inject_protocol_sources(&nodes, &edges));
 
-    // 2. 本 tab 数值图编译 — 失败时构造 `CompileReport` 并 emit `graph:compile` 事件
-    let compiled = match node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges) {
+    // 2. 本 tab 数值图编译 — 失败时构造 `CompileReport` 并 emit `graph:compile` 事件,
+    //    真实编译错误原样返回 (占位假错误会吞掉域不匹配等可用原因)
+    let compiled = match node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges.clone())
+    {
         Ok(g) => g,
         Err(e) => {
-            let report = error::CompileReport::new(e);
+            let report = error::CompileReport::new(e.clone());
             if let Some(app) = app {
                 let _ = app.emit(
                     crate::GRAPH_COMPILE_EVENT,
@@ -130,9 +172,7 @@ pub async fn apply_tab_graph_parts(
                     },
                 );
             }
-            return Err(Error::Config(ConfigError::GraphCompile(Box::new(
-                error::CompileError::Cycle { cycle: vec![] },
-            ))));
+            return Err(Error::Config(ConfigError::GraphCompile(Box::new(e))));
         }
     };
 
@@ -154,11 +194,19 @@ pub async fn apply_tab_graph_parts(
     // 5. 派生数据计算 (本次图变化涉及的全部节点的输出端口表 / 通道数)
     let derived_nodes = compute_derived(&candidate.values().cloned().collect::<Vec<_>>());
 
-    // 6. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号
+    // 6. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号 + 源图存储
     graphs.lock().insert(tab_id.clone(), compiled);
     *data_plane.global_nodes.lock() = candidate;
     *data_plane.byte_plan.lock() = plan;
-    graphs_version.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let version = graphs_version.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    source_graphs.lock().insert(
+        tab_id.clone(),
+        TabSourceGraph {
+            nodes,
+            edges,
+            hints: node_hints,
+        },
+    );
 
     // 7. 同步 Protocol 节点运行时状态 + FrameDecoder 状态清理 + 孤儿资源清理
     data_plane.sync_protocol_states();
@@ -172,9 +220,28 @@ pub async fn apply_tab_graph_parts(
 
     let derived = GraphDerived {
         nodes: derived_nodes,
+        version,
     };
     if let Some(app) = app {
         emit_graph_derived(app, &derived);
+        // 权威源图回推 — 前端画布据此收敛 (多写入方: 前端提交 / 拓扑 op / MCP)
+        let _ = app.emit(
+            GRAPH_SOURCE_EVENT,
+            GraphSourceEvent {
+                tab_id: tab_id.clone(),
+                version,
+                nodes: source_graphs
+                    .lock()
+                    .get(&tab_id)
+                    .map(|g| g.nodes.clone())
+                    .unwrap_or_default(),
+                edges: source_graphs
+                    .lock()
+                    .get(&tab_id)
+                    .map(|g| g.edges.clone())
+                    .unwrap_or_default(),
+            },
+        );
         let _ = app.emit(
             crate::GRAPH_COMPILE_EVENT,
             GraphCompileEvent {
@@ -205,6 +272,8 @@ pub async fn apply_remove_tab_graph(
     tab_id: &str,
 ) -> Result<GraphDerived> {
     state.graphs.lock().remove(tab_id);
+    // 源图存储同步清除 — tab 已不存在, 权威拓扑随之失效
+    state.source_graphs.lock().remove(tab_id);
 
     // 全局节点表移除该 tab 节点 + 重建全局字节平面
     let mut candidate = state.data_plane.global_nodes.lock().clone();
@@ -214,9 +283,10 @@ pub async fn apply_remove_tab_graph(
     let plan = rebuild_byte_plan(&state.graphs, &candidate, None)?;
     *state.data_plane.global_nodes.lock() = candidate;
     *state.data_plane.byte_plan.lock() = plan;
-    state
+    let version = state
         .graphs_version
-        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        + 1;
 
     state.data_plane.sync_protocol_states();
     state.data_plane.reconcile().await;
@@ -228,6 +298,7 @@ pub async fn apply_remove_tab_graph(
 
     let derived = GraphDerived {
         nodes: derived_nodes,
+        version,
     };
     if let Some(app) = app {
         emit_graph_derived(app, &derived);
@@ -439,6 +510,8 @@ mod tests {
             "tab1".into(),
             vec![input_node("in1", "tab1")],
             vec![],
+            HashMap::new(),
+            None,
         )
         .await
         .expect("提交图应成功");
@@ -467,6 +540,8 @@ mod tests {
             "tab1".into(),
             vec![input_node("in1", "tab1")],
             vec![],
+            HashMap::new(),
+            None,
         )
         .await
         .expect("提交图应成功");
@@ -493,5 +568,341 @@ mod tests {
             .values
             .contains_key("in1");
         assert!(cleared, "移除后应立即快照评估, 过期节点键立即清除");
+        assert!(
+            state.source_graphs.lock().get("tab1").is_none(),
+            "tab 移除后源图存储应同步清除"
+        );
+    }
+
+    // ---- 源图存储 / 版本冲突 / 拓扑 op ----
+
+    fn protocol_node(id: &str, tab_id: &str) -> NodeDef {
+        NodeDef {
+            id: id.into(),
+            tab_id: tab_id.into(),
+            kind: NodeKind::Protocol {
+                config: schema_types::ProtocolConfig::JustFloat { channels: None },
+                convert_to: None,
+                schema: None,
+            },
+        }
+    }
+
+    fn math_node(id: &str, tab_id: &str) -> NodeDef {
+        NodeDef {
+            id: id.into(),
+            tab_id: tab_id.into(),
+            kind: NodeKind::Math {
+                op: node_kind::MathOp::Add,
+                input_count: 1,
+            },
+        }
+    }
+
+    fn sink_node(id: &str, tab_id: &str) -> NodeDef {
+        NodeDef {
+            id: id.into(),
+            tab_id: tab_id.into(),
+            kind: NodeKind::Sink,
+        }
+    }
+
+    fn edge(id: &str, source: &str, sh: &str, target: &str, th: &str) -> Edge {
+        Edge {
+            id: id.into(),
+            source: source.into(),
+            source_handle: sh.into(),
+            target: target.into(),
+            target_handle: th.into(),
+        }
+    }
+
+    /// 提交成功写入源图存储 + 版本号递增; base_version 过期返回版本冲突
+    #[tokio::test]
+    async fn update_tab_graph_writes_source_store_and_checks_version() {
+        let state = AppState::new();
+        let derived = apply_tab_graph(
+            &state,
+            None,
+            "tab1".into(),
+            vec![input_node("in1", "tab1")],
+            vec![],
+            HashMap::new(),
+            None,
+        )
+        .await
+        .expect("提交图应成功");
+        assert_eq!(derived.version, 1, "首次提交版本号应为 1");
+        assert_eq!(
+            state.source_graphs.lock().get("tab1").map(|g| g.nodes.len()),
+            Some(1),
+            "成功提交应写入源图存储"
+        );
+
+        // 过期 base_version → GraphVersionConflict (其他写入方推进了版本)
+        let err = apply_tab_graph(
+            &state,
+            None,
+            "tab1".into(),
+            vec![input_node("in1", "tab1")],
+            vec![],
+            HashMap::new(),
+            Some(0),
+        )
+        .await
+        .expect_err("过期版本应冲突");
+        assert!(err.to_string().contains("版本冲突"), "应报告版本冲突: {err}");
+
+        // 匹配的 base_version → 成功且版本推进
+        let derived = apply_tab_graph(
+            &state,
+            None,
+            "tab1".into(),
+            vec![input_node("in1", "tab1")],
+            vec![],
+            HashMap::new(),
+            Some(1),
+        )
+        .await
+        .expect("匹配版本应成功");
+        assert_eq!(derived.version, 2);
+    }
+
+    /// 编译失败必须返回真实 CompileError (域不匹配可读原因), 不再是占位 Cycle 假错误;
+    /// 且源图存储不变 (提交被整体拒绝)
+    #[tokio::test]
+    async fn update_tab_graph_returns_real_compile_error() {
+        let state = AppState::new();
+        let err = apply_tab_graph(
+            &state,
+            None,
+            "tab1".into(),
+            vec![protocol_node("pt", "tab1"), math_node("m1", "tab1")],
+            vec![edge("e1", "pt", "out", "m1", "in0")],
+            HashMap::new(),
+            None,
+        )
+        .await
+        .expect_err("Protocol.out(bytes) → Math.in0(f32) 应域不匹配");
+        let msg = err.to_string();
+        assert!(msg.contains("域不匹配"), "真实原因应可见: {msg}");
+        assert!(!msg.contains("循环"), "不得回落为占位循环错误: {msg}");
+        assert!(
+            state.source_graphs.lock().get("tab1").is_none(),
+            "失败提交不得写入源图存储"
+        );
+    }
+
+    /// connect_edge op: 默认 handle 按端口提示解析、RawData 目标改写 src: 端口、
+    /// 等价边幂等; 域不匹配被编译拒绝且源图不变
+    #[tokio::test]
+    async fn connect_edge_op_validates_and_persists() {
+        use app_state::SourceNodeHint;
+        let state = AppState::new();
+        let mut hints = HashMap::new();
+        hints.insert(
+            "in1".to_string(),
+            SourceNodeHint {
+                default_input: None,
+                default_output: Some("value".into()),
+                raw_data: false,
+            },
+        );
+        hints.insert(
+            "m1".to_string(),
+            SourceNodeHint {
+                default_input: Some("in0".into()),
+                default_output: Some("result".into()),
+                raw_data: false,
+            },
+        );
+        apply_tab_graph(
+            &state,
+            None,
+            "tab1".into(),
+            vec![input_node("in1", "tab1"), math_node("m1", "tab1")],
+            vec![],
+            hints,
+            None,
+        )
+        .await
+        .expect("种子图应成功");
+
+        // 默认 handle: in1.value → m1.in0
+        let out = crate::apply_connect_edge(
+            &state.graphs,
+            &state.graphs_version,
+            &state.data_plane,
+            &state.source_graphs,
+            None,
+            None,
+            "in1".into(),
+            "m1".into(),
+            None,
+            None,
+        )
+        .await
+        .expect("默认 handle 连线应成功");
+        let stored = state.source_graphs.lock().get("tab1").unwrap().clone();
+        assert_eq!(stored.edges.len(), 1);
+        assert_eq!(stored.edges[0].source_handle, "value");
+        assert_eq!(stored.edges[0].target_handle, "in0");
+
+        // 等价边幂等 — 返回同一边 id, 不重复建边
+        let again = crate::apply_connect_edge(
+            &state.graphs,
+            &state.graphs_version,
+            &state.data_plane,
+            &state.source_graphs,
+            None,
+            None,
+            "in1".into(),
+            "m1".into(),
+            None,
+            None,
+        )
+        .await
+        .expect("等价连线应幂等成功");
+        assert_eq!(again.edge_id, out.edge_id);
+        assert_eq!(state.source_graphs.lock().get("tab1").unwrap().edges.len(), 1);
+
+        // 域不匹配: m1.result (f32) → in1 (Input 无输入口, 端口域回退 f32 → 可编译)。
+        // 改用明确的域冲突: 新建 protocol + math 再连 out → in0
+        let mut hints2 = HashMap::new();
+        hints2.insert(
+            "pt".to_string(),
+            SourceNodeHint {
+                default_input: Some("in".into()),
+                default_output: Some("out".into()),
+                raw_data: false,
+            },
+        );
+        apply_tab_graph(
+            &state,
+            None,
+            "tab2".into(),
+            vec![protocol_node("pt", "tab2"), math_node("m2", "tab2")],
+            vec![],
+            hints2,
+            None,
+        )
+        .await
+        .expect("tab2 种子图应成功");
+        let err = crate::apply_connect_edge(
+            &state.graphs,
+            &state.graphs_version,
+            &state.data_plane,
+            &state.source_graphs,
+            None,
+            None,
+            "pt".into(),
+            "m2".into(),
+            None,
+            Some("in0".into()),
+        )
+        .await
+        .expect_err("Protocol.out(bytes) → Math.in0(f32) 应被编译拒绝");
+        assert!(err.to_string().contains("域不匹配"), "应回传真实原因: {err}");
+        assert_eq!(
+            state.source_graphs.lock().get("tab2").unwrap().edges.len(),
+            0,
+            "编译失败源图不得改变"
+        );
+
+        // RawData 目标: 端口提示 raw_data=true → target_handle 改写为 src:<source>:<handle>
+        let mut hints3 = HashMap::new();
+        hints3.insert(
+            "in1".to_string(),
+            SourceNodeHint {
+                default_input: None,
+                default_output: Some("value".into()),
+                raw_data: false,
+            },
+        );
+        hints3.insert(
+            "raw1".to_string(),
+            SourceNodeHint {
+                default_input: Some("data".into()),
+                default_output: None,
+                raw_data: true,
+            },
+        );
+        apply_tab_graph(
+            &state,
+            None,
+            "tab3".into(),
+            vec![input_node("in1", "tab3"), sink_node("raw1", "tab3")],
+            vec![],
+            hints3,
+            None,
+        )
+        .await
+        .expect("tab3 种子图应成功");
+        crate::apply_connect_edge(
+            &state.graphs,
+            &state.graphs_version,
+            &state.data_plane,
+            &state.source_graphs,
+            None,
+            None,
+            "in1".into(),
+            "raw1".into(),
+            None,
+            None,
+        )
+        .await
+        .expect("RawData 连线应成功");
+        let stored3 = state.source_graphs.lock().get("tab3").unwrap().clone();
+        assert_eq!(stored3.edges[0].target_handle, "src:in1:value");
+    }
+
+    /// disconnect_edge op: 按 edge_id 删除并重编译; 未命中返回 GraphEdgeNotFound
+    #[tokio::test]
+    async fn disconnect_edge_op_removes_and_reports_miss() {
+        let state = AppState::new();
+        apply_tab_graph(
+            &state,
+            None,
+            "tab1".into(),
+            vec![input_node("in1", "tab1"), math_node("m1", "tab1")],
+            vec![edge("e1", "in1", "value", "m1", "in0")],
+            HashMap::new(),
+            None,
+        )
+        .await
+        .expect("种子图应成功");
+
+        let out = crate::apply_disconnect_edge(
+            &state.graphs,
+            &state.graphs_version,
+            &state.data_plane,
+            &state.source_graphs,
+            None,
+            Some("e1".into()),
+            None,
+            None,
+        )
+        .await
+        .expect("按 edge_id 删边应成功");
+        assert_eq!(out.edge_id, "e1");
+        assert_eq!(
+            state.source_graphs.lock().get("tab1").unwrap().edges.len(),
+            0,
+            "删除后源图不应再有该边"
+        );
+
+        let err = crate::apply_disconnect_edge(
+            &state.graphs,
+            &state.graphs_version,
+            &state.data_plane,
+            &state.source_graphs,
+            None,
+            Some("ghost".into()),
+            None,
+            None,
+        )
+        .await
+        .expect_err("未命中应报错");
+        assert!(err.to_string().contains("未找到匹配的连线"));
     }
 }

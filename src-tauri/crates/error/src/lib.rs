@@ -239,8 +239,12 @@ impl AppError {
             }
             Self::Config(
                 ConfigError::NodeNotFound { node_id }
-                | ConfigError::ProtocolNodeNotFound { node_id },
+                | ConfigError::ProtocolNodeNotFound { node_id }
+                | ConfigError::GraphPortUnresolved { node_id, .. },
             ) => std::collections::BTreeMap::from([("node_id", node_id.clone())]),
+            Self::Config(ConfigError::GraphVersionConflict { current }) => {
+                std::collections::BTreeMap::from([("current", current.to_string())])
+            }
             Self::Config(
                 ConfigError::StreamGroupNotFound { key }
                 | ConfigError::StreamGroupTypeMismatch { key },

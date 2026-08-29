@@ -546,15 +546,18 @@ export async function applySnapshot(
 
   // 6. 重新同步后端节点图 (节点图或标签页变化后)
   if (want.has('nodeGraph') || want.has('widgetsTabs') || want.has('transportProtocol')) {
-    for (const tab of useAppStore.getState().controlTabs) {
-      useAppStore.getState().syncTabGraph(tab.id);
-    }
     // 应用后消失的 tab: 后端仍残留其图与其名下的全局节点, 须显式移除。
     // 顺序: 先同步存活 tab (全局节点重新托管到存活 tab 名下), 再移除消失的 tab
-    const currentTabIds = new Set(useAppStore.getState().controlTabs.map((t) => t.id));
-    for (const tabId of prevTabIds) {
-      if (!currentTabIds.has(tabId)) useAppStore.getState().removeTabGraph(tabId);
-    }
+    // (必须等同步落地后再 remove — 先后顺序即正确性本身)
+    const syncs = useAppStore
+      .getState()
+      .controlTabs.map((tab) => useAppStore.getState().syncTabGraph(tab.id));
+    void Promise.all(syncs).then(() => {
+      const currentTabIds = new Set(useAppStore.getState().controlTabs.map((t) => t.id));
+      for (const tabId of prevTabIds) {
+        if (!currentTabIds.has(tabId)) useAppStore.getState().removeTabGraph(tabId);
+      }
+    });
   }
 
   // 7. 快照应用是批量覆盖而非用户单步操作 — 撤销历史重置为新基线

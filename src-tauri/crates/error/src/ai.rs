@@ -78,6 +78,13 @@ pub enum AiError {
         /// 底层错误描述。
         details: String,
     },
+
+    /// read_skill 请求了不存在的知识库文档 id。
+    #[error("知识库文档不存在: {skill}")]
+    SkillNotFound {
+        /// 请求的 skill id。
+        skill: String,
+    },
 }
 
 impl Error for AiError {
@@ -93,6 +100,7 @@ impl Error for AiError {
             Self::UnknownSession { .. } => "AiUnknownSession",
             Self::Persist { .. } => "AiPersist",
             Self::Keyring { .. } => "AiKeyring",
+            Self::SkillNotFound { .. } => "AiSkillNotFound",
         }
     }
 }

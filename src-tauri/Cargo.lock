@@ -112,6 +112,7 @@ name = "app_state"
 version = "0.1.2"
 dependencies = [
  "buffer_databuffer",
+ "buffer_graph",
  "buffer_raw",
  "can_types",
  "dsp_fft",
@@ -120,6 +121,7 @@ dependencies = [
  "log",
  "logic_types",
  "node_engine",
+ "node_kind",
  "parking_lot",
  "pipeline_data_plane",
  "pipeline_dispatcher",
@@ -765,6 +767,7 @@ dependencies = [
  "ai_session",
  "app_state",
  "async-trait",
+ "can_types",
  "error",
  "keyring",
  "log",
@@ -2961,9 +2964,11 @@ dependencies = [
  "buffer_databuffer",
  "buffer_graph",
  "buffer_raw",
+ "can_types",
  "cmd_graph",
  "error",
  "log",
+ "logic_types",
  "node_engine",
  "node_kind",
  "parking_lot",
@@ -2974,6 +2979,7 @@ dependencies = [
  "tauri",
  "tokio",
  "transport_core",
+ "transport_serial",
  "vofa_core",
 ]
 

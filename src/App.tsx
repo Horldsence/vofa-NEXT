@@ -23,6 +23,7 @@ import { useUpdateStore } from './store/updateStore';
 import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
 import { openDataPanelAndReveal } from './lib/utils/revealDataTab';
+import { initAiToolHost } from './lib/ai/toolHost';
 
 // 重型弹窗 — 懒加载 (各模块仅含 named export, 经 *.lazy.tsx 包装为 default)
 const SettingsModal = lazy(() => import('./components/SettingsModal.lazy'));
@@ -153,6 +154,11 @@ function App() {
     void invoke('close_splashscreen');
   }, [settingsLoaded]);
 
+  // AI 前端托管工具宿主 — 监听 ai_tool_invoke, 让内置 AI 编辑节点/操作软件 (幂等)
+  useEffect(() => {
+    initAiToolHost();
+  }, []);
+
   // 设置加载完成后，根据 showOnboarding 自动弹出首次引导（仅一次）
   useEffect(() => {
     if (settingsLoaded && showOnboarding && !hasOpenedOnboarding) {
@@ -261,6 +267,15 @@ function App() {
   const sidebarSide = sidebarVisible ? sidebarDock : null;
   const bottomDocked = aiPanelVisible && aiDock === 'bottom';
   const handleClass = 'w-2 rounded-full bg-transparent hover:bg-accent/50 transition-colors';
+  // AI 面板入场: 按停靠方向滑入 (浮动缩放入场), 随容器挂载播放一次
+  const aiPanelAnimClass =
+    aiDock === 'right'
+      ? 'animate-ai-in-right'
+      : aiDock === 'left'
+        ? 'animate-ai-in-left'
+        : aiDock === 'bottom'
+          ? 'animate-ai-in-bottom'
+          : 'animate-ai-in-float';
 
   const mainGroupItems: ReactNode[] = [];
   let panelOrder = 0;
@@ -277,7 +292,7 @@ function App() {
   );
   const aiPanelNode = (ord: number) => (
     <Panel key="ai-panel" id="ai-panel" order={ord} defaultSize={24} minSize={14} maxSize={55}>
-      <div className="module-card h-full w-full">
+      <div className={`module-card dock-card-acrylic h-full w-full ${aiPanelAnimClass}`}>
         <AiChatPanel />
       </div>
     </Panel>
@@ -321,7 +336,7 @@ function App() {
           </Panel>
           <PanelResizeHandle className="h-2 rounded-full bg-transparent hover:bg-accent/50 transition-colors" />
           <Panel defaultSize={34} minSize={15} maxSize={70} className="min-h-0">
-            <div className="module-card h-full w-full">
+            <div className={`module-card dock-card-acrylic h-full w-full ${aiPanelAnimClass}`}>
               <AiChatPanel />
             </div>
           </Panel>
@@ -335,7 +350,7 @@ function App() {
           className="absolute z-50"
           style={{ left: floatPos.x, top: floatPos.y, width: aiFloatRect.w, height: aiFloatRect.h }}
         >
-          <div className="module-card h-full w-full shadow-2xl">
+          <div className={`module-card dock-card-acrylic h-full w-full shadow-2xl ${aiPanelAnimClass}`}>
             <AiChatPanel />
           </div>
           <div

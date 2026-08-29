@@ -29,7 +29,21 @@ fn adapter_needs_key(adapter: &str) -> bool {
 
 /// OrcaRouter 官方 API 端点 (适配器 base_url 为空时的兜底;
 /// genai 对 OpenAI 协议的默认端点是 OpenAI 官方, 不适用于聚合网关)。
-pub const ORCAROUTER_ENDPOINT: &str = "https://api.orcarouter.ai/v1";
+/// 末尾斜杠必需: genai 以 `Url::join` 拼接服务路径, 见 [`normalize_base_url`]。
+pub const ORCAROUTER_ENDPOINT: &str = "https://api.orcarouter.ai/v1/";
+
+/// 端点末尾补齐 `/`。genai 按 RFC 3986 以相对路径 join 服务路径:
+/// base 末段不带斜杠时会被整体替换 — `…/v1` join `chat/completions`
+/// 得到 `…/chat/completions`,`/v1` 丢失, 网关落入 SPA 兜底路由返回 404 页面。
+/// 带 query/fragment 的端点不适用 join 语义, 原样保留。
+fn normalize_base_url(url: &str) -> String {
+    let trimmed = url.trim_end();
+    if trimmed.ends_with('/') || trimmed.contains(['?', '#']) {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/")
+    }
+}
 
 /// 按配置构建 genai 客户端 (校验适配器 / key / 自定义端点)。
 ///
@@ -59,7 +73,7 @@ pub fn build_client(cfg: &AiProviderConfig) -> Result<Client> {
     let base_url = if cfg.base_url.is_empty() {
         (cfg.adapter == "orcarouter").then(|| ORCAROUTER_ENDPOINT.to_string())
     } else {
-        Some(cfg.base_url.clone())
+        Some(normalize_base_url(&cfg.base_url))
     };
     if let Some(base_url) = base_url {
         builder = builder.with_service_target_resolver_fn(move |mut target: ServiceTarget| {
@@ -278,6 +292,28 @@ mod tests {
             genai::adapter::AdapterKind::OpenAI
         ));
         validate_config(&config("orcarouter", "")).expect("orcarouter 空 base_url 应合法");
+    }
+
+    /// genai 按 RFC 3986 join 拼接服务路径: 端点末段无 `/` 时会被相对路径
+    /// 替换 (`…/v1` + `chat/completions` → `…/chat/completions`,`/v1` 丢失)。
+    /// 端点必须归一化为末尾带 `/` — 曾因缺斜杠导致所有请求 404 落入网关首页。
+    #[test]
+    fn base_url_normalized_to_trailing_slash() {
+        assert!(ORCAROUTER_ENDPOINT.ends_with('/'));
+        assert_eq!(
+            normalize_base_url("https://api.orcarouter.ai/v1"),
+            "https://api.orcarouter.ai/v1/"
+        );
+        assert_eq!(
+            normalize_base_url("https://api.example.com/v1/"),
+            "https://api.example.com/v1/"
+        );
+        assert_eq!(normalize_base_url("https://api.example.com"), "https://api.example.com/");
+        // 带 query 的端点不适用 join 语义, 原样保留
+        assert_eq!(
+            normalize_base_url("https://api.example.com/v1?api-version=1"),
+            "https://api.example.com/v1?api-version=1"
+        );
     }
 
     /// openai_compatible 仍必须提供 base_url;未知适配器仍报错。

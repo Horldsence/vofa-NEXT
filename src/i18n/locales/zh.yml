@@ -599,12 +599,15 @@ settingAiSystemPrompt: 系统提示词
 settingAiSystemPromptDesc: 发送给模型的系统级指令 (可描述设备协议, 让 AI 更懂上下文)
 settingAiMaxToolRounds: 工具调用轮次上限
 settingAiMaxToolRoundsDesc: 单次对话允许的最大"模型调用工具→回填结果"循环轮数
+settingAiBuiltinTools: 启用内置工具
+settingAiBuiltinToolsDesc: 对话中允许 AI 编辑节点图、操作软件、读取数据并查询内置知识库 (skills)
 settingAiMcpTools: 启用 MCP 工具
 settingAiMcpToolsDesc: 对话时自动把已启用外部 MCP server 的工具提供给模型
 settingAiMcpServerPort: 本地 MCP 端口
 settingAiMcpServerPortDesc: 对外暴露本应用能力的 MCP 服务端口 (仅监听 127.0.0.1)
 settingAiOrcaHint: OrcaRouter 聚合网关 — 模型名需带厂商前缀, 如 openai/gpt-4o-mini、anthropic/claude-sonnet-4
 settingAiOrcaGetKey: 获取 API Key · 支持项目
+settingAiOrcaFreeModels: 免费模型:获取 API Key 即可访问
 
 # About 弹窗
 about: 关于
@@ -788,6 +791,9 @@ domainFreq: 频域
 domainString: 字符串
 domainMismatchTitle: 域不匹配
 domainMismatchMsg: 不同域的端口不能直连 (时域 / 频域 / 字节域 / 字符串域两两互斥)
+connectionRejectedTitle: 无法连接
+brokenEdgeRemovedTitle: 已移除失效连线
+brokenEdgeRemovedMsg: 一条引用了不存在端口的连线已自动清除 (该连线此前无法选中或删除)
 
 # 3D 模型控件
 model3d: 3D 模型

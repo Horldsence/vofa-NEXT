@@ -599,12 +599,15 @@ settingAiSystemPrompt: System Prompt
 settingAiSystemPromptDesc: System-level instruction for the model (describe your device protocol for better context)
 settingAiMaxToolRounds: Tool Round Limit
 settingAiMaxToolRoundsDesc: Maximum tool-call loop rounds (model calls tool -> result fed back) per chat
+settingAiBuiltinTools: Enable Built-in Tools
+settingAiBuiltinToolsDesc: Let the AI edit the node graph, operate the app, read device data, and consult the built-in knowledge base (skills)
 settingAiMcpTools: Enable MCP Tools
 settingAiMcpToolsDesc: Expose tools from enabled external MCP servers to the model during chat
 settingAiMcpServerPort: Local MCP Port
 settingAiMcpServerPortDesc: Port of the MCP server exposing this app's capabilities (listens on 127.0.0.1 only)
 settingAiOrcaHint: OrcaRouter gateway — model names need a vendor prefix, e.g. openai/gpt-4o-mini or anthropic/claude-sonnet-4
 settingAiOrcaGetKey: Get an API Key · support the project
+settingAiOrcaFreeModels: "Free models: available once you have an API key"
 
 # About dialog
 about: About
@@ -788,6 +791,9 @@ domainFreq: Freq
 domainString: String
 domainMismatchTitle: Domain mismatch
 domainMismatchMsg: Ports of different domains cannot be connected (time / freq / bytes / string are mutually exclusive)
+connectionRejectedTitle: Cannot connect
+brokenEdgeRemovedTitle: Broken wire removed
+brokenEdgeRemovedMsg: A wire referencing a non-existent port was removed automatically (it could not be selected or deleted before)
 
 # 3D Model widget
 model3d: 3D Model

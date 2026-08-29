@@ -1,12 +1,15 @@
-# AI 功能架构 (AI 对话 + MCP 双向)
+# AI 功能架构 (AI 对话 + MCP 双向 + 内置工具层)
 
-VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。两条通道:
+VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。三条通道:
 
 1. **AI 对话**(出站):前端聊天面板 → Tauri 命令 → 后端多 provider 聚合层调用 LLM,
-   流式增量经 `Channel` 推回;模型可调用 **外部 MCP server** 的工具(工具调用循环)。
+   流式增量经 `Channel` 推回;模型可调用工具(工具调用循环)——工具来自
+   **内置原生工具层**(软件自有能力)与 **外部 MCP server** 两组,独立开关。
 2. **MCP server**(入站):后端在 `127.0.0.1:{port}/mcp` 起一个 streamable-http MCP 服务,
    把本应用能力(串口发送、波形读取、节点图编辑等)暴露为 **MCP 工具**,
    外部 AI 客户端(Claude Desktop / ZCode 等)可直接控制本应用。
+3. **内置知识库(skills)**:随应用打包的软件使用文档(zh/en),系统提示词注入
+   索引,`read_skill` 工具按需读全文。
 
 ```
 前端 AiChatPanel(薄视图) ──Tauri IPC──▶ cmd_ai ──▶ ai_chat(工具调用循环)──▶ ai_provider(genai 封装)
@@ -15,7 +18,9 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。两条�
                                  │              │     ai_session(多会话 + 历史持久化, 后端持有)
                                  │              ▼
                                  ├──▶ mcp_server(VOFA 能力 → MCP 工具, 127.0.0.1)
-                                 └──▶ mcp_client(连接外部 MCP server, 聚合工具给对话)
+                                 │        └─ tools(共享工具实现, 内置执行器复用)
+                                 ├──▶ mcp_client(连接外部 MCP server, 聚合工具给对话)
+                                 └──▶ native_executor(内置原生工具) ──事件桥──▶ 前端 toolHost(节点编辑)
 ```
 
 ## 后端 crate(全部单一职责)
@@ -26,8 +31,8 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。两条�
 | `ai_chat` | 多轮工具调用循环 + 任务取消 | `run_chat`、`TurnProvider` / `ToolExecutor`(均可 mock,循环逻辑离线单测)、`ChatTaskRegistry`(watch 取消)、`TurnRecorder`(流式事件 → 可持久化条目) |
 | `ai_session` | 会话持久化(所有权在后端) | `SessionStore`(多会话 CRUD + 落盘 `ai_chat_sessions.json`)、`ViewItemDto`/`ChatSession`(对齐前端视图)、`derive_history`(条目流 → LLM 消息) |
 | `mcp_client` | 连接外部 MCP server(stdio 子进程 / streamable-http) | `McpManager`(连接池、工具聚合加前缀 `mcp_{server}_{tool}`、路由调用)、配置持久化 `mcp_servers.json` |
-| `mcp_server` | 把本应用能力暴露为 MCP 工具 | `Toolbox`(AppState 共享句柄切片)、`VofaMcpServer`(rmcp `#[tool_router]`)、`start` |
-| `cmd_ai` | Tauri 命令层 | `AiState`(managed:任务表 / 会话存储 / 连接管理器 / 工具缓存 / server 句柄)、`ai_chat_send`(Channel 流式)、`chat_*` 会话命令 |
+| `mcp_server` | 把本应用能力暴露为 MCP 工具 | `Toolbox`(AppState 共享句柄切片)、`VofaMcpServer`(rmcp `#[tool_router]`)、`tools`(共享工具实现,内置执行器直接复用)、`start` |
+| `cmd_ai` | Tauri 命令层 + 内置原生工具 + 知识库 | `AiState`(managed:任务表 / 会话存储 / 连接管理器 / 工具缓存 / server 句柄 / 前端托管调用注册表)、`ai_chat_send`(Channel 流式 + 双工具源组合)、`ai_tool_resolve`(前端回执)、`native_executor`(内置工具执行器)、`skills`(知识库文档 + 系统提示词组装)、`chat_*` 会话命令 |
 
 依赖理由(遵循 AGENTS.md):
 
@@ -90,22 +95,86 @@ Ollama / OpenRouter 等)照旧,完整清单见设置下拉(与 `ai_provider::ADA
 ## MCP server 工具清单(本应用能力)
 
 默认 `http://127.0.0.1:8765/mcp`(端口可在设置 → AI 修改;仅监听回环地址)。
+工具实现统一在 `mcp_server::tools`(普通异步函数,`Result<Value, String>`),
+rmcp handler 只做参数包装——内置原生工具执行器调用同一批函数,零重复。
 
 | 工具 | 能力 |
 |---|---|
-| `list_transports` | 传输节点与连接状态 |
-| `send_bytes` / `send_string` | 向设备发送字节 / UTF-8 文本 |
+| `list_transports` / `list_serial_ports` | 传输节点与连接状态 / 系统可用串口 |
+| `send_bytes` / `send_string` / `send_can_frame` | 向设备发送字节 / UTF-8 文本 / CAN 帧 |
 | `inject_bytes` | 字节注入(沿全局字节平面路由,喂协议 / FrameDecoder / 回环) |
 | `set_input_value` | 设置节点图输入控件值 |
 | `get_graph_outputs` | 读取节点图输出快照 |
-| `get_recent_waveform` / `list_data_sources` | 读取最近波形窗口 / 列出数据源 |
-| `list_tabs` / `update_graph` | 列出图 tab / 提交替换节点图(复用 `apply_tab_graph_parts`,前端界面实时同步) |
+| `get_recent_waveform` / `get_waveform_window` / `get_buffer_info` / `list_data_sources` | 最近波形 / 时间窗波形 / 缓冲信息 / 数据源清单 |
+| `get_can_frames` / `get_logic_data` / `get_raw_data` | 最近 CAN 帧 + 负载 / 逻辑采样与解码事件 / 原始字节(TX/RX, hex) |
+| `list_tabs` / `update_graph` | 列出图 tab / 提交替换节点图(复用 `apply_tab_graph_parts`) |
+| `connect_edge` / `disconnect_edge` | 增量连线 / 删线(后端编译校验,失败返回真实原因且不建边) |
 
 外部客户端接入示例(Claude Desktop connectors / 任意 MCP 客户端):
 
 ```json
 { "url": "http://127.0.0.1:8765/mcp", "transport": "streamable-http" }
 ```
+
+## 内置原生工具层(内置 AI 直连软件能力)
+
+`cmd_ai::native_executor::NativeToolExecutor` 实现 `ai_chat::ToolExecutor`,
+与外部 MCP 工具经 `CompositeExecutor` 组合(同名内置优先;两组独立开关
+`builtinToolsEnabled` / `mcpToolsEnabled`)。工具分两类执行路径:
+
+- **后端直连**(数据读取 / 设备发送 / 知识库 / **连线拓扑**):直接调用
+  `mcp_server::tools` 共享函数,与对外 MCP server 同一路径。包括 `list_transports`、
+  `send_bytes` / `send_string` / `send_can_frame`、`set_input_value`、
+  `inject_bytes`、`get_graph_outputs`、`get_recent_waveform` /
+  `get_waveform_window` / `get_buffer_info` / `list_data_sources`、
+  `get_can_frames` / `get_logic_data` / `get_raw_data`、`list_serial_ports`、
+  `read_skill`,以及连线拓扑 `connect_nodes` / `disconnect_edge`(后端权威,
+  见下节)。读取类工具设上限(波形 ≤10000 点、CAN ≤1000 帧、逻辑 ≤5000
+  条、原始字节 ≤64KiB)防超长返回。
+- **前端托管**(节点编辑 / UI 操作):画布 UI 态(widgets 配置、位置、撤销
+  历史)在前端 zustand store,后端无法直接变更。执行器经事件桥调用前端:
+  emit `ai_tool_invoke {call_id, name, arguments}` → 前端 `toolHost.ts`
+  分发 handler(全部走 `useAppStore` 现有 action:`addWidget` /
+  `setTransportNodeConfig` …,画布实时刷新、撤销历史可用、tab 图自动同步
+  后端)→ `ai_tool_resolve {call_id, ok, result}` 回执;15s 超时兜底。包括
+  `get_workspace`(读画布全量状态,含各节点端口表与 domain,编辑前必读)、
+  `add_node` / `update_node_config` / `remove_node` / `move_node`、
+  `create_tab` / `set_active_tab`、`connect_transport` / `disconnect_transport`、
+  `list_templates` / `apply_template`(默认 merge 模式,不破坏用户现有工作区)。
+
+### 连线拓扑:后端权威(阶段1)
+
+连线拓扑的所有权已下沉后端,`connect_nodes` / `disconnect_edge` 为后端直连
+工具(经 `cmd_graph::source_graph` 的拓扑 op,内置 AI 与外部 MCP `connect_edge` /
+`disconnect_edge` 同一实现):
+
+- 后端持有**源图存储**(`AppState.source_graphs`,每 tab 的 NodeDef + Edge +
+  端口提示),整图提交(前端 sync / MCP `update_graph`)与拓扑 op 共用
+  `apply_tab_graph_parts` 同一编译提交入口;
+- **编译失败(端口域不匹配 / 成环)返回真实 `CompileError` 且源图不变** ——
+  不再回退占位 Cycle 假错误;错误边结构上不可能存在,模型收到错误后可自我修正;
+- 默认 handle 与 RawData `src:` 端口改写依据前端 sync 附带的端口提示
+  (`SourceNodeHint` — widget 参数在前端,后端无法枚举 Sink 端口);
+- 提交成功后 emit **`graph:source` {tab_id, version, nodes, edges}**,
+  前端画布按此收敛(`adoptSourceGraph`:替换该 tab 边、补建缺失全局节点、
+  剔除 handle 失效的悬空边并纠正同步);
+- 前端整图提交携带 `base_version` 乐观并发基线,版本被其他写入方推进时后端
+  返回 `GraphVersionConflict`,前端拉取权威源图合并后重试一次(多写入方防互踩);
+- `update_tab_graph` 成功响应与 `graph:derived` 事件携带新版本号。
+
+外部 MCP 客户端的 `update_graph` / `connect_edge` / `disconnect_edge` 走同一
+后端入口,画布经 `graph:source` 实时同步(不再是只改后端看不见)。
+
+## 内置知识库(skills)
+
+`cmd_ai::skills` + `crates/cmd_ai/skills/{zh,en}/*.md`(`include_str!` 编译期
+嵌入):`overview`(软件与核心概念)、`nodes-reference`(节点/控件参考)、
+`protocols`(协议格式)、`debug-recipes`(调试实战)、`tools-guide`(工具指南)。
+
+- 启用内置工具时,`ai_chat_send` 把系统提示词组装为:基础工作约定(按
+  `ui_lang` 选语言)+ 知识库索引(id + 标题 + 一句话用途)+ 用户自填提示词;
+- 模型按需 `read_skill {skill_id, lang?}` 读全文,避免把整本文档塞进上下文;
+- 文档为 zh / en 双份,跟随界面语言注入。
 
 ## 外部 MCP server 接入(供 AI 对话调用)
 
@@ -133,7 +202,10 @@ Ollama / OpenRouter 等)照旧,完整清单见设置下拉(与 `ai_provider::ADA
   `ai-dock` 边缘热区,复用侧边栏同款机制)
 - `src/settings/defaults.ts` + `src/components/settingFields.ts`:设置 `ai` 分类
   (adapter 默认 `orcarouter` / baseUrl / apiKey / model / temperature / maxTokens /
-  systemPrompt / maxToolRounds / mcpToolsEnabled / mcpServerPort)
+  systemPrompt / maxToolRounds / builtinToolsEnabled / mcpToolsEnabled / mcpServerPort)
+- `src/lib/ai/toolHost.ts`:内置 AI 前端托管工具宿主 — 监听 `ai_tool_invoke`,
+  经 `useAppStore` 现有 action 执行节点编辑 / UI 操作,`ai_tool_resolve` 回执;
+  App 挂载时 `initAiToolHost()`(幂等)
 
 ## API key 存储
 
@@ -148,3 +220,10 @@ Ollama / OpenRouter 等)照旧,完整清单见设置下拉(与 `ai_provider::ADA
 - 工具入参 schema 在对话侧未做校验(交由 provider 与 server)
 - 对话历史无条数上限策略(全量 JSON 落盘,会话极多时可考虑分文件 / 截断策略)
 - 流式中切换会话后,流式气泡不在新会话内显示(回合仍写入发起它的会话)
+- 前端托管工具依赖 webview 存活(聊天面板本身就在其中,实际恒成立),
+  15s 超时兜底;webview 处于后台且被系统挂起时可能超时
+- widget 参数(配置/位置)仍为前端所有权(阶段1 边界):外部 MCP 经
+  `update_graph` 提交的**纯 widget** 图无法被画布完整渲染(widget 无法凭
+  NodeDef 重建 UI),引用画布未知 widget 的边不采纳;字节平面
+  (transport/protocol 图)与增量连线完全可见。阶段2 计划把 widget 配置
+  模型与持久化一并下沉后端

@@ -139,6 +139,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
     };
 
     try {
+      const lang = useAppStore.getState().lang;
       const taskId = await api.aiChatSend(
         sessionId,
         payload.text,
@@ -147,6 +148,8 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
         ai.systemPrompt.trim() || null,
         ai.maxToolRounds,
         ai.mcpToolsEnabled,
+        ai.builtinToolsEnabled,
+        lang,
         channel
       );
       set({ taskId });

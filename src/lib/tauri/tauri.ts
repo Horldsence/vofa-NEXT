@@ -28,6 +28,34 @@ import type { GraphDerivedPayload } from '../../store/slices/derived';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
 import { makeLatestSink, subscribeSharded } from '../buffers/shardedSubscription';
 
+/// 节点端口提示 — 与后端 `app_state::SourceNodeHint` 同形
+/// (供拓扑 op 解析默认 handle / RawData `src:` 改写; 字段缺省时后端按类型兜底)
+export interface SourceNodeHintPayload {
+  default_input?: string;
+  default_output?: string;
+  raw_data?: boolean;
+}
+
+/// `graph:source` 事件 / get_source_graph 响应 — tab 权威源图
+export interface GraphSourceEventPayload {
+  tab_id: string;
+  version: number;
+  nodes: NodeDef[];
+  edges: GraphEdge[];
+}
+
+/// connect_edge 响应
+export interface ConnectedEdgePayload {
+  edge_id: string;
+}
+
+/// disconnect_edge 响应
+export interface DisconnectedEdgePayload {
+  edge_id: string;
+  source: string;
+  target: string;
+}
+
 /// 关闭 Tauri Channel 的完整流程:
 /// 1. 调用后端 unsubscribe 命令, 从订阅者列表移除 (停止 send)
 /// 2. 注销 JS 端回调 (cleanupCallback, 防止 callback id 残留)
@@ -201,11 +229,52 @@ export const api = {
 
   // ===== 节点图 (后端化重构) =====
   /// 更新指定 tab 的节点图 (整体替换 nodes + edges; nodes 可含全局 Transport/Protocol 节点定义)
-  /// 编译失败 (循环等) 返回错误, 旧图保留
-  /// 返回 `GraphDerivedPayload` — 本次图变化涉及的全部节点派生端口表 / 通道数
-  /// (后端单一权威, 前端写入 `derivedPorts` store 后渲染 React Flow handle)
-  updateTabGraph: (tabId: string, nodes: NodeDef[], edges: GraphEdge[]) =>
-    invoke<GraphDerivedPayload>('update_tab_graph', { tabId, nodes, edges }),
+  /// nodeHints: 每节点端口提示 (后端拓扑 op 解析默认 handle / RawData 改写用)
+  /// baseVersion: 乐观并发基线 (期间被其他写入方推进则返回 GraphVersionConflict)
+  /// 编译失败 (循环/域不匹配等) 返回真实原因, 旧图保留
+  /// 返回 `GraphDerivedPayload` — 本次图变化涉及的全部节点派生端口表 / 通道数 + 新版本号
+  updateTabGraph: (
+    tabId: string,
+    nodes: NodeDef[],
+    edges: GraphEdge[],
+    nodeHints?: Record<string, SourceNodeHintPayload>,
+    baseVersion?: number | null
+  ) =>
+    invoke<GraphDerivedPayload>('update_tab_graph', {
+      tabId,
+      nodes,
+      edges,
+      nodeHints: nodeHints ?? {},
+      baseVersion: baseVersion ?? null,
+    }),
+
+  /// 读取指定 tab 的权威源图 (版本冲突后拉取合并; tab 无源图时返回 null)
+  getSourceGraph: (tabId: string) =>
+    invoke<GraphSourceEventPayload | null>('get_source_graph', { tabId }),
+
+  /// 连线 — 后端权威入口 (编译校验, 失败返回真实原因且不建边)
+  connectEdge: (params: {
+    source: string;
+    target: string;
+    tabId?: string | null;
+    sourceHandle?: string | null;
+    targetHandle?: string | null;
+  }) =>
+    invoke<ConnectedEdgePayload>('connect_edge', {
+      source: params.source,
+      target: params.target,
+      tabId: params.tabId ?? null,
+      sourceHandle: params.sourceHandle ?? null,
+      targetHandle: params.targetHandle ?? null,
+    }),
+
+  /// 删线 — 按 edgeId 或 source/target 组合 (可只给一端)
+  disconnectEdge: (params: { edgeId?: string | null; source?: string | null; target?: string | null }) =>
+    invoke<DisconnectedEdgePayload>('disconnect_edge', {
+      edgeId: params.edgeId ?? null,
+      source: params.source ?? null,
+      target: params.target ?? null,
+    }),
 
   /// 移除指定 tab 的节点图 (tab 删除时调用)
   /// 返回 `GraphDerivedPayload` — 删除后剩余全局节点的派生数据 (供前端 derivedPorts 对账)
@@ -327,8 +396,9 @@ export const api = {
   /// 支持的 LLM provider 适配器清单 (设置 UI 下拉)
   aiListProviders: () => invoke<AiAdapterInfo[]>('ai_list_providers'),
 
-  /// 发起一次对话 (可含多轮 MCP 工具调用); 增量事件经 onEvent 推送, 返回 task_id。
-  /// 会话所有权在后端: text 非空时追加用户条目, regenerate 时截断待重试回合
+  /// 发起一次对话 (可含多轮工具调用); 增量事件经 onEvent 推送, 返回 task_id。
+  /// 会话所有权在后端: text 非空时追加用户条目, regenerate 时截断待重试回合。
+  /// useBuiltinTools 启用内置原生工具 (软件自有能力 + 知识库, uiLang 注入系统提示词)
   aiChatSend: (
     sessionId: string,
     text: string | null,
@@ -337,6 +407,8 @@ export const api = {
     system: string | null,
     maxToolRounds: number,
     useMcpTools: boolean,
+    useBuiltinTools: boolean,
+    uiLang: string,
     onEvent: Channel<AiChatEvent>,
   ) =>
     invoke<string>('ai_chat_send', {
@@ -347,11 +419,18 @@ export const api = {
       system: system ?? null,
       maxToolRounds,
       useMcpTools,
+      useBuiltinTools,
+      uiLang,
       onEvent,
     }),
 
   /// 取消进行中的对话任务, 返回任务是否存在
   aiChatCancel: (taskId: string) => invoke<boolean>('ai_chat_cancel', { taskId }),
+
+  /// 前端托管工具回执 (toolHost 执行完 ai_tool_invoke 后调用);
+  /// 返回是否存在对应 pending 调用 (超时清理后为 false)
+  aiToolResolve: (callId: string, ok: boolean, result: unknown) =>
+    invoke<boolean>('ai_tool_resolve', { callId, ok, result }),
 
   /// 全部对话会话摘要
   chatListSessions: () => invoke<AiSessionMeta[]>('chat_list_sessions'),

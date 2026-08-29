@@ -52,9 +52,13 @@ pub struct NodeDerived {
 }
 
 /// 图级派生数据 — 多个节点的批 (随命令响应 / 事件推送)
+///
+/// `version` 为提交成功后的全局图版本号 (前端以此作为下次提交的 base_version,
+/// 用于多写入方冲突检测)
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct GraphDerived {
     pub nodes: Vec<NodeDerived>,
+    pub version: u64,
 }
 
 /// 给定一组节点定义, 派生每个节点的输出端口表与生效通道数

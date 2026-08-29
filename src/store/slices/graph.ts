@@ -28,12 +28,16 @@ import type { ProtocolConfig, TransportConfig, WidgetConfig } from '../../types'
 export interface GraphSlice {
   rfNodes: Node[];
   rfEdges: Edge[];
+  /// 后端全局图版本号 (null = 尚未同步过; 作为下次提交的 base_version 冲突基线)
+  graphVersion: number | null;
+  setGraphVersion: (v: number) => void;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onConnect: (connection: Connection) => void;
   getTabNodes: (tabId: string) => Node[];
   getTabEdges: (tabId: string) => Edge[];
-  syncTabGraph: (tabId: string) => void;
+  /// 同步指定 tab 图到后端 (同 tab 串行化); 返回错误文案, 成功 undefined
+  syncTabGraph: (tabId: string) => Promise<string | undefined>;
   syncAllTabGraphs: () => void;
   removeTabGraph: (tabId: string) => void;
   setInputValue: (widgetId: string, value: number) => void;
@@ -74,10 +78,11 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
   return {
     rfNodes: [],
     rfEdges: [],
+    graphVersion: null,
 
-    syncTabGraph: (tabId) => {
-      void syncTabGraphToBackend(tabId);
-    },
+    setGraphVersion: (v) => set({ graphVersion: v }),
+
+    syncTabGraph: (tabId) => syncTabGraphToBackend(tabId),
 
     syncAllTabGraphs: () => {
       get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));

@@ -30,6 +30,9 @@ pub struct AppState {
     pub graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
     /// 图版本号 (见 GraphEvalState::graphs_version)
     pub graphs_version: Arc<AtomicU64>,
+    /// 源图存储 — 连线拓扑的后端权威 (最近一次成功编译的 NodeDef/Edge/端口提示;
+    /// 拓扑 op 与 `graph:source` 事件的数据源, 见 `cmd_graph::source_graph`)
+    pub source_graphs: crate::SourceGraphs,
     /// 输入控件当前值 (Knob/Slider/Button/Radio/Checkbox)
     /// key: widget_id, value: 当前值
     /// 由前端 invoke('set_input_value') 更新
@@ -97,7 +100,7 @@ impl AppState {
         let transport = Arc::new(tokio::sync::Mutex::new(TransportManager::new()));
         let graphs = Arc::new(Mutex::new(HashMap::new()));
         let graphs_version = Arc::new(AtomicU64::new(0));
-        let input_values = Arc::new(Mutex::new(HashMap::new()));
+        let source_graphs: crate::SourceGraphs = Arc::new(Mutex::new(HashMap::new()));        let input_values = Arc::new(Mutex::new(HashMap::new()));
         let custom_outputs = Arc::new(Mutex::new(HashMap::new()));
         let custom_text_outputs = Arc::new(Mutex::new(HashMap::new()));
         let text_output_snapshot = Arc::new(Mutex::new(
@@ -168,6 +171,7 @@ impl AppState {
             data_plane,
             graphs,
             graphs_version,
+            source_graphs,
             input_values,
             custom_outputs,
             custom_text_outputs,

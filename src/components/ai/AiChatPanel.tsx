@@ -50,7 +50,10 @@ function ToolRunCard({ run }: { run: AiToolRun }) {
         className="w-full flex items-center gap-1.5 px-2 py-1 text-left"
         onClick={() => setOpen((v) => !v)}
       >
-        <Wrench size={11} className="shrink-0 text-text-secondary" />
+        <Wrench
+          size={11}
+          className={`shrink-0 text-text-secondary ${!run.done ? 'animate-pulse' : ''}`}
+        />
         <span className="font-medium truncate">{shortToolName(run.name)}</span>
         <span className="ml-auto text-text-secondary shrink-0">
           {!run.done ? t(lang, 'aiToolRunning') : run.is_error ? t(lang, 'aiToolFailed') : t(lang, 'aiToolDone')}
@@ -58,7 +61,7 @@ function ToolRunCard({ run }: { run: AiToolRun }) {
         <ChevronDown size={11} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="px-2 pb-1.5 space-y-1 border-t border-border-subtle pt-1.5">
+        <div className="px-2 pb-1.5 space-y-1 border-t border-border-subtle pt-1.5 animate-ai-tool-expand">
           <pre className="whitespace-pre-wrap break-all text-text-secondary max-h-24 overflow-y-auto">
             {JSON.stringify(run.arguments, null, 2)}
           </pre>
@@ -93,7 +96,7 @@ function AssistantBubble({ item, canRetry }: { item: AiViewItem; canRetry: boole
   };
 
   return (
-    <div className="flex justify-start group">
+    <div className="flex justify-start group animate-ai-msg-in">
       <div
         className={`max-w-[92%] rounded-lg px-2.5 py-1.5 space-y-1.5 ${
           item.error ? 'bg-danger/10 text-danger border border-danger/30' : 'bg-bg-hover'
@@ -185,7 +188,7 @@ function SessionMenu() {
       {open && (
         <>
           <div className="fixed inset-0 z-20" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-6 z-30 w-56 max-w-[80vw] rounded-lg border border-border-subtle bg-bg-panel shadow-lg py-1 flex flex-col">
+          <div className="absolute left-0 top-6 z-30 w-56 max-w-[80vw] rounded-lg border border-border-subtle bg-bg-panel-header shadow-lg py-1 flex flex-col animate-ai-menu-in">
             <div className="max-h-56 overflow-y-auto">
               {sorted.length === 0 && (
                 <div className="px-2 py-1.5 text-[11px] text-text-secondary">{t(lang, 'aiSessionEmpty')}</div>
@@ -290,7 +293,7 @@ function McpDrawer({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="absolute inset-0 z-10 bg-bg-panel/95 backdrop-blur-sm flex flex-col">
+    <div className="absolute inset-0 z-10 ai-overlay-acrylic animate-ai-drawer-in flex flex-col">
       <div className="flex items-center gap-2 px-3 h-9 border-b border-border-subtle">
         <span className="text-xs font-medium">{t(lang, 'aiMcpServers')}</span>
         <span className="text-[11px] text-text-secondary">{t(lang, 'aiMcpServersHint')}</span>
@@ -534,7 +537,7 @@ export function AiChatPanel() {
         )}
         {viewItems.map((item, i) =>
           item.role === 'user' ? (
-            <div key={i} className="flex justify-end">
+            <div key={i} className="flex justify-end animate-ai-msg-in">
               <div className="max-w-[85%] rounded-lg px-2.5 py-1.5 bg-accent text-accent-foreground whitespace-pre-wrap break-words">
                 {item.text}
               </div>
@@ -546,7 +549,7 @@ export function AiChatPanel() {
 
         {/* 流式中的回合 */}
         {showStreaming && (
-          <div className="flex justify-start">
+          <div className="flex justify-start animate-ai-msg-in">
             <div className="max-w-[92%] rounded-lg px-2.5 py-1.5 space-y-1.5 bg-bg-hover">
               {toolRuns.map((run) => (
                 <ToolRunCard key={run.id} run={run} />
@@ -565,7 +568,7 @@ export function AiChatPanel() {
 
       {/* 发送前检查未通过 — 内联横幅 (点击直达设置) */}
       {sendIssue && (
-        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-subtle bg-warning/10 text-warning text-[11px] shrink-0">
+        <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border-subtle bg-warning/10 text-warning text-[11px] shrink-0 animate-ai-banner-in">
           <AlertCircle size={11} className="shrink-0" />
           <span className="flex-1 min-w-0 truncate">
             {t(lang, 'aiSendBlocked')}

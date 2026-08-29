@@ -502,6 +502,14 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
   },
   {
     category: 'ai',
+    field: 'builtinToolsEnabled',
+    labelKey: 'settingAiBuiltinTools',
+    descKey: 'settingAiBuiltinToolsDesc',
+    control: { kind: 'toggle' },
+    keywords: ['ai', 'builtin', 'tool', '内置', '工具', '节点', '知识库', 'skill'],
+  },
+  {
+    category: 'ai',
     field: 'mcpToolsEnabled',
     labelKey: 'settingAiMcpTools',
     descKey: 'settingAiMcpToolsDesc',

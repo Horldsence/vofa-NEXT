@@ -106,6 +106,8 @@ export interface AppSettings {
     systemPrompt: string;
     /** 工具调用循环最大轮次 */
     maxToolRounds: number;
+    /** 对话中是否启用内置原生工具 (软件自有能力 + 知识库) */
+    builtinToolsEnabled: boolean;
     /** 对话中是否启用 MCP 工具 */
     mcpToolsEnabled: boolean;
     /** 本地 MCP server 端口 (127.0.0.1, 供外部 AI 客户端连接) */
@@ -190,6 +192,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: null,
     systemPrompt: '',
     maxToolRounds: 10,
+    builtinToolsEnabled: true,
     mcpToolsEnabled: true,
     mcpServerPort: 8765,
   },
@@ -197,6 +200,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /// OrcaRouter 推广链接 (合作伙伴中心; 应用内"获取 API Key"与 README 共用)
 export const ORCAROUTER_REFERRAL_URL = 'https://www.orcarouter.ai/ref/ref_1f7582998bdadbe7e0f3';
+
+/// OrcaRouter 免费模型页面 (获取 API Key 即可访问, 设置 → AI 提示条内展示)
+export const ORCAROUTER_OFFERS_URL = 'https://www.orcarouter.ai/zh-CN/offers';
 
 /// 设置分类元数据 — 用于 SettingsModal 渲染左侧导航
 export interface SettingCategoryMeta {
