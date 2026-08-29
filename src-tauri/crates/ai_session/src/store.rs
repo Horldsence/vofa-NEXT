@@ -303,7 +303,7 @@ mod tests {
             ],
         };
 
-        save_sessions(&dir, &[session.clone()]).expect("保存会话");
+        save_sessions(&dir, std::slice::from_ref(&session)).expect("保存会话");
         let loaded = load_sessions(&dir).expect("读取会话");
         assert_eq!(loaded, vec![session]);
 

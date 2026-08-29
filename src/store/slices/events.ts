@@ -15,7 +15,7 @@ import {
   setRawDataSource,
   cleanupSourceManagers,
 } from '../../lib/buffers/sourceManagers';
-import { isGlobalNode, adoptSourceGraph, isSyncInFlight } from '../appStoreHelpers';
+import { isGlobalNode, adoptSourceGraph, isSyncInFlight, hydrateWorkspaceFromBackend, syncWorkspaceMeta } from '../appStoreHelpers';
 import { useAppStore } from '../appStore';
 import type { GraphSourceEventPayload } from '../../lib/tauri/tauri';
 import type { ConnectionState, TransportStats } from '../../types';
@@ -30,6 +30,7 @@ let canFramesSub: { cancel: () => void } | null = null;
 let logicSamplesSub: { cancel: () => void } | null = null;
 let decodedEventsSub: { cancel: () => void } | null = null;
 let storeUnsub: (() => void) | null = null;
+let metaStoreUnsub: (() => void) | null = null;
 
 /// RAF 合批器: Channel 高频推送先写入模块级缓存,
 /// 只在 RAF 回调中更新一次 zustand store (约 16ms 一次, 而非每条消息一次)。
@@ -334,7 +335,31 @@ export function createEventSlice(set: any, get: any): EventSlice {
         }
       });
 
-      get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+      // tab 元数据 (控件 tab / 数据面板) 变化 → 整表覆盖到后端工作区。
+      // 水合 / 历史恢复引发的批量覆盖同样入库; 基线取当前值, 避免启动即回推
+      const metaKeyOf = (s: { controlTabs: unknown; dataTabs: unknown }) =>
+        JSON.stringify([s.controlTabs, s.dataTabs]);
+      let prevMetaKey = '';
+      if (metaStoreUnsub) metaStoreUnsub();
+      metaStoreUnsub = useAppStore.subscribe((s) => {
+        const key = metaKeyOf(s);
+        if (key === prevMetaKey) return;
+        prevMetaKey = key;
+        if (useAppStore.getState().workspaceReady) syncWorkspaceMeta();
+      });
+
+      // 工作区水合: 后端有持久化工作区时以权威快照覆盖本地 (图已在启动恢复时
+      // 重编译, 不再初始同步); 否则按默认流程把空图推给后端
+      let restored = false;
+      try {
+        restored = await hydrateWorkspaceFromBackend();
+      } catch {
+        restored = false;
+      }
+      set({ workspaceReady: true, workspaceRestored: restored });
+      if (!restored) {
+        get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+      }
 
       return () => {
         unlistenFns.forEach((fn) => fn());
@@ -346,6 +371,10 @@ export function createEventSlice(set: any, get: any): EventSlice {
         if (storeUnsub) {
           storeUnsub();
           storeUnsub = null;
+        }
+        if (metaStoreUnsub) {
+          metaStoreUnsub();
+          metaStoreUnsub = null;
         }
         if (graphOutputSub) {
           graphOutputSub.cancel();

@@ -40,6 +40,8 @@ function App() {
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const lang = useAppStore((s) => s.lang);
+  const workspaceReady = useAppStore((s) => s.workspaceReady);
+  const workspaceRestored = useAppStore((s) => s.workspaceRestored);
 
   const loadSettings = useSettingsStore((s) => s.load);
   const openSettings = useSettingsStore((s) => s.open);
@@ -128,8 +130,17 @@ function App() {
     });
     refreshPorts();
 
-    // 首次启动种子: widgets/tabs/nodes 均为内存态不持久化, 默认放一个 RawData 控件
-    // 以保留旧版固定 raw Tab 的常驻行为 (画布占位节点 + raw 数据 Tab)
+    return () => {
+      cancelled = true;
+      cleanupRef.fn?.();
+    };
+  }, []);
+
+  // 首次启动种子: 工作区由后端持久化, 仅在"无持久化工作区且画布为空"时
+  // 默认放一个 RawData 控件, 以保留旧版固定 raw Tab 的常驻行为
+  // (画布占位节点 + raw 数据 Tab)
+  useEffect(() => {
+    if (!workspaceReady || workspaceRestored) return;
     const st = useAppStore.getState();
     if (st.widgets.length === 0 && !st.dataTabs.some((t) => t.type === 'raw')) {
       const rawWidget = createWidget('RawData');
@@ -140,12 +151,7 @@ function App() {
         fresh.seedInitialGraph(rawWidget.params.id);
       }
     }
-
-    return () => {
-      cancelled = true;
-      cleanupRef.fn?.();
-    };
-  }, []);
+  }, [workspaceReady, workspaceRestored]);
 
   // 设置加载完成后: 关闭启动页并显示主窗口
   // 注意不能用 requestAnimationFrame 等待首帧 — 窗口隐藏时 rAF 会被系统节流不触发

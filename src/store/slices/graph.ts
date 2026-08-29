@@ -30,6 +30,10 @@ export interface GraphSlice {
   rfEdges: Edge[];
   /// 后端全局图版本号 (null = 尚未同步过; 作为下次提交的 base_version 冲突基线)
   graphVersion: number | null;
+  /// 启动水合已完成 (workspace_get 已裁决: 水合或默认启动)
+  workspaceReady: boolean;
+  /// 是否水合了后端持久化工作区 (true = 不走初始同步与种子流程)
+  workspaceRestored: boolean;
   setGraphVersion: (v: number) => void;
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
@@ -79,6 +83,8 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
     rfNodes: [],
     rfEdges: [],
     graphVersion: null,
+    workspaceReady: false,
+    workspaceRestored: false,
 
     setGraphVersion: (v) => set({ graphVersion: v }),
 
@@ -219,6 +225,19 @@ export function createGraphSlice(set: any, get: any): GraphSlice {
             ? s.rfEdges.filter((e: Edge) => !removedGlobalIds.includes(e.source) && !removedGlobalIds.includes(e.target))
             : s.rfEdges,
         }));
+        // 拖拽结束 (dragging=false 的收尾批) 上报最终位置 — 画布位置的后端
+        // 权威存储随工作区落盘, 重启后布局不回跳; 拖拽过程批 (dragging=true) 不发
+        if (moving) {
+          const finalPos: Record<string, { x: number; y: number }> = {};
+          for (const ch of changes) {
+            if (ch.type !== 'position' || ch.dragging === true) continue;
+            const node = get().rfNodes.find((n: Node) => n.id === ch.id);
+            if (node) finalPos[ch.id] = { x: node.position.x, y: node.position.y };
+          }
+          if (Object.keys(finalPos).length) {
+            void api.setNodePositions(finalPos).catch(() => {});
+          }
+        }
         // 同步清理被删节点的派生端口表
         if (removedGlobalIds.length) {
           get().removeDerived(removedGlobalIds);

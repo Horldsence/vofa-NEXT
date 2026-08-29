@@ -215,6 +215,26 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     expect(derived['protocol-1']?.effective_channels).toBe(2);
   });
 
+  it('提交携带 widget 配置记录与画布位置 (配置模型后端权威)', async () => {
+    await syncTabGraphToBackend('default');
+
+    const call = (tauriMock.invoke.mock.calls as unknown as [string, Record<string, unknown>][])
+      .find((c) => c[0] === 'update_tab_graph');
+    expect(call).toBeDefined();
+    const args = call![1];
+    // widget 记录 = {id, kind, params} 透传
+    const widgets = args.widgets as Array<{ id: string; kind: string; params: Record<string, unknown> }>;
+    expect(widgets).toEqual([
+      expect.objectContaining({ id: 'w-gauge', kind: 'Gauge' }),
+    ]);
+    expect(widgets[0].params).toMatchObject({ min: 0, max: 100 });
+    // 位置表覆盖本 tab 可见节点 (widget + 全局), 不含其他 tab 节点
+    const positions = args.positions as Record<string, { x: number; y: number }>;
+    expect(positions['w-gauge']).toEqual({ x: 560, y: 40 });
+    expect(positions['transport-1']).toEqual({ x: 40, y: 40 });
+    expect(positions['w-other']).toBeUndefined();
+  });
+
   it('其他 tab 的边不混入', async () => {
     useAppStore.setState({
       controlTabs: [

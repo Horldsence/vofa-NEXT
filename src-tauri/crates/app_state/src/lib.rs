@@ -19,10 +19,16 @@ pub use pipeline_data_plane::{
 mod app_state;
 mod source_graph;
 mod tickers;
+mod workspace;
 
 pub use app_state::AppState;
 pub use source_graph::{SourceGraphs, SourceNodeHint, TabSourceGraph};
 pub use tickers::{
     custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker,
     textout_sender_ticker,
+};
+pub use workspace::{
+    collect_workspace_file, load_workspace, prune_positions, save_workspace, workspace_path,
+    DataTabMeta, Position, TabGraphFile, TabMeta, WidgetRecord, WorkspaceFile, WorkspaceInner,
+    WorkspaceState, WORKSPACE_FILE_NAME,
 };

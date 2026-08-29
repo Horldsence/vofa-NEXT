@@ -1,6 +1,7 @@
 use app_state::{
-    AppState, CustomInputBatch, GraphOutputSnapshot, SpectrumBatch, SourceGraphs, SourceNodeHint,
-    StringOutputSnapshot, TabSourceGraph,
+    prune_positions, AppState, CustomInputBatch, GraphOutputSnapshot, Position, SpectrumBatch,
+    SourceGraphs, SourceNodeHint, StringOutputSnapshot, TabSourceGraph, WidgetRecord,
+    WorkspaceState,
 };
 use buffer_graph::Edge;
 use error::ConfigError;
@@ -62,6 +63,8 @@ fn rebuild_byte_plan(
 ///    字节边合并重算全局 BytePlan 存入 DataPlaneState, 并同步 protocol_states
 ///
 /// 任一层编译失败 (循环/端口域不匹配等) 返回真实编译错误, 旧图与旧平面保留。
+/// `widgets` / `positions` 为 widget 配置记录与画布位置 (配置模型的后端权威存储):
+/// Some 时整体替换 / 合并, None (拓扑 op 等增量写入方) 时保留现状。
 /// `base_version` 提供时做乐观并发检查: 与当前图版本不符返回
 /// `GraphVersionConflict` (期间有其他写入方 — 拓扑 op / MCP — 推进了版本)。
 /// 提交成功后返回 [`GraphDerived`] (派生端口表 + 新版本号),
@@ -75,6 +78,8 @@ pub async fn update_tab_graph(
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
     node_hints: Option<HashMap<String, SourceNodeHint>>,
+    widgets: Option<Vec<WidgetRecord>>,
+    positions: Option<HashMap<String, Position>>,
     base_version: Option<u64>,
 ) -> Result<GraphDerived> {
     apply_tab_graph(
@@ -84,6 +89,8 @@ pub async fn update_tab_graph(
         nodes,
         edges,
         node_hints.unwrap_or_default(),
+        widgets,
+        positions,
         base_version,
     )
     .await
@@ -94,6 +101,7 @@ pub async fn update_tab_graph(
 /// `app`: Tauri AppHandle, 用于 emit `graph:derived` / `graph:compile` /
 /// `graph:source` 事件; 测试时可传 None
 #[allow(clippy::implicit_hasher)]
+#[allow(clippy::too_many_arguments)]
 pub async fn apply_tab_graph(
     state: &AppState,
     app: Option<&AppHandle>,
@@ -101,6 +109,8 @@ pub async fn apply_tab_graph(
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
     node_hints: HashMap<String, SourceNodeHint>,
+    widgets: Option<Vec<WidgetRecord>>,
+    positions: Option<HashMap<String, Position>>,
     base_version: Option<u64>,
 ) -> Result<GraphDerived> {
     apply_tab_graph_parts(
@@ -108,22 +118,25 @@ pub async fn apply_tab_graph(
         &state.graphs_version,
         &state.data_plane,
         &state.source_graphs,
+        &state.workspace,
         app,
         tab_id,
         nodes,
         edges,
         node_hints,
+        widgets,
+        positions,
         base_version,
     )
     .await
 }
 
-/// [`apply_tab_graph`] 的部件版 — 只依赖图状态四件套
-/// (tab 图表 / 全局版本号 / 数据平面 / 源图存储), 供 MCP server、
+/// [`apply_tab_graph`] 的部件版 — 只依赖图状态五件套
+/// (tab 图表 / 全局版本号 / 数据平面 / 源图存储 / 工作区), 供 MCP server、
 /// 拓扑 op 等非 Tauri-State 场景直接复用同一条提交路径。
 ///
-/// 成功后把 `(nodes, edges, hints)` 写入源图存储并 emit `graph:source`;
-/// 编译失败源图存储不变。
+/// 成功后把 `(nodes, edges, hints, widgets)` 写入源图存储、合并 positions,
+/// 并 emit `graph:source`; 编译失败所有存储不变。
 // 参数类型与 AppState.graphs 字段完全一致 (std hasher), 不做 hasher 泛型化
 #[allow(clippy::implicit_hasher)]
 #[allow(clippy::too_many_arguments)]
@@ -132,11 +145,14 @@ pub async fn apply_tab_graph_parts(
     graphs_version: &Arc<std::sync::atomic::AtomicU64>,
     data_plane: &DataPlaneState,
     source_graphs: &SourceGraphs,
+    workspace: &WorkspaceState,
     app: Option<&AppHandle>,
     tab_id: String,
     nodes: Vec<NodeDef>,
     edges: Vec<Edge>,
     node_hints: HashMap<String, SourceNodeHint>,
+    widgets: Option<Vec<WidgetRecord>>,
+    positions: Option<HashMap<String, Position>>,
     base_version: Option<u64>,
 ) -> Result<GraphDerived> {
     // 0. 乐观并发检查 — base_version 过期说明期间有其他写入方推进了图,
@@ -194,19 +210,37 @@ pub async fn apply_tab_graph_parts(
     // 5. 派生数据计算 (本次图变化涉及的全部节点的输出端口表 / 通道数)
     let derived_nodes = compute_derived(&candidate.values().cloned().collect::<Vec<_>>());
 
-    // 6. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号 + 源图存储
+    // 6. 提交: tab 图 + 全局节点表 + 全局平面 + 版本号 + 源图存储 + 工作区
     graphs.lock().insert(tab_id.clone(), compiled);
     *data_plane.global_nodes.lock() = candidate;
     *data_plane.byte_plan.lock() = plan;
     let version = graphs_version.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-    source_graphs.lock().insert(
-        tab_id.clone(),
-        TabSourceGraph {
-            nodes,
-            edges,
-            hints: node_hints,
-        },
-    );
+    // widget 记录: 提交携带时整体替换, 增量写入方 (拓扑 op / MCP 纯拓扑) 保留现状
+    let stored_widgets = {
+        let mut store = source_graphs.lock();
+        let widgets = widgets.unwrap_or_else(|| {
+            store.get(&tab_id).map(|g| g.widgets.clone()).unwrap_or_default()
+        });
+        store.insert(
+            tab_id.clone(),
+            TabSourceGraph {
+                nodes,
+                edges,
+                hints: node_hints,
+                widgets: widgets.clone(),
+            },
+        );
+        widgets
+    };
+    // 工作区: 画布位置合并 + 孤儿位置清理 (存活集合 = 全部 tab 源图节点)
+    {
+        let mut ws = workspace.lock();
+        if let Some(pos) = positions {
+            ws.positions.extend(pos);
+        }
+        ws.dirty = true;
+    }
+    prune_positions(workspace, source_graphs);
 
     // 7. 同步 Protocol 节点运行时状态 + FrameDecoder 状态清理 + 孤儿资源清理
     data_plane.sync_protocol_states();
@@ -224,22 +258,39 @@ pub async fn apply_tab_graph_parts(
     };
     if let Some(app) = app {
         emit_graph_derived(app, &derived);
-        // 权威源图回推 — 前端画布据此收敛 (多写入方: 前端提交 / 拓扑 op / MCP)
+        // 权威源图回推 — 前端画布据此收敛 (多写入方: 前端提交 / 拓扑 op / MCP)。
+        // 携带 widget 配置记录与画布位置: 画布按此重建该 tab 完整视图
+        // (外部提交的纯 widget 图也可完整渲染)
+        let (nodes, edges, widgets) = {
+            let store = source_graphs.lock();
+            let g = store.get(&tab_id);
+            (
+                g.map(|g| g.nodes.clone()).unwrap_or_default(),
+                g.map(|g| g.edges.clone()).unwrap_or_default(),
+                stored_widgets,
+            )
+        };
+        let tab_node_ids: std::collections::HashSet<String> = source_graphs
+            .lock()
+            .get(&tab_id)
+            .map(|g| g.nodes.iter().map(|n| n.id.clone()).collect())
+            .unwrap_or_default();
+        let event_positions: HashMap<String, Position> = workspace
+            .lock()
+            .positions
+            .iter()
+            .filter(|(id, _)| tab_node_ids.contains(*id))
+            .map(|(id, p)| (id.clone(), *p))
+            .collect();
         let _ = app.emit(
             GRAPH_SOURCE_EVENT,
             GraphSourceEvent {
                 tab_id: tab_id.clone(),
                 version,
-                nodes: source_graphs
-                    .lock()
-                    .get(&tab_id)
-                    .map(|g| g.nodes.clone())
-                    .unwrap_or_default(),
-                edges: source_graphs
-                    .lock()
-                    .get(&tab_id)
-                    .map(|g| g.edges.clone())
-                    .unwrap_or_default(),
+                nodes,
+                edges,
+                widgets,
+                positions: event_positions,
             },
         );
         let _ = app.emit(
@@ -272,8 +323,10 @@ pub async fn apply_remove_tab_graph(
     tab_id: &str,
 ) -> Result<GraphDerived> {
     state.graphs.lock().remove(tab_id);
-    // 源图存储同步清除 — tab 已不存在, 权威拓扑随之失效
+    // 源图存储同步清除 — tab 已不存在, 权威拓扑与 widget 记录随之失效
     state.source_graphs.lock().remove(tab_id);
+    prune_positions(&state.workspace, &state.source_graphs);
+    state.workspace.lock().dirty = true;
 
     // 全局节点表移除该 tab 节点 + 重建全局字节平面
     let mut candidate = state.data_plane.global_nodes.lock().clone();
@@ -321,6 +374,20 @@ pub async fn set_input_value(
 ) -> Result<()> {
     state.input_values.lock().insert(widget_id, value);
     frame_dispatch::refresh_snapshot(&state.data_plane);
+    Ok(())
+}
+
+/// 上报节点画布位置 (拖拽结束时批量提交) — 轻量路径, 不触发编译,
+/// 仅更新工作区位置表并标记落盘脏
+#[allow(clippy::implicit_hasher)]
+#[tauri::command]
+pub fn set_node_positions(
+    state: State<'_, AppState>,
+    positions: HashMap<String, Position>,
+) -> Result<()> {
+    let mut ws = state.workspace.lock();
+    ws.positions.extend(positions);
+    ws.dirty = true;
     Ok(())
 }
 
@@ -512,6 +579,8 @@ mod tests {
             vec![],
             HashMap::new(),
             None,
+            None,
+            None,
         )
         .await
         .expect("提交图应成功");
@@ -541,6 +610,8 @@ mod tests {
             vec![input_node("in1", "tab1")],
             vec![],
             HashMap::new(),
+            None,
+            None,
             None,
         )
         .await
@@ -629,6 +700,8 @@ mod tests {
             vec![],
             HashMap::new(),
             None,
+            None,
+            None,
         )
         .await
         .expect("提交图应成功");
@@ -647,6 +720,8 @@ mod tests {
             vec![input_node("in1", "tab1")],
             vec![],
             HashMap::new(),
+            None,
+            None,
             Some(0),
         )
         .await
@@ -661,6 +736,8 @@ mod tests {
             vec![input_node("in1", "tab1")],
             vec![],
             HashMap::new(),
+            None,
+            None,
             Some(1),
         )
         .await
@@ -680,6 +757,8 @@ mod tests {
             vec![protocol_node("pt", "tab1"), math_node("m1", "tab1")],
             vec![edge("e1", "pt", "out", "m1", "in0")],
             HashMap::new(),
+            None,
+            None,
             None,
         )
         .await
@@ -724,6 +803,8 @@ mod tests {
             vec![],
             hints,
             None,
+            None,
+            None,
         )
         .await
         .expect("种子图应成功");
@@ -734,6 +815,7 @@ mod tests {
             &state.graphs_version,
             &state.data_plane,
             &state.source_graphs,
+            &state.workspace,
             None,
             None,
             "in1".into(),
@@ -754,6 +836,7 @@ mod tests {
             &state.graphs_version,
             &state.data_plane,
             &state.source_graphs,
+            &state.workspace,
             None,
             None,
             "in1".into(),
@@ -785,6 +868,8 @@ mod tests {
             vec![],
             hints2,
             None,
+            None,
+            None,
         )
         .await
         .expect("tab2 种子图应成功");
@@ -793,6 +878,7 @@ mod tests {
             &state.graphs_version,
             &state.data_plane,
             &state.source_graphs,
+            &state.workspace,
             None,
             None,
             "pt".into(),
@@ -835,6 +921,8 @@ mod tests {
             vec![],
             hints3,
             None,
+            None,
+            None,
         )
         .await
         .expect("tab3 种子图应成功");
@@ -843,6 +931,7 @@ mod tests {
             &state.graphs_version,
             &state.data_plane,
             &state.source_graphs,
+            &state.workspace,
             None,
             None,
             "in1".into(),
@@ -868,6 +957,8 @@ mod tests {
             vec![edge("e1", "in1", "value", "m1", "in0")],
             HashMap::new(),
             None,
+            None,
+            None,
         )
         .await
         .expect("种子图应成功");
@@ -877,6 +968,7 @@ mod tests {
             &state.graphs_version,
             &state.data_plane,
             &state.source_graphs,
+            &state.workspace,
             None,
             Some("e1".into()),
             None,
@@ -896,6 +988,7 @@ mod tests {
             &state.graphs_version,
             &state.data_plane,
             &state.source_graphs,
+            &state.workspace,
             None,
             Some("ghost".into()),
             None,

@@ -179,6 +179,126 @@ describe('adoptSourceGraph (画布 = 权威源图的投影)', () => {
   });
 });
 
+describe('adoptSourceGraph (widget 配置记录收敛 — 配置模型后端权威)', () => {
+  beforeEach(() => {
+    tauriMock.invoke.mockClear();
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({ nodes: [] });
+    seedStore();
+  });
+
+  it('事件携带记录时: 缺失的 widget 节点按记录补建 (外部纯 widget 图完整渲染)', () => {
+    adoptSourceGraph({
+      ...SOURCE_EVENT,
+      widgets: [
+        {
+          id: 'w-remote',
+          kind: 'Knob',
+          params: { id: 'w-remote', label: 'K', min: 0, max: 10, step: 1, value: 5, unit: '', channel: null },
+        },
+      ],
+      positions: { 'w-remote': { x: 11, y: 22 } },
+    });
+
+    const { rfNodes, widgets } = useAppStore.getState();
+    const added = rfNodes.find((n) => n.id === 'w-remote');
+    expect(added?.type).toBe('widget');
+    expect(added?.position).toEqual({ x: 11, y: 22 });
+    expect((added?.data as { widget: { kind: string } }).widget.kind).toBe('Knob');
+    expect((added?.data as { tabId: string }).tabId).toBe('default');
+    expect(widgets.some((w) => w.params.id === 'w-remote')).toBe(true);
+  });
+
+  it('已有 widget 参数变化时更新节点与 widgets 数组; 参数未变时不触碰', () => {
+    const changed = useAppStore.getState();
+    adoptSourceGraph({
+      ...SOURCE_EVENT,
+      widgets: [
+        {
+          id: 'w-gauge',
+          kind: 'Gauge',
+          params: { id: 'w-gauge', label: 'G2', min: 0, max: 200, unit: 'V', channel: null },
+        },
+      ],
+    });
+    const after = useAppStore.getState();
+    const node = after.rfNodes.find((n) => n.id === 'w-gauge');
+    expect((node?.data as { widget: { params: { max: number } } }).widget.params.max).toBe(200);
+    const flat = after.widgets.find((w) => w.params.id === 'w-gauge');
+    expect((flat?.params as unknown as { max: number }).max).toBe(200);
+    void changed;
+  });
+
+  it('记录集中缺少的本地 widget 节点被删除 (外部删除生效), 其边一并剔除', () => {
+    adoptSourceGraph({
+      ...SOURCE_EVENT,
+      edges: [SOURCE_EVENT.edges[0]], // 只保留字节边, e-val (→ w-gauge) 已被外部删除
+      widgets: [], // 空 = 该 tab 无 widget
+    });
+
+    const { rfNodes, rfEdges, widgets, controlTabs } = useAppStore.getState();
+    expect(rfNodes.some((n) => n.id === 'w-gauge')).toBe(false);
+    expect(rfEdges.some((e) => e.id === 'e-val')).toBe(false);
+    expect(widgets.some((w) => w.params.id === 'w-gauge')).toBe(false);
+    expect(controlTabs[0].widgets).toEqual([]);
+  });
+
+  it('事件未携带 widgets 字段 (旧契约) 时画布 widget 保持不动', () => {
+    adoptSourceGraph(SOURCE_EVENT);
+    expect(useAppStore.getState().rfNodes.some((n) => n.id === 'w-gauge')).toBe(true);
+    expect(useAppStore.getState().controlTabs[0].widgets).toEqual(['w-gauge']);
+  });
+
+  it('未知 widget kind 的记录不建节点, 引用它的边被剔除并触发纠正同步', async () => {
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue({
+      nodes: [],
+      version: 8,
+    });
+    adoptSourceGraph({
+      ...SOURCE_EVENT,
+      widgets: [
+        { id: 'w-ghost', kind: 'FutureWidget', params: { id: 'w-ghost' } },
+        {
+          id: 'w-gauge',
+          kind: 'Gauge',
+          params: { id: 'w-gauge', label: 'G', min: 0, max: 100, unit: '', channel: null },
+        },
+      ],
+      edges: [
+        ...SOURCE_EVENT.edges,
+        { id: 'e-ghost', source: 'protocol-1', source_handle: 'ch1', target: 'w-ghost', target_handle: 'value' },
+      ],
+    });
+
+    expect(useAppStore.getState().rfNodes.some((n) => n.id === 'w-ghost')).toBe(false);
+    expect(useAppStore.getState().rfEdges.some((e) => e.id === 'e-ghost')).toBe(false);
+    // 纠正同步: 画布视图覆盖后端残留的 ghost 边
+    await vi.waitFor(() => {
+      expect(tauriMock.invoke).toHaveBeenCalledWith('update_tab_graph', expect.anything());
+    });
+  });
+
+  it('事件位置表驱动已有节点位置跟随', () => {
+    adoptSourceGraph({
+      ...SOURCE_EVENT,
+      widgets: [
+        {
+          id: 'w-gauge',
+          kind: 'Gauge',
+          params: { id: 'w-gauge', label: 'G', min: 0, max: 100, unit: '', channel: null },
+        },
+      ],
+      positions: {
+        'w-gauge': { x: 700, y: 90 },
+        'transport-1': { x: 5, y: 6 },
+      },
+    });
+
+    const { rfNodes } = useAppStore.getState();
+    expect(rfNodes.find((n) => n.id === 'w-gauge')?.position).toEqual({ x: 700, y: 90 });
+    expect(rfNodes.find((n) => n.id === 'transport-1')?.position).toEqual({ x: 5, y: 6 });
+  });
+});
+
 describe('syncTabGraphToBackend (端口提示 / 版本冲突重试)', () => {
   beforeEach(() => {
     tauriMock.invoke.mockClear();

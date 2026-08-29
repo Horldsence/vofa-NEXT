@@ -404,7 +404,7 @@ mod tests {
             transport: McpTransport::Stdio {
                 command: "uvx".to_string(),
                 args: vec![],
-                env: Default::default(),
+                env: HashMap::default(),
             },
             enabled: true,
         };

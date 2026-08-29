@@ -50,6 +50,8 @@ async fn remove_tab_graph_removes_nodes_owned_by_that_tab() {
         vec![],
         Default::default(),
         None,
+        None,
+        None,
     )
     .await
     .expect("提交图应成功");
@@ -86,6 +88,8 @@ async fn remove_tab_graph_keeps_nodes_rehosted_to_surviving_tab() {
         vec![],
         Default::default(),
         None,
+        None,
+        None,
     )
     .await
     .expect("提交 tab1 图应成功");
@@ -97,6 +101,8 @@ async fn remove_tab_graph_keeps_nodes_rehosted_to_surviving_tab() {
         vec![transport_node("tp", "tab2"), protocol_node("pt", "tab2")],
         vec![],
         Default::default(),
+        None,
+        None,
         None,
     )
     .await

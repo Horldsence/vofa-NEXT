@@ -868,6 +868,7 @@ dependencies = [
  "schema_engine",
  "schema_types",
  "serde",
+ "serde_json",
  "tauri",
  "tokio",
  "vofa_core",

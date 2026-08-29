@@ -31,3 +31,4 @@ logic_types = { workspace = true }
 error = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }

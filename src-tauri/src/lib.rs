@@ -66,7 +66,48 @@ pub fn run() {
                 .path()
                 .app_config_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.manage(cmd_ai::AiState::new(ai_config_dir));
+            app.manage(cmd_ai::AiState::new(ai_config_dir.clone()));
+
+            // 工作区启动恢复: widget 配置 + 画布位置 + tab 元数据 + 各 tab 源图
+            // 落盘在 app config dir 的 workspace.json; 恢复后逐 tab 重编译,
+            // 前端就绪后经 workspace_get 水合 (返回 false = 无持久化, 默认启动)
+            let restored = tauri::async_runtime::block_on(async {
+                let state = app.state::<AppState>();
+                cmd_graph::restore_workspace(&state, &ai_config_dir).await
+            });
+            log::info!(
+                "workspace restore: {}",
+                if restored { "loaded" } else { "none" }
+            );
+
+            // 工作区防抖落盘任务 — 图提交 / 位置上报 / tab 变更置 dirty,
+            // 此任务周期性检查并整体覆盖写 (800ms 合并连发编辑)
+            {
+                let state = app.state::<AppState>();
+                let ws = state.workspace.clone();
+                let graphs = std::sync::Arc::clone(&state.source_graphs);
+                let dir = ai_config_dir.clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                        let should_save = {
+                            let mut w = ws.lock();
+                            if w.dirty {
+                                w.dirty = false;
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if should_save {
+                            let file = app_state::collect_workspace_file(&ws, &graphs);
+                            if let Err(e) = app_state::save_workspace(&dir, &file) {
+                                log::warn!("工作区落盘失败: {e}");
+                            }
+                        }
+                    }
+                });
+            }
 
             // 启动图输出 ticker (60 FPS 推送快照到前端)
             let eval_state_for_ticker = {
@@ -169,6 +210,9 @@ pub fn run() {
             disconnect_edge,
             get_source_graph,
             set_input_value,
+            set_node_positions,
+            workspace_get,
+            workspace_set_tabs,
             submit_custom_output,
             submit_custom_text_output,
             inject_bytes,
@@ -258,6 +302,24 @@ pub fn run() {
             mcp_server_start,
             mcp_server_stop,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // 退出 flush: 防抖任务最长 800ms 间隔, 正常退出前把未落盘的
+            // 工作区变更同步写盘, 避免丢最后一次编辑
+            if let tauri::RunEvent::Exit = event {
+                let state = app.state::<AppState>();
+                let ws = &state.workspace;
+                if ws.lock().dirty {
+                    let file = app_state::collect_workspace_file(ws, &state.source_graphs);
+                    let dir = app
+                        .path()
+                        .app_config_dir()
+                        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                    if let Err(e) = app_state::save_workspace(&dir, &file) {
+                        log::warn!("工作区退出落盘失败: {e}");
+                    }
+                }
+            }
+        });
 }

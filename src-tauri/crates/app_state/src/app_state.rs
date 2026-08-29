@@ -33,6 +33,9 @@ pub struct AppState {
     /// 源图存储 — 连线拓扑的后端权威 (最近一次成功编译的 NodeDef/Edge/端口提示;
     /// 拓扑 op 与 `graph:source` 事件的数据源, 见 `cmd_graph::source_graph`)
     pub source_graphs: crate::SourceGraphs,
+    /// 工作区存储 — widget 配置记录 / 画布位置 / tab 元数据的后端权威,
+    /// 随图提交原子更新并落盘 `workspace.json` (见 `workspace` 模块)
+    pub workspace: crate::WorkspaceState,
     /// 输入控件当前值 (Knob/Slider/Button/Radio/Checkbox)
     /// key: widget_id, value: 当前值
     /// 由前端 invoke('set_input_value') 更新
@@ -100,7 +103,8 @@ impl AppState {
         let transport = Arc::new(tokio::sync::Mutex::new(TransportManager::new()));
         let graphs = Arc::new(Mutex::new(HashMap::new()));
         let graphs_version = Arc::new(AtomicU64::new(0));
-        let source_graphs: crate::SourceGraphs = Arc::new(Mutex::new(HashMap::new()));        let input_values = Arc::new(Mutex::new(HashMap::new()));
+        let source_graphs: crate::SourceGraphs = Arc::new(Mutex::new(HashMap::new()));
+        let workspace: crate::WorkspaceState = Arc::new(Mutex::new(crate::WorkspaceInner::default()));        let input_values = Arc::new(Mutex::new(HashMap::new()));
         let custom_outputs = Arc::new(Mutex::new(HashMap::new()));
         let custom_text_outputs = Arc::new(Mutex::new(HashMap::new()));
         let text_output_snapshot = Arc::new(Mutex::new(
@@ -172,6 +176,7 @@ impl AppState {
             graphs,
             graphs_version,
             source_graphs,
+            workspace,
             input_values,
             custom_outputs,
             custom_text_outputs,

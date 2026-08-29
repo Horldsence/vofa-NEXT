@@ -6,16 +6,17 @@
 //! 错误边在结构上不可能存在;成功后 `graph:source` 事件把权威源图推回前端画布。
 //!
 //! 默认 handle 与 RawData `src:` 改写依据源图存储里的端口提示
-//! ([`app_state::SourceNodeHint`] — widget 参数在前端, 后端无法枚举 Sink 端口)。
+//! ([`app_state::SourceNodeHint`] — widget 端口表形状由前端参数派生,
+//! 后端经提示解析)。拓扑 op 不携带 widget 记录与位置 — 源图中现状保留。
 
-use app_state::{SourceGraphs, SourceNodeHint, TabSourceGraph};
+use app_state::{Position, SourceGraphs, SourceNodeHint, TabSourceGraph, WidgetRecord, WorkspaceState};
 use buffer_graph::Edge;
 use error::ConfigError;
 use node_kind::NodeKind;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::collections::HashMap;
 
 use app_state::AppState;
 use pipeline_data_plane::DataPlaneState;
@@ -28,12 +29,17 @@ use crate::apply_tab_graph_parts;
 pub const GRAPH_SOURCE_EVENT: &str = "graph:source";
 
 /// [`GRAPH_SOURCE_EVENT`] 载荷 — 该 tab 最近一次成功编译的源图
+/// (含 widget 配置记录与画布位置: 画布据此重建该 tab 完整视图)
 #[derive(Debug, Clone, Serialize)]
 pub struct GraphSourceEvent {
     pub tab_id: String,
     pub version: u64,
     pub nodes: Vec<node_kind::NodeDef>,
     pub edges: Vec<Edge>,
+    #[serde(default)]
+    pub widgets: Vec<WidgetRecord>,
+    #[serde(default)]
+    pub positions: HashMap<String, Position>,
 }
 
 /// 连线 op 结果 — 新 (或已存在的等价) 边 id
@@ -152,6 +158,7 @@ pub async fn apply_connect_edge(
     graphs_version: &Arc<std::sync::atomic::AtomicU64>,
     data_plane: &DataPlaneState,
     source_graphs: &SourceGraphs,
+    workspace: &WorkspaceState,
     app: Option<&AppHandle>,
     tab_id: Option<String>,
     source: String,
@@ -199,16 +206,20 @@ pub async fn apply_connect_edge(
         target,
         target_handle: th,
     });
+    // 拓扑 op 不携带 widget 记录与位置 — 源图中现状保留 (None 语义)
     apply_tab_graph_parts(
         graphs,
         graphs_version,
         data_plane,
         source_graphs,
+        workspace,
         app,
         tab,
         graph.nodes,
         edges,
         graph.hints,
+        None,
+        None,
         None,
     )
     .await?;
@@ -222,6 +233,7 @@ pub async fn apply_disconnect_edge(
     graphs_version: &Arc<std::sync::atomic::AtomicU64>,
     data_plane: &DataPlaneState,
     source_graphs: &SourceGraphs,
+    workspace: &WorkspaceState,
     app: Option<&AppHandle>,
     edge_id: Option<String>,
     source: Option<String>,
@@ -258,11 +270,14 @@ pub async fn apply_disconnect_edge(
         graphs_version,
         data_plane,
         source_graphs,
+        workspace,
         app,
         tab,
         graph.nodes,
         edges,
         graph.hints,
+        None,
+        None,
         None,
     )
     .await?;
@@ -294,6 +309,7 @@ pub async fn connect_edge(
         &state.graphs_version,
         &state.data_plane,
         &state.source_graphs,
+        &state.workspace,
         Some(&app),
         tab_id,
         source,
@@ -308,11 +324,22 @@ pub async fn connect_edge(
 #[tauri::command]
 pub fn get_source_graph(state: State<'_, AppState>, tab_id: String) -> Option<GraphSourceEvent> {
     let store = state.source_graphs.lock();
-    store.get(&tab_id).map(|g| GraphSourceEvent {
-        tab_id: tab_id.clone(),
+    let g = store.get(&tab_id)?;
+    let positions = {
+        let ws = state.workspace.lock();
+        ws.positions
+            .iter()
+            .filter(|(id, _)| g.nodes.iter().any(|n| &n.id == *id))
+            .map(|(id, p)| (id.clone(), *p))
+            .collect()
+    };
+    Some(GraphSourceEvent {
+        tab_id,
         version: state.graphs_version.load(Ordering::Relaxed),
         nodes: g.nodes.clone(),
         edges: g.edges.clone(),
+        widgets: g.widgets.clone(),
+        positions,
     })
 }
 
@@ -330,6 +357,7 @@ pub async fn disconnect_edge(
         &state.graphs_version,
         &state.data_plane,
         &state.source_graphs,
+        &state.workspace,
         Some(&app),
         edge_id,
         source,

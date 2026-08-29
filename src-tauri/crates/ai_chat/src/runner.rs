@@ -300,15 +300,15 @@ mod tests {
         Box::pin(futures::stream::iter(events))
     }
 
-    fn text_end(text: &str) -> Result<ProviderEvent> {
-        Ok(ProviderEvent::TurnEnd {
+    fn text_end(text: &str) -> ProviderEvent {
+        ProviderEvent::TurnEnd {
             outcome: ChatTurnOutcome {
                 text: text.to_string(),
                 ..ChatTurnOutcome::default()
             },
             input_tokens: None,
             output_tokens: None,
-        })
+        }
     }
 
     fn tool_call(id: &str, name: &str, value: i64) -> ToolCallDto {
@@ -338,7 +338,7 @@ mod tests {
             Ok(match output {
                 MockOutput::Text(t) => stream_from(vec![
                     Ok(ProviderEvent::TextDelta(t.clone())),
-                    text_end(&t),
+                    Ok(text_end(&t)),
                 ]),
                 MockOutput::ToolCalls(calls) => stream_from(vec![Ok(ProviderEvent::TurnEnd {
                     outcome: ChatTurnOutcome {

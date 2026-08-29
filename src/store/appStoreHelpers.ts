@@ -9,7 +9,15 @@ import {
   type NodeDef,
 } from '../lib/utils/nodeDef';
 import { api } from '../lib/tauri/tauri';
-import type { GraphSourceEventPayload, SourceNodeHintPayload } from '../lib/tauri/tauri';
+import type {
+  DataTabMetaPayload,
+  GraphSourceEventPayload,
+  PositionPayload,
+  SourceNodeHintPayload,
+  TabMetaPayload,
+  WidgetRecordPayload,
+  WorkspaceSnapshotPayload,
+} from '../lib/tauri/tauri';
 import { notify } from '../lib/tauri/notifications';
 import { nodeError } from '../lib/tauri/errorGuidance';
 import { parseNodeError } from '../types/errors';
@@ -20,7 +28,17 @@ import {
 } from '../lib/utils/protocolSchema';
 import { edgeHandlesValid } from '../lib/utils/connectionRules';
 import { getWidgetPorts } from '../components/nodes/WidgetPorts';
-import type { WidgetConfig, ProtocolConfig, ProtocolSchema, TransportConfig } from '../types';
+import {
+  normalizeModel3DConfig,
+} from '../lib/utils/createWidget';
+import { normalizeCommandConfig } from '../lib/utils/commandFrames';
+import type {
+  DataTab,
+  WidgetConfig,
+  ProtocolConfig,
+  ProtocolSchema,
+  TransportConfig,
+} from '../types';
 
 // getEffectiveChannels 已移至 lib/utils/protocolSchema (避免循环依赖), 此处 re-export 保持既有导入路径
 export { getEffectiveChannels } from '../lib/utils/protocolSchema';
@@ -198,13 +216,34 @@ async function doSyncTabGraph(tabId: string, allowConflictRetry = true): Promise
   }
 
   const edges = tabEdges.map(edgeToGraphEdge);
+
+  // 4. widget 配置记录 + 画布位置 — 配置模型的后端权威存储 (随同一提交原子更新)
+  const widgetRecords: WidgetRecordPayload[] = [];
+  for (const n of state.rfNodes) {
+    if (n.data?.tabId !== tabId) continue;
+    const widget = n.data?.widget as WidgetConfig | undefined;
+    if (!widget) continue;
+    widgetRecords.push({
+      id: n.id,
+      kind: widget.kind,
+      params: widget.params as unknown as Record<string, unknown>,
+    });
+  }
+  const positions: Record<string, PositionPayload> = {};
+  for (const n of state.rfNodes) {
+    if (!tabNodeIds.has(n.id)) continue;
+    positions[n.id] = { x: n.position.x, y: n.position.y };
+  }
+
   try {
     const derived = await api.updateTabGraph(
       tabId,
       nodes,
       edges,
       nodeHints,
-      state.graphVersion
+      state.graphVersion,
+      widgetRecords,
+      positions
     );
     // 后端单一权威: 版本号 + 本次图变化涉及的节点派生数据
     if (derived?.version != null) state.setGraphVersion(derived.version);
@@ -270,55 +309,205 @@ export function syncTabGraphToBackend(tabId: string): Promise<string | undefined
   return next;
 }
 
+/// 已知控件 kind 全集 (编译期穷举 — 新增控件 kind 时此处必须同步,
+/// 否则后端记录 / 快照中该类控件会被水合与采纳路径剔除)
+const KNOWN_WIDGET_KINDS: Record<WidgetConfig['kind'], true> = {
+  Knob: true,
+  Button: true,
+  Radio: true,
+  Checkbox: true,
+  Slider: true,
+  Label: true,
+  Waveform: true,
+  PieChart: true,
+  Image: true,
+  Gauge: true,
+  LED: true,
+  NumberDisplay: true,
+  Custom: true,
+  Math: true,
+  Filter: true,
+  FFT: true,
+  IFFT: true,
+  Spectrum: true,
+  Model3D: true,
+  Command: true,
+  FrameDecoder: true,
+  TableView: true,
+  RawData: true,
+  Trigger: true,
+  TextDisplay: true,
+  TextInput: true,
+  Str: true,
+  TextOut: true,
+};
+
+/// JSON 值深比较 (键序无关) — 后端 serde_json 反序列化会对对象键排序,
+/// 不能用字符串比较判断 widget 参数是否变化
+function jsonDeepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((x, i) => jsonDeepEqual(x, b[i]));
+  }
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  const objB = b as Record<string, unknown>;
+  return ka.every((k) => k in objB && jsonDeepEqual((a as Record<string, unknown>)[k], objB[k]));
+}
+
+/// widget 配置记录 → WidgetConfig (归一化旧形态; 未知 kind 返回 null —
+/// 画布无法渲染, 引用它的边由 tabNodeIds 过滤剔除)
+export function widgetFromRecord(rec: WidgetRecordPayload): WidgetConfig | null {
+  if (!(rec.kind in KNOWN_WIDGET_KINDS)) return null;
+  const params = (rec.params ?? {}) as Record<string, unknown>;
+  if (rec.kind === 'Command') {
+    return { kind: 'Command', params: normalizeCommandConfig(params as never) };
+  }
+  if (rec.kind === 'Model3D') {
+    return { kind: 'Model3D', params: normalizeModel3DConfig(params as never) };
+  }
+  return { kind: rec.kind, params } as unknown as WidgetConfig;
+}
+
+/// 由 NodeDef 构造全局 Transport/Protocol 画布节点 (配置完整在 NodeDef 中;
+/// 位置取工作区位置表, 缺省时按类型落默认位)。kind 非 Transport/Protocol 返回 null
+export function globalNodeFromDef(
+  def: GraphSourceEventPayload['nodes'][number],
+  position?: PositionPayload
+): Node | null {
+  if (def.kind.kind === 'Transport') {
+    const config = def.kind.params.config;
+    if (!config) return null;
+    return {
+      id: def.id,
+      type: 'transport',
+      position: position ?? { x: 60, y: 60 },
+      data: { global: true, config, label: config.kind } satisfies TransportNodeData,
+    };
+  }
+  if (def.kind.kind === 'Protocol') {
+    const config = def.kind.params.config as ProtocolConfig | undefined;
+    if (!config) return null;
+    return {
+      id: def.id,
+      type: 'protocol',
+      position: position ?? { x: 300, y: 60 },
+      data: {
+        global: true,
+        config,
+        convertTo: (def.kind.params.convert_to as ProtocolConfig | null) ?? null,
+        channels: getEffectiveChannels(config, null),
+        schema:
+          (def.kind.params.schema as ProtocolSchema | undefined) ??
+          schemaFromProtocolConfig(config),
+        label: config.kind,
+      } satisfies ProtocolNodeData,
+    };
+  }
+  return null;
+}
+
 /**
- * 采纳后端权威源图 — `graph:source` 事件 / 版本冲突重试共用
+ * 采纳后端权威源图 — `graph:source` 事件 / 版本冲突重试 / 启动水合共用
  *
- * 画布是源图的投影: 该 tab 的边被替换为权威集 (handle 失效的悬空边剔除并
- * 触发一次纠正同步); 缺失的全局节点 (transport/protocol, 配置完整在 NodeDef
- * 中) 自动补建。widget 节点参数仅前端持有, 引用未知 widget 的边不采纳
- * (阶段1 边界: 纯 widget 的外部整图提交仍不完整渲染)。
+ * 画布是源图的投影, 三层收敛:
+ * - 边: 该 tab 的边替换为权威集 (handle 失效的悬空边剔除并触发一次纠正同步);
+ * - 全局节点: 缺失的 transport/protocol 自动补建 (配置完整在 NodeDef 中);
+ * - widget: 事件携带配置记录时 (后端单一权威), 该 tab 的 widget 节点集合
+ *   整体收敛到记录集 — 外部提交的纯 widget 图完整渲染, 外部删除同样生效;
+ *   事件未携带记录 (旧契约) 时画布 widget 保持不动。
+ * 事件携带位置表时, 已有节点的画布位置跟随更新。
  */
 export function adoptSourceGraph(event: GraphSourceEventPayload): void {
   const state = useAppStore.getState();
   if (event.version) state.setGraphVersion(event.version);
 
-  // 1. 补建缺失的全局节点 (id 未出现过的 transport/protocol)
-  const knownIds = new Set(state.rfNodes.map((n) => n.id));
-  const addedNodes: Node[] = [];
-  for (const def of event.nodes) {
-    if (knownIds.has(def.id)) continue;
-    if (def.kind.kind === 'Transport') {
-      const config = def.kind.params.config;
-      if (!config) continue;
-      addedNodes.push({
-        id: def.id,
-        type: 'transport',
-        position: { x: 60, y: 60 },
-        data: { global: true, config, label: config.kind } satisfies TransportNodeData,
-      });
-    } else if (def.kind.kind === 'Protocol') {
-      const config = def.kind.params.config as ProtocolConfig | undefined;
-      if (!config) continue;
-      addedNodes.push({
-        id: def.id,
-        type: 'protocol',
-        position: { x: 300, y: 60 },
-        data: {
-          global: true,
-          config,
-          convertTo: (def.kind.params.convert_to as ProtocolConfig | null) ?? null,
-          channels: getEffectiveChannels(config, null),
-          schema:
-            (def.kind.params.schema as ProtocolSchema | undefined) ??
-            schemaFromProtocolConfig(config),
-          label: config.kind,
-        } satisfies ProtocolNodeData,
-      });
+  const positions = event.positions;
+  const records = event.widgets;
+
+  // 1. widget 配置记录收敛 — 新增 / 更新 / 删除 (记录集为该 tab 权威)
+  const nodeUpdates = new Map<string, Node>();
+  const widgetUpdates = new Map<string, WidgetConfig>();
+  const addedWidgetNodes: Node[] = [];
+  const addedWidgetConfigs: WidgetConfig[] = [];
+  const removedWidgetIds = new Set<string>();
+  let widgetSetChanged = false;
+
+  if (records) {
+    for (const rec of records) {
+      const widget = widgetFromRecord(rec);
+      if (!widget) continue;
+      const existing = state.rfNodes.find((n) => n.id === rec.id);
+      const pos = positions?.[rec.id];
+      if (existing) {
+        const cur = existing.data?.widget as WidgetConfig | undefined;
+        const configChanged =
+          !cur || cur.kind !== widget.kind || !jsonDeepEqual(cur.params, widget.params);
+        const posChanged =
+          pos != null && (existing.position.x !== pos.x || existing.position.y !== pos.y);
+        if (configChanged || posChanged) {
+          nodeUpdates.set(rec.id, {
+            ...existing,
+            position: pos ?? existing.position,
+            data: { ...existing.data, widget },
+          });
+          widgetUpdates.set(rec.id, widget);
+          widgetSetChanged = true;
+        }
+      } else {
+        addedWidgetNodes.push({
+          id: rec.id,
+          type: 'widget',
+          position: pos ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 },
+          data: { widget, tabId: event.tab_id },
+        });
+        addedWidgetConfigs.push(widget);
+        widgetSetChanged = true;
+      }
+    }
+    const recordIds = new Set(records.map((r) => r.id));
+    for (const n of state.rfNodes) {
+      if (!isGlobalNode(n) && n.data?.tabId === event.tab_id && !recordIds.has(n.id)) {
+        removedWidgetIds.add(n.id);
+        widgetSetChanged = true;
+      }
     }
   }
 
-  // 2. 该 tab 可见范围内的边替换为权威集
-  const nodesForCheck = addedNodes.length ? [...state.rfNodes, ...addedNodes] : state.rfNodes;
+  // 2. 补建缺失的全局节点 (id 未出现过的 transport/protocol)
+  const knownIds = new Set(state.rfNodes.map((n) => n.id));
+  const addedGlobalNodes: Node[] = [];
+  for (const def of event.nodes) {
+    if (knownIds.has(def.id)) continue;
+    const node = globalNodeFromDef(def, positions?.[def.id]);
+    if (node) addedGlobalNodes.push(node);
+  }
+
+  // 3. 位置跟随 — 已存在节点的画布位置按事件位置表更新
+  const posUpdates = new Map<string, Node>();
+  if (positions) {
+    for (const n of state.rfNodes) {
+      if (nodeUpdates.has(n.id)) continue; // 配置更新已携带最新位置
+      const pos = positions[n.id];
+      if (!pos || (n.position.x === pos.x && n.position.y === pos.y)) continue;
+      posUpdates.set(n.id, { ...n, position: pos });
+    }
+  }
+
+  // 4. 该 tab 可见范围内的边替换为权威集
+  const keptNodes = removedWidgetIds.size
+    ? state.rfNodes.filter((n) => !removedWidgetIds.has(n.id))
+    : state.rfNodes;
+  const nodesForCheck = [
+    ...keptNodes,
+    ...nodeUpdates.values(),
+    ...posUpdates.values(),
+    ...addedWidgetNodes,
+    ...addedGlobalNodes,
+  ];
   const checkCtx = {
     nodes: nodesForCheck,
     derivedPorts: state.derivedPorts,
@@ -335,7 +524,13 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
   const adopted: Edge[] = [];
   let dropped = 0;
   for (const e of event.edges) {
-    if (!isTabEdge(e)) continue; // 其他 tab 的边不动
+    if (!tabNodeIds.has(e.source) || !tabNodeIds.has(e.target)) {
+      // 其他 tab 的边不动; 但 widget 配置记录在场时 (新契约), 本 tab 事件内的
+      // 边端点必然可见 (缺失的全局节点已补建) — 不可见即画布无法渲染的 widget,
+      // 计入悬空边触发纠正同步, 让后端源图随画布视图收敛
+      if (records) dropped += 1;
+      continue;
+    }
     const edge: Edge = {
       id: e.id,
       source: e.source,
@@ -352,16 +547,52 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
 
   const keyOf = (e: Edge) =>
     `${e.id}|${e.source}|${e.sourceHandle ?? ''}|${e.target}|${e.targetHandle ?? ''}`;
-  const oldKeys = new Set(state.rfEdges.filter(isTabEdge).map(keyOf));
-  const edgesChanged =
+  const oldEdges = removedWidgetIds.size
+    ? state.rfEdges.filter((e) => !removedWidgetIds.has(e.source) && !removedWidgetIds.has(e.target))
+    : state.rfEdges;
+  const oldKeys = new Set(oldEdges.filter(isTabEdge).map(keyOf));  const edgesChanged =
     oldKeys.size !== adopted.length || adopted.some((e) => !oldKeys.has(keyOf(e)));
-  if (!edgesChanged && addedNodes.length === 0) return;
+  if (
+    !edgesChanged &&
+    addedGlobalNodes.length === 0 &&
+    !widgetSetChanged &&
+    posUpdates.size === 0
+  ) {
+    return;
+  }
 
-  const others = state.rfEdges.filter((e) => !isTabEdge(e));
-  useAppStore.setState({
-    ...(addedNodes.length ? { rfNodes: [...state.rfNodes, ...addedNodes] } : {}),
-    rfEdges: [...others, ...adopted],
-  });
+  // 应用: 节点 = 保留集 ⊕ 更新 ⊕ 新增; widgets 平铺数组与 tab 隶属同步收敛
+  const updateMap = new Map<string, Node>([...nodeUpdates, ...posUpdates]);
+  const rfNodes = [
+    ...keptNodes.map((n) => updateMap.get(n.id) ?? n),
+    ...addedWidgetNodes,
+    ...addedGlobalNodes,
+  ];
+  const others = oldEdges.filter((e) => !isTabEdge(e));
+  let widgets = state.widgets;
+  if (removedWidgetIds.size) widgets = widgets.filter((w) => !removedWidgetIds.has(w.params.id));
+  if (widgetUpdates.size) {
+    // 平铺数组 upsert: 条目在则更新, 不在 (历史不一致) 则补齐, 与画布保持一致
+    const touched = new Set<string>();
+    widgets = widgets.map((w) => {
+      const nw = widgetUpdates.get(w.params.id);
+      if (!nw) return w;
+      touched.add(w.params.id);
+      return nw;
+    });
+    const missing = [...widgetUpdates].filter(([id]) => !touched.has(id));
+    if (missing.length) widgets = [...widgets, ...missing.map(([, w]) => w)];
+  }
+  if (addedWidgetConfigs.length) widgets = [...widgets, ...addedWidgetConfigs];
+  let controlTabs = state.controlTabs;
+  if (records) {
+    const liveIds = new Set(widgets.map((w) => w.params.id));
+    const ordered = records.map((r) => r.id).filter((id) => liveIds.has(id));
+    controlTabs = controlTabs.map((t) =>
+      t.id === event.tab_id ? { ...t, widgets: ordered } : t
+    );
+  }
+  useAppStore.setState({ rfNodes, rfEdges: [...others, ...adopted], widgets, controlTabs });
   // 纠正同步: 后端源图中仍存在的失效边被本次视图覆盖 (一次性收敛, 无循环)
   if (dropped > 0) void syncTabGraphToBackend(event.tab_id);
 }
@@ -487,4 +718,110 @@ export function traceTransportSource(nodeId: string, edges: Edge[], nodes: Node[
     }
   }
   return null;
+}
+
+// ---- 启动水合 (workspace_get) + tab 元数据同步 ----
+
+/// 从后端水合工作区快照 — 启动时调用一次
+///
+/// 返回是否水合了持久化工作区: false = 无持久化 (全新安装 / 后端不可达),
+/// 前端保持默认状态并走初始同步 + 种子流程; true = 本地已被后端权威快照
+/// 覆盖 (控件 tab / 数据面板 / widget 配置 / 画布 / 边 / 版本基线),
+/// 后端启动时已完成逐 tab 重编译, 不再初始同步。
+export async function hydrateWorkspaceFromBackend(): Promise<boolean> {
+  let snap: WorkspaceSnapshotPayload | null = null;
+  try {
+    snap = await api.workspaceGet();
+  } catch {
+    return false;
+  }
+  if (!snap) return false;
+
+  // 1. 全部 tab 源图 → widget 节点 + 全局节点 + 边 (先建节点, 再按端点全集过滤边)
+  const widgetNodes: Node[] = [];
+  const globalNodes = new Map<string, Node>();
+  const widgets: WidgetConfig[] = [];
+  for (const g of snap.graphs) {
+    for (const def of g.nodes) {
+      if (globalNodes.has(def.id)) continue;
+      if (def.kind.kind !== 'Transport' && def.kind.kind !== 'Protocol') continue;
+      const node = globalNodeFromDef(def, snap.positions[def.id]);
+      if (node) globalNodes.set(def.id, node);
+    }
+    for (const rec of g.widgets) {
+      const widget = widgetFromRecord(rec);
+      if (!widget) continue; // 未知 kind — 画布无法渲染, 其边因端点缺失被过滤
+      widgets.push(widget);
+      widgetNodes.push({
+        id: rec.id,
+        type: 'widget',
+        position: snap.positions[rec.id] ?? { x: 240, y: 80 },
+        data: { widget, tabId: g.tab_id },
+      });
+    }
+  }
+  const localIds = new Set([...globalNodes.keys(), ...widgetNodes.map((n) => n.id)]);
+  const edges: Edge[] = [];
+  for (const g of snap.graphs) {
+    for (const e of g.edges) {
+      if (!localIds.has(e.source) || !localIds.has(e.target)) continue;
+      edges.push({
+        id: e.id,
+        source: e.source,
+        sourceHandle: e.source_handle,
+        target: e.target,
+        targetHandle: e.target_handle,
+      });
+    }
+  }
+
+  // 2. tab 元数据 (控件 tab 至少保留一个; 数据面板兜底注入 fixed 两页 —
+  //    与备份快照应用同规则)
+  const controlTabs = (snap.tabs.length
+    ? snap.tabs
+    : [{ id: 'default', name: 'Tab 1', widgets: [] }]
+  ).map((t) => ({ id: t.id, name: t.name, widgets: t.widgets ?? [] }));
+  const dataTabs: DataTab[] = snap.data_tabs.map((t) => ({
+    id: t.id,
+    type: t.type as DataTab['type'],
+    name: t.name,
+    closable: t.closable,
+    ...(t.widget_id != null ? { widgetId: t.widget_id } : {}),
+  }));
+  for (const ft of [
+    { id: 'compile-errors-fixed', type: 'compile-errors', name: 'Compile Errors', closable: false },
+    { id: 'compile-results-fixed', type: 'compile-results', name: 'Compile Results', closable: false },
+  ] as DataTab[]) {
+    if (!dataTabs.some((t) => t.id === ft.id)) dataTabs.push(ft);
+  }
+
+  useAppStore.setState({
+    controlTabs,
+    activeControlTabId: controlTabs[0].id,
+    dataTabs,
+    activeDataTabId: dataTabs[0]?.id ?? 'compile-results-fixed',
+    widgets,
+    rfNodes: [...globalNodes.values(), ...widgetNodes],
+    rfEdges: edges,
+    graphVersion: snap.version ?? null,
+  });
+  return true;
+}
+
+/// tab 元数据整表覆盖到后端工作区 (控件 tab / 数据面板增删改名后由订阅触发)
+export function syncWorkspaceMeta(): void {
+  const state = useAppStore.getState();
+  const tabs: TabMetaPayload[] = state.controlTabs.map((t) => ({
+    id: t.id,
+    name: t.name,
+    widgets: [...t.widgets],
+  }));
+  const dataTabs: DataTabMetaPayload[] = state.dataTabs.map((t) => ({
+    id: t.id,
+    name: t.name,
+    type: t.type,
+    closable: t.closable,
+    ...(t.widgetId != null ? { widget_id: t.widgetId } : {}),
+  }));
+  void api.workspaceSetTabs(tabs, dataTabs).catch(() => {});
 }

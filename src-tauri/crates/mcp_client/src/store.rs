@@ -62,6 +62,7 @@ pub fn save_servers(dir: &Path, servers: &[McpServerConfig]) -> Result<()> {
 mod tests {
     use super::*;
     use crate::types::McpTransport;
+    use std::collections::HashMap;
 
     #[test]
     fn roundtrip_servers_file() {
@@ -72,7 +73,7 @@ mod tests {
             transport: McpTransport::Stdio {
                 command: "npx".to_string(),
                 args: vec!["-y".to_string(), "@modelcontextprotocol/server-filesystem".to_string()],
-                env: Default::default(),
+                env: HashMap::default(),
             },
             enabled: true,
         }];

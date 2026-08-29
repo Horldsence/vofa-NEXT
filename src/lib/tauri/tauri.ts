@@ -36,12 +36,59 @@ export interface SourceNodeHintPayload {
   raw_data?: boolean;
 }
 
+/// 画布坐标 — 与后端 `app_state::Position` / React Flow `node.position` 同形
+export interface PositionPayload {
+  x: number;
+  y: number;
+}
+
+/// widget 配置记录 — 与后端 `app_state::WidgetRecord` 同形。
+/// 前端 `WidgetConfig` 的透传存储 (kind + params), 后端不解释、原样回传
+export interface WidgetRecordPayload {
+  id: string;
+  kind: string;
+  params: Record<string, unknown>;
+}
+
 /// `graph:source` 事件 / get_source_graph 响应 — tab 权威源图
+/// (含 widget 配置记录与画布位置: 画布据此重建该 tab 完整视图)
 export interface GraphSourceEventPayload {
   tab_id: string;
   version: number;
   nodes: NodeDef[];
   edges: GraphEdge[];
+  widgets?: WidgetRecordPayload[];
+  positions?: Record<string, PositionPayload>;
+}
+
+/// 控件 tab 元数据 — 与后端 `app_state::TabMeta` 同形
+export interface TabMetaPayload {
+  id: string;
+  name: string;
+  widgets: string[];
+}
+
+/// 数据面板 tab 元数据 — 与后端 `app_state::DataTabMeta` 同形
+export interface DataTabMetaPayload {
+  id: string;
+  name: string;
+  type: string;
+  closable: boolean;
+  widget_id?: string | null;
+}
+
+/// `workspace_get` 响应 — 工作区水合快照 (null = 无持久化工作区, 默认启动)
+export interface WorkspaceSnapshotPayload {
+  version: number;
+  tabs: TabMetaPayload[];
+  data_tabs: DataTabMetaPayload[];
+  graphs: Array<{
+    tab_id: string;
+    nodes: NodeDef[];
+    edges: GraphEdge[];
+    widgets: WidgetRecordPayload[];
+  }>;
+  positions: Record<string, PositionPayload>;
 }
 
 /// connect_edge 响应
@@ -230,6 +277,8 @@ export const api = {
   // ===== 节点图 (后端化重构) =====
   /// 更新指定 tab 的节点图 (整体替换 nodes + edges; nodes 可含全局 Transport/Protocol 节点定义)
   /// nodeHints: 每节点端口提示 (后端拓扑 op 解析默认 handle / RawData 改写用)
+  /// widgetRecords: 该 tab 全部 widget 配置记录 (配置模型的后端权威存储, 整体替换)
+  /// positions: 节点画布位置 (合并进后端工作区位置表)
   /// baseVersion: 乐观并发基线 (期间被其他写入方推进则返回 GraphVersionConflict)
   /// 编译失败 (循环/域不匹配等) 返回真实原因, 旧图保留
   /// 返回 `GraphDerivedPayload` — 本次图变化涉及的全部节点派生端口表 / 通道数 + 新版本号
@@ -238,15 +287,30 @@ export const api = {
     nodes: NodeDef[],
     edges: GraphEdge[],
     nodeHints?: Record<string, SourceNodeHintPayload>,
-    baseVersion?: number | null
+    baseVersion?: number | null,
+    widgetRecords?: WidgetRecordPayload[],
+    positions?: Record<string, PositionPayload>
   ) =>
     invoke<GraphDerivedPayload>('update_tab_graph', {
       tabId,
       nodes,
       edges,
       nodeHints: nodeHints ?? {},
+      widgets: widgetRecords ?? null,
+      positions: positions ?? null,
       baseVersion: baseVersion ?? null,
     }),
+
+  /// 上报节点画布位置 (拖拽结束时批量提交) — 轻量路径, 不触发编译
+  setNodePositions: (positions: Record<string, PositionPayload>) =>
+    invoke<void>('set_node_positions', { positions }),
+
+  /// 读取工作区水合快照; null = 无持久化工作区 (全新安装, 前端走默认启动)
+  workspaceGet: () => invoke<WorkspaceSnapshotPayload | null>('workspace_get'),
+
+  /// 提交 tab 元数据 (控件 tab + 数据面板 tab) — 增删/改名/重排后整表覆盖
+  workspaceSetTabs: (tabs: TabMetaPayload[], dataTabs: DataTabMetaPayload[]) =>
+    invoke<void>('workspace_set_tabs', { tabs, dataTabs }),
 
   /// 读取指定 tab 的权威源图 (版本冲突后拉取合并; tab 无源图时返回 null)
   getSourceGraph: (tabId: string) =>

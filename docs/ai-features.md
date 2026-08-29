@@ -107,7 +107,7 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
 | `get_graph_outputs` | 读取节点图输出快照 |
 | `get_recent_waveform` / `get_waveform_window` / `get_buffer_info` / `list_data_sources` | 最近波形 / 时间窗波形 / 缓冲信息 / 数据源清单 |
 | `get_can_frames` / `get_logic_data` / `get_raw_data` | 最近 CAN 帧 + 负载 / 逻辑采样与解码事件 / 原始字节(TX/RX, hex) |
-| `list_tabs` / `update_graph` | 列出图 tab / 提交替换节点图(复用 `apply_tab_graph_parts`) |
+| `list_tabs` / `update_graph` | 列出图 tab / 提交替换节点图(复用 `apply_tab_graph_parts`;可选 `widgets` 配置记录 + `positions` 位置,画布可完整渲染控件) |
 | `connect_edge` / `disconnect_edge` | 增量连线 / 删线(后端编译校验,失败返回真实原因且不建边) |
 
 外部客户端接入示例(Claude Desktop connectors / 任意 MCP 客户端):
@@ -142,28 +142,55 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
   `create_tab` / `set_active_tab`、`connect_transport` / `disconnect_transport`、
   `list_templates` / `apply_template`(默认 merge 模式,不破坏用户现有工作区)。
 
-### 连线拓扑:后端权威(阶段1)
+### 节点图与 widget 配置:后端权威
 
-连线拓扑的所有权已下沉后端,`connect_nodes` / `disconnect_edge` 为后端直连
-工具(经 `cmd_graph::source_graph` 的拓扑 op,内置 AI 与外部 MCP `connect_edge` /
-`disconnect_edge` 同一实现):
+节点图的全部状态 — 连线拓扑 (NodeDef/Edge)、widget 配置记录 (kind + params)、
+画布位置、tab 元数据 — 所有权都在后端,前端画布是权威状态的投影:
 
-- 后端持有**源图存储**(`AppState.source_graphs`,每 tab 的 NodeDef + Edge +
-  端口提示),整图提交(前端 sync / MCP `update_graph`)与拓扑 op 共用
+- **源图存储** (`AppState.source_graphs`,每 tab 的 NodeDef + Edge + 端口提示 +
+  widget 配置记录):整图提交 (前端 sync / MCP `update_graph`) 与拓扑 op
+  (`connect_nodes` / `connect_edge` / `disconnect_edge`) 共用
   `apply_tab_graph_parts` 同一编译提交入口;
-- **编译失败(端口域不匹配 / 成环)返回真实 `CompileError` 且源图不变** ——
+- **工作区存储** (`AppState.workspace`):控件 tab 清单 (id/名称/widget 顺序)、
+  数据面板 tab 元数据、全部节点画布位置,随图提交在同一事务里更新
+  (编译失败则一切不变);
+- **编译失败 (端口域不匹配 / 成环) 返回真实 `CompileError` 且源图不变** ——
   不再回退占位 Cycle 假错误;错误边结构上不可能存在,模型收到错误后可自我修正;
 - 默认 handle 与 RawData `src:` 端口改写依据前端 sync 附带的端口提示
-  (`SourceNodeHint` — widget 参数在前端,后端无法枚举 Sink 端口);
-- 提交成功后 emit **`graph:source` {tab_id, version, nodes, edges}**,
-  前端画布按此收敛(`adoptSourceGraph`:替换该 tab 边、补建缺失全局节点、
-  剔除 handle 失效的悬空边并纠正同步);
+  (`SourceNodeHint` — widget 端口表形状由前端参数派生,后端经提示解析);
+- 提交成功后 emit **`graph:source` {tab_id, version, nodes, edges, widgets,
+  positions}**,前端画布按此收敛 (`adoptSourceGraph`:边替换为权威集、补建缺失
+  全局节点、widget 节点集合收敛到配置记录 — 外部提交的**纯 widget 图可完整
+  渲染**,外部删除同样生效;未知 widget kind 的记录被画布剔除,引用它的边
+  触发一次纠正同步让后端源图随画布视图收敛);
 - 前端整图提交携带 `base_version` 乐观并发基线,版本被其他写入方推进时后端
   返回 `GraphVersionConflict`,前端拉取权威源图合并后重试一次(多写入方防互踩);
-- `update_tab_graph` 成功响应与 `graph:derived` 事件携带新版本号。
+- `update_tab_graph` 成功响应与 `graph:derived` 事件携带新版本号;
+- 拖拽结束 (`dragging=false` 收尾批) 经 `set_node_positions` 轻量上报最终位置
+  (不触发编译);
+- widget 配置记录的 schema 语义仍由前端类型定义 (后端以 `Value` 透传,
+  不复刻 28 类控件 schema),未知 kind 在画布水合/采纳时剔除 —— 后端是
+  **存储与分发权威**,配置形状校验发生在前端。
 
-外部 MCP 客户端的 `update_graph` / `connect_edge` / `disconnect_edge` 走同一
-后端入口,画布经 `graph:source` 实时同步(不再是只改后端看不见)。
+外部 MCP 客户端的 `update_graph`(可选 `widgets` / `positions` 参数)、
+`connect_edge` / `disconnect_edge` 走同一后端入口,画布经 `graph:source`
+实时同步。
+
+## 工作区持久化 (workspace.json)
+
+工作区整体持久化在 app config dir 的 `workspace.json`(形态与
+`ai_chat_sessions.json` / `mcp_servers.json` 一致):控件 tab + 数据面板元数据、
+各 tab 源图 (NodeDef/Edge/端口提示/widget 记录) 与画布位置。
+
+- **写入**:图提交 / 位置上报 / tab 元数据变更置 dirty,后台任务 800ms 防抖
+  整体覆盖写;应用退出时 flush 一次,不丢最后一次编辑;
+- **启动恢复**:`lib.rs` setup 阶段加载文件并逐 tab 重编译 (不发事件 —
+  前端尚未就绪),图在后端立即可求值;单 tab 恢复失败不阻塞整体启动;
+- **前端水合**:启动时 `workspace_get` 拉取权威快照 (含全局版本号作为
+  base_version 基线) 覆盖本地;无持久化工作区 (全新安装) 返回 None,前端走
+  默认启动 (初始同步 + 种子图);
+- tab 元数据 (改名/增删/重排) 由前端订阅 store 变化经 `workspace_set_tabs`
+  整表覆盖。
 
 ## 内置知识库(skills)
 
@@ -222,8 +249,9 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
 - 流式中切换会话后,流式气泡不在新会话内显示(回合仍写入发起它的会话)
 - 前端托管工具依赖 webview 存活(聊天面板本身就在其中,实际恒成立),
   15s 超时兜底;webview 处于后台且被系统挂起时可能超时
-- widget 参数(配置/位置)仍为前端所有权(阶段1 边界):外部 MCP 经
-  `update_graph` 提交的**纯 widget** 图无法被画布完整渲染(widget 无法凭
-  NodeDef 重建 UI),引用画布未知 widget 的边不采纳;字节平面
-  (transport/protocol 图)与增量连线完全可见。阶段2 计划把 widget 配置
-  模型与持久化一并下沉后端
+- widget 配置的 schema 校验在前端水合时进行(后端以 `Value` 透传):
+  外部写入方提交未知 kind 的记录时,该控件在画布上被剔除,
+  其边经一次纠正同步收敛 — 写入方需参照 `get_workspace` 返回的
+  config 形态构造 params
+- 工作区持久化不含窗口停靠布局(localStorage)与应用设置(settings.json);
+  传输连接状态属运行态,重启后不自动重连

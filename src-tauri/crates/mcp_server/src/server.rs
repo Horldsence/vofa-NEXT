@@ -41,6 +41,8 @@ pub struct Toolbox {
     pub graphs_version: Arc<AtomicU64>,
     /// 源图存储 (连线拓扑权威 — connect_edge/disconnect_edge op 与 graph:source 事件)。
     pub source_graphs: app_state::SourceGraphs,
+    /// 工作区存储 (widget 配置记录 / 画布位置 / tab 元数据 — 随图提交原子更新)。
+    pub workspace: app_state::WorkspaceState,
     /// CAN 帧缓冲区。
     pub can_buffer: Arc<parking_lot::Mutex<can_types::CanBuffer>>,
     /// CAN 负载统计器 (滑动窗口)。
@@ -61,6 +63,7 @@ impl Toolbox {
             graphs: Arc::clone(&state.graphs),
             graphs_version: Arc::clone(&state.graphs_version),
             source_graphs: Arc::clone(&state.source_graphs),
+            workspace: Arc::clone(&state.workspace),
             can_buffer: Arc::clone(&state.can_buffer),
             can_load_stats: Arc::clone(&state.can_load_stats),
             logic_buffer: Arc::clone(&state.logic_buffer),
@@ -143,6 +146,13 @@ struct UpdateGraphParams {
     /// 边数组 (与前端 Edge 格式一致: from/to + 端口引用)。
     #[serde(default)]
     edges: Vec<Value>,
+    /// widget 配置记录数组 ({id, kind, params}) — 提供时整体替换该 tab 的
+    /// widget 配置 (画布可完整渲染), 缺省保留现状。
+    #[serde(default)]
+    widgets: Option<Vec<Value>>,
+    /// 节点画布位置 ({node_id: {x, y}}) — 提供时合并进工作区位置表。
+    #[serde(default)]
+    positions: Option<std::collections::HashMap<String, Value>>,
 }
 
 /// 连线入参。
@@ -411,7 +421,7 @@ impl VofaMcpServer {
 
     /// 提交 (替换) 指定 tab 的节点图 — 与前端提交同一路径, 界面实时同步。
     #[rmcp::tool(
-        description = "替换指定 tab 的节点图。nodes/edges 与前端 NodeDef/Edge 格式一致;提交成功后前端界面实时刷新。返回派生端口表。编译失败 (环/端口域不匹配) 返回错误, 旧图保留"
+        description = "替换指定 tab 的节点图。nodes/edges 与前端 NodeDef/Edge 格式一致;widgets 可选, 为控件配置记录数组 [{id, kind, params}] (提供时画布可完整渲染控件), positions 可选为节点画布位置 {node_id: {x, y}}。提交成功后前端界面实时刷新。返回派生端口表。编译失败 (环/端口域不匹配) 返回错误, 旧图保留"
     )]
     async fn update_graph(
         &self,
@@ -423,6 +433,8 @@ impl VofaMcpServer {
             &params.tab_id,
             params.nodes,
             params.edges,
+            params.widgets,
+            params.positions,
         )
         .await
         .map_err(internal)

@@ -4,6 +4,7 @@
 //! 统一返回 `Result<Value, String>`:rmcp 侧映射为 MCP 错误,原生执行器侧
 //! 映射为工具失败回填 (is_error),两侧零重复。
 
+use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
 use buffer_raw::RawDataDirection;
@@ -144,12 +145,17 @@ pub fn list_tabs(tb: &Toolbox) -> Value {
 }
 
 /// 提交 (替换) 指定 tab 的节点图 — 与前端提交同一路径,返回派生端口表。
+///
+/// `widgets` / `positions` 为可选的控件配置记录与画布位置 (widget 配置模型
+/// 的后端权威存储):提供时画布可完整渲染控件,缺省保留现状。
 pub async fn update_graph(
     tb: &Toolbox,
     app: &AppHandle,
     tab_id: &str,
     nodes: Vec<Value>,
     edges: Vec<Value>,
+    widgets: Option<Vec<Value>>,
+    positions: Option<HashMap<String, Value>>,
 ) -> Result<Value, String> {
     let nodes: Vec<node_kind::NodeDef> = nodes
         .into_iter()
@@ -161,17 +167,36 @@ pub async fn update_graph(
         .map(serde_json::from_value)
         .collect::<std::result::Result<_, _>>()
         .map_err(|e| format!("edges 反序列化失败: {e}"))?;
+    let widgets: Option<Vec<app_state::WidgetRecord>> = match widgets {
+        Some(items) => Some(items
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|e| format!("widgets 反序列化失败: {e}"))?),
+        None => None,
+    };
+    let positions: Option<HashMap<String, app_state::Position>> = match positions {
+        Some(map) => Some(map
+            .into_iter()
+            .map(|(id, v)| serde_json::from_value::<app_state::Position>(v).map(|p| (id, p)))
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|e| format!("positions 反序列化失败: {e}"))?),
+        None => None,
+    };
 
     let derived = cmd_graph::apply_tab_graph_parts(
         &tb.graphs,
         &tb.graphs_version,
         &tb.data_plane,
         &tb.source_graphs,
+        &tb.workspace,
         Some(app),
         tab_id.to_string(),
         nodes,
         edges,
         Default::default(),
+        widgets,
+        positions,
         None,
     )
     .await
@@ -197,6 +222,7 @@ pub async fn connect_edge(
         &tb.graphs_version,
         &tb.data_plane,
         &tb.source_graphs,
+        &tb.workspace,
         Some(app),
         tab_id,
         source.to_string(),
@@ -222,6 +248,7 @@ pub async fn disconnect_edge(
         &tb.graphs_version,
         &tb.data_plane,
         &tb.source_graphs,
+        &tb.workspace,
         Some(app),
         edge_id,
         source,
