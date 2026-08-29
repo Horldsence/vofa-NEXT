@@ -79,6 +79,26 @@ describe('classifyRawDataChannel', () => {
     expect(info).toEqual({ kind: 'byte-source', transportId: null });
   });
 
+  it('Protocol chN 数值口 → numeric (解析后的 f32 采样, 非原始字节流)', () => {
+    const info = classifyRawDataChannel(
+      { sourceId: 'protocol-1', sourceHandle: 'ch0' },
+      [TRANSPORT_NODE, PROTOCOL_NODE],
+      [BYTE_EDGE],
+      []
+    );
+    expect(info).toEqual({ kind: 'numeric', transportId: null });
+  });
+
+  it('Protocol str 口 (RawData 预设字符串行) → byte-source', () => {
+    const info = classifyRawDataChannel(
+      { sourceId: 'protocol-1', sourceHandle: 'str' },
+      [TRANSPORT_NODE, PROTOCOL_NODE],
+      [BYTE_EDGE],
+      []
+    );
+    expect(info).toEqual({ kind: 'byte-source', transportId: 'transport-1' });
+  });
+
   it('FrameDecoder 的 raw 口 → decoder-node', () => {
     const info = classifyRawDataChannel(
       { sourceId: 'w-dec', sourceHandle: 'raw' },

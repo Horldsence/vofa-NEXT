@@ -5,8 +5,9 @@ import { rawDataPortId } from './nodeDef';
 
 /// RawData 通道种类:
 /// - decoder-node: FrameDecoder 的 raw 口 → 节点旁路收集器 (该解码器每帧消费的整帧字节)
-/// - byte-source:  字节平面源 (Transport rx / Protocol out) → 上游 Transport 的原始收发字节流
-/// - numeric:      其余数值源 → graphOutputs 数值流
+/// - byte-source:  字节平面源 (Transport rx / Protocol out) → 上游 Transport 的原始收发字节流;
+///   Protocol 的 str 口 (RawData 预设字符串行) 同样按原始字节渲染
+/// - numeric:      其余数值源 (含 Protocol 的 chN 数值口) → graphOutputs 数值流
 export type RawDataChannelKind = 'decoder-node' | 'byte-source' | 'numeric';
 
 export interface RawDataChannelInfo {
@@ -29,11 +30,24 @@ export function classifyRawDataChannel(
     return { kind: 'decoder-node', transportId: null };
   }
   const sourceNode = nodes.find((n) => n.id === channel.sourceId);
-  if (sourceNode?.type === 'transport' || sourceNode?.type === 'protocol') {
+  if (sourceNode?.type === 'transport') {
     return {
       kind: 'byte-source',
       transportId: traceTransportSource(channel.sourceId, edges, nodes),
     };
+  }
+  if (sourceNode?.type === 'protocol') {
+    // 协议节点按端口分流: out (字节出口) 与 str (RawData 预设字符串行) 沿字节
+    // 平面渲染原始流; chN 数值口是解析后的 f32 采样, 走 graphOutputs 数值流 —
+    // 不能混同, 否则数值通道显示的是输入端的原始帧字节
+    const bytePlanePort = channel.sourceHandle === 'out' || channel.sourceHandle === 'str';
+    if (bytePlanePort) {
+      return {
+        kind: 'byte-source',
+        transportId: traceTransportSource(channel.sourceId, edges, nodes),
+      };
+    }
+    return { kind: 'numeric', transportId: null };
   }
   return { kind: 'numeric', transportId: null };
 }
