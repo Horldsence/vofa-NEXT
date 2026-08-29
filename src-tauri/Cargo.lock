@@ -129,6 +129,7 @@ dependencies = [
  "protocol_engine",
  "serde",
  "serde_json",
+ "subscription",
  "tauri",
  "tokio",
  "transport_core",
@@ -791,6 +792,7 @@ dependencies = [
  "pipeline_stream",
  "serde",
  "serde_json",
+ "subscription",
  "tauri",
  "tokio",
  "vofa_core",
@@ -805,6 +807,7 @@ dependencies = [
  "can_types",
  "error",
  "log",
+ "subscription",
  "tauri",
  "tokio",
  "vofa_core",
@@ -832,6 +835,7 @@ dependencies = [
  "protocol_float",
  "schema_types",
  "serde",
+ "subscription",
  "tauri",
  "tokio",
  "transport_can_bridge",
@@ -844,6 +848,30 @@ name = "cmd_debug"
 version = "0.1.2"
 dependencies = [
  "tauri",
+]
+
+[[package]]
+name = "cmd_display"
+version = "0.1.2"
+dependencies = [
+ "app_state",
+ "buffer_databuffer",
+ "buffer_raw",
+ "can_types",
+ "dsp_fft",
+ "log",
+ "logic_types",
+ "node_engine",
+ "parking_lot",
+ "pipeline_data_plane",
+ "pipeline_dispatcher",
+ "pipeline_stream",
+ "serde",
+ "serde_json",
+ "subscription",
+ "tauri",
+ "tokio",
+ "vofa_core",
 ]
 
 [[package]]
@@ -869,6 +897,7 @@ dependencies = [
  "schema_types",
  "serde",
  "serde_json",
+ "subscription",
  "tauri",
  "tokio",
  "vofa_core",
@@ -901,6 +930,7 @@ dependencies = [
  "pipeline_stream",
  "protocol_engine",
  "serde",
+ "subscription",
  "tauri",
  "tokio",
  "vofa_core",
@@ -6385,6 +6415,7 @@ dependencies = [
  "cmd_can_load",
  "cmd_can_transport",
  "cmd_debug",
+ "cmd_display",
  "cmd_graph",
  "cmd_pipeline",
  "cmd_rawdata",

@@ -2,7 +2,9 @@ use error::PortNotFoundError;
 use schema_types::TestDataLink;
 use std::collections::HashMap;
 use tokio::sync::broadcast;
-use vofa_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats};
+use vofa_core::{
+    ConnectionState, Error, PortInfo, Result, TestDataConfig, TransportConfig, TransportStats,
+};
 
 use crate::handle::TransportHandle;
 
@@ -178,8 +180,13 @@ impl TransportManager {
     ///
     /// 仅 TestData 实际消费链路配置; 其他传输类型静默接受。
     /// 节点未打开时返回 Error::PortNotFound, 调用方据此提示用户重连。
-    pub fn update_link(&self, node_id: &str, link: TestDataLink) -> Result<()> {
-        self.get(node_id)?.update_link(link)?;
+    pub fn update_link(
+        &self,
+        node_id: &str,
+        link: TestDataLink,
+        config: Option<TestDataConfig>,
+    ) -> Result<()> {
+        self.get(node_id)?.update_link(link, config)?;
         Ok(())
     }
 

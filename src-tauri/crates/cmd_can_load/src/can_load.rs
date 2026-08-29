@@ -88,8 +88,7 @@ pub async fn subscribe_can_load(
 
     let bitrate = resolve_can_bitrate(&state, &node_id, bitrate_bps).await;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.can_load_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     tokio::spawn(async move {
         let mut ticker = tokio::time::interval(interval);
@@ -127,10 +126,7 @@ pub async fn subscribe_can_load(
 /// 取消订阅 CAN 负载统计
 #[tauri::command]
 pub async fn unsubscribe_can_load(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    let removed = state.can_load_tasks.lock().remove(&channel_id);
-    if let Some(tx) = removed {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 

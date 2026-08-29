@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { CanFrameBatch, CanFrame, CanDirection, CandleDeviceInfo } from '../../types';
-import { makeOrderedSink, subscribeSharded } from './shardedSubscription';
+import { makeOrderedSink, subscribeDisplaySharded } from './shardedSubscription';
 
 /// 订阅 CAN 帧数据 — 统一分片流 (增量 drain, 首批回溯最近历史, 之后严格增量无重复)
 /// 返回取消订阅函数
@@ -8,12 +8,11 @@ export function subscribeCanFrames(
   onEvent: (batch: CanFrameBatch) => void,
   options?: { intervalMs?: number; maxFrames?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<CanFrameBatch>(
-    'subscribe_can_frames',
-    'unsubscribe_can_frames',
-    {},
+  return subscribeDisplaySharded<CanFrameBatch>(
+    { kind: 'can_frames' },
+    'can_frames',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxFrames: options?.maxFrames }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxFrames }
   );
 }
 
@@ -46,12 +45,11 @@ export function subscribeCanFramesFiltered(
   onEvent: (batch: CanFrameBatch) => void,
   options?: { intervalMs?: number; maxFrames?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<CanFrameBatch>(
-    'subscribe_can_frames_filtered',
-    'unsubscribe_can_frames',
-    { filter },
+  return subscribeDisplaySharded<CanFrameBatch>(
+    { kind: 'can_frames', filter },
+    'can_frames',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxFrames: options?.maxFrames }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxFrames }
   );
 }
 

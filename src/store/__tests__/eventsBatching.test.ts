@@ -36,14 +36,27 @@ function installManualRaf() {
 }
 
 function getChannelFor<T>(command: string): { onmessage: ((msg: T) => void) | null } {
+  const kindByLegacyCommand: Record<string, string> = {
+    subscribe_graph_outputs: 'graph_outputs',
+    subscribe_custom_inputs: 'custom_inputs',
+    subscribe_spectrum: 'spectrum',
+    subscribe_can_frames: 'can_frames',
+  };
+  const kind = kindByLegacyCommand[command];
   const calls = tauriMock.invoke.mock.calls as unknown as [
     string,
-    { onEvent?: { onmessage: ((msg: T) => void) | null } }
+    { request?: { kind?: string }; onEvent?: { onmessage: ((msg: unknown) => void) | null } }
   ][];
-  const call = calls.find((c) => c[0] === command);
+  const call = calls.find((c) => c[0] === 'subscribe_display' && c[1].request?.kind === kind);
   const channel = call?.[1]?.onEvent;
   if (!channel) throw new Error(`channel not registered for ${command}`);
-  return channel;
+  return {
+    onmessage: (payload) =>
+      channel.onmessage?.({
+        kind,
+        payload: kind === 'spectrum' ? (payload as SpectrumBatch).spectra : payload,
+      }),
+  };
 }
 
 let ticker: ReturnType<typeof installManualRaf>;

@@ -107,6 +107,64 @@ pub async fn sharded_stream_loop<S: StreamSource>(
     .await;
 }
 
+/// 带载荷映射的统一分片推送循环。
+///
+/// 数据源保持自己的强类型批次，IPC 边界可将其无拷贝地包装进统一事件枚举。
+#[allow(clippy::too_many_arguments)]
+pub async fn sharded_stream_loop_map<S, E, F>(
+    name: String,
+    source: Arc<Mutex<S>>,
+    on_event: Channel<E>,
+    shard_idx: usize,
+    seq: Arc<AtomicU64>,
+    interval: Duration,
+    min_batch: usize,
+    cancel_rx: oneshot::Receiver<()>,
+    map: F,
+) where
+    S: StreamSource,
+    E: serde::Serialize + Send + 'static,
+    F: Fn(S::Batch) -> E + Send + 'static,
+{
+    let channel_id = on_event.id();
+    let rate = AdaptiveRate::new(
+        Duration::from_millis(16),
+        interval.max(Duration::from_millis(100)),
+    );
+    let log_name = name.clone();
+    let mut was_active = shard_idx == 0;
+    adaptive_channel_loop(
+        &name,
+        channel_id,
+        on_event,
+        rate,
+        move || {
+            let mut src = source.lock();
+            let backlog = src.backlog();
+            let active =
+                shard_idx == 0 || (!S::SNAPSHOT && backlog >= shard_idx * S::ACTIVATION_UNIT);
+            if active != was_active {
+                log::debug!(
+                    "{} {} (积压 {}, 阈值 {})",
+                    log_name,
+                    if active { "激活" } else { "休眠" },
+                    backlog,
+                    shard_idx * S::ACTIVATION_UNIT
+                );
+                was_active = active;
+            }
+            if !active {
+                return None;
+            }
+            let mut batch = src.drain(backlog.clamp(min_batch, S::MAX_DRAIN))?;
+            S::set_seq(&mut batch, seq.fetch_add(1, Ordering::Relaxed));
+            Some(map(batch))
+        },
+        cancel_rx,
+    )
+    .await;
+}
+
 /// [`join_or_create_group`] 的返回打包: (共享流源, 组级 seq, 本分片序号, 组 id)
 pub type GroupMembership<S> = (Arc<Mutex<S>>, Arc<AtomicU64>, usize, String);
 

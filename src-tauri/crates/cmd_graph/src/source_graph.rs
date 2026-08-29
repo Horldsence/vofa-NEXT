@@ -9,7 +9,9 @@
 //! ([`app_state::SourceNodeHint`] — widget 端口表形状由前端参数派生,
 //! 后端经提示解析)。拓扑 op 不携带 widget 记录与位置 — 源图中现状保留。
 
-use app_state::{Position, SourceGraphs, SourceNodeHint, TabSourceGraph, WidgetRecord, WorkspaceState};
+use app_state::{
+    Position, SourceGraphs, SourceNodeHint, TabSourceGraph, WidgetRecord, WorkspaceState,
+};
 use buffer_graph::Edge;
 use error::ConfigError;
 use node_kind::NodeKind;
@@ -100,9 +102,11 @@ fn locate_tab(
         let g = store[&tid].clone();
         (tid, g)
     })
-    .ok_or_else(|| Error::Config(ConfigError::NodeNotFound {
-        node_id: source.to_string(),
-    }))
+    .ok_or_else(|| {
+        Error::Config(ConfigError::NodeNotFound {
+            node_id: source.to_string(),
+        })
+    })
 }
 
 /// 解析源端口 handle: 显式指定 > 端口提示 > 按 NodeKind 兜底 (Transport rx / Protocol out)
@@ -187,11 +191,9 @@ pub async fn apply_connect_edge(
     };
 
     // 等价边幂等 (与前端 addEdge 去重语义一致)
-    if let Some(existing) = graph
-        .edges
-        .iter()
-        .find(|e| e.source == source && e.target == target && e.source_handle == sh && e.target_handle == th)
-    {
+    if let Some(existing) = graph.edges.iter().find(|e| {
+        e.source == source && e.target == target && e.source_handle == sh && e.target_handle == th
+    }) {
         return Ok(ConnectedEdge {
             edge_id: existing.id.clone(),
         });
@@ -323,22 +325,19 @@ pub async fn connect_edge(
 /// 读取指定 tab 的权威源图 (版本冲突后前端拉取合并重试; tab 无源图时返回 null)
 #[tauri::command]
 pub fn get_source_graph(state: State<'_, AppState>, tab_id: String) -> Option<GraphSourceEvent> {
-    let store = state.source_graphs.lock();
-    let g = store.get(&tab_id)?;
-    let positions = {
-        let ws = state.workspace.lock();
-        ws.positions
-            .iter()
-            .filter(|(id, _)| g.nodes.iter().any(|n| &n.id == *id))
-            .map(|(id, p)| (id.clone(), *p))
-            .collect()
-    };
+    // 两份快照分段获取，禁止嵌套 workspace/source_graphs 锁。
+    let positions_all = state.workspace.lock().positions.clone();
+    let g = state.source_graphs.lock().get(&tab_id)?.clone();
+    let positions: HashMap<String, Position> = positions_all
+        .into_iter()
+        .filter(|(id, _)| g.nodes.iter().any(|n| n.id == id.as_str()))
+        .collect();
     Some(GraphSourceEvent {
         tab_id,
         version: state.graphs_version.load(Ordering::Relaxed),
-        nodes: g.nodes.clone(),
-        edges: g.edges.clone(),
-        widgets: g.widgets.clone(),
+        nodes: g.nodes,
+        edges: g.edges,
+        widgets: g.widgets,
         positions,
     })
 }

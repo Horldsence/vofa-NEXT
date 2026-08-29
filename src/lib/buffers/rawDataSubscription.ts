@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { RawDataBatch, RawDataDirection } from '../../types';
-import { makeOrderedSink, subscribeSharded } from './shardedSubscription';
+import { makeOrderedSink, subscribeDisplaySharded } from './shardedSubscription';
 import { tickMetric } from '../utils/perfLog';
 
 export type DirectionFilter = 'all' | RawDataDirection;
@@ -31,12 +31,11 @@ export function subscribeRawData(
   onEvent: (batch: RawDataBatch) => void,
   options?: { intervalMs?: number; maxBytes?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<RawDataBatch>(
-    'subscribe_rawdata',
-    'unsubscribe_rawdata',
-    { source },
+  return subscribeDisplaySharded<RawDataBatch>(
+    { kind: 'raw_data', origin: { kind: 'transport', id: source }, direction: '', search: '' },
+    'raw_data',
     makeOrderedSink(countBytes('rawdata:global', onEvent)),
-    { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
   );
 }
 
@@ -47,12 +46,11 @@ export function subscribeRawDataNode(
   onEvent: (batch: RawDataBatch) => void,
   options?: { intervalMs?: number; maxBytes?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<RawDataBatch>(
-    'subscribe_rawdata_node',
-    'unsubscribe_rawdata_node',
-    { nodeId },
+  return subscribeDisplaySharded<RawDataBatch>(
+    { kind: 'raw_data', origin: { kind: 'decoder', id: nodeId }, direction: '', search: '' },
+    'raw_data',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
   );
 }
 
@@ -65,16 +63,16 @@ export function subscribeRawDataFiltered(
   onEvent: (batch: RawDataBatch) => void,
   options?: { intervalMs?: number; maxBytes?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<RawDataBatch>(
-    'subscribe_rawdata_filtered',
-    'unsubscribe_rawdata',
+  return subscribeDisplaySharded<RawDataBatch>(
     {
-      source,
+      kind: 'raw_data',
+      origin: { kind: 'transport', id: source },
       direction: filter.directionFilter,
       search: filter.searchTerm,
     },
+    'raw_data',
     makeOrderedSink(countBytes('rawdata:filtered', onEvent)),
-    { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
   );
 }
 
@@ -85,16 +83,16 @@ export function subscribeRawDataNodeFiltered(
   onEvent: (batch: RawDataBatch) => void,
   options?: { intervalMs?: number; maxBytes?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<RawDataBatch>(
-    'subscribe_rawdata_node_filtered',
-    'unsubscribe_rawdata_node',
+  return subscribeDisplaySharded<RawDataBatch>(
     {
-      nodeId,
+      kind: 'raw_data',
+      origin: { kind: 'decoder', id: nodeId },
       direction: filter.directionFilter,
       search: filter.searchTerm,
     },
+    'raw_data',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxBytes: options?.maxBytes }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
   );
 }
 

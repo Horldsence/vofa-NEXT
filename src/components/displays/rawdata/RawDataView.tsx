@@ -3,11 +3,9 @@ import { Unplug } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
 import { RawDataBuffer } from '../../../lib/buffers/dataBuffer';
 import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
-import { acquireRawDataTransport, releaseRawDataTransport, refreshRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
+import { acquireRawDataTransport, releaseRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
 import { classifyRawDataChannel, resolveRawDataChannelKey } from '../../../lib/utils/rawDataChannel';
-import { FilteredRawDataBuffer, parseSearchPattern } from '../../../lib/buffers/filteredRawDataBuffer';
 import type { RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
-import { perfEvent } from '../../../lib/utils/perfLog';
 import { useSelection } from '../../../lib/hooks/useSelection';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { rawDataPortId } from '../../../lib/utils/nodeDef';
@@ -164,17 +162,19 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     [directionFilter, searchTerm]
   );
 
-  // 节点 buffer (过滤与否都需要: 过滤包装以它为数据源)
+  const backendFilter = isFiltered ? filterOptions : undefined;
+
+  // 节点 buffer。方向和搜索由后端订阅源执行。
   const [nodeBuffer, setNodeBuffer] = useState<RawDataBuffer | null>(null);
   useEffect(() => {
     if (!nodeBufferKey) {
       setNodeBuffer(null);
       return;
     }
-    const acquired = acquireRawDataNode(nodeBufferKey);
+    const acquired = acquireRawDataNode(nodeBufferKey, backendFilter);
     setNodeBuffer(acquired);
-    return () => releaseRawDataNode(nodeBufferKey);
-  }, [nodeBufferKey]);
+    return () => releaseRawDataNode(nodeBufferKey, backendFilter);
+  }, [nodeBufferKey, backendFilter]);
 
   // 字节源通道 buffer: 按 Transport 引用计数获取 (同 Transport 多卡片自动共享同一订阅);
   // 上溯失败 (无 transportId) 用空 buffer 占位。全局 rawDataBuffer 不再参与视图,
@@ -187,27 +187,11 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       setTransportBuffer(null);
       return;
     }
-    const acquired = acquireRawDataTransport(transportBufferKey);
+    const acquired = acquireRawDataTransport(transportBufferKey, backendFilter);
     setTransportBuffer(acquired);
-    return () => releaseRawDataTransport(transportBufferKey);
-  }, [transportBufferKey]);
+    return () => releaseRawDataTransport(transportBufferKey, backendFilter);
+  }, [transportBufferKey, backendFilter]);
 
-  // 重连自愈 — 修复「来源刷新后 rawdata 不显示数据」:
-  // 后端订阅组建立后不随 Transport 重连自动失效, 但旧组可能已死亡
-  // (建组时目标尚未就绪 / 推送通道被关闭) 且无任何重建触发。监听选中源的
-  // transport:state, 翻转为 Connected 时重建订阅组 (引用计数与 buffer 实例
-  // 保持, 收集器跨重连稳定 → 历史数据不丢)。
-  const prevConnRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (
-      byteTransportId &&
-      viewConnState === 'Connected' &&
-      prevConnRef.current !== 'Connected'
-    ) {
-      refreshRawDataTransport(byteTransportId);
-    }
-    prevConnRef.current = viewConnState;
-  }, [viewConnState, byteTransportId]);
   const emptyByteBufferRef = useRef<RawDataBuffer | null>(null);
   // 惰性取空 buffer (占位: 无 transportId / 无连线时保持订阅链类型完整)
   const getEmptyByteBuffer = useCallback((): RawDataBuffer => {
@@ -219,27 +203,6 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     : byteTransportId
       ? transportBuffer
       : getEmptyByteBuffer();
-
-  // 过滤模式: 本地增量过滤视图 (复用源 buffer 既有数据, 零额外 IPC)
-  const [filteredBuffer, setFilteredBuffer] = useState<FilteredRawDataBuffer | null>(null);
-  useEffect(() => {
-    if (!isFiltered || isNum) {
-      setFilteredBuffer(null);
-      return;
-    }
-    const t0 = performance.now();
-    perfEvent(`rawdata filter ON dir=${filterOptions.directionFilter} search="${filterOptions.searchTerm}"`);
-    const buf = new FilteredRawDataBuffer(
-      nodeBuffer ?? byteSourceBuffer ?? getEmptyByteBuffer(),
-      filterOptions.directionFilter,
-      parseSearchPattern(filterOptions.searchTerm)
-    );
-    setFilteredBuffer(buf);
-    return () => {
-      buf.dispose();
-      perfEvent(`rawdata filter OFF, 存活 ${(performance.now() - t0).toFixed(0)}ms`);
-    };
-  }, [isFiltered, isNum, nodeBuffer, byteSourceBuffer, filterOptions]);
 
   // 调试: 长任务监控 — 主线程单次任务 >100ms 即记录 (卡死定位)
   useEffect(() => {
@@ -257,7 +220,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     }
   }, []);
 
-  const buffer = filteredBuffer ?? nodeBuffer ?? byteSourceBuffer ?? getEmptyByteBuffer();
+  const buffer = nodeBuffer ?? byteSourceBuffer ?? getEmptyByteBuffer();
 
   // 强制重新渲染的版本号
   const [version, setVersion] = useState(0);

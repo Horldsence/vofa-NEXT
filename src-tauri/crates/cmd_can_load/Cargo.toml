@@ -15,3 +15,4 @@ tokio = { workspace = true }
 vofa_core = { workspace = true }
 can_types = { workspace = true }
 error = { workspace = true }
+subscription = { workspace = true }

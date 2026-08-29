@@ -27,6 +27,7 @@ members = [
   "crates/cmd_can_load",
   "crates/cmd_can_transport",
   "crates/cmd_debug",
+  "crates/cmd_display",
   "crates/cmd_graph",
   "crates/cmd_pipeline",
   "crates/cmd_rawdata",
@@ -178,6 +179,7 @@ cmd_buffer = { path = "crates/cmd_buffer" }
 cmd_can_load = { path = "crates/cmd_can_load" }
 cmd_can_transport = { path = "crates/cmd_can_transport" }
 cmd_debug = { path = "crates/cmd_debug" }
+cmd_display = { path = "crates/cmd_display" }
 cmd_graph = { path = "crates/cmd_graph" }
 cmd_pipeline = { path = "crates/cmd_pipeline" }
 cmd_rawdata = { path = "crates/cmd_rawdata" }
@@ -238,6 +240,7 @@ cmd_ai = { workspace = true }
 cmd_can_load = { workspace = true }
 cmd_can_transport = { workspace = true }
 cmd_debug = { workspace = true }
+cmd_display = { workspace = true }
 cmd_graph = { workspace = true }
 cmd_pipeline = { workspace = true }
 cmd_rawdata = { workspace = true }

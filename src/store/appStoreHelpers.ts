@@ -634,7 +634,13 @@ async function doRefreshTransportProtocols(): Promise<void> {
       ? ((protocolNode.data as ProtocolNodeData).schema ?? schemaFromProtocolConfig(protocol))
       : null;
     try {
-      await api.updateTransportProtocol(n.id, protocol, schema);
+      const transport = (n.data as TransportNodeData).config;
+      await api.updateTransportProtocol(
+        n.id,
+        protocol,
+        schema,
+        transport.kind === 'TestData' ? transport.params : null,
+      );
     } catch (err) {
       // 热更新失败 (如连接已断开) — toast 提示用户手动重连
       const lang = useAppStore.getState().lang;

@@ -3,7 +3,7 @@ import { tauriMock } from '../../test/setup';
 import {
   makeLatestSink,
   makeOrderedSink,
-  subscribeSharded,
+  subscribeDisplaySharded,
   STREAM_SHARDS,
 } from '../buffers/shardedSubscription';
 
@@ -70,22 +70,23 @@ describe('makeLatestSink (快照流最新胜出)', () => {
   });
 });
 
-describe('subscribeSharded (分片组建组/加入/取消)', () => {
+describe('subscribeDisplaySharded (统一显示分片组)', () => {
   // tauriMock.invoke 声明为 () => Promise<undefined>, 此处放宽为任意 mock 以便自定义返回值/读参数
   const invokeMock = tauriMock.invoke as unknown as import('vitest').Mock;
   const subCalls = () =>
     (invokeMock.mock.calls as [string, Record<string, unknown>][]).filter(
-      (c) => c[0] === 'subscribe_x'
+      (c) => c[0] === 'subscribe_display'
     );
 
   it('首个 Channel 建组, 其余凭组 id 加入', async () => {
     invokeMock.mockResolvedValue('g1');
-    const sub = subscribeSharded<Batch>('subscribe_x', 'unsubscribe_x', {}, () => {});
+    const sub = subscribeDisplaySharded<Batch>({ kind: 'can_frames' }, 'can_frames', () => {});
     await new Promise((r) => setTimeout(r, 0));
 
     const calls = subCalls();
     expect(calls).toHaveLength(STREAM_SHARDS);
-    expect(calls[0][1]).not.toHaveProperty('groupId');
+    expect(calls[0][1].groupId).toBeUndefined();
+    expect(calls[0][1].request).toEqual({ kind: 'can_frames' });
     expect(calls[0][1]).toHaveProperty('onEvent');
     for (let i = 1; i < STREAM_SHARDS; i++) {
       expect(calls[i][1]).toMatchObject({ groupId: 'g1' });
@@ -94,14 +95,14 @@ describe('subscribeSharded (分片组建组/加入/取消)', () => {
     sub.cancel();
     await new Promise((r) => setTimeout(r, 0));
     const unsubCalls = (invokeMock.mock.calls as [string][]).filter(
-      (c) => c[0] === 'unsubscribe_x'
+      (c) => c[0] === 'unsubscribe_display'
     );
     expect(unsubCalls).toHaveLength(STREAM_SHARDS);
   });
 
   it('后端返回空组 id (no-op) 时不再加入额外分片', async () => {
     invokeMock.mockResolvedValue('');
-    subscribeSharded<Batch>('subscribe_x', 'unsubscribe_x', {}, () => {});
+    subscribeDisplaySharded<Batch>({ kind: 'can_frames' }, 'can_frames', () => {});
     await new Promise((r) => setTimeout(r, 0));
     expect(subCalls()).toHaveLength(1);
   });

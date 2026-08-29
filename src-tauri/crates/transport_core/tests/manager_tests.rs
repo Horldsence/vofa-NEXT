@@ -175,6 +175,7 @@ async fn test_data_protocol_hot_update() {
     mgr.update_link(
         "a",
         TestDataLink::new(ProtocolConfig::FireWater { channels: Some(2) }),
+        None,
     )
     .unwrap();
     let mut saw_csv = false;
@@ -192,8 +193,52 @@ async fn test_data_protocol_hot_update() {
 
     // 未打开的节点热更新报错 (前端据此提示重连)
     assert!(mgr
-        .update_link("nope", TestDataLink::new(ProtocolConfig::RawData))
+        .update_link("nope", TestDataLink::new(ProtocolConfig::RawData), None)
         .is_err());
+}
+
+#[tokio::test]
+async fn test_data_generator_config_hot_update() {
+    let mut mgr = TransportManager::new();
+    mgr.open(
+        "a",
+        test_data_config(),
+        TestDataLink::new(ProtocolConfig::RawData),
+    )
+    .await
+    .unwrap();
+    let mut rx = mgr.subscribe("a").unwrap();
+    mgr.set_test_data_running("a", true);
+
+    let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+        .await
+        .expect("初始生成数据")
+        .unwrap();
+    assert_eq!(first.len(), 6, "2 通道 + 4 字节计数器");
+
+    mgr.update_link(
+        "a",
+        TestDataLink::new(ProtocolConfig::RawData),
+        Some(TestDataConfig {
+            channels: 5,
+            sample_rate: 1000.0,
+            signal: TestSignal::Square,
+        }),
+    )
+    .unwrap();
+
+    let mut saw_updated = false;
+    for _ in 0..50 {
+        let batch = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .expect("热更新后数据")
+            .unwrap();
+        if batch.len() == 9 {
+            saw_updated = true;
+            break;
+        }
+    }
+    assert!(saw_updated, "运行中的生成器应采用新的通道数");
 }
 
 /// TestData 经 schema 热更新: Custom encode 块改变输出格式
@@ -249,6 +294,7 @@ async fn test_data_schema_hot_update() {
             protocol: ProtocolConfig::JustFloat { channels: Some(1) },
             schema: Some(schema),
         },
+        None,
     )
     .unwrap();
 
@@ -272,6 +318,7 @@ async fn test_data_schema_hot_update() {
     mgr.update_link(
         "a",
         TestDataLink::new(ProtocolConfig::JustFloat { channels: Some(1) }),
+        None,
     )
     .unwrap();
     let mut saw_legacy = false;

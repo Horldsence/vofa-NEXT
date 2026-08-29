@@ -9,6 +9,45 @@ interface SeqBatch {
   seq: number;
 }
 
+export type DisplayKind =
+  | 'graph_outputs'
+  | 'custom_inputs'
+  | 'string_outputs'
+  | 'spectrum'
+  | 'waveform'
+  | 'raw_data'
+  | 'can_frames'
+  | 'logic_samples'
+  | 'decoded_events'
+  | 'can_load';
+
+export interface DisplayEvent<T> {
+  kind: DisplayKind;
+  payload: T;
+}
+
+export function subscribeDisplaySnapshot<T>(
+  request: Record<string, unknown>,
+  expectedKind: DisplayKind,
+  sink: (value: T) => void,
+  intervalMs?: number
+): { cancel: () => void } {
+  const channel = new Channel<DisplayEvent<T>>();
+  channel.onmessage = (event) => {
+    if (event.kind === expectedKind) sink(event.payload);
+  };
+  void invoke<string>('subscribe_display', {
+    request,
+    onEvent: channel,
+    intervalMs,
+    groupId: null,
+    maxItems: null,
+  });
+  return {
+    cancel: () => void closeTauriChannel(channel, 'unsubscribe_display', channel.id),
+  };
+}
+
 /// seq 严格重组 (增量流: RAWDATA/CAN/逻辑/解码)
 /// 分片并发推送的批次可能乱序到达, 按组级单调 seq 排序后交付,
 /// 保证顺序与后端 drain 顺序一致
@@ -55,61 +94,64 @@ export function makeLatestSink<T extends SeqBatch>(deliver: (batch: T) => void) 
 ///
 /// 若首个 invoke 返回空组 id (如 FrameDecoder 节点不存在的 no-op), 不再加入额外分片。
 /// 返回取消函数 (取消全部分片)
-export function subscribeSharded<T extends SeqBatch>(
-  cmd: string,
-  unsubscribeCmd: string,
-  extraArgs: Record<string, unknown>,
+export function subscribeDisplaySharded<T extends SeqBatch>(
+  request: Record<string, unknown>,
+  expectedKind: DisplayKind,
   sink: (batch: T) => void,
-  options?: Record<string, unknown>
+  options?: { intervalMs?: number; maxItems?: number }
 ): { cancel: () => void } {
-  const channels: Channel<T>[] = [];
+  const channels: Channel<DisplayEvent<T>>[] = [];
   let cancelled = false;
 
   // 调试: 统计该订阅的消息速率 (payload 字节由各订阅包装补充)
-  const countedSink = (batch: T) => {
-    tickMetric(cmd);
-    sink(batch);
+  const countedSink = (event: DisplayEvent<T>) => {
+    if (event.kind !== expectedKind) {
+      console.error(`显示订阅类型不匹配: expected=${expectedKind}, actual=${event.kind}`);
+      return;
+    }
+    tickMetric(`display:${expectedKind}`);
+    sink(event.payload);
   };
-  perfEvent(`subscribe ${cmd}`);
+  perfEvent(`subscribe display:${expectedKind}`);
 
   void (async () => {
     try {
-      const first = new Channel<T>();
+      const first = new Channel<DisplayEvent<T>>();
       first.onmessage = countedSink;
       channels.push(first);
-      const groupId = await invoke<string>(cmd, {
-        ...extraArgs,
+      const groupId = await invoke<string>('subscribe_display', {
+        request,
         onEvent: first,
         ...options,
       });
       if (!groupId) return; // 后端 no-op (如节点不存在)
       for (let i = 1; i < STREAM_SHARDS; i++) {
         if (cancelled) break;
-        const ch = new Channel<T>();
+        const ch = new Channel<DisplayEvent<T>>();
         ch.onmessage = countedSink;
         channels.push(ch);
-        await invoke<string>(cmd, {
-          ...extraArgs,
+        await invoke<string>('subscribe_display', {
+          request,
           onEvent: ch,
           groupId,
           ...options,
         });
         // 取消后仍在建的 channel: 立即关闭, 避免后端任务泄漏
         if (cancelled) {
-          void closeTauriChannel(ch, unsubscribeCmd, ch.id);
+          void closeTauriChannel(ch, 'unsubscribe_display', ch.id);
         }
       }
     } catch (e) {
-      console.error(`订阅失败 (${cmd}):`, e);
+      console.error(`显示订阅失败 (${expectedKind}):`, e);
     }
   })();
 
   return {
     cancel: () => {
       cancelled = true;
-      perfEvent(`cancel ${cmd} (${channels.length} channels)`);
+      perfEvent(`cancel display:${expectedKind} (${channels.length} channels)`);
       for (const ch of channels) {
-        void closeTauriChannel(ch, unsubscribeCmd, ch.id);
+        void closeTauriChannel(ch, 'unsubscribe_display', ch.id);
       }
     },
   };

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { LogicSampleBatch, DecodedEventBatch } from '../../types';
-import { makeOrderedSink, subscribeSharded } from './shardedSubscription';
+import { makeOrderedSink, subscribeDisplaySharded } from './shardedSubscription';
 
 /// 订阅逻辑采样数据 — 统一分片流 (增量 drain, 首批回溯最近历史, 之后严格增量无重复)
 /// 返回取消订阅函数
@@ -8,12 +8,11 @@ export function subscribeLogicSamples(
   onEvent: (batch: LogicSampleBatch) => void,
   options?: { intervalMs?: number; maxSamples?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<LogicSampleBatch>(
-    'subscribe_logic_samples',
-    'unsubscribe_logic_samples',
-    {},
+  return subscribeDisplaySharded<LogicSampleBatch>(
+    { kind: 'logic_samples' },
+    'logic_samples',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxSamples: options?.maxSamples }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxSamples }
   );
 }
 
@@ -23,12 +22,11 @@ export function subscribeDecodedEvents(
   onEvent: (batch: DecodedEventBatch) => void,
   options?: { intervalMs?: number; maxEvents?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<DecodedEventBatch>(
-    'subscribe_decoded_events',
-    'unsubscribe_decoded_events',
-    {},
+  return subscribeDisplaySharded<DecodedEventBatch>(
+    { kind: 'decoded_events' },
+    'decoded_events',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxEvents: options?.maxEvents }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxEvents }
   );
 }
 
@@ -48,12 +46,11 @@ export function subscribeLogicSamplesFiltered(
   onEvent: (batch: LogicSampleBatch) => void,
   options?: { intervalMs?: number; maxSamples?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<LogicSampleBatch>(
-    'subscribe_logic_samples_filtered',
-    'unsubscribe_logic_samples',
-    { filter },
+  return subscribeDisplaySharded<LogicSampleBatch>(
+    { kind: 'logic_samples', filter },
+    'logic_samples',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxSamples: options?.maxSamples }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxSamples }
   );
 }
 
@@ -73,12 +70,11 @@ export function subscribeDecodedEventsFiltered(
   onEvent: (batch: DecodedEventBatch) => void,
   options?: { intervalMs?: number; maxEvents?: number }
 ): { cancel: () => void } {
-  return subscribeSharded<DecodedEventBatch>(
-    'subscribe_decoded_events_filtered',
-    'unsubscribe_decoded_events',
-    { filter },
+  return subscribeDisplaySharded<DecodedEventBatch>(
+    { kind: 'decoded_events', filter },
+    'decoded_events',
     makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxEvents: options?.maxEvents }
+    { intervalMs: options?.intervalMs, maxItems: options?.maxEvents }
   );
 }
 

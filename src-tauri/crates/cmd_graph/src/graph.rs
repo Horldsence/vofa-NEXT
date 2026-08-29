@@ -1,24 +1,23 @@
 use app_state::{
-    prune_positions, AppState, CustomInputBatch, GraphOutputSnapshot, Position, SpectrumBatch,
-    SourceGraphs, SourceNodeHint, StringOutputSnapshot, TabSourceGraph, WidgetRecord,
-    WorkspaceState,
+    prune_positions, AppState, Position, SourceGraphs, SourceNodeHint, TabSourceGraph,
+    WidgetRecord, WorkspaceState,
 };
 use buffer_graph::Edge;
 use error::ConfigError;
 use node_engine::BytePlan;
 use node_kind::NodeDef;
 use notify_events::emit_graph_derived;
-use pipeline_data_plane::DataPlaneState;
 use pipeline_data_plane::data_plane::{byte_router, frame_dispatch};
 use pipeline_data_plane::decoder_feed::{sync_decoders_now, DecoderFeedCache};
+use pipeline_data_plane::DataPlaneState;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tauri::{ipc::Channel, AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, State};
 use vofa_core::{Error, Result};
 
 use crate::{
     compile_queue, compute_derived, inject_protocol_sources, CompileState, GraphCompileEvent,
-    GraphSourceEvent, GraphDerived, GRAPH_SOURCE_EVENT,
+    GraphDerived, GraphSourceEvent, GRAPH_SOURCE_EVENT,
 };
 
 // 全局队列入口保留 (供后续 LWW 后台 worker 接入, 当前同步实现不直接调用)
@@ -160,9 +159,7 @@ pub async fn apply_tab_graph_parts(
     if let Some(base) = base_version {
         let current = graphs_version.load(std::sync::atomic::Ordering::Relaxed);
         if current != base {
-            return Err(Error::Config(ConfigError::GraphVersionConflict {
-                current,
-            }));
+            return Err(Error::Config(ConfigError::GraphVersionConflict { current }));
         }
     }
 
@@ -172,25 +169,25 @@ pub async fn apply_tab_graph_parts(
 
     // 2. 本 tab 数值图编译 — 失败时构造 `CompileReport` 并 emit `graph:compile` 事件,
     //    真实编译错误原样返回 (占位假错误会吞掉域不匹配等可用原因)
-    let compiled = match node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges.clone())
-    {
-        Ok(g) => g,
-        Err(e) => {
-            let report = error::CompileReport::new(e.clone());
-            if let Some(app) = app {
-                let _ = app.emit(
-                    crate::GRAPH_COMPILE_EVENT,
-                    GraphCompileEvent {
-                        tab_id: tab_id.clone(),
-                        state: CompileState::Error,
-                        queued_seq: 0,
-                        report: Some(report),
-                    },
-                );
+    let compiled =
+        match node_engine::CompiledGraph::compile(tab_id.clone(), compile_nodes, edges.clone()) {
+            Ok(g) => g,
+            Err(e) => {
+                let report = error::CompileReport::new(e.clone());
+                if let Some(app) = app {
+                    let _ = app.emit(
+                        crate::GRAPH_COMPILE_EVENT,
+                        GraphCompileEvent {
+                            tab_id: tab_id.clone(),
+                            state: CompileState::Error,
+                            queued_seq: 0,
+                            report: Some(report),
+                        },
+                    );
+                }
+                return Err(Error::Config(ConfigError::GraphCompile(Box::new(e))));
             }
-            return Err(Error::Config(ConfigError::GraphCompile(Box::new(e))));
-        }
-    };
+        };
 
     // 3. 候选全局节点表: 移除该 tab 旧节点 → 插入新节点 (按 id 覆盖)
     // ProtocolSource 是 tab 数值平面的帧源引用, 不参与字节平面, 不进全局表
@@ -219,7 +216,10 @@ pub async fn apply_tab_graph_parts(
     let stored_widgets = {
         let mut store = source_graphs.lock();
         let widgets = widgets.unwrap_or_else(|| {
-            store.get(&tab_id).map(|g| g.widgets.clone()).unwrap_or_default()
+            store
+                .get(&tab_id)
+                .map(|g| g.widgets.clone())
+                .unwrap_or_default()
         });
         store.insert(
             tab_id.clone(),
@@ -456,98 +456,6 @@ pub async fn inject_bytes(
     Ok(target_count)
 }
 
-/// 订阅图输出快照 — 60 FPS 推送 HashMap<widgetId, HashMap<portId, value>>
-///
-/// 前端通过单一订阅获取所有节点的实时输出值
-#[tauri::command]
-pub async fn subscribe_graph_outputs(
-    state: State<'_, AppState>,
-    on_event: Channel<GraphOutputSnapshot>,
-) -> Result<()> {
-    state.output_subscribers.lock().push(on_event);
-    Ok(())
-}
-
-/// 订阅 Custom widget 输入批次 — 30 FPS 推送
-///
-/// 前端收到后转发到对应 iframe
-#[tauri::command]
-pub async fn subscribe_custom_inputs(
-    state: State<'_, AppState>,
-    on_event: Channel<CustomInputBatch>,
-) -> Result<()> {
-    state.custom_input_subscribers.lock().push(on_event);
-    Ok(())
-}
-
-/// 订阅字符串输出快照 — 与 graph_outputs 平行的字符串平面
-///
-/// TextDisplay 控件通过此订阅获取所有触发器的最新字符串输出
-#[tauri::command]
-pub async fn subscribe_string_outputs(
-    state: State<'_, AppState>,
-    on_event: Channel<StringOutputSnapshot>,
-) -> Result<()> {
-    state.text_output_subscribers.lock().push(on_event);
-    Ok(())
-}
-
-/// 取消字符串输出订阅
-#[tauri::command]
-pub async fn unsubscribe_string_outputs(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    let mut subs = state.text_output_subscribers.lock();
-    subs.retain(|_ch| {
-        // Channel 内部 id 通过 ChannelId 获取 — 这里按引用相等不可行,
-        // 由前端在 unmount 时清空所有 subscribers 即可。
-        // 此命令主要给前端对称调用, 实际清理在前端 closeTauriChannel 中完成。
-        let _ = channel_id;
-        true
-    });
-    Ok(())
-}
-
-/// 订阅频谱分析结果 — 30 FPS 推送 SpectrumBatch
-///
-/// 前端 SpectrumChart 通过此订阅获取所有 SpectrumSink 节点的最新 FFT 结果。
-/// batch.spectra: HashMap<sinkWidgetId, SpectrumResult>
-/// 即使某 sink 的窗口未填满 (尚未产生新结果), 也会推送 snapshot 中的上一帧值,
-/// 保证新订阅者立即收到数据, 图表连续不闪烁。
-#[tauri::command]
-pub async fn subscribe_spectrum(
-    state: State<'_, AppState>,
-    on_event: Channel<SpectrumBatch>,
-) -> Result<()> {
-    state.spectrum_subscribers.lock().push(on_event);
-    Ok(())
-}
-
-/// 取消订阅图输出 — 从订阅者列表中移除指定 channel
-///
-/// 前端在取消订阅时应先调用此命令移除后端引用, 再注销 JS 端回调,
-/// 避免后端向已关闭的 channel 发送数据时产生 "Couldn't find callback id" 警告。
-#[tauri::command]
-pub async fn unsubscribe_graph_outputs(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    let mut subs = state.output_subscribers.lock();
-    subs.retain(|ch| ch.id() != channel_id);
-    Ok(())
-}
-
-/// 取消订阅 Custom 输入 — 从订阅者列表中移除指定 channel
-#[tauri::command]
-pub async fn unsubscribe_custom_inputs(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    let mut subs = state.custom_input_subscribers.lock();
-    subs.retain(|ch| ch.id() != channel_id);
-    Ok(())
-}
-
-/// 取消订阅频谱 — 从订阅者列表中移除指定 channel
-#[tauri::command]
-pub async fn unsubscribe_spectrum(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    let mut subs = state.spectrum_subscribers.lock();
-    subs.retain(|ch| ch.id() != channel_id);
-    Ok(())
-}
-
 // ============ 测试 ============
 
 #[cfg(test)]
@@ -707,7 +615,11 @@ mod tests {
         .expect("提交图应成功");
         assert_eq!(derived.version, 1, "首次提交版本号应为 1");
         assert_eq!(
-            state.source_graphs.lock().get("tab1").map(|g| g.nodes.len()),
+            state
+                .source_graphs
+                .lock()
+                .get("tab1")
+                .map(|g| g.nodes.len()),
             Some(1),
             "成功提交应写入源图存储"
         );
@@ -726,7 +638,10 @@ mod tests {
         )
         .await
         .expect_err("过期版本应冲突");
-        assert!(err.to_string().contains("版本冲突"), "应报告版本冲突: {err}");
+        assert!(
+            err.to_string().contains("版本冲突"),
+            "应报告版本冲突: {err}"
+        );
 
         // 匹配的 base_version → 成功且版本推进
         let derived = apply_tab_graph(
@@ -847,7 +762,10 @@ mod tests {
         .await
         .expect("等价连线应幂等成功");
         assert_eq!(again.edge_id, out.edge_id);
-        assert_eq!(state.source_graphs.lock().get("tab1").unwrap().edges.len(), 1);
+        assert_eq!(
+            state.source_graphs.lock().get("tab1").unwrap().edges.len(),
+            1
+        );
 
         // 域不匹配: m1.result (f32) → in1 (Input 无输入口, 端口域回退 f32 → 可编译)。
         // 改用明确的域冲突: 新建 protocol + math 再连 out → in0
@@ -888,7 +806,10 @@ mod tests {
         )
         .await
         .expect_err("Protocol.out(bytes) → Math.in0(f32) 应被编译拒绝");
-        assert!(err.to_string().contains("域不匹配"), "应回传真实原因: {err}");
+        assert!(
+            err.to_string().contains("域不匹配"),
+            "应回传真实原因: {err}"
+        );
         assert_eq!(
             state.source_graphs.lock().get("tab2").unwrap().edges.len(),
             0,

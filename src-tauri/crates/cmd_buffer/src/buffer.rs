@@ -38,8 +38,7 @@ pub async fn subscribe_waveform(
         || WaveformSource::new(buffer),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.waveform_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -136,9 +135,7 @@ pub async fn set_waveform_buffer_capacity(
 /// 取消订阅波形 — 通过 channel_id 触发 oneshot 取消信号, 让 task 优雅退出
 #[tauri::command]
 pub async fn unsubscribe_waveform(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.waveform_tasks.lock().remove(&channel_id) {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 

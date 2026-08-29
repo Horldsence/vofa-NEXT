@@ -4,7 +4,7 @@
 //! 由 [`pipeline_dispatcher::sync_spectrum_analyzers`] /
 //! [`pipeline_dispatcher::sync_ifft_buffers`] 提供。
 
-use crate::{CustomInputBatch, GraphEvalState, SpectrumBatch};
+use crate::GraphEvalState;
 use dsp_fft::SpectrumResult;
 use pipeline_data_plane::StreamGroupState;
 use pipeline_dispatcher::{sync_ifft_buffers, sync_spectrum_analyzers};
@@ -34,7 +34,7 @@ fn merge_string_outputs(
 /// 字符串输出推送循环 — 自适应速率推送 custom_text_outputs ⊕ graph_string_outputs
 /// 合并视图 (同键以后者为准) 到所有订阅者
 ///
-/// 订阅者通过 invoke('subscribe_string_outputs', on_event: Channel) 加入
+/// 订阅者通过统一的 `subscribe_display` 命令读取快照。
 /// Channel 关闭时自动移除
 ///
 /// 自适应: 内容与上次发送相同 → 不发送并降频退避 (最高 250ms);
@@ -61,104 +61,14 @@ pub async fn text_output_ticker(state: GraphEvalState) {
             s.values = current;
             s.clone()
         };
-        let mut subs = state.text_output_subscribers.lock();
-        if subs.is_empty() {
-            rate.on_idle();
-            continue;
-        }
-        subs.retain(|ch| ch.send(snap.clone()).is_ok());
-        rate.on_send();
-    }
-}
-
-/// 图输出推送循环 — 自适应速率推送 output_snapshot 到所有订阅者
-///
-/// 订阅者通过 invoke('subscribe_graph_outputs', on_event: Channel) 加入
-/// Channel 关闭时自动移除
-///
-/// 自适应: snapshot.tick 未变化 → 不发送并降频退避 (最高 250ms);
-/// 有变化 → 立即发送并提速 (最快 16ms, ~60 FPS)
-pub async fn graph_output_ticker(state: GraphEvalState) {
-    log::debug!("图输出 ticker 已启动 (自适应 16ms~250ms)");
-    let mut rate = AdaptiveRate::new(Duration::from_millis(16), Duration::from_millis(250));
-    let mut last_sent_tick: Option<u64> = None;
-
-    loop {
-        tokio::time::sleep(rate.current()).await;
-        // 变化检测: tick 未变 → 无新求值结果, 跳过
-        let (tick, snap) = {
-            let s = state.output_snapshot.lock();
-            (s.tick, s.clone())
-        };
-        if last_sent_tick == Some(tick) {
-            rate.on_idle();
-            continue;
-        }
-        let mut subs = state.output_subscribers.lock();
-        // 尝试推送, 失败 (Channel 关闭) 则移除
-        subs.retain(|ch| ch.send(snap.clone()).is_ok());
-        last_sent_tick = Some(tick);
-        rate.on_send();
-    }
-}
-
-/// Custom 输入推送循环 — 自适应速率推送 Custom 输入到所有订阅者
-///
-/// 订阅者通过 invoke('subscribe_custom_inputs', on_event: Channel) 加入
-///
-/// 自适应: 输入值与上次发送相同 → 不发送并降频退避 (最高 250ms)
-pub async fn custom_input_ticker(state: GraphEvalState) {
-    log::debug!("Custom 输入 ticker 已启动 (自适应 33ms~250ms)");
-    let mut rate = AdaptiveRate::new(Duration::from_millis(33), Duration::from_millis(250));
-    let mut last_sent: Option<HashMap<String, HashMap<String, f32>>> = None;
-
-    loop {
-        tokio::time::sleep(rate.current()).await;
-        // 仅当存在 Custom 节点时才收集
-        let has_custom = state
-            .graphs
-            .lock()
-            .values()
-            .any(|g| !g.custom_node_ids().is_empty());
-        if !has_custom {
-            rate.on_idle();
-            continue;
-        }
-        // 收集 Custom 输入
-        let snap = state.output_snapshot.lock();
-        let graphs = state.graphs.lock();
-        let mut inputs: HashMap<String, HashMap<String, f32>> = HashMap::new();
-        for (_, graph) in graphs.iter() {
-            let ci = graph.collect_custom_inputs(&snap.values);
-            for (k, v) in ci {
-                inputs.insert(k, v);
-            }
-        }
         drop(snap);
-        drop(graphs);
-
-        if inputs.is_empty() {
-            rate.on_idle();
-            continue;
-        }
-        // 变化检测: 与上次发送相同 → 跳过
-        if last_sent.as_ref() == Some(&inputs) {
-            rate.on_idle();
-            continue;
-        }
-        let batch = CustomInputBatch {
-            inputs: inputs.clone(),
-        };
-        let mut subs = state.custom_input_subscribers.lock();
-        subs.retain(|ch| ch.send(batch.clone()).is_ok());
-        last_sent = Some(inputs);
         rate.on_send();
     }
 }
 
 /// 频谱分析推送循环 — 自适应速率触发 FFT + 推送结果到所有订阅者
 ///
-/// 订阅者通过 invoke('subscribe_spectrum', on_event: Channel) 加入
+/// 订阅者通过统一的 `subscribe_display` 命令读取快照。
 /// Channel 关闭时自动移除
 ///
 /// 流程:
@@ -207,12 +117,6 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
             }
         }
 
-        // 4. 推送到所有订阅者 (snapshot 全量推送, 保证新订阅者立即收到数据)
-        let batch = SpectrumBatch {
-            spectra: state.spectrum_snapshot.lock().clone(),
-        };
-        let mut subs = state.spectrum_subscribers.lock();
-        subs.retain(|ch| ch.send(batch.clone()).is_ok());
         rate.on_send();
     }
 }

@@ -12,6 +12,7 @@ app_state = { workspace = true }
 log = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
+subscription = { workspace = true }
 serde = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }

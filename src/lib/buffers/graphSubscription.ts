@@ -1,6 +1,6 @@
-import { invoke, Channel } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import type { SpectrumResult } from '../../types';
-import { closeTauriChannel } from '../tauri/tauri';
+import { subscribeDisplaySnapshot } from './shardedSubscription';
 
 /// 后端图输出快照 — 与 Rust GraphOutputSnapshot 对应
 export interface GraphOutputSnapshot {
@@ -27,28 +27,14 @@ export interface SpectrumBatch {
 export function subscribeGraphOutputs(
   onEvent: (snapshot: GraphOutputSnapshot) => void
 ): { cancel: () => void } {
-  const channel = new Channel<GraphOutputSnapshot>();
-  channel.onmessage = onEvent;
-  void invoke('subscribe_graph_outputs', { onEvent: channel });
-  return {
-    cancel: () => {
-      void closeTauriChannel(channel, 'unsubscribe_graph_outputs', channel.id);
-    },
-  };
+  return subscribeDisplaySnapshot({ kind: 'graph_outputs' }, 'graph_outputs', onEvent, 16);
 }
 
 /// 订阅 Custom widget 输入批次 (30 FPS 推送)
 export function subscribeCustomInputs(
   onEvent: (batch: CustomInputBatch) => void
 ): { cancel: () => void } {
-  const channel = new Channel<CustomInputBatch>();
-  channel.onmessage = onEvent;
-  void invoke('subscribe_custom_inputs', { onEvent: channel });
-  return {
-    cancel: () => {
-      void closeTauriChannel(channel, 'unsubscribe_custom_inputs', channel.id);
-    },
-  };
+  return subscribeDisplaySnapshot({ kind: 'custom_inputs' }, 'custom_inputs', onEvent, 33);
 }
 
 /// 订阅频谱分析结果 (30 FPS 推送)
@@ -56,14 +42,12 @@ export function subscribeCustomInputs(
 export function subscribeSpectrum(
   onEvent: (batch: SpectrumBatch) => void
 ): { cancel: () => void } {
-  const channel = new Channel<SpectrumBatch>();
-  channel.onmessage = onEvent;
-  void invoke('subscribe_spectrum', { onEvent: channel });
-  return {
-    cancel: () => {
-      void closeTauriChannel(channel, 'unsubscribe_spectrum', channel.id);
-    },
-  };
+  return subscribeDisplaySnapshot(
+    { kind: 'spectrum' },
+    'spectrum',
+    (spectra: Record<string, SpectrumResult>) => onEvent({ spectra }),
+    33
+  );
 }
 
 /// 设置输入控件当前值 (Knob/Slider/Button/Radio/Checkbox 拖动时调用)
@@ -99,12 +83,5 @@ export interface StringOutputSnapshot {
 export function subscribeStringOutputs(
   onEvent: (snapshot: StringOutputSnapshot) => void
 ): { cancel: () => void } {
-  const channel = new Channel<StringOutputSnapshot>();
-  channel.onmessage = onEvent;
-  void invoke('subscribe_string_outputs', { onEvent: channel });
-  return {
-    cancel: () => {
-      void closeTauriChannel(channel, 'unsubscribe_string_outputs', channel.id);
-    },
-  };
+  return subscribeDisplaySnapshot({ kind: 'string_outputs' }, 'string_outputs', onEvent, 33);
 }

@@ -3,7 +3,9 @@ use schema_types::TestDataLink;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc, watch, Notify};
-use vofa_core::{ConnectionState, Result, TransportConfig, TransportStats};
+use vofa_core::{ConnectionState, Result, TestDataConfig, TransportConfig, TransportStats};
+
+use crate::test_data::TestDataRuntime;
 
 /// 单连接句柄 — 一个传输节点实例的全部运行时状态
 ///
@@ -20,7 +22,7 @@ pub struct TransportHandle {
     /// 测试数据生成器恢复通知 (仅 TestData 有效)
     test_data_notify: Option<Arc<Notify>>,
     /// 测试数据链路配置热更新通道 (仅 TestData 有效)
-    test_data_link: Option<watch::Sender<TestDataLink>>,
+    test_data_runtime: Option<watch::Sender<TestDataRuntime>>,
     /// 本连接的配置 — 供外部查询 (如 CAN 波特率)
     config: TransportConfig,
 }
@@ -32,7 +34,7 @@ impl TransportHandle {
         cancel: Arc<AtomicBool>,
         test_data_running: Option<Arc<AtomicBool>>,
         test_data_notify: Option<Arc<Notify>>,
-        test_data_link: Option<watch::Sender<TestDataLink>>,
+        test_data_runtime: Option<watch::Sender<TestDataRuntime>>,
         config: TransportConfig,
     ) -> Self {
         Self {
@@ -43,7 +45,7 @@ impl TransportHandle {
             stats: parking_lot::Mutex::new(TransportStats::default()),
             test_data_running,
             test_data_notify,
-            test_data_link,
+            test_data_runtime,
             config,
         }
     }
@@ -116,9 +118,10 @@ impl TransportHandle {
     ///
     /// 当前仅 TestData 生成器消费链路配置; 其他传输类型的字节收发与协议无关,
     /// 静默接受 (返回 false 表示未应用)。
-    pub fn update_link(&self, link: TestDataLink) -> Result<bool> {
-        if let Some(tx) = &self.test_data_link {
-            tx.send(link)
+    pub fn update_link(&self, link: TestDataLink, config: Option<TestDataConfig>) -> Result<bool> {
+        if let Some(tx) = &self.test_data_runtime {
+            let config = config.unwrap_or_else(|| tx.borrow().config.clone());
+            tx.send(TestDataRuntime { config, link })
                 .map_err(|_| TransportError::LinkUpdate(std::io::Error::other("channel closed")))?;
             return Ok(true);
         }

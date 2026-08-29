@@ -95,8 +95,7 @@ pub async fn subscribe_can_frames(
         || CanStreamSource::new(buffer, max_n),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.can_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -120,9 +119,7 @@ pub async fn subscribe_can_frames(
 /// 取消订阅 CAN 帧
 #[tauri::command]
 pub async fn unsubscribe_can_frames(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.can_tasks.lock().remove(&channel_id) {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 
@@ -153,8 +150,7 @@ pub async fn subscribe_can_frames_filtered(
         || FilteredCanStreamSource::new(buffer, filter),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.can_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();

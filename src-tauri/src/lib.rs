@@ -4,14 +4,12 @@ pub use cmd_buffer::*;
 pub use cmd_can_load::*;
 pub use cmd_can_transport::*;
 pub use cmd_debug::*;
+pub use cmd_display::*;
 pub use cmd_graph::*;
 pub use cmd_pipeline::*;
 pub use cmd_rawdata::*;
 
-pub use app_state::{
-    custom_input_ticker, graph_output_ticker, spectrum_ticker, text_output_ticker,
-    textout_sender_ticker, AppState,
-};
+pub use app_state::{spectrum_ticker, text_output_ticker, textout_sender_ticker, AppState};
 pub use menu_shell::ids;
 pub use menu_shell::{build_menu, on_menu_event};
 // 必须 glob 导入: `#[tauri::command]` 生成的 `__cmd__*` / `__tauri_command_name_*`
@@ -109,20 +107,6 @@ pub fn run() {
                 });
             }
 
-            // 启动图输出 ticker (60 FPS 推送快照到前端)
-            let eval_state_for_ticker = {
-                let state = app.state::<AppState>();
-                state.eval_state()
-            };
-            tauri::async_runtime::spawn(graph_output_ticker(eval_state_for_ticker));
-
-            // 启动 Custom 输入 ticker (30 FPS 推送到 iframe)
-            let eval_state_for_custom = {
-                let state = app.state::<AppState>();
-                state.eval_state()
-            };
-            tauri::async_runtime::spawn(custom_input_ticker(eval_state_for_custom));
-
             // 启动字符串输出 ticker (30 FPS 推送给 TextDisplay)
             let eval_state_for_text = {
                 let state = app.state::<AppState>();
@@ -192,7 +176,8 @@ pub fn run() {
             set_pipeline_config,
             get_pipeline_config,
             // 波形缓冲区
-            subscribe_waveform,
+            subscribe_display,
+            unsubscribe_display,
             get_recent_waveform,
             get_waveform_window,
             clear_buffer,
@@ -216,42 +201,18 @@ pub fn run() {
             submit_custom_output,
             submit_custom_text_output,
             inject_bytes,
-            subscribe_graph_outputs,
-            subscribe_custom_inputs,
-            subscribe_string_outputs,
-            subscribe_spectrum,
-            unsubscribe_graph_outputs,
-            unsubscribe_custom_inputs,
-            unsubscribe_string_outputs,
-            unsubscribe_spectrum,
-            unsubscribe_waveform,
             // 原始数据
-            subscribe_rawdata,
-            unsubscribe_rawdata,
-            subscribe_rawdata_node,
-            unsubscribe_rawdata_node,
-            subscribe_rawdata_filtered,
-            subscribe_rawdata_node_filtered,
             clear_raw_data_collector,
             // CAN 帧
             send_can_frame,
-            subscribe_can_frames,
-            subscribe_can_frames_filtered,
-            unsubscribe_can_frames,
             get_recent_can_frames,
             clear_can_buffer,
             get_can_buffer_info,
             list_candle_devices,
             // 逻辑分析仪
-            subscribe_logic_samples,
-            subscribe_logic_samples_filtered,
-            unsubscribe_logic_samples,
             get_recent_logic_samples,
             clear_logic_buffer,
             get_logic_buffer_info,
-            subscribe_decoded_events,
-            subscribe_decoded_events_filtered,
-            unsubscribe_decoded_events,
             get_recent_decoded_events,
             clear_decoded_buffer,
             get_decoded_buffer_info,
@@ -259,8 +220,6 @@ pub fn run() {
             get_can_load_stats,
             set_can_load_window,
             clear_can_load_stats,
-            subscribe_can_load,
-            unsubscribe_can_load,
             get_current_can_bitrate,
             export_can_load_csv,
             // 帧解码器手动测试 (FrameDecoder 面板)

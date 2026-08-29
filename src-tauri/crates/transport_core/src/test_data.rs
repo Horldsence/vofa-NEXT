@@ -12,6 +12,12 @@ use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc, watch, Notify};
 use vofa_core::{TestDataConfig, TestSignal};
 
+#[derive(Clone)]
+pub struct TestDataRuntime {
+    pub config: TestDataConfig,
+    pub link: TestDataLink,
+}
+
 /// 启动测试数据生成器
 ///
 /// `link` 决定生成数据的线缆格式 (protocol 为 legacy 配置, schema 为帧 schema):
@@ -36,25 +42,14 @@ pub fn spawn(
     Arc<AtomicBool>,
     Arc<AtomicBool>,
     Arc<Notify>,
-    watch::Sender<TestDataLink>,
+    watch::Sender<TestDataRuntime>,
 )> {
     let (data_tx, _) = broadcast::channel(256);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
-    let (protocol_tx, protocol_rx) = watch::channel(link);
+    let (runtime_tx, mut runtime_rx) = watch::channel(TestDataRuntime { config, link });
     let cancel = Arc::new(AtomicBool::new(false));
     let running = Arc::new(AtomicBool::new(false));
     let notify = Arc::new(Notify::new());
-
-    let channels = config.channels.max(1);
-    let sample_rate = config.sample_rate.max(1.0);
-    let signal = config.signal;
-
-    // 消息合批: 每条广播消息至少覆盖 500µs 的采样, 消息率上限 ~2000 条/s。
-    // 高采样率 (如 300k/s) 若每采样一条消息, 每秒 30 万条消息的调度和拷贝开销
-    // 会压垮 broadcast → data_loop 链路 (Lagged 丢数据); 合批后消息数不再是瓶颈。
-    let samples_per_msg = (f64::from(sample_rate) * 0.0005).ceil().max(1.0) as u64;
-    let msg_interval = Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
-    let sample_dt = 1.0 / sample_rate;
 
     // 测试数据生成任务
     let data_tx_gen = data_tx.clone();
@@ -64,26 +59,34 @@ pub fn spawn(
     tokio::spawn(async move {
         let start = Instant::now();
         let mut sample_idx: u64 = 0;
-        let mut tick = tokio::time::interval(msg_interval);
-        tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-
         loop {
             if running_gen.load(Ordering::Relaxed) {
+                let runtime = runtime_rx.borrow().clone();
+                let channels = runtime.config.channels.max(1);
+                let sample_rate = runtime.config.sample_rate.max(1.0);
+                let signal = runtime.config.signal;
+                // 每条消息至少覆盖 500µs，限制广播调度开销。每轮重算使
+                // sample_rate/channels/signal 与协议一样可在连接期间热更新。
+                let samples_per_msg = (f64::from(sample_rate) * 0.0005).ceil().max(1.0) as u64;
+                let msg_interval =
+                    Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
+                let sample_dt = 1.0 / sample_rate;
                 tokio::select! {
-                    _ = tick.tick() => {
-                        // 每批读取最新链路配置 (支持运行时热更新)
-                        let link = protocol_rx.borrow().clone();
+                    () = tokio::time::sleep(msg_interval) => {
                         // 相位以真实流逝时间为基准, 批内按采样间隔递增 (亚毫秒偏移,
                         // 不会产生 MissedTickBehavior::Skip 那样的永久累积漂移)
                         let base_t = start.elapsed().as_secs_f32();
                         let mut data = Vec::new();
                         for i in 0..samples_per_msg {
                             let t = (i as f32).mul_add(sample_dt, base_t);
-                            data.extend_from_slice(&generate_link_bytes(channels, signal, t, &link, sample_idx));
+                            data.extend_from_slice(&generate_link_bytes(channels, signal, t, &runtime.link, sample_idx));
                             sample_idx += 1;
                         }
 
                         let _ = data_tx_gen.send(data);
+                    }
+                    changed = runtime_rx.changed() => {
+                        if changed.is_err() { break; }
                     }
                     () = notify_gen.notified() => {}
                     data = write_rx.recv() => {
@@ -110,7 +113,7 @@ pub fn spawn(
         log::debug!("测试数据生成器退出");
     });
 
-    Ok((write_tx, data_tx, cancel, running, notify, protocol_tx))
+    Ok((write_tx, data_tx, cancel, running, notify, runtime_tx))
 }
 
 /// 按链路配置生成线缆格式的字节流

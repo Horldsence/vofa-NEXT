@@ -13,8 +13,6 @@ use pipeline_data_plane::{
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use tauri::ipc::Channel;
-use tokio::sync::oneshot;
 use transport_core::TransportManager;
 use vofa_core::PipelineConfig;
 
@@ -51,48 +49,24 @@ pub struct AppState {
     pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     /// 字符串输出快照 (TextOutputSnapshot, 供 ticker 推送)
     pub text_output_snapshot: Arc<Mutex<pipeline_data_plane::StringOutputSnapshot>>,
-    /// 字符串输出订阅者
-    pub text_output_subscribers:
-        Arc<Mutex<Vec<Channel<pipeline_data_plane::StringOutputSnapshot>>>>,
-    /// 图输出订阅者 (60 FPS 推送)
-    pub output_subscribers: Arc<Mutex<Vec<Channel<pipeline_data_plane::GraphOutputSnapshot>>>>,
-    /// Custom 输入订阅者 (30 FPS 推送到前端 iframe)
-    pub custom_input_subscribers: Arc<Mutex<Vec<Channel<pipeline_data_plane::CustomInputBatch>>>>,
     /// FrameDecoder 节点旁路原始字节收集器 (供前端 RawData 显示"每帧消费的原始字节")
     /// key: FrameDecoder widget id, value: Arc<Mutex<RawDataCollector>> (共享实例)
     /// 与 decoder_states 生命周期同步, 独立于按 Transport 源的 raw_collectors
     pub decoder_raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
-    /// 频谱订阅者 (30 FPS 推送)
-    pub spectrum_subscribers: Arc<Mutex<Vec<Channel<pipeline_data_plane::SpectrumBatch>>>>,
-    /// 波形订阅任务的取消句柄 — key: channel_id, value: oneshot sender
-    /// 前端调用 unsubscribe_waveform 时, 通过 channel_id 取出 sender 发送取消信号,
-    /// 让 tokio::spawn 的 task 优雅退出, 避免向已关闭的 channel send 产生警告。
-    pub waveform_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
-    /// 原始数据订阅任务的取消句柄
-    pub raw_data_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    /// 所有显示数据流共享的订阅生命周期管理器。
+    pub subscriptions: subscription::SubscriptionManager,
     /// 流订阅组注册表 — key: 组 id (首个分片的 channel_id 字符串)
     /// 统一分片框架 (pipeline::stream): RAWDATA/波形/CAN/逻辑/解码共用;
     /// 分片任务退出时 shards-1, 空组移除
     pub stream_groups: Arc<Mutex<HashMap<String, StreamGroupState>>>,
-    /// FrameDecoder 节点原始数据订阅任务的取消句柄 — key: channel_id
-    /// 前端调用 unsubscribe_rawdata_node 时, 通过 channel_id 取出 sender 发送取消信号
-    pub raw_data_node_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// CAN 帧缓冲区
     pub can_buffer: Arc<Mutex<CanBuffer>>,
     /// CAN 负载统计器 (滑动窗口)
     pub can_load_stats: Arc<Mutex<CanLoadStats>>,
-    /// CAN 负载统计订阅任务的取消句柄 — key: channel_id
-    pub can_load_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
-    /// CAN 订阅任务的取消句柄 — key: channel_id
-    pub can_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// 逻辑采样缓冲区
     pub logic_buffer: Arc<Mutex<LogicBuffer>>,
     /// 解码事件缓冲区
     pub decoded_buffer: Arc<Mutex<DecodedBuffer>>,
-    /// 逻辑采样订阅任务的取消句柄
-    pub logic_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
-    /// 解码事件订阅任务的取消句柄
-    pub decoded_tasks: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
     /// 流水线参数 (合批/并行解析/流分片/通道容量) — 由 set_pipeline_config 更新,
     /// 数据平面读任务 / 流订阅命令读取
     pub pipeline_config: Arc<RwLock<PipelineConfig>>,
@@ -104,13 +78,14 @@ impl AppState {
         let graphs = Arc::new(Mutex::new(HashMap::new()));
         let graphs_version = Arc::new(AtomicU64::new(0));
         let source_graphs: crate::SourceGraphs = Arc::new(Mutex::new(HashMap::new()));
-        let workspace: crate::WorkspaceState = Arc::new(Mutex::new(crate::WorkspaceInner::default()));        let input_values = Arc::new(Mutex::new(HashMap::new()));
+        let workspace: crate::WorkspaceState =
+            Arc::new(Mutex::new(crate::WorkspaceInner::default()));
+        let input_values = Arc::new(Mutex::new(HashMap::new()));
         let custom_outputs = Arc::new(Mutex::new(HashMap::new()));
         let custom_text_outputs = Arc::new(Mutex::new(HashMap::new()));
         let text_output_snapshot = Arc::new(Mutex::new(
             pipeline_data_plane::StringOutputSnapshot::default(),
         ));
-        let text_output_subscribers = Arc::new(Mutex::new(Vec::new()));
         let source_frames = Arc::new(Mutex::new(SourceFramesMap::default()));
         let source_texts = Arc::new(Mutex::new(SourceTextsMap::default()));
         let output_snapshot = Arc::new(Mutex::new(pipeline_data_plane::GraphOutputSnapshot {
@@ -118,14 +93,11 @@ impl AppState {
             graphs_version: 0,
             values: node_engine::ValuesMap::default(),
         }));
-        let output_subscribers = Arc::new(Mutex::new(Vec::new()));
-        let custom_input_subscribers = Arc::new(Mutex::new(Vec::new()));
         let filter_states = Arc::new(Mutex::new(HashMap::new()));
         let decoder_states = Arc::new(Mutex::new(HashMap::new()));
         let decoder_raw_collectors = Arc::new(Mutex::new(HashMap::new()));
         let spectrum_analyzers = Arc::new(Mutex::new(HashMap::new()));
         let spectrum_snapshot = Arc::new(Mutex::new(HashMap::new()));
-        let spectrum_subscribers = Arc::new(Mutex::new(Vec::new()));
         let ifft_states = Arc::new(Mutex::new(HashMap::new()));
         let can_buffer = Arc::new(Mutex::new(CanBuffer::new(DEFAULT_CAN_BUFFER_CAPACITY)));
         // DEFAULT_CAN_LOAD_STATS_WINDOW = (window_us, history_capacity)
@@ -143,19 +115,15 @@ impl AppState {
             input_values.clone(),
             custom_outputs.clone(),
             text_output_snapshot.clone(),
-            text_output_subscribers.clone(),
             custom_text_outputs.clone(),
             source_frames.clone(),
             source_texts.clone(),
             output_snapshot,
-            output_subscribers.clone(),
-            custom_input_subscribers.clone(),
             filter_states,
             decoder_states,
             decoder_raw_collectors.clone(),
             spectrum_analyzers,
             spectrum_snapshot,
-            spectrum_subscribers.clone(),
             ifft_states,
         );
         let data_plane = pipeline_data_plane::DataPlaneState::new(
@@ -181,23 +149,13 @@ impl AppState {
             custom_outputs,
             custom_text_outputs,
             text_output_snapshot,
-            text_output_subscribers,
-            output_subscribers,
-            custom_input_subscribers,
             decoder_raw_collectors,
-            spectrum_subscribers,
-            waveform_tasks: Arc::new(Mutex::new(HashMap::new())),
-            raw_data_tasks: Arc::new(Mutex::new(HashMap::new())),
+            subscriptions: subscription::SubscriptionManager::new(),
             stream_groups: Arc::new(Mutex::new(HashMap::new())),
-            raw_data_node_tasks: Arc::new(Mutex::new(HashMap::new())),
             can_buffer,
             can_load_stats,
-            can_load_tasks: Arc::new(Mutex::new(HashMap::new())),
-            can_tasks: Arc::new(Mutex::new(HashMap::new())),
             logic_buffer,
             decoded_buffer,
-            logic_tasks: Arc::new(Mutex::new(HashMap::new())),
-            decoded_tasks: Arc::new(Mutex::new(HashMap::new())),
             pipeline_config,
         }
     }

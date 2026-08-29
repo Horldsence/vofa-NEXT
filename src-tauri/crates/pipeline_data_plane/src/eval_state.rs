@@ -16,7 +16,6 @@ use std::any::Any;
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
-use tauri::ipc::Channel;
 
 /// 单个图输出快照 — 通过 Channel 推送到前端
 ///
@@ -98,8 +97,6 @@ pub struct GraphEvalState {
     /// ProtocolSource 的 "str" 端口 (String 域) 求值时读取
     pub source_texts: Arc<Mutex<SourceTextsMap>>,
     pub output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
-    pub output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
-    pub custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
     /// 字符串输出 (Custom JS widget 字符串输出回传通道;
     /// Trigger 的字符串规则输出已由后端图求值直接产出)
     pub custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
@@ -110,8 +107,6 @@ pub struct GraphEvalState {
     pub graph_string_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     /// 字符串输出快照 (与 output_snapshot 平行, 由 text_output_ticker 推送)
     pub text_output_snapshot: Arc<Mutex<StringOutputSnapshot>>,
-    /// 字符串输出订阅者
-    pub text_output_subscribers: Arc<Mutex<Vec<Channel<StringOutputSnapshot>>>>,
     /// Filter 节点状态 (跨帧持久化, 逐点滤波)
     /// key: Filter widget id, value: DigitalFilter (含 FIR 延迟线 / IIR biquad 状态)
     pub filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
@@ -136,8 +131,6 @@ pub struct GraphEvalState {
     /// 最新一次 FFT 结果 (供 30 FPS spectrum_ticker 推送)
     /// key: SpectrumSink widget id, value: SpectrumResult
     pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
-    /// 频谱订阅者 (30 FPS 推送 SpectrumBatch)
-    pub spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
     /// Ifft 节点重建时域缓冲 (跨帧持久化, 环形播放)
     /// key: Ifft widget id, value: IfftState (含合成缓冲 + 播放位置)
     pub ifft_states: Arc<Mutex<HashMap<String, IfftState>>>,
@@ -160,19 +153,15 @@ pub fn build_graph_eval_state(
     input_values: Arc<Mutex<HashMap<String, f32>>>,
     custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
     text_output_snapshot: Arc<Mutex<StringOutputSnapshot>>,
-    text_output_subscribers: Arc<Mutex<Vec<Channel<StringOutputSnapshot>>>>,
     custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     source_frames: Arc<Mutex<SourceFramesMap>>,
     source_texts: Arc<Mutex<SourceTextsMap>>,
     output_snapshot: Arc<Mutex<GraphOutputSnapshot>>,
-    output_subscribers: Arc<Mutex<Vec<Channel<GraphOutputSnapshot>>>>,
-    custom_input_subscribers: Arc<Mutex<Vec<Channel<CustomInputBatch>>>>,
     filter_states: Arc<Mutex<HashMap<String, DigitalFilter>>>,
     decoder_states: Arc<Mutex<HashMap<String, FrameParser>>>,
     decoder_raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
     spectrum_analyzers: Arc<Mutex<HashMap<String, SpectrumAnalyzer>>>,
     spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
-    spectrum_subscribers: Arc<Mutex<Vec<Channel<SpectrumBatch>>>>,
     ifft_states: Arc<Mutex<HashMap<String, IfftState>>>,
 ) -> GraphEvalState {
     GraphEvalState {
@@ -183,19 +172,15 @@ pub fn build_graph_eval_state(
         source_frames,
         source_texts,
         output_snapshot,
-        output_subscribers,
-        custom_input_subscribers,
         custom_text_outputs,
         graph_string_outputs: Arc::new(Mutex::new(HashMap::new())),
         text_output_snapshot,
-        text_output_subscribers,
         filter_states,
         trigger_states: Arc::new(Mutex::new(HashMap::new())),
         decoder_states,
         decoder_raw_collectors,
         spectrum_analyzers,
         spectrum_snapshot,
-        spectrum_subscribers,
         ifft_states,
     }
 }

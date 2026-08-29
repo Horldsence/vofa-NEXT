@@ -14,8 +14,7 @@ use petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use rustc_hash::FxHashSet;
 
 use crate::plane::byte_plane_order;
-use node_hir::CompileError;
-use node_hir::TypedGraph;
+use node_hir::{CompileError, EdgeClass, TypedGraph};
 
 /// 字节路由 — 一条字节边的下游端点
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -43,12 +42,14 @@ impl BytePlan {
     /// 字节平面内循环 → [`CompileError::ByteCycle`] (完整环路径);
     /// 跨平面边不构成循环 (各平面只看本平面边)。
     ///
-    /// consumers 覆盖全部字节平面边 (含占位端点; 路由查询时下游缺失由调用方容错)。
+    /// consumers 仅覆盖真正传输字节的 [`EdgeClass::Byte`] 边。
+    /// RawDataMarker(Bytes) 只参与拓扑/连接校验，视图通过 RawDataCollector 旁路订阅，
+    /// 不是可执行消费者。
     pub fn build(g: &TypedGraph) -> Result<Self, CompileError> {
         // consumers: source → 下游路由
         let mut consumers: HashMap<String, Vec<ByteRoute>> = HashMap::new();
         for er in g.graph.edge_references() {
-            if er.weight().class.in_byte_plane() {
+            if er.weight().class == EdgeClass::Byte {
                 consumers
                     .entry(g.id_of(er.source()).to_string())
                     .or_default()
@@ -147,5 +148,20 @@ mod tests {
         let plan = BytePlan::build(&g).expect("应编译成功");
         assert!(plan.contains("tp"));
         assert!(plan.routes_for("tp").is_empty());
+    }
+
+    #[test]
+    fn test_byte_plan_does_not_route_raw_data_marker() {
+        let g = TypedGraph::build(
+            vec![make_transport("tp"), make_sink("raw", "t1")],
+            vec![edge("raw-view", "tp", "rx", "raw", "src:tp:rx")],
+        )
+        .unwrap();
+        let plan = BytePlan::build(&g).expect("RawData 观察边应正常编译");
+
+        assert!(
+            plan.routes_for("tp").is_empty(),
+            "RawData 标记边由 collector 旁路订阅，不应进入字节路由"
+        );
     }
 }

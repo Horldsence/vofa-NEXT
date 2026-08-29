@@ -60,8 +60,7 @@ pub async fn subscribe_rawdata(
         || RawDataSource::new(collector),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.raw_data_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -86,9 +85,7 @@ pub async fn subscribe_rawdata(
 /// 取消订阅原始数据
 #[tauri::command]
 pub async fn unsubscribe_rawdata(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.raw_data_tasks.lock().remove(&channel_id) {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 
@@ -129,11 +126,7 @@ pub async fn subscribe_rawdata_node(
         || RawDataSource::new(collector),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state
-        .raw_data_node_tasks
-        .lock()
-        .insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -158,9 +151,7 @@ pub async fn subscribe_rawdata_node(
 /// 取消订阅指定 FrameDecoder 节点的原始数据
 #[tauri::command]
 pub async fn unsubscribe_rawdata_node(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.raw_data_node_tasks.lock().remove(&channel_id) {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 
@@ -214,8 +205,7 @@ pub async fn subscribe_rawdata_filtered(
         || FilteredRawDataSource::new(collector, direction, search.as_deref()),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.raw_data_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -271,11 +261,7 @@ pub async fn subscribe_rawdata_node_filtered(
         || FilteredRawDataSource::new(collector, direction, search.as_deref()),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state
-        .raw_data_node_tasks
-        .lock()
-        .insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();

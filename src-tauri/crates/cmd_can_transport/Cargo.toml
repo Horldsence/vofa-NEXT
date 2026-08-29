@@ -13,6 +13,7 @@ notify_events = { workspace = true }
 pipeline_data_plane = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
+subscription = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
 parking_lot = "0.12"

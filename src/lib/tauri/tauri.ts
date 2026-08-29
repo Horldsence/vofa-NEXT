@@ -26,7 +26,11 @@ import type {
 import type { NodeDef, GraphEdge } from '../utils/nodeDef';
 import type { GraphDerivedPayload } from '../../store/slices/derived';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
-import { makeLatestSink, subscribeSharded } from '../buffers/shardedSubscription';
+import {
+  makeLatestSink,
+  subscribeDisplaySharded,
+  subscribeDisplaySnapshot,
+} from '../buffers/shardedSubscription';
 
 /// 节点端口提示 — 与后端 `app_state::SourceNodeHint` 同形
 /// (供拓扑 op 解析默认 handle / RawData `src:` 改写; 字段缺省时后端按类型兜底)
@@ -189,8 +193,17 @@ export const api = {
 
   /// 运行时热更新传输节点的链路协议 (图/协议变化后推送, 无需重连)
   /// schema: 可选帧 schema (与 openTransport 语义一致)
-  updateTransportProtocol: (nodeId: string, protocol: ProtocolConfig, schema?: ProtocolSchema | null) =>
-    invoke<void>('update_transport_protocol', { nodeId, protocol, schema: schema ?? null }),
+  updateTransportProtocol: (
+    nodeId: string,
+    protocol: ProtocolConfig,
+    schema?: ProtocolSchema | null,
+    testDataConfig?: Extract<TransportConfig, { kind: 'TestData' }>['params'] | null,
+  ) => invoke<void>('update_transport_protocol', {
+    nodeId,
+    protocol,
+    schema: schema ?? null,
+    testDataConfig: testDataConfig ?? null,
+  }),
 
   /// 协议回环: 发送字节并立即捕获指定 Protocol 节点的解析结果
   sendAndCapture: (nodeId: string, protocolNode: string, data: number[]) =>
@@ -231,12 +244,11 @@ export const api = {
     onEvent: (window: WaveformWindow) => void,
     options?: { intervalMs?: number; maxPoints?: number }
   ) => {
-    return subscribeSharded<WaveformWindow>(
-      'subscribe_waveform',
-      'unsubscribe_waveform',
-      { source },
+    return subscribeDisplaySharded<WaveformWindow>(
+      { kind: 'waveform', source },
+      'waveform',
       makeLatestSink(onEvent),
-      { intervalMs: options?.intervalMs, maxPoints: options?.maxPoints }
+      { intervalMs: options?.intervalMs, maxItems: options?.maxPoints }
     );
   },
 
@@ -373,19 +385,19 @@ export const api = {
     onEvent: (snap: CanLoadSnapshot) => void,
     options?: { intervalMs?: number; bitrateBps?: number | null }
   ) => {
-    const channel = new Channel<CanLoadSnapshot>();
-    channel.onmessage = onEvent;
-    const promise = invoke<void>('subscribe_can_load', {
-      nodeId,
-      onEvent: channel,
-      intervalMs: options?.intervalMs,
-      bitrateBps: options?.bitrateBps ?? null,
-    });
-    return {
-      promise,
-      cancel: () => {
-        void closeTauriChannel(channel, 'unsubscribe_can_load', channel.id);
+    const subscription = subscribeDisplaySnapshot<CanLoadSnapshot>(
+      {
+        kind: 'can_load',
+        node_id: nodeId,
+        bitrate_bps: options?.bitrateBps ?? null,
       },
+      'can_load',
+      onEvent,
+      options?.intervalMs ?? 500
+    );
+    return {
+      promise: Promise.resolve(),
+      cancel: subscription.cancel,
     };
   },
 

@@ -15,6 +15,7 @@ parking_lot = "0.12"
 pipeline_data_plane = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
+subscription = { workspace = true }
 schema_engine = { workspace = true }
 schema_types = { workspace = true }
 serde = { workspace = true }

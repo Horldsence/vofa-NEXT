@@ -145,14 +145,23 @@ pub fn save_workspace(dir: &Path, file: &WorkspaceFile) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let text = serde_json::to_string_pretty(file)
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let text =
+        serde_json::to_string_pretty(file).map_err(|e| std::io::Error::other(e.to_string()))?;
     fs::write(&path, text)
 }
 
-/// 从内存状态收集落盘快照 (工作区锁 → 源图锁, 与提交路径同序)。
-pub fn collect_workspace_file(ws: &WorkspaceState, source_graphs: &crate::SourceGraphs) -> WorkspaceFile {
-    let ws = ws.lock();
+/// 从内存状态收集落盘快照。
+///
+/// 两份状态分别在各自锁内克隆，绝不同时持锁。这样读快照无需依赖其他
+/// 调用点的锁序，也不会与源图读取/提交路径形成 AB-BA 死锁。
+pub fn collect_workspace_file(
+    ws: &WorkspaceState,
+    source_graphs: &crate::SourceGraphs,
+) -> WorkspaceFile {
+    let (tabs, data_tabs, positions) = {
+        let ws = ws.lock();
+        (ws.tabs.clone(), ws.data_tabs.clone(), ws.positions.clone())
+    };
     let graphs = source_graphs
         .lock()
         .iter()
@@ -169,10 +178,10 @@ pub fn collect_workspace_file(ws: &WorkspaceState, source_graphs: &crate::Source
         })
         .collect();
     WorkspaceFile {
-        tabs: ws.tabs.clone(),
-        data_tabs: ws.data_tabs.clone(),
+        tabs,
+        data_tabs,
         graphs,
-        positions: ws.positions.clone(),
+        positions,
     }
 }
 

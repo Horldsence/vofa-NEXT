@@ -11,6 +11,7 @@ workspace = true
 app_state = { workspace = true }
 log = { workspace = true }
 pipeline_stream = { workspace = true }
+subscription = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
 buffer_databuffer = { workspace = true }

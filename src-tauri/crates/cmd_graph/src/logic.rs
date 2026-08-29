@@ -37,8 +37,7 @@ pub async fn subscribe_logic_samples(
         || LogicStreamSource::new(buffer, max_n),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.logic_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -63,9 +62,7 @@ pub async fn subscribe_logic_samples(
 /// 取消订阅逻辑采样
 #[tauri::command]
 pub async fn unsubscribe_logic_samples(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.logic_tasks.lock().remove(&channel_id) {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 
@@ -95,8 +92,7 @@ pub async fn subscribe_logic_samples_filtered(
         || FilteredLogicStreamSource::new(buffer, filter),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.logic_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -166,8 +162,7 @@ pub async fn subscribe_decoded_events(
         || DecodedStreamSource::new(buffer, max_n),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.decoded_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();
@@ -192,9 +187,7 @@ pub async fn subscribe_decoded_events(
 /// 取消订阅解码事件
 #[tauri::command]
 pub async fn unsubscribe_decoded_events(state: State<'_, AppState>, channel_id: u32) -> Result<()> {
-    if let Some(tx) = state.decoded_tasks.lock().remove(&channel_id) {
-        let _ = tx.send(());
-    }
+    subscription::cancel_subscription(&state.subscriptions, channel_id);
     Ok(())
 }
 
@@ -224,8 +217,7 @@ pub async fn subscribe_decoded_events_filtered(
         || FilteredDecodedStreamSource::new(buffer, filter),
     )?;
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    state.decoded_tasks.lock().insert(channel_id, cancel_tx);
+    let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
     let groups = state.stream_groups.clone();
     let exit_key = group_key.clone();

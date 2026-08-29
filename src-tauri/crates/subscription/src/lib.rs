@@ -1,18 +1,10 @@
 //! # subscription — 统一订阅管理
 //!
-//! 将 6 种数据类型的订阅取消机制 (waveform / rawdata / can_frames / can_load /
-//! logic_samples / decoded_events) 抽象为统一的 [`SubscriptionManager`]，
-//! 消除重复的 `Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>` 模式。
+//! 所有显示数据类型共享一个 [`SubscriptionManager`]，消除按类型维护取消表的重复模式。
 //!
 //! 每个订阅在 `register()` 时获得一个 `oneshot::Receiver<()>`，
 //! 调用 `cancel(channel_id)` 触发取消信号，后台 task 在 `select!` 中收到后优雅退出。
 //!
-//! # 状态
-//! 当前模块已创建但尚未集成到 AppState 和 commands.rs 中。
-//! 后续 Phase 会用它替换 6 个重复的订阅取消字段，届时移除 `#[allow(dead_code)]`。
-
-#![allow(dead_code)]
-
 mod manager;
 
 pub use manager::SubscriptionManager;
