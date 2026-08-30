@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveStartupFlow, type StartupFlowState } from '../startupFlow';
+import {
+  resolveStartupFlow,
+  shouldShowGuideAfterUpdate,
+  type StartupFlowState,
+} from '../startupFlow';
 
 const READY: StartupFlowState = {
   settingsLoaded: true,
@@ -48,5 +52,19 @@ describe('resolveStartupFlow', () => {
       showKeychainPermissionPrompt: false,
       canCheckForUpdates: true,
     });
+  });
+});
+
+describe('shouldShowGuideAfterUpdate', () => {
+  it('does not show the guide when no version was recorded (first run)', () => {
+    expect(shouldShowGuideAfterUpdate(null, '1.2.0')).toBe(false);
+  });
+
+  it('does not show the guide when the version is unchanged', () => {
+    expect(shouldShowGuideAfterUpdate('1.2.0', '1.2.0')).toBe(false);
+  });
+
+  it('shows the guide once after the version changes', () => {
+    expect(shouldShowGuideAfterUpdate('1.1.0', '1.2.0')).toBe(true);
   });
 });

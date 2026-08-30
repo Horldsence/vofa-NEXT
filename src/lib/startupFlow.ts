@@ -31,3 +31,13 @@ export function resolveStartupFlow(state: StartupFlowState): StartupFlowGate {
       state.autoCheckUpdate,
   };
 }
+
+/** 版本更新后是否应弹出操作指南: 仅当记录过旧版本且与当前版本不同
+ *  (lastSeenVersion 为 null 表示首次安装或老用户首次运行含本功能的版本,
+ *   前者由 showOnboarding 首次引导覆盖, 后者避免本功能上线当次打扰) */
+export function shouldShowGuideAfterUpdate(
+  lastSeenVersion: string | null,
+  currentVersion: string
+): boolean {
+  return lastSeenVersion !== null && lastSeenVersion !== currentVersion;
+}

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from 'reac
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { getVersion } from '@tauri-apps/api/app';
 import { Settings, Info, RefreshCw, PanelLeft } from 'lucide-react';
 import { ActivityBar } from './components/layout/ActivityBar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -24,7 +25,7 @@ import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
 import { openDataPanelAndReveal } from './lib/utils/revealDataTab';
 import { initAiToolHost } from './lib/ai/toolHost';
-import { resolveStartupFlow } from './lib/startupFlow';
+import { resolveStartupFlow, shouldShowGuideAfterUpdate } from './lib/startupFlow';
 
 // 重型弹窗 — 懒加载 (各模块仅含 named export, 经 *.lazy.tsx 包装为 default)
 const SettingsModal = lazy(() => import('./components/SettingsModal.lazy'));
@@ -68,6 +69,7 @@ function App() {
   const isHelpOpen = useOnboardingStore((s) => s.isHelpOpen);
   const isCustomEditorOpen = useAppStore((s) => s.customEditorState.open);
   const autoUpdateStartedRef = useRef(false);
+  const versionGuideCheckedRef = useRef(false);
 
   const startupFlow = resolveStartupFlow({
     settingsLoaded,
@@ -188,6 +190,32 @@ function App() {
       openOnboarding();
     }
   }, [settingsLoaded, showOnboarding, hasOpenedOnboarding, openOnboarding]);
+
+  // 设置加载完成后: 版本更新检测 (每会话一次) — 版本变化则弹出一次操作指南,
+  // 并立即持久化新版本号 (中途关闭向导也不会重复弹; getVersion 失败 = 非 Tauri 环境, 跳过)
+  useEffect(() => {
+    if (!settingsLoaded || versionGuideCheckedRef.current) return;
+    versionGuideCheckedRef.current = true;
+    void (async () => {
+      let current: string;
+      try {
+        current = await getVersion();
+      } catch {
+        return;
+      }
+      const settings = useSettingsStore.getState();
+      const lastSeen = settings.settings.general.lastSeenVersion;
+      if (
+        shouldShowGuideAfterUpdate(lastSeen, current) &&
+        !useOnboardingStore.getState().hasOpenedThisSession
+      ) {
+        useOnboardingStore.getState().openWizard();
+      }
+      if (lastSeen !== current) {
+        settings.update('general', 'lastSeenVersion', current);
+      }
+    })();
+  }, [settingsLoaded]);
 
   // 设置加载完成后: 自动检查更新 (仅一次; auto 失败不打断用户)
   useEffect(() => {
