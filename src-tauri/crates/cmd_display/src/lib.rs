@@ -4,5 +4,5 @@ mod protocol;
 mod snapshot;
 mod stream;
 
-pub use protocol::{DisplayEvent, DisplayRequest, RawDataOrigin};
-pub use stream::{subscribe_display, unsubscribe_display};
+pub use protocol::{DisplayEvent, DisplayRequest, RawDataOrigin, SubscriptionInfo};
+pub use stream::{ack_data, get_data_health, subscribe_data, unsubscribe_data};

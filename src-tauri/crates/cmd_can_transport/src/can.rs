@@ -87,13 +87,10 @@ pub async fn subscribe_can_frames(
     let channel_id = on_event.id();
     let buffer = state.can_buffer.clone();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || CanStreamSource::new(buffer, max_n),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            CanStreamSource::new(buffer, max_n)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -142,13 +139,10 @@ pub async fn subscribe_can_frames_filtered(
     let channel_id = on_event.id();
     let buffer = state.can_buffer.clone();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || FilteredCanStreamSource::new(buffer, filter),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            FilteredCanStreamSource::new(buffer, filter)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 

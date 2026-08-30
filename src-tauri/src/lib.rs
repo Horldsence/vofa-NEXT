@@ -176,8 +176,10 @@ pub fn run() {
             set_pipeline_config,
             get_pipeline_config,
             // 波形缓冲区
-            subscribe_display,
-            unsubscribe_display,
+            subscribe_data,
+            unsubscribe_data,
+            ack_data,
+            get_data_health,
             get_recent_waveform,
             get_waveform_window,
             clear_buffer,

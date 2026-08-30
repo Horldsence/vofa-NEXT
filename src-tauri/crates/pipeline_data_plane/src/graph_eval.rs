@@ -12,7 +12,9 @@ use crate::eval_state::GraphEvalState;
 use buffer_databuffer::DataBuffer;
 use node_engine::{CompiledGraph, SourceFramesMap};
 use node_kind::NodeKind;
+use pipeline_bus::TopicKey;
 use std::collections::HashMap;
+use std::sync::Arc;
 use vofa_core::DataFrame;
 
 /// eval 段细分耗时 (纳秒累计, 由调用方汇入数据平面指标)
@@ -26,6 +28,14 @@ pub struct EvalBreakdown {
 
 /// 每 graph 一组槽位缓冲 (slots, written, str_slots, str_written), 批内跨帧复用
 type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
+
+struct PortSampleBatch {
+    key: TopicKey,
+    graph_index: usize,
+    slot: usize,
+    timestamps: Vec<u64>,
+    values: Vec<f64>,
+}
 
 /// StringValuesMap (FxHash) 深合并进快照 map (std hasher) — 移动语义, 字符串零 clone
 ///
@@ -206,6 +216,30 @@ pub fn process_source_batch(
         })
         .collect();
 
+    // 只为存在订阅的端口建立批次，未订阅端口保持热路径零额外分配。
+    let mut port_batches = Vec::<PortSampleBatch>::new();
+    for (graph_index, graph) in graph_list.iter().enumerate() {
+        for (slot, (node_id, port)) in graph.compiled().slot_names().iter().enumerate() {
+            // ProtocolSource 已由帧分发按源发布；这里再次发布会让 RawData 每帧重复两次。
+            if matches!(
+                graph.value_def(node_id).map(|node| &node.kind),
+                Some(NodeKind::ProtocolSource { .. })
+            ) {
+                continue;
+            }
+            let key = TopicKey::new(node_id, port);
+            if eval_state.data_bus.is_active(&key) {
+                port_batches.push(PortSampleBatch {
+                    key,
+                    graph_index,
+                    slot,
+                    timestamps: Vec::with_capacity(frames.len()),
+                    values: Vec::with_capacity(frames.len()),
+                });
+            }
+        }
+    }
+
     // 派生边预计算: (graph 下标, 槽位下标, buffer 派生索引)
     // 每批一次 (slot_of / derived_index_of 命中即返回), 逐帧零哈希直写;
     // 槽位解析不到 (图结构不含该端口) 的边本批跳过
@@ -270,6 +304,15 @@ pub fn process_source_batch(
             );
         }
         breakdown.graph_eval_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
+
+        // 只有 written=true 的槽位才进入端口历史。缺源/越界不会生成假样本。
+        for batch in &mut port_batches {
+            let (slots, written, ..) = &slot_bufs[batch.graph_index];
+            if written[batch.slot] {
+                batch.timestamps.push(frame.timestamp);
+                batch.values.push(f64::from(slots[batch.slot]));
+            }
+        }
 
         // 3. 收集派生值 (批首预计算索引, 与 push_frame 时间戳对齐; 仅 written 槽位)
         let t = std::time::Instant::now();
@@ -345,4 +388,22 @@ pub fn process_source_batch(
         &slot_bufs,
         &mut eval_state.graph_string_outputs.lock(),
     );
+
+    drop(analyzers);
+    drop(trigger_states);
+    drop(ifft_states);
+    drop(decoder_states);
+    drop(filter_states);
+    drop(graphs);
+    drop(source_texts);
+
+    for batch in port_batches {
+        if !batch.values.is_empty() {
+            eval_state.data_bus.publish_samples(
+                batch.key,
+                Arc::from(batch.timestamps),
+                Arc::from(batch.values),
+            );
+        }
+    }
 }

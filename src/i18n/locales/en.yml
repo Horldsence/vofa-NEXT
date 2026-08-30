@@ -566,20 +566,20 @@ settingNotifShowOnError: Error Notification
 settingNotifShowOnErrorDesc: Show a notification when an error occurs
 
 # Setting items - Performance
-settingMaxFeedWorkers: Max Feed Workers
-settingMaxFeedWorkersDesc: Upper limit of workers parsing data in parallel; increase for high-rate sources
+settingMaxFeedWorkers: Auto Worker Limit
+settingMaxFeedWorkersDesc: Backend workers scale with backlog and never exceed CPU count or this safety limit
 settingFeedParallelUnit: Feed Parallel Unit
 settingFeedParallelUnitDesc: Message batch size dispatched to parallel workers each time
 settingMinWorkerBytesKb: Min Worker Bytes (KB)
 settingMinWorkerBytesKbDesc: Below this size data is not split across workers, avoiding scheduling overhead
 settingCoalesceMaxMsgs: Coalesce Max Messages
 settingCoalesceMaxMsgsDesc: Maximum messages allowed in a single coalesced push
-settingCoalesceMaxBytesKb: Coalesce Max Bytes (KB)
-settingCoalesceMaxBytesKbDesc: Maximum bytes allowed in a single coalesced push
-settingMaxStreamShards: Max Stream Shards
-settingMaxStreamShardsDesc: Maximum shards per subscription stream; more shards improve push concurrency
-settingParseChannelCap: Parse Channel Capacity
-settingParseChannelCapDesc: Buffer capacity of the parse pipeline; takes effect on the next connection
+settingCoalesceMaxBytesKb: Pipeline Memory Budget (MB)
+settingCoalesceMaxBytesKbDesc: Safety memory budget for backend topic history and queued data
+settingMaxStreamShards: Preview FPS Limit
+settingMaxStreamShardsDesc: Maximum frontend preview rate; backend capture and parsing remain full-speed
+settingParseChannelCap: Preview Bandwidth (MB/s)
+settingParseChannelCapDesc: IPC preview safety limit; overload skips stale previews only
 
 # AI (settings category + chat panel)
 settingsAi: AI

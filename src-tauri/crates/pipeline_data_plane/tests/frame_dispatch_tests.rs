@@ -5,14 +5,14 @@
 use app_state::AppState;
 use node_engine::CompiledGraph;
 use node_kind::{NodeDef, NodeKind, StrNumParams};
-use pipeline_data_plane::{frame_dispatch, DataPlaneState};
+use pipeline_data_plane::frame_dispatch;
 use vofa_core::DataFrame;
 
 /// 数值平面端到端: ProtocolSource 引用 pt 源, on_frames 后快照/缓冲应有值
 #[test]
 fn on_frames_triggers_numeric_plane() {
     let state = AppState::new();
-    let plane: DataPlaneState = state.data_plane.clone();
+    let plane = state.data_plane;
     let graph = CompiledGraph::compile(
         "t1".into(),
         vec![NodeDef {
@@ -58,7 +58,7 @@ fn on_frames_triggers_numeric_plane() {
 #[test]
 fn on_frames_skips_unrelated_graphs() {
     let state = AppState::new();
-    let plane: DataPlaneState = state.data_plane.clone();
+    let plane = state.data_plane;
     let graph = CompiledGraph::compile(
         "t1".into(),
         vec![NodeDef {
@@ -78,7 +78,7 @@ fn on_frames_skips_unrelated_graphs() {
     frame_dispatch::on_frames(&plane, "pt", &[DataFrame::with_timestamp(1, vec![9.0])]);
     // 图引用的是 "other" 源, 不被 "pt" 触发 → 快照无 src_other 输出
     let snap = plane.eval.output_snapshot.lock();
-    assert!(snap.values.get("src_other").is_none());
+    assert!(!snap.values.contains_key("src_other"));
 }
 
 /// RawData 文本缓存 → ProtocolSource "str" 端口 (值平面字符串通路端到端)

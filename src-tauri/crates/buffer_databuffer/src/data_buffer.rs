@@ -57,11 +57,8 @@ impl DataBuffer {
         }
         self.timestamps.push(frame.timestamp);
         for i in 0..self.num_channels {
-            let val = if i < frame.channels.len() {
-                frame.channels[i]
-            } else {
-                0.0
-            };
+            // 通道缺失使用 NaN 保持时间轴对齐，但绝不能伪装成真实零值。
+            let val = frame.channels.get(i).copied().unwrap_or(f32::NAN);
             self.channels[i].push(val);
         }
         self.version = self.version.wrapping_add(1);

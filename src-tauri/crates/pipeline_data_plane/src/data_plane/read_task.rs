@@ -5,6 +5,9 @@
 //! 广播通道关闭 (连接断开) 时退出并 emit Disconnected。
 
 use buffer_raw::RawDataDirection;
+use node_kind::NodeKind;
+use pipeline_bus::{AdaptiveController, RuntimeLimits};
+use std::collections::{HashSet, VecDeque};
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 use tauri::AppHandle;
@@ -12,6 +15,31 @@ use tokio::sync::broadcast;
 use vofa_core::{ConnectionState, TransportStats};
 
 use super::{byte_router, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
+use crate::feed_parallel::FEED_PARALLEL_UNIT;
+
+fn mark_downstream_disconnected(plane: &DataPlaneState, transport_id: &str) {
+    let plan = plane.byte_plan.lock();
+    let nodes = plane.global_nodes.lock();
+    let mut pending = VecDeque::from([transport_id.to_string()]);
+    let mut visited = HashSet::new();
+    while let Some(source) = pending.pop_front() {
+        if !visited.insert(source.clone()) {
+            continue;
+        }
+        for route in plan.routes_for(&source) {
+            if matches!(
+                nodes.get(&route.target).map(|node| &node.kind),
+                Some(NodeKind::Protocol { .. })
+            ) {
+                plane
+                    .eval
+                    .data_bus
+                    .set_source_status(&route.target, pipeline_bus::SampleStatus::Disconnected);
+            }
+            pending.push_back(route.target.clone());
+        }
+    }
+}
 
 /// Transport 节点读任务
 pub(super) async fn read_task(
@@ -28,6 +56,7 @@ pub(super) async fn read_task(
     let mut acc_bytes: u64 = 0;
     let mut acc_frames: u64 = 0;
     let mut last_report = Instant::now();
+    let mut controller = AdaptiveController::default();
 
     loop {
         let first = match rx.recv().await {
@@ -41,10 +70,9 @@ pub(super) async fn read_task(
 
         // 自适应合批: try_recv 排空积压并拼接 (协议按字节流解析, 拼接语义安全;
         // 负载越高单批越大, 天然背压自适应)
-        let cfg = *plane.pipeline_config.read();
         let mut data = first;
         let mut coalesced = 1usize;
-        while coalesced < cfg.coalesce_max_msgs && data.len() < cfg.coalesce_max_bytes_kb * 1024 {
+        while coalesced < 1024 && data.len() < controller.target_batch_bytes() {
             match rx.try_recv() {
                 Ok(mut next) => {
                     data.append(&mut next);
@@ -71,15 +99,39 @@ pub(super) async fn read_task(
 
         // 沿全局 BytePlan 路由 (深度提示取广播积压, 供并行解析判定)
         let t_feed = Instant::now();
+        let depth_hint = rx.len().max(
+            controller
+                .workers()
+                .saturating_sub(1)
+                .saturating_mul(FEED_PARALLEL_UNIT),
+        );
         let summary = byte_router::route_bytes(
             &plane,
             Some(&app),
             &node_id,
             &data,
-            rx.len(),
+            depth_hint,
             &mut dec_cache,
         )
         .await;
+        let service_time = t_feed.elapsed();
+        let cfg = *plane.pipeline_config.read();
+        let queued = rx.len();
+        let queue_fill = f64::from(u32::try_from(queued.min(256)).unwrap_or(256)) / 256.0;
+        let queue_age =
+            service_time.saturating_mul(u32::try_from(queued.min(1_024)).unwrap_or(1_024));
+        controller.observe(
+            queue_fill,
+            queue_age,
+            service_time,
+            data.len(),
+            RuntimeLimits {
+                max_workers: cfg.max_workers,
+                memory_budget_mb: cfg.memory_budget_mb,
+                preview_fps_limit: cfg.preview_fps_limit,
+                preview_bandwidth_mb_per_sec: cfg.preview_bandwidth_mb_per_sec,
+            },
+        );
         plane.metrics.feed_ns.fetch_add(
             u64::try_from(t_feed.elapsed().as_nanos()).unwrap_or(u64::MAX),
             Ordering::Relaxed,
@@ -133,6 +185,7 @@ pub(super) async fn read_task(
         }
     }
 
+    mark_downstream_disconnected(&plane, &node_id);
     notify_events::emit_transport_state(&app, &node_id, ConnectionState::Disconnected);
     log::debug!("数据读任务已退出: {node_id}");
 }

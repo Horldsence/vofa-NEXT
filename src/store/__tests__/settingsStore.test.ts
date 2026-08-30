@@ -7,7 +7,7 @@ const STORE_FILE = 'settings.json';
 const STORE_KEY = 'app';
 
 /// 提取 set_pipeline_config 的调用参数 (invoke mock 无参数签名, 需显式收窄)
-function pipelineConfigCalls(): { config: Record<string, number> }[] {
+function pipelineConfigCalls(): { config: Record<string, number | string> }[] {
   return (tauriMock.invoke.mock.calls as unknown as [string, ...unknown[]][])
     .filter(([cmd]) => cmd === 'set_pipeline_config')
     .map(([, args]) => args as { config: Record<string, number> });
@@ -66,24 +66,45 @@ describe('settingsStore', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]).toEqual({
       config: {
-        coalesce_max_msgs: DEFAULT_SETTINGS.performance.coalesceMaxMsgs,
-        coalesce_max_bytes_kb: DEFAULT_SETTINGS.performance.coalesceMaxBytesKb,
-        max_feed_workers: DEFAULT_SETTINGS.performance.maxFeedWorkers,
-        feed_parallel_unit: DEFAULT_SETTINGS.performance.feedParallelUnit,
-        min_worker_bytes_kb: DEFAULT_SETTINGS.performance.minWorkerBytesKb,
-        max_stream_shards: DEFAULT_SETTINGS.performance.maxStreamShards,
-        parse_channel_cap: DEFAULT_SETTINGS.performance.parseChannelCap,
+        mode: 'auto',
+        max_workers: DEFAULT_SETTINGS.performance.maxWorkers,
+        memory_budget_mb: DEFAULT_SETTINGS.performance.memoryBudgetMb,
+        preview_fps_limit: DEFAULT_SETTINGS.performance.previewFpsLimit,
+        preview_bandwidth_mb_per_sec: DEFAULT_SETTINGS.performance.previewBandwidthMbPerSec,
       },
     });
   });
 
   it('pushes pipeline config immediately when a performance setting is updated', () => {
-    useSettingsStore.getState().update('performance', 'maxFeedWorkers', 8);
+    useSettingsStore.getState().update('performance', 'maxWorkers', 12);
 
     const calls = pipelineConfigCalls();
     expect(calls).toHaveLength(1);
-    expect(calls[0].config.max_feed_workers).toBe(8);
-    expect(useSettingsStore.getState().settings.performance.maxFeedWorkers).toBe(8);
+    expect(calls[0].config.max_workers).toBe(12);
+    expect(useSettingsStore.getState().settings.performance.maxWorkers).toBe(12);
+  });
+
+  it('migrates legacy manual pipeline knobs to automatic safety limits', async () => {
+    tauriMock.seedFile(STORE_FILE, STORE_KEY, {
+      performance: {
+        maxFeedWorkers: 2,
+        feedParallelUnit: 4,
+        minWorkerBytesKb: 16,
+        coalesceMaxMsgs: 8,
+        coalesceMaxBytesKb: 32,
+        maxStreamShards: 4,
+        parseChannelCap: 64,
+      },
+    });
+
+    await useSettingsStore.getState().load();
+
+    expect(useSettingsStore.getState().settings.performance).toEqual(DEFAULT_SETTINGS.performance);
+    const saved = tauriMock.fileStore.get(STORE_FILE)?.get(STORE_KEY) as {
+      performance: Record<string, unknown>;
+    };
+    expect(saved.performance).toEqual(DEFAULT_SETTINGS.performance);
+    expect(saved.performance).not.toHaveProperty('maxStreamShards');
   });
 
   it('does not push pipeline config when a non-performance setting is updated', () => {

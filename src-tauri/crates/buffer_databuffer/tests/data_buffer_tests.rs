@@ -122,14 +122,14 @@ fn clear_resets_version_only_via_push() {
 }
 
 #[test]
-fn push_frame_with_more_channels_pads_zeros() {
+fn push_frame_with_missing_channels_marks_gaps_as_nan() {
     let mut buf = DataBuffer::new(100, 4);
     buf.push_frame(&DataFrame::new(vec![10.0, 20.0]));
     let w = buf.get_recent(1);
     assert_eq!(w.channels[0], vec![10.0]);
     assert_eq!(w.channels[1], vec![20.0]);
-    assert_eq!(w.channels[2], vec![0.0]);
-    assert_eq!(w.channels[3], vec![0.0]);
+    assert!(w.channels[2][0].is_nan());
+    assert!(w.channels[3][0].is_nan());
 }
 
 #[test]

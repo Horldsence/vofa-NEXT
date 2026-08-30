@@ -123,6 +123,7 @@ dependencies = [
  "node_engine",
  "node_kind",
  "parking_lot",
+ "pipeline_bus",
  "pipeline_data_plane",
  "pipeline_dispatcher",
  "pipeline_stream",
@@ -863,6 +864,7 @@ dependencies = [
  "logic_types",
  "node_engine",
  "parking_lot",
+ "pipeline_bus",
  "pipeline_data_plane",
  "pipeline_dispatcher",
  "pipeline_stream",
@@ -911,6 +913,7 @@ dependencies = [
  "log",
  "node_engine",
  "node_trigger",
+ "pipeline_bus",
  "tauri",
  "vofa_core",
 ]
@@ -3804,6 +3807,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
+name = "pipeline_bus"
+version = "0.1.2"
+dependencies = [
+ "log",
+ "parking_lot",
+ "serde",
+ "tokio",
+]
+
+[[package]]
 name = "pipeline_data_plane"
 version = "0.1.2"
 dependencies = [
@@ -3824,6 +3837,7 @@ dependencies = [
  "node_trigger",
  "notify_events",
  "parking_lot",
+ "pipeline_bus",
  "protocol_can_bridge",
  "protocol_engine",
  "protocol_float",

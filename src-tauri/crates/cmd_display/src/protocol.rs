@@ -24,6 +24,10 @@ pub enum DisplayRequest {
     CustomInputs,
     StringOutputs,
     Spectrum,
+    PortSamples {
+        source_node_id: String,
+        source_handle: String,
+    },
     Waveform {
         source: String,
     },
@@ -51,6 +55,14 @@ pub enum DisplayRequest {
         #[serde(default)]
         bitrate_bps: Option<u32>,
     },
+}
+
+/// 订阅建立结果。连续数值使用 binary，其余事件仍使用 json。
+#[derive(Debug, Clone, Serialize)]
+pub struct SubscriptionInfo {
+    pub subscription_id: u32,
+    pub schema_version: u16,
+    pub mode: &'static str,
 }
 
 /// 单一 IPC 事件联合。serde 标签让 TypeScript 可穷尽分派。

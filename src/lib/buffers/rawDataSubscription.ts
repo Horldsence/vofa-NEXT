@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { RawDataBatch, RawDataDirection } from '../../types';
-import { makeOrderedSink, subscribeDisplaySharded } from './shardedSubscription';
+import { subscribeDisplay } from './shardedSubscription';
 import { tickMetric } from '../utils/perfLog';
 
 export type DirectionFilter = 'all' | RawDataDirection;
@@ -20,22 +20,22 @@ function countBytes(key: string, onEvent: (batch: RawDataBatch) => void) {
   };
 }
 
-/// 订阅原始数据 — 统一分片流 (增量 drain + 自动并发分片)
-///
-/// source: Transport 节点 id (每源一个 RawDataCollector, rx/tx 都进该实例)
-/// 单 channel 够用时只有 shard 0 工作 (等价于旧行为), 积压超过阈值时
-/// 后端自动多通道并行推送; 每批带组级 seq, 在此重组后交付。
-/// 返回取消订阅函数 (取消全部分片)
+/// 订阅原始数据。每个逻辑源使用一个后端有序流和一个 IPC Channel。
 export function subscribeRawData(
   source: string,
   onEvent: (batch: RawDataBatch) => void,
-  options?: { intervalMs?: number; maxBytes?: number }
+  options?: { intervalMs?: number; maxBytes?: number },
 ): { cancel: () => void } {
-  return subscribeDisplaySharded<RawDataBatch>(
-    { kind: 'raw_data', origin: { kind: 'transport', id: source }, direction: '', search: '' },
+  return subscribeDisplay<RawDataBatch>(
+    {
+      kind: 'raw_data',
+      origin: { kind: 'transport', id: source },
+      direction: '',
+      search: '',
+    },
     'raw_data',
-    makeOrderedSink(countBytes('rawdata:global', onEvent)),
-    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
+    countBytes('rawdata:global', onEvent),
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes },
   );
 }
 
@@ -44,13 +44,18 @@ export function subscribeRawData(
 export function subscribeRawDataNode(
   nodeId: string,
   onEvent: (batch: RawDataBatch) => void,
-  options?: { intervalMs?: number; maxBytes?: number }
+  options?: { intervalMs?: number; maxBytes?: number },
 ): { cancel: () => void } {
-  return subscribeDisplaySharded<RawDataBatch>(
-    { kind: 'raw_data', origin: { kind: 'decoder', id: nodeId }, direction: '', search: '' },
+  return subscribeDisplay<RawDataBatch>(
+    {
+      kind: 'raw_data',
+      origin: { kind: 'decoder', id: nodeId },
+      direction: '',
+      search: '',
+    },
     'raw_data',
-    makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
+    onEvent,
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes },
   );
 }
 
@@ -61,9 +66,9 @@ export function subscribeRawDataFiltered(
   source: string,
   filter: RawDataFilterOptions,
   onEvent: (batch: RawDataBatch) => void,
-  options?: { intervalMs?: number; maxBytes?: number }
+  options?: { intervalMs?: number; maxBytes?: number },
 ): { cancel: () => void } {
-  return subscribeDisplaySharded<RawDataBatch>(
+  return subscribeDisplay<RawDataBatch>(
     {
       kind: 'raw_data',
       origin: { kind: 'transport', id: source },
@@ -71,8 +76,8 @@ export function subscribeRawDataFiltered(
       search: filter.searchTerm,
     },
     'raw_data',
-    makeOrderedSink(countBytes('rawdata:filtered', onEvent)),
-    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
+    countBytes('rawdata:filtered', onEvent),
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes },
   );
 }
 
@@ -81,9 +86,9 @@ export function subscribeRawDataNodeFiltered(
   nodeId: string,
   filter: RawDataFilterOptions,
   onEvent: (batch: RawDataBatch) => void,
-  options?: { intervalMs?: number; maxBytes?: number }
+  options?: { intervalMs?: number; maxBytes?: number },
 ): { cancel: () => void } {
-  return subscribeDisplaySharded<RawDataBatch>(
+  return subscribeDisplay<RawDataBatch>(
     {
       kind: 'raw_data',
       origin: { kind: 'decoder', id: nodeId },
@@ -91,8 +96,8 @@ export function subscribeRawDataNodeFiltered(
       search: filter.searchTerm,
     },
     'raw_data',
-    makeOrderedSink(onEvent),
-    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes }
+    onEvent,
+    { intervalMs: options?.intervalMs, maxItems: options?.maxBytes },
   );
 }
 

@@ -566,20 +566,20 @@ settingNotifShowOnError: 错误通知
 settingNotifShowOnErrorDesc: 发生错误时显示通知
 
 # 设置项 - Performance
-settingMaxFeedWorkers: 并行解析 Worker 上限
-settingMaxFeedWorkersDesc: 并行解析数据的 worker 数量上限, 数据源速率高时可调大
+settingMaxFeedWorkers: 自动并发 Worker 上限
+settingMaxFeedWorkersDesc: 后端根据积压自动扩缩容，实际 worker 数不超过 CPU 数和此安全上限
 settingFeedParallelUnit: 并行分发单元
 settingFeedParallelUnitDesc: 每次分发给并行 worker 的消息批大小
 settingMinWorkerBytesKb: Worker 最小数据量 (KB)
 settingMinWorkerBytesKbDesc: 低于该数据量时不拆分给多个 worker, 避免调度开销
 settingCoalesceMaxMsgs: 合批最大消息数
 settingCoalesceMaxMsgsDesc: 单次合批推送允许的最大消息条数
-settingCoalesceMaxBytesKb: 合批最大字节数 (KB)
-settingCoalesceMaxBytesKbDesc: 单次合批推送允许的最大字节数
-settingMaxStreamShards: 流分片上限
-settingMaxStreamShardsDesc: 订阅流的最大分片数量, 分片越多并发推送能力越强
-settingParseChannelCap: 解析通道容量
-settingParseChannelCapDesc: 解析管道的缓冲容量, 修改后下次连接生效
+settingCoalesceMaxBytesKb: 数据管道内存预算 (MB)
+settingCoalesceMaxBytesKbDesc: 所有后端 Topic 历史和排队数据使用的安全内存上限
+settingMaxStreamShards: 预览帧率上限
+settingMaxStreamShardsDesc: 前端预览最大刷新率；不会降低后端采集和解析速度
+settingParseChannelCap: 预览带宽上限 (MB/s)
+settingParseChannelCapDesc: IPC 预览的安全带宽上限；过载时只跳过旧预览批次
 
 # AI (设置分类 + 对话面板)
 settingsAi: AI

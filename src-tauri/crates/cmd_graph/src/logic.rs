@@ -29,13 +29,10 @@ pub async fn subscribe_logic_samples(
     let channel_id = on_event.id();
     let buffer = state.logic_buffer.clone();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || LogicStreamSource::new(buffer, max_n),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            LogicStreamSource::new(buffer, max_n)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -84,13 +81,10 @@ pub async fn subscribe_logic_samples_filtered(
     let channel_id = on_event.id();
     let buffer = state.logic_buffer.clone();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || FilteredLogicStreamSource::new(buffer, filter),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            FilteredLogicStreamSource::new(buffer, filter)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -154,13 +148,10 @@ pub async fn subscribe_decoded_events(
     let channel_id = on_event.id();
     let buffer = state.decoded_buffer.clone();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || DecodedStreamSource::new(buffer, max_n),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            DecodedStreamSource::new(buffer, max_n)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -209,13 +200,10 @@ pub async fn subscribe_decoded_events_filtered(
     let channel_id = on_event.id();
     let buffer = state.decoded_buffer.clone();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || FilteredDecodedStreamSource::new(buffer, filter),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            FilteredDecodedStreamSource::new(buffer, filter)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 

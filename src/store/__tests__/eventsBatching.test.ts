@@ -47,7 +47,7 @@ function getChannelFor<T>(command: string): { onmessage: ((msg: T) => void) | nu
     string,
     { request?: { kind?: string }; onEvent?: { onmessage: ((msg: unknown) => void) | null } }
   ][];
-  const call = calls.find((c) => c[0] === 'subscribe_display' && c[1].request?.kind === kind);
+  const call = calls.find((c) => c[0] === 'subscribe_data' && c[1].request?.kind === kind);
   const channel = call?.[1]?.onEvent;
   if (!channel) throw new Error(`channel not registered for ${command}`);
   return {

@@ -52,13 +52,10 @@ pub async fn subscribe_rawdata(
         );
     }
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || RawDataSource::new(collector),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            RawDataSource::new(collector)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -118,13 +115,10 @@ pub async fn subscribe_rawdata_node(
     let max_n = max_bytes.unwrap_or(65536);
     let channel_id = on_event.id();
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || RawDataSource::new(collector),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            RawDataSource::new(collector)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -197,13 +191,10 @@ pub async fn subscribe_rawdata_filtered(
         );
     }
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || FilteredRawDataSource::new(collector, direction, search.as_deref()),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            FilteredRawDataSource::new(collector, direction, search.as_deref())
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 
@@ -253,13 +244,10 @@ pub async fn subscribe_rawdata_node_filtered(
         Some(search)
     };
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || FilteredRawDataSource::new(collector, direction, search.as_deref()),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            FilteredRawDataSource::new(collector, direction, search.as_deref())
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 

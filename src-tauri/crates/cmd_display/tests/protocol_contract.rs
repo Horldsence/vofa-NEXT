@@ -22,6 +22,23 @@ fn request_is_a_tagged_exhaustive_union() {
 }
 
 #[test]
+fn port_sample_request_uses_canonical_node_and_handle_key() {
+    let request: DisplayRequest = serde_json::from_value(serde_json::json!({
+        "kind": "port_samples",
+        "source_node_id": "FireWater",
+        "source_handle": "ch3"
+    }))
+    .expect("port sample request should deserialize");
+    assert!(matches!(
+        request,
+        DisplayRequest::PortSamples {
+            source_node_id,
+            source_handle,
+        } if source_node_id == "FireWater" && source_handle == "ch3"
+    ));
+}
+
+#[test]
 fn event_serialization_matches_typescript_discriminant() {
     let mut snapshot = GraphOutputSnapshot {
         tick: 7,

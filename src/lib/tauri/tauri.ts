@@ -27,8 +27,7 @@ import type { NodeDef, GraphEdge } from '../utils/nodeDef';
 import type { GraphDerivedPayload } from '../../store/slices/derived';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
 import {
-  makeLatestSink,
-  subscribeDisplaySharded,
+  subscribeDisplay,
   subscribeDisplaySnapshot,
 } from '../buffers/shardedSubscription';
 
@@ -116,7 +115,7 @@ export interface DisconnectedEdgePayload {
 export async function closeTauriChannel<T>(
   channel: Channel<T>,
   unsubscribeCmd?: string,
-  channelId?: number
+  channelId?: number,
 ): Promise<void> {
   // 1. 通知后端移除 (如果在 HMR 期间后端已不可达, 忽略错误)
   if (unsubscribeCmd && channelId != null) {
@@ -138,13 +137,11 @@ export async function closeTauriChannel<T>(
 /// 数据管道性能配置 (snake_case, 与后端 PipelineConfig 对应)
 /// 后端不持久化 — 前端在设置加载完成后重放, 更新即推送
 export interface PipelineConfig {
-  coalesce_max_msgs: number;
-  coalesce_max_bytes_kb: number;
-  max_feed_workers: number;
-  feed_parallel_unit: number;
-  min_worker_bytes_kb: number;
-  max_stream_shards: number;
-  parse_channel_cap: number;
+  mode: 'auto';
+  max_workers: number;
+  memory_budget_mb: number;
+  preview_fps_limit: number;
+  preview_bandwidth_mb_per_sec: number;
 }
 
 /// transport:state 事件 payload — 按节点分发
@@ -165,31 +162,53 @@ export const api = {
 
   /// 打开传输连接; protocol 仅被 TestData 用作生成数据的线缆格式参考
   /// schema: 可选帧 schema (custom 且带 encode 块时 TestData 按 schema 编码)
-  openTransport: (nodeId: string, config: TransportConfig, protocol: ProtocolConfig, schema?: ProtocolSchema | null) =>
-    invoke<void>('open_transport', { nodeId, config, protocol, schema: schema ?? null }),
+  openTransport: (
+    nodeId: string,
+    config: TransportConfig,
+    protocol: ProtocolConfig,
+    schema?: ProtocolSchema | null,
+  ) =>
+    invoke<void>('open_transport', {
+      nodeId,
+      config,
+      protocol,
+      schema: schema ?? null,
+    }),
 
-  closeTransport: (nodeId: string) => invoke<void>('close_transport', { nodeId }),
+  closeTransport: (nodeId: string) =>
+    invoke<void>('close_transport', { nodeId }),
 
-  sendRaw: (nodeId: string, data: number[]) => invoke<void>('send_raw', { nodeId, data }),
+  sendRaw: (nodeId: string, data: number[]) =>
+    invoke<void>('send_raw', { nodeId, data }),
 
-  sendString: (nodeId: string, text: string) => invoke<void>('send_string', { nodeId, text }),
+  sendString: (nodeId: string, text: string) =>
+    invoke<void>('send_string', { nodeId, text }),
 
   /// TextOut 手动发送: 立即把图内当前文本发往该 TextOut 节点的目标 Transport
-  sendTextOutNow: (nodeId: string) => invoke<void>('send_text_out_now', { nodeId }),
+  sendTextOutNow: (nodeId: string) =>
+    invoke<void>('send_text_out_now', { nodeId }),
 
   /// protocolNode: Auto 编码所用的 Protocol 节点 id (Manual 模式可传 null)
-  sendWidgetValue: (nodeId: string, protocolNode: string | null, binding: WidgetBinding, value: number) =>
+  sendWidgetValue: (
+    nodeId: string,
+    protocolNode: string | null,
+    binding: WidgetBinding,
+    value: number,
+  ) =>
     invoke<void>('send_widget_value', { nodeId, protocolNode, binding, value }),
 
-  getConnectionState: (nodeId: string) => invoke<ConnectionState>('get_connection_state', { nodeId }),
+  getConnectionState: (nodeId: string) =>
+    invoke<ConnectionState>('get_connection_state', { nodeId }),
 
   getStats: (nodeId: string) => invoke<TransportStats>('get_stats', { nodeId }),
 
-  startTestData: (nodeId: string) => invoke<void>('start_test_data', { nodeId }),
+  startTestData: (nodeId: string) =>
+    invoke<void>('start_test_data', { nodeId }),
 
   stopTestData: (nodeId: string) => invoke<void>('stop_test_data', { nodeId }),
 
-  getTestDataState: (nodeId: string) => invoke<boolean>('get_test_data_state', { nodeId }),
+  getTestDataState: (nodeId: string) =>
+    invoke<boolean>('get_test_data_state', { nodeId }),
 
   /// 运行时热更新传输节点的链路协议 (图/协议变化后推送, 无需重连)
   /// schema: 可选帧 schema (与 openTransport 语义一致)
@@ -197,17 +216,23 @@ export const api = {
     nodeId: string,
     protocol: ProtocolConfig,
     schema?: ProtocolSchema | null,
-    testDataConfig?: Extract<TransportConfig, { kind: 'TestData' }>['params'] | null,
-  ) => invoke<void>('update_transport_protocol', {
-    nodeId,
-    protocol,
-    schema: schema ?? null,
-    testDataConfig: testDataConfig ?? null,
-  }),
+    testDataConfig?:
+      Extract<TransportConfig, { kind: 'TestData' }>['params'] | null,
+  ) =>
+    invoke<void>('update_transport_protocol', {
+      nodeId,
+      protocol,
+      schema: schema ?? null,
+      testDataConfig: testDataConfig ?? null,
+    }),
 
   /// 协议回环: 发送字节并立即捕获指定 Protocol 节点的解析结果
   sendAndCapture: (nodeId: string, protocolNode: string, data: number[]) =>
-    invoke<import('../../types').LoopbackResult>('send_and_capture', { nodeId, protocolNode, data }),
+    invoke<import('../../types').LoopbackResult>('send_and_capture', {
+      nodeId,
+      protocolNode,
+      data,
+    }),
 
   /// 字节注入 — 从 sourceNodeId 的字节出口沿全局 BytePlan 路由到所有下游
   /// (FrameDecoder.in 喂入解析 / Protocol.in 喂入引擎 / Transport.tx 真实发送)
@@ -219,7 +244,7 @@ export const api = {
   /// (后端 cmd_buffer/src/command_frame.rs::compute_frame_bytes, 与前端纯预览分离)
   computeFrameBytes: (
     frame: import('../../types').CommandFrame,
-    inputs: Record<string, number>
+    inputs: Record<string, number>,
   ) =>
     invoke<{
       bytes: number[] | null;
@@ -231,24 +256,26 @@ export const api = {
   setProtocol: (nodeId: string, config: ProtocolConfig) =>
     invoke<void>('set_protocol', { nodeId, config }),
 
-  getProtocol: (nodeId: string) => invoke<ProtocolConfig>('get_protocol', { nodeId }),
+  getProtocol: (nodeId: string) =>
+    invoke<ProtocolConfig>('get_protocol', { nodeId }),
 
   /// 获取自动检测到的通道数 (仅在自动模式下返回 number, 否则 null)
-  getDetectedChannels: (nodeId: string) => invoke<number | null>('get_detected_channels', { nodeId }),
+  getDetectedChannels: (nodeId: string) =>
+    invoke<number | null>('get_detected_channels', { nodeId }),
 
   // ===== 波形缓冲区 (source = Protocol 节点 id) =====
-  /// 订阅波形数据 — 统一分片流 (快照语义, 前端按 "最新 seq 胜出" 处理乱序)
+  /// 订阅波形数据 — 后端有序快照流
   /// 返回一个取消订阅函数
   subscribeWaveform: (
     source: string,
     onEvent: (window: WaveformWindow) => void,
-    options?: { intervalMs?: number; maxPoints?: number }
+    options?: { intervalMs?: number; maxPoints?: number },
   ) => {
-    return subscribeDisplaySharded<WaveformWindow>(
+    return subscribeDisplay<WaveformWindow>(
       { kind: 'waveform', source },
       'waveform',
-      makeLatestSink(onEvent),
-      { intervalMs: options?.intervalMs, maxItems: options?.maxPoints }
+      onEvent,
+      { intervalMs: options?.intervalMs, maxItems: options?.maxPoints },
     );
   },
 
@@ -269,7 +296,8 @@ export const api = {
   setBufferChannels: (source: string, count: number) =>
     invoke<void>('set_buffer_channels', { source, count }),
 
-  getBufferInfo: (source: string) => invoke<[number, number]>('get_buffer_info', { source }),
+  getBufferInfo: (source: string) =>
+    invoke<[number, number]>('get_buffer_info', { source }),
 
   setWaveformBufferCapacity: (source: string, maxPoints: number) =>
     invoke<void>('set_waveform_buffer_capacity', { source, maxPoints }),
@@ -301,7 +329,7 @@ export const api = {
     nodeHints?: Record<string, SourceNodeHintPayload>,
     baseVersion?: number | null,
     widgetRecords?: WidgetRecordPayload[],
-    positions?: Record<string, PositionPayload>
+    positions?: Record<string, PositionPayload>,
   ) =>
     invoke<GraphDerivedPayload>('update_tab_graph', {
       tabId,
@@ -345,7 +373,11 @@ export const api = {
     }),
 
   /// 删线 — 按 edgeId 或 source/target 组合 (可只给一端)
-  disconnectEdge: (params: { edgeId?: string | null; source?: string | null; target?: string | null }) =>
+  disconnectEdge: (params: {
+    edgeId?: string | null;
+    source?: string | null;
+    target?: string | null;
+  }) =>
     invoke<DisconnectedEdgePayload>('disconnect_edge', {
       edgeId: params.edgeId ?? null,
       source: params.source ?? null,
@@ -362,7 +394,10 @@ export const api = {
   /// nodeId: 用于自动解析波特率的 Transport 节点 id
   /// bitrateBps: 可选手动覆盖波特率; null/0 = 自动从 TransportConfig 读取
   getCanLoadStats: (nodeId: string, bitrateBps?: number | null) =>
-    invoke<CanLoadSnapshot>('get_can_load_stats', { nodeId, bitrateBps: bitrateBps ?? null }),
+    invoke<CanLoadSnapshot>('get_can_load_stats', {
+      nodeId,
+      bitrateBps: bitrateBps ?? null,
+    }),
 
   /// 设置 CAN 负载统计滑动窗口大小 (微秒)
   setCanLoadWindow: (windowUs: number) =>
@@ -383,7 +418,7 @@ export const api = {
   subscribeCanLoad: (
     nodeId: string,
     onEvent: (snap: CanLoadSnapshot) => void,
-    options?: { intervalMs?: number; bitrateBps?: number | null }
+    options?: { intervalMs?: number; bitrateBps?: number | null },
   ) => {
     const subscription = subscribeDisplaySnapshot<CanLoadSnapshot>(
       {
@@ -393,7 +428,7 @@ export const api = {
       },
       'can_load',
       onEvent,
-      options?.intervalMs ?? 500
+      options?.intervalMs ?? 500,
     );
     return {
       promise: Promise.resolve(),
@@ -405,7 +440,10 @@ export const api = {
   /// nodeId: 用于自动解析波特率的 Transport 节点 id
   /// bitrateBps: 可选手动覆盖波特率; null/0 = 自动从 TransportConfig 读取
   exportCanLoadCsv: (nodeId: string, bitrateBps?: number | null) =>
-    invoke<string>('export_can_load_csv', { nodeId, bitrateBps: bitrateBps ?? null }),
+    invoke<string>('export_can_load_csv', {
+      nodeId,
+      bitrateBps: bitrateBps ?? null,
+    }),
 
   // ===== 帧解码器手动测试 =====
   /// 解析用户输入字符串为帧 (使用 blocks 配置创建临时 FrameParser, 调用 parse_once)
@@ -501,7 +539,8 @@ export const api = {
     }),
 
   /// 取消进行中的对话任务, 返回任务是否存在
-  aiChatCancel: (taskId: string) => invoke<boolean>('ai_chat_cancel', { taskId }),
+  aiChatCancel: (taskId: string) =>
+    invoke<boolean>('ai_chat_cancel', { taskId }),
 
   /// 前端托管工具回执 (toolHost 执行完 ai_tool_invoke 后调用);
   /// 返回是否存在对应 pending 调用 (超时清理后为 false)
@@ -512,7 +551,8 @@ export const api = {
   chatListSessions: () => invoke<AiSessionMeta[]>('chat_list_sessions'),
 
   /// 新建会话
-  chatCreateSession: (title: string) => invoke<AiChatSession>('chat_create_session', { title }),
+  chatCreateSession: (title: string) =>
+    invoke<AiChatSession>('chat_create_session', { title }),
 
   /// 读取单个会话 (含全部条目); 不存在返回 null
   chatGetSession: (sessionId: string) =>
@@ -546,7 +586,8 @@ export const api = {
   mcpListServers: () => invoke<McpServerConfig[]>('mcp_list_servers'),
 
   /// 新增外部 MCP server 配置
-  mcpAddServer: (config: McpServerConfig) => invoke<void>('mcp_add_server', { config }),
+  mcpAddServer: (config: McpServerConfig) =>
+    invoke<void>('mcp_add_server', { config }),
 
   /// 删除外部 MCP server 配置 (同时断连)
   mcpRemoveServer: (id: string) => invoke<void>('mcp_remove_server', { id }),
@@ -559,7 +600,8 @@ export const api = {
   mcpListTools: () => invoke<McpToolInfo[]>('mcp_list_tools'),
 
   /// 各 server 的连接状态 [(server_id, connected)]
-  mcpConnectionStates: () => invoke<[string, boolean][]>('mcp_connection_states'),
+  mcpConnectionStates: () =>
+    invoke<[string, boolean][]>('mcp_connection_states'),
 
   /// 手动调用一个聚合工具 (前缀名)
   mcpCallTool: (name: string, args: unknown) =>
@@ -569,7 +611,8 @@ export const api = {
   mcpServerStatus: () => invoke<McpServerStatus>('mcp_server_status'),
 
   /// 启动本地 MCP server (返回实际端口; 已运行则直接返回)
-  mcpServerStart: (port: number) => invoke<number>('mcp_server_start', { port }),
+  mcpServerStart: (port: number) =>
+    invoke<number>('mcp_server_start', { port }),
 
   /// 停止本地 MCP server (未运行时静默)
   mcpServerStop: () => invoke<void>('mcp_server_stop'),

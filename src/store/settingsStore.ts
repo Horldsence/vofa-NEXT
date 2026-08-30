@@ -119,13 +119,11 @@ function applyDataCapacity(settings: AppSettings) {
 /// 将 performance 分类映射为后端 PipelineConfig (camelCase -> snake_case)
 export function toPipelineConfig(p: AppSettings['performance']): PipelineConfig {
   return {
-    coalesce_max_msgs: p.coalesceMaxMsgs,
-    coalesce_max_bytes_kb: p.coalesceMaxBytesKb,
-    max_feed_workers: p.maxFeedWorkers,
-    feed_parallel_unit: p.feedParallelUnit,
-    min_worker_bytes_kb: p.minWorkerBytesKb,
-    max_stream_shards: p.maxStreamShards,
-    parse_channel_cap: p.parseChannelCap,
+    mode: p.mode,
+    max_workers: p.maxWorkers,
+    memory_budget_mb: p.memoryBudgetMb,
+    preview_fps_limit: p.previewFpsLimit,
+    preview_bandwidth_mb_per_sec: p.previewBandwidthMbPerSec,
   };
 }
 
@@ -180,7 +178,27 @@ function migrateSettings(settings: AppSettings): AppSettings {
   if (appearance.customThemes?.length) {
     appearance.customThemes = appearance.customThemes.map(migrateCustomTheme);
   }
-  return { ...settings, appearance };
+  const rawPerformance = settings.performance as AppSettings['performance'] & Record<string, unknown>;
+  const performance: AppSettings['performance'] = {
+    mode: 'auto',
+    maxWorkers:
+      typeof rawPerformance.maxWorkers === 'number'
+        ? rawPerformance.maxWorkers
+        : DEFAULT_SETTINGS.performance.maxWorkers,
+    memoryBudgetMb:
+      typeof rawPerformance.memoryBudgetMb === 'number'
+        ? rawPerformance.memoryBudgetMb
+        : DEFAULT_SETTINGS.performance.memoryBudgetMb,
+    previewFpsLimit:
+      typeof rawPerformance.previewFpsLimit === 'number'
+        ? rawPerformance.previewFpsLimit
+        : DEFAULT_SETTINGS.performance.previewFpsLimit,
+    previewBandwidthMbPerSec:
+      typeof rawPerformance.previewBandwidthMbPerSec === 'number'
+        ? rawPerformance.previewBandwidthMbPerSec
+        : DEFAULT_SETTINGS.performance.previewBandwidthMbPerSec,
+  };
+  return { ...settings, appearance, performance };
 }
 
 export const useSettingsStore = create<SettingsStore>((set, get) => ({
@@ -210,6 +228,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         // 与默认值合并, 防止新版本缺失字段
         const merged = await hydrateApiKey(migrateSettings(deepMergeSettings(DEFAULT_SETTINGS, raw)));
         set({ settings: merged, loaded: true });
+        // 将旧版性能字段的一次性迁移结果写回，避免每次启动重复携带废弃键。
+        await getStore().set(STORE_KEY, sanitizeForPersist(merged));
         applyAppearance(merged.appearance);
         applyDataCapacity(merged);
         applyPipelineConfig(merged);

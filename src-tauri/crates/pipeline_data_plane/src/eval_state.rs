@@ -11,6 +11,7 @@ use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use node_frame_decoder::FrameParser;
 use node_trigger::TriggerState;
 use parking_lot::Mutex;
+use pipeline_bus::DataBus;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
@@ -83,6 +84,8 @@ pub struct StreamGroupState {
 /// 内部已用 Arc)。因此把数据平面需要的字段单独打包为 Arc, 从 AppState 克隆。
 #[derive(Clone)]
 pub struct GraphEvalState {
+    /// 每端口真实样本 Topic。图求值仅发布 written=true 的槽位。
+    pub data_bus: DataBus,
     pub graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
     /// 图版本号 — sync_tab_graph/remove_tab_graph 时 +1,
     /// process_source_batch 据此检测重编译并清空复用的输出缓存
@@ -148,6 +151,7 @@ pub struct GraphEvalState {
 #[allow(clippy::implicit_hasher)] // 字段与 AppState/CompiledEval 的具体 hasher 类型耦合, 泛化 S 会传染整个状态图
 #[must_use]
 pub fn build_graph_eval_state(
+    data_bus: DataBus,
     graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
     graphs_version: Arc<AtomicU64>,
     input_values: Arc<Mutex<HashMap<String, f32>>>,
@@ -165,6 +169,7 @@ pub fn build_graph_eval_state(
     ifft_states: Arc<Mutex<HashMap<String, IfftState>>>,
 ) -> GraphEvalState {
     GraphEvalState {
+        data_bus,
         graphs,
         graphs_version,
         input_values,

@@ -60,8 +60,8 @@ fn test_protocol_source_multi_source() {
 }
 
 #[test]
-fn test_protocol_source_missing_source_writes_zero() {
-    // 源缺失 / 通道越界 → 写 0.0 (与未连接语义一致)
+fn test_protocol_source_missing_source_is_not_materialized() {
+    // 源缺失 / 通道越界 → 不写；不得与真实 0.0 混淆。
     let nodes = vec![make_protocol_source("ps1", "t1", "proto_missing", 3)];
     let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
     // 完全缺源
@@ -76,8 +76,8 @@ fn test_protocol_source_missing_source_writes_zero() {
         &mut HashMap::new(),
         &mut StringValuesMap::default(),
     );
-    assert_eq!(out.get("ps1").and_then(|m| m.get("ch0")), Some(&0.0));
-    // 源存在但通道数不足 → 越界通道 0.0
+    assert!(out.get("ps1").and_then(|m| m.get("ch0")).is_none());
+    // 源存在但通道数不足 → 只物化真实存在的通道
     let frames = source_frames(&[("proto_missing", vec![9.0])]);
     let out = g.evaluate(
         &frames,
@@ -91,7 +91,7 @@ fn test_protocol_source_missing_source_writes_zero() {
         &mut StringValuesMap::default(),
     );
     assert_eq!(out.get("ps1").and_then(|m| m.get("ch0")), Some(&9.0));
-    assert_eq!(out.get("ps1").and_then(|m| m.get("ch2")), Some(&0.0));
+    assert!(out.get("ps1").and_then(|m| m.get("ch2")).is_none());
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn test_protocol_source_named_ports_slot_run() {
         &["a", "b", "c"],
     )];
     let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
-    let frames = source_frames(&[("proto1", vec![1.0, 2.0])]); // 第 3 通道越界 → 0
+    let frames = source_frames(&[("proto1", vec![1.0, 2.0])]); // 第 3 通道越界 → 未写
 
     // 槽位名检查: 应分配 a/b/c 三个命名槽位
     let compiled = g.compiled();
@@ -164,7 +164,7 @@ fn test_protocol_source_named_ports_slot_run() {
     );
     assert_eq!(slots[compiled.slot_of("ps1", "a").unwrap()], 1.0);
     assert_eq!(slots[compiled.slot_of("ps1", "b").unwrap()], 2.0);
-    assert_eq!(slots[compiled.slot_of("ps1", "c").unwrap()], 0.0);
+    assert!(!written[compiled.slot_of("ps1", "c").unwrap()]);
 }
 
 #[test]

@@ -25,9 +25,9 @@ pub mod serial_params;
 
 pub use config::{
     ButtonConfig, CandleConfig, CheckboxConfig, ImageConfig, ImageFormat, KnobConfig, LabelConfig,
-    PieChartConfig, PipelineConfig, RadioConfig, SerialConfig, SlcanConfig, SliderConfig,
-    TcpClientConfig, TcpServerConfig, TestDataConfig, TestSignal, TransportConfig, UdpConfig,
-    WaveformConfig, WidgetBinding, WidgetConfig,
+    PieChartConfig, PipelineConfig, PipelineMode, RadioConfig, SerialConfig, SlcanConfig,
+    SliderConfig, TcpClientConfig, TcpServerConfig, TestDataConfig, TestSignal, TransportConfig,
+    UdpConfig, WaveformConfig, WidgetBinding, WidgetConfig,
 };
 pub use error::{AppError as Error, Result};
 pub use frame::{now_us, ConnectionState, DataFrame, PortInfo, RawData, TransportStats};

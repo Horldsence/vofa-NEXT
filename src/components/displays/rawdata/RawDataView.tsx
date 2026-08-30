@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
 import { Unplug } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
 import { RawDataBuffer } from '../../../lib/buffers/dataBuffer';
@@ -20,6 +20,7 @@ import { RawDataViewNumericContent } from './RawDataViewNumericContent';
 import { RawDataViewSendPanel } from './RawDataViewSendPanel';
 import { RawDataViewSettings } from './RawDataViewSettings';
 import { getRawDataViewPrefs } from '../../../lib/buffers/rawDataViewStore';
+import { getPortSampleStore } from '../../../lib/data/dataClient';
 
 /// 原始数据显示 — Grid/Line × HEX/ASCII 四视图, 支持虚拟滚动、文本选中/行选中复制、时间戳、发送
 /// 纯端口制: 每张卡片独立的输入选择 (存 RawDataConfig.selectedInput), 选择器只列该卡片
@@ -32,8 +33,6 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const rfEdges = useAppStore((s) => s.rfEdges);
   const widgets = useAppStore((s) => s.widgets);
   const updateWidget = useAppStore((s) => s.updateWidget);
-  const graphOutputs = useAppStore((s) => s.graphOutputs);
-  const graphOutputsTick = useAppStore((s) => s.graphOutputsTick);
   // 注意: 选择器必须返回稳定引用 (filter 每次产新数组会触发 useSyncExternalStore 死循环),
   // 故订阅 rfNodes 原始数组, 用 useMemo 派生
   const rfNodes = useAppStore((s) => s.rfNodes);
@@ -229,28 +228,21 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   }, [buffer]);
 
   // ---- 数值通道视图 ----
-  const NUM_MAX_ROWS = 500;
-  const [numRows, setNumRows] = useState<Array<{ seq: number; ts: number; value: number }>>([]);
-  const numSeqRef = useRef(0);
   const numScrollRef = useRef<HTMLDivElement>(null);
-
-  const graphOutputsRef = useRef(graphOutputs);
-  graphOutputsRef.current = graphOutputs;
-
-  useEffect(() => {
-    if (!isNum || !selectedChannel) return;
-    const handle = selectedChannel.sourceHandle ?? 'data';
-    const v = graphOutputsRef.current[selectedChannel.sourceId]?.[handle];
-    if (v === undefined) return;
-    setNumRows((prev) => {
-      const next = [...prev, { seq: numSeqRef.current++, ts: Date.now(), value: v }];
-      return next.length > NUM_MAX_ROWS ? next.slice(-NUM_MAX_ROWS) : next;
-    });
-  }, [graphOutputsTick, isNum, selectedChannel]);
-
-  useEffect(() => {
-    if (!isNum || !selectedChannel) setNumRows([]);
-  }, [isNum, selectedChannel]);
+  const sampleStore = useMemo(
+    () =>
+      getPortSampleStore(
+        isNum ? selectedChannel?.sourceId : undefined,
+        isNum ? (selectedChannel?.sourceHandle ?? 'data') : undefined
+      ),
+    [isNum, selectedChannel?.sourceId, selectedChannel?.sourceHandle]
+  );
+  const sampleSnapshot = useSyncExternalStore(
+    sampleStore.subscribe,
+    sampleStore.getSnapshot,
+    sampleStore.getSnapshot
+  );
+  const numRows = sampleSnapshot.rows;
 
   useEffect(() => {
     if (!autoScroll) return;
@@ -318,7 +310,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
 
   const handleClear = () => {
     if (isNum) {
-      setNumRows([]);
+      sampleStore.clear();
       return;
     }
     clearData();
@@ -447,6 +439,11 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
                 <div ref={numScrollRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
                   <RawDataViewNumericContent
                     numRows={numRows}
+                    status={sampleSnapshot.status}
+                    previewSkipped={sampleSnapshot.previewSkipped}
+                    retentionEvicted={sampleSnapshot.retentionEvicted}
+                    ingressDropped={sampleSnapshot.ingressDropped}
+                    error={sampleSnapshot.error}
                     showTimestamp={showTimestamp}
                     lang={lang}
                     grouping={grouping}
@@ -512,6 +509,11 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
               <div ref={numScrollRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <RawDataViewNumericContent
                   numRows={numRows}
+                  status={sampleSnapshot.status}
+                  previewSkipped={sampleSnapshot.previewSkipped}
+                  retentionEvicted={sampleSnapshot.retentionEvicted}
+                  ingressDropped={sampleSnapshot.ingressDropped}
+                  error={sampleSnapshot.error}
                   showTimestamp={showTimestamp}
                   lang={lang}
                   grouping={grouping}

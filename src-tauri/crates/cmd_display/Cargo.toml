@@ -15,12 +15,14 @@ can_types = { workspace = true }
 dsp_fft = { workspace = true }
 logic_types = { workspace = true }
 pipeline_data_plane = { workspace = true }
+pipeline_bus = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
 subscription = { workspace = true }
 vofa_core = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }
+serde_json = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
 log = { workspace = true }

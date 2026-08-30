@@ -427,24 +427,20 @@ fn image_widget_format_uses_lowercase_serde() {
 #[test]
 fn pipeline_config_default_matches_documented_values() {
     let p = PipelineConfig::default();
-    assert_eq!(p.coalesce_max_msgs, 64);
-    assert_eq!(p.coalesce_max_bytes_kb, 256);
-    assert_eq!(p.max_feed_workers, 4);
-    assert_eq!(p.feed_parallel_unit, 8);
-    assert_eq!(p.min_worker_bytes_kb, 32);
-    assert_eq!(p.max_stream_shards, 4);
-    assert_eq!(p.parse_channel_cap, 256);
+    assert_eq!(p.max_workers, 8);
+    assert_eq!(p.memory_budget_mb, 256);
+    assert_eq!(p.preview_fps_limit, 60);
+    assert_eq!(p.preview_bandwidth_mb_per_sec, 8);
 }
 
 #[test]
 fn pipeline_config_partial_json_fills_missing_with_defaults() {
-    // 只给 coalesce_max_msgs,其他字段应回退到默认值
-    let json = r#"{"coalesce_max_msgs":128}"#;
+    // 只给 max_workers,其他字段应回退到默认值
+    let json = r#"{"max_workers":12}"#;
     let p: PipelineConfig = serde_json::from_str(json).unwrap();
-    assert_eq!(p.coalesce_max_msgs, 128);
-    assert_eq!(p.coalesce_max_bytes_kb, 256);
-    assert_eq!(p.max_feed_workers, 4);
-    assert_eq!(p.parse_channel_cap, 256);
+    assert_eq!(p.max_workers, 12);
+    assert_eq!(p.memory_budget_mb, 256);
+    assert_eq!(p.preview_fps_limit, 60);
 }
 
 #[test]
@@ -456,13 +452,11 @@ fn pipeline_config_empty_object_uses_full_default() {
 #[test]
 fn pipeline_config_full_roundtrip() {
     let p = PipelineConfig {
-        coalesce_max_msgs: 32,
-        coalesce_max_bytes_kb: 128,
-        max_feed_workers: 8,
-        feed_parallel_unit: 4,
-        min_worker_bytes_kb: 64,
-        max_stream_shards: 2,
-        parse_channel_cap: 512,
+        max_workers: 16,
+        memory_budget_mb: 512,
+        preview_fps_limit: 30,
+        preview_bandwidth_mb_per_sec: 16,
+        ..PipelineConfig::default()
     };
     let json = serde_json::to_string(&p).unwrap();
     let restored: PipelineConfig = serde_json::from_str(&json).unwrap();

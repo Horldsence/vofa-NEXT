@@ -83,7 +83,7 @@ impl CompiledEval {
     ///
     /// `source_frames`: 多源最新帧缓存 (key = Protocol 节点 id),
     ///   语义为 latest-value 融合 — 每个源独立缓存最近一帧, 本函数逐源读取;
-    ///   源缺失或通道越界时对应端口写 0.0 (与未连接语义一致)。
+    ///   源缺失或通道越界时对应端口不写；真实 0.0 仍是有效样本。
     /// `source_texts`: 每源最新文本缓存 (key = Protocol 节点 id, RawData 协议写入),
     ///   ProtocolSource 的 "str" 端口 (String 域) 从此读取; 源无缓存时对应槽位不写
     ///   (快照保持上次值, 对齐 Trigger 未激活帧语义)。
@@ -128,11 +128,10 @@ impl CompiledEval {
         for op in &self.plan.ops {
             match op {
                 CompiledOp::ProtocolSource { src, ch, slot } => {
-                    slots[*slot] = resolved[*src]
-                        .and_then(|f| f.channels.get(*ch))
-                        .copied()
-                        .unwrap_or(0.0);
-                    written[*slot] = true;
+                    if let Some(value) = resolved[*src].and_then(|f| f.channels.get(*ch)) {
+                        slots[*slot] = *value;
+                        written[*slot] = true;
+                    }
                 }
                 CompiledOp::ProtocolSourceStr { src, slot } => {
                     // 源有缓存文本时写字符串槽位 (复用缓冲原位写, 仿 TextInput);
@@ -267,10 +266,10 @@ impl CompiledEval {
                         &mut heap_str
                     };
                     for (i, s) in str_inputs.iter().enumerate() {
-                        str_buf[i] = s.map_or(
-                            str_defaults.get(i).map_or("", String::as_str),
-                            |slot| str_slots[slot].as_str(),
-                        );
+                        str_buf[i] = s
+                            .map_or(str_defaults.get(i).map_or("", String::as_str), |slot| {
+                                str_slots[slot].as_str()
+                            });
                     }
                     let mut stack_num = [0.0f32; 2];
                     let mut heap_num;
@@ -390,6 +389,11 @@ impl CompiledEval {
                 set_port(m, port, slots[i]);
             }
         }
+    }
+
+    /// 数值槽位与 `(node_id, port)` 的稳定对应表。
+    pub fn slot_names(&self) -> &[(String, String)] {
+        &self.plan.slot_names
     }
 
     /// 字符串快照物化: str_slots + str_written → StringValuesMap (仅快照发布点调用)

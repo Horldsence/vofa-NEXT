@@ -11,6 +11,9 @@
 //! 某源来帧 → 评估"引用了该源的 tab 图"与"无 ProtocolSource 的纯本地图"
 //! (后者沿用旧行为: 单源时代任意来帧都评估); 同 tab 多源时其他源用缓存最新帧。
 
+use node_kind::NodeKind;
+use pipeline_bus::{SampleStatus, TopicKey};
+use std::sync::Arc;
 use vofa_core::DataFrame;
 
 use super::DataPlaneState;
@@ -24,6 +27,7 @@ pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) 
     if frames.is_empty() {
         return 0;
     }
+    publish_protocol_samples(plane, source_id, frames);
     let buffer = plane.buffer_for(source_id);
     let mut buf = buffer.lock();
     let mut sf = plane.eval.source_frames.lock();
@@ -37,6 +41,76 @@ pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) 
         &mut breakdown,
     );
     breakdown.push_frame_ns + breakdown.graph_eval_ns + breakdown.derived_ns + breakdown.spectrum_ns
+}
+
+/// 把协议帧按真实端口写入 Topic。只有帧中实际存在的通道才产生样本。
+fn publish_protocol_samples(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) {
+    let configured_names = plane
+        .global_nodes
+        .lock()
+        .get(source_id)
+        .and_then(|node| match &node.kind {
+            NodeKind::Protocol { schema, .. } => schema
+                .as_ref()
+                .map(schema_types::ProtocolSchema::port_names),
+            _ => None,
+        })
+        .unwrap_or_default();
+    let channel_count = frames
+        .iter()
+        .map(|frame| frame.channels.len())
+        .max()
+        .unwrap_or(0);
+
+    for key in plane.eval.data_bus.active_topics_for_source(source_id) {
+        let requested = configured_names
+            .iter()
+            .position(|name| name == &key.source_handle)
+            .or_else(|| key.source_handle.strip_prefix("ch")?.parse::<usize>().ok());
+        if let Some(requested) = requested.filter(|requested| *requested >= channel_count) {
+            plane.eval.data_bus.set_status(
+                key,
+                SampleStatus::ChannelOutOfRange {
+                    requested,
+                    available: channel_count,
+                },
+            );
+        }
+    }
+
+    for channel in 0..channel_count {
+        let handle = configured_names
+            .get(channel)
+            .filter(|name| !name.is_empty())
+            .cloned()
+            .unwrap_or_else(|| format!("ch{channel}"));
+        let key = TopicKey::new(source_id, handle);
+        if !plane.eval.data_bus.is_active(&key) {
+            continue;
+        }
+        let mut timestamps = Vec::with_capacity(frames.len());
+        let mut values = Vec::with_capacity(frames.len());
+        for frame in frames {
+            if let Some(value) = frame.channels.get(channel) {
+                timestamps.push(frame.timestamp);
+                values.push(f64::from(*value));
+            }
+        }
+        if values.is_empty() {
+            plane.eval.data_bus.set_status(
+                key,
+                SampleStatus::ChannelOutOfRange {
+                    requested: channel,
+                    available: channel_count,
+                },
+            );
+        } else {
+            plane
+                .eval
+                .data_bus
+                .publish_samples(key, Arc::from(timestamps), Arc::from(values));
+        }
+    }
 }
 
 /// RawData 协议原始字节 → 每源最新文本缓存 ([`super::DataPlaneState::source_texts`]) —

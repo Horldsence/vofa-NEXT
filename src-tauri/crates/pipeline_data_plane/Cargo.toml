@@ -22,6 +22,7 @@ dsp_filter = { workspace = true }
 dsp_fft = { workspace = true }
 dsp_window = { workspace = true }
 protocol_engine = { workspace = true }
+pipeline_bus = { workspace = true }
 protocol_float = { workspace = true }
 protocol_can_bridge = { workspace = true }
 logic_decoder = { workspace = true }

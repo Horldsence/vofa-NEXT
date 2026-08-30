@@ -30,13 +30,10 @@ pub async fn subscribe_waveform(
     let channel_id = on_event.id();
     let buffer = state.data_plane.buffer_for(&source);
 
-    let (source, seq, shard_idx, group_key) = join_or_create_group(
-        &state.stream_groups,
-        group_id,
-        channel_id,
-        state.pipeline_config.read().max_stream_shards,
-        || WaveformSource::new(buffer),
-    )?;
+    let (source, seq, shard_idx, group_key) =
+        join_or_create_group(&state.stream_groups, group_id, channel_id, 1, || {
+            WaveformSource::new(buffer)
+        })?;
 
     let cancel_rx = subscription::register_cancel(&state.subscriptions, channel_id);
 

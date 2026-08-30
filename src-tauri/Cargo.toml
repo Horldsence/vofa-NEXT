@@ -53,6 +53,7 @@ members = [
   "crates/node_testkit",
   "crates/node_trigger",
   "crates/pipeline_data_plane",
+  "crates/pipeline_bus",
   "crates/pipeline_dispatcher",
   "crates/pipeline_stream",
   "crates/protocol_can_bridge",
@@ -214,6 +215,7 @@ automotive_isotp = { path = "crates/automotive_isotp" }
 automotive_diag = { path = "crates/automotive_diag" }
 automotive_can = { path = "crates/automotive_can" }
 pipeline_data_plane = { path = "crates/pipeline_data_plane" }
+pipeline_bus = { path = "crates/pipeline_bus" }
 pipeline_dispatcher = { path = "crates/pipeline_dispatcher" }
 pipeline_stream = { path = "crates/pipeline_stream" }
 notify_events = { path = "crates/notify_events" }

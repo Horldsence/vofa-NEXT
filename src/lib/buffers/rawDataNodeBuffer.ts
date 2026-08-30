@@ -56,5 +56,9 @@ export function releaseRawDataNode(nodeId: string, filter?: RawDataFilterOptions
 
 /// 查询指定节点的原始数据 buffer (不改变引用计数)
 export function getRawDataNodeBuffer(nodeId: string): RawDataBuffer | undefined {
-  return registry.get(nodeId)?.buffer;
+  const prefix = `${nodeId}\u0000`;
+  for (const [key, entry] of registry) {
+    if (key.startsWith(prefix)) return entry.buffer;
+  }
+  return undefined;
 }

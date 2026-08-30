@@ -6,6 +6,7 @@ use can_types::{CanBuffer, CanLoadStats};
 use logic_types::{DecodedBuffer, LogicBuffer};
 use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use parking_lot::{Mutex, RwLock};
+use pipeline_bus::DataBus;
 use pipeline_data_plane::{
     build_graph_eval_state, GraphEvalState, StreamGroupState, DEFAULT_CAN_BUFFER_CAPACITY,
     DEFAULT_CAN_LOAD_STATS_WINDOW, DEFAULT_DECODED_BUFFER_CAPACITY, DEFAULT_LOGIC_BUFFER_CAPACITY,
@@ -108,8 +109,10 @@ impl AppState {
             DEFAULT_DECODED_BUFFER_CAPACITY,
         )));
         let pipeline_config = Arc::new(RwLock::new(PipelineConfig::default()));
+        let data_bus = DataBus::default();
 
         let eval: GraphEvalState = build_graph_eval_state(
+            data_bus,
             graphs.clone(),
             graphs_version.clone(),
             input_values.clone(),

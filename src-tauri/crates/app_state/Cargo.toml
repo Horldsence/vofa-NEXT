@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 # GraphEvalState + StreamGroupState + 4 个 snapshot 类型定义在 pipeline_data_plane
 pipeline_data_plane = { workspace = true }
+pipeline_bus = { workspace = true }
 # Ticker 内的 AdaptiveRate 由 pipeline_stream 提供
 pipeline_stream = { workspace = true }
 # 频谱/Ifft 同步 sync_spectrum_analyzers / sync_ifft_buffers 由 pipeline_dispatcher 提供

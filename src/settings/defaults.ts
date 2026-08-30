@@ -79,13 +79,11 @@ export interface AppSettings {
   };
   /// 数据管道性能调优 — 更新即推送后端 set_pipeline_config (后端不持久化, 启动时重放)
   performance: {
-    maxFeedWorkers: number;
-    feedParallelUnit: number;
-    minWorkerBytesKb: number;
-    coalesceMaxMsgs: number;
-    coalesceMaxBytesKb: number;
-    maxStreamShards: number;
-    parseChannelCap: number;
+    mode: 'auto';
+    maxWorkers: number;
+    memoryBudgetMb: number;
+    previewFpsLimit: number;
+    previewBandwidthMbPerSec: number;
   };
   /// AI 对话与 MCP — api_key 存系统钥匙串 (ai_keychain_*), 磁盘副本恒为空串;
   /// 运行时随请求传给后端, 后端不持久化
@@ -175,13 +173,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     showOnError: true,
   },
   performance: {
-    maxFeedWorkers: 4,
-    feedParallelUnit: 8,
-    minWorkerBytesKb: 32,
-    coalesceMaxMsgs: 64,
-    coalesceMaxBytesKb: 256,
-    maxStreamShards: 4,
-    parseChannelCap: 256,
+    mode: 'auto',
+    maxWorkers: 8,
+    memoryBudgetMb: 256,
+    previewFpsLimit: 60,
+    previewBandwidthMbPerSec: 8,
   },
   ai: {
     adapter: 'orcarouter',

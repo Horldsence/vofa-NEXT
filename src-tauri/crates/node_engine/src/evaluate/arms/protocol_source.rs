@@ -33,11 +33,9 @@ impl NodeArm for ProtocolSourceArm {
                 }
                 continue;
             }
-            let v = frame
-                .and_then(|f| f.channels.get(i))
-                .copied()
-                .unwrap_or(0.0);
-            set_port(node_out_entry(ctx.out, node_id), name, v);
+            if let Some(v) = frame.and_then(|f| f.channels.get(i)).copied() {
+                set_port(node_out_entry(ctx.out, node_id), name, v);
+            }
         }
     }
 }

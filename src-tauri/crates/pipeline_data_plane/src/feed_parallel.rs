@@ -17,10 +17,10 @@ use protocol_engine::{FeedOutput, ProtocolEngine};
 use std::sync::Arc;
 use vofa_core::PipelineConfig;
 
-/// 最大并行 worker 数 — 默认值, 实际运行由 PipelineConfig::max_feed_workers 提供
+/// 最大并行 worker 数 — 默认安全上限, 实际运行由 PipelineConfig::max_workers 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步, 见下方单测)
 #[allow(dead_code)]
-pub const MAX_FEED_WORKERS: usize = 4;
+pub const MAX_FEED_WORKERS: usize = 8;
 /// 积压单位: parse mpsc 每 8 批升一级 — 默认值, 实际由 PipelineConfig::feed_parallel_unit 提供
 #[allow(dead_code)]
 pub const FEED_PARALLEL_UNIT: usize = 8;
@@ -28,11 +28,17 @@ pub const FEED_PARALLEL_UNIT: usize = 8;
 #[allow(dead_code)]
 pub const MIN_WORKER_BYTES: usize = 32 * 1024;
 
-/// 按积压深度与批次字节数计算需要的 worker 数 (1..=cfg.max_feed_workers)
+fn worker_limit(cfg: &PipelineConfig) -> usize {
+    cfg.max_workers
+        .min(std::thread::available_parallelism().map_or(1, std::num::NonZero::get))
+        .max(1)
+}
+
+/// 按积压深度与批次字节数计算需要的 worker 数 (1..=cfg.max_workers)。
 pub fn workers_needed(depth: usize, bytes: usize, cfg: &PipelineConfig) -> usize {
-    (1 + depth / cfg.feed_parallel_unit)
-        .min(1 + bytes / (cfg.min_worker_bytes_kb * 1024))
-        .min(cfg.max_feed_workers)
+    (1 + depth / FEED_PARALLEL_UNIT)
+        .min(1 + bytes / MIN_WORKER_BYTES)
+        .min(worker_limit(cfg))
 }
 
 /// 并行解析细分耗时 (观测用, 不影响行为)
@@ -164,9 +170,7 @@ mod tests {
     fn test_constants_match_pipeline_config_default() {
         // 模块常量与 PipelineConfig::default() 保持同步 (常量是默认值文档来源)
         let d = PipelineConfig::default();
-        assert_eq!(d.max_feed_workers, MAX_FEED_WORKERS);
-        assert_eq!(d.feed_parallel_unit, FEED_PARALLEL_UNIT);
-        assert_eq!(d.min_worker_bytes_kb * 1024, MIN_WORKER_BYTES);
+        assert_eq!(d.max_workers, MAX_FEED_WORKERS);
     }
 
     #[test]
@@ -196,9 +200,10 @@ mod tests {
     fn test_workers_needed_clamp() {
         let cfg = PipelineConfig::default();
         let big = 1024 * 1024;
-        // 上限 clamp 到 max_feed_workers (默认 4)
-        assert_eq!(workers_needed(255, big, &cfg), MAX_FEED_WORKERS);
-        assert_eq!(workers_needed(1000, big, &cfg), MAX_FEED_WORKERS);
+        let max_workers = worker_limit(&cfg);
+        // 上限 clamp 到 max_workers
+        assert_eq!(workers_needed(255, big, &cfg), max_workers);
+        assert_eq!(workers_needed(1000, big, &cfg), max_workers);
         // 字节数下限: 32KB 才够 2 worker
         assert_eq!(workers_needed(8, MIN_WORKER_BYTES - 1, &cfg), 1);
         assert_eq!(workers_needed(8, MIN_WORKER_BYTES, &cfg), 2);
@@ -206,18 +211,16 @@ mod tests {
 
     #[test]
     fn test_workers_needed_custom_config() {
-        // 自定义配置: max_feed_workers=2, feed_parallel_unit=4, min_worker_bytes_kb=16
+        // 自定义安全上限
         let cfg = PipelineConfig {
-            max_feed_workers: 2,
-            feed_parallel_unit: 4,
-            min_worker_bytes_kb: 16,
+            max_workers: 2,
             ..PipelineConfig::default()
         };
-        // 4 批积压 + 16KB → 2 worker
-        assert_eq!(workers_needed(4, 16 * 1024, &cfg), 2);
+        // 8 批积压 + 32KB → 2 worker
+        assert_eq!(workers_needed(8, 32 * 1024, &cfg), 2);
         // 积压再高也被 clamp 到 2
         assert_eq!(workers_needed(255, 1024 * 1024, &cfg), 2);
         // 3 批积压 (< 4) → 单 worker
-        assert_eq!(workers_needed(3, 1024 * 1024, &cfg), 1);
+        assert_eq!(workers_needed(7, 1024 * 1024, &cfg), 1);
     }
 }

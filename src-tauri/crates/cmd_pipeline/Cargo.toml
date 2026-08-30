@@ -12,5 +12,6 @@ app_state = { workspace = true }
 log = { workspace = true }
 tauri = { version = "2", features = [] }
 vofa_core = { workspace = true }
+pipeline_bus = { workspace = true }
 node_engine = { workspace = true }
 node_trigger = { workspace = true }
