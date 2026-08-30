@@ -159,6 +159,18 @@ aiErrProviderRequest: Request to {adapter} / {model} failed
 aiErrMaxToolRounds: Tool-call loop exceeded {rounds} rounds without a final answer
 aiErrCancelled: Chat cancelled
 aiErrKeyring: Failed to access the system keychain
+aiErrKeyringAccessDenied: System keychain access was denied
+keychainPermissionTitle: System Keychain Access Required
+keychainPermissionDescription: The previous keychain access request was not authorized, so saved AI provider keys are currently unavailable.
+keychainPermissionPurpose: VOFA-NEXT stores AI provider API keys securely in the system keychain. Keys are never written to the settings file.
+keychainPermissionImpact: Denying access only affects reading and saving AI keys. Serial ports, charts, and other features are unaffected.
+keychainPermissionRetryHint: Click “Request Again” to show the macOS authorization prompt again.
+keychainPermissionDontRemind: Don’t remind me again
+keychainPermissionLater: Later
+keychainPermissionRequestAgain: Request Again
+keychainPermissionRequesting: Requesting…
+keychainPermissionDeniedAgain: Keychain access is still not authorized. You can try again or handle it later.
+keychainPermissionRetryFailed: The system keychain could not be accessed. Check that it is available and try again.
 aiErrUnknownSession: Session not found (it may have been deleted)
 aiErrPersist: Failed to write chat history
 aiSendBlocked: Cannot send —
@@ -970,6 +982,8 @@ tourDataTabsContent: Waveform / CAN / logic / compile windows coexist as tabs. <
 tourCanTitle: CAN Frames · Bus Analysis
 tourCanContent: Opened for you already. Switching to Slcan/CandleLight protocol plus hardware shows real bus traffic; the <strong>hint bar</strong> jumps into protocol settings.
 tourActCanTab: Click any sub-tab below to switch views
+tourAiTitle: AI Assistant · Chat to Operate
+tourAiContent: Toggle this panel anytime via the AI icon on the right of the status bar (docks left/right/bottom or floats). After setting a provider and API key in Settings → AI, <strong>the AI can build node graphs, read waveforms and CAN data, and send commands to your device</strong>; the MCP drawer in the title bar connects external tools, and 127.0.0.1:8765/mcp lets external AI clients like Claude Desktop drive this app.
 tourHelpTitle: Help Center · Come Back Anytime
 tourHelpContent: The question-mark icon reopens this center or replays the tour; Settings disables the first-launch tour and contextual hints.
 tourNoEdgeSkip: Skip
@@ -1055,6 +1069,14 @@ helpWindowResizeSteps: |-
   Right-click a tab to close it or close others; control-canvas tabs can also be duplicated
   Right-click the empty title-bar area to add a control tab or a CAN / Logic Analyzer page
   The window layout (splits and sizes) is persisted automatically and restored on next launch
+helpAi: AI Assistant
+helpAiDesc: The built-in AI chat operates the app and reads device data directly; the app also exposes itself as an MCP server for external AI clients.
+helpAiSteps: |-
+  Pick a provider and enter the API key in Settings → AI - the default is the OrcaRouter gateway, whose model names need a vendor prefix (e.g. openai/gpt-4o-mini); keys live in the system keychain, never in the settings file
+  Open the AI Chat panel from the AI icon on the right of the status bar - it docks left/right/bottom or floats freely, with multi-session management in the title bar
+  With Built-in Tools enabled in settings, the AI can build and edit node graphs, read waveform/CAN/raw data, send data to the device, and consult the bundled usage knowledge base
+  The MCP Servers drawer in the panel title bar adds external MCP servers (stdio command or http URL), exposing their tools to the model
+  The app also serves MCP at 127.0.0.1:8765/mcp (loopback only, port configurable in settings) - point Claude Desktop or other external clients at it to drive this app
 
 # CAN
 canFrames: CAN Frames

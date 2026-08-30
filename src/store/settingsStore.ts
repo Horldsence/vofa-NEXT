@@ -43,9 +43,26 @@ function sanitizeForPersist(settings: AppSettings): AppSettings {
   return { ...settings, ai: { ...settings.ai, apiKey: '' } };
 }
 
+type KeychainPermissionRetryError = 'denied' | 'failed' | null;
+
+function isKeychainAccessDenied(error: unknown): boolean {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'kind' in error &&
+      (error as { kind?: unknown }).kind === 'AiKeyringAccessDenied'
+  );
+}
+
+interface HydrateApiKeyResult {
+  settings: AppSettings;
+  accessDenied: boolean;
+}
+
 /// 启动水合: 从钥匙串读取当前适配器的 API key;
-/// 兼容迁移 — 旧版本明文存于 settings.json 的 key 迁入钥匙串 (仅当钥匙串为空)
-async function hydrateApiKey(settings: AppSettings): Promise<AppSettings> {
+/// 兼容迁移 — 旧版本明文存于 settings.json 的 key 迁入钥匙串 (仅当钥匙串为空)。
+/// 同时保留结构化的授权拒绝信号,供主窗口按启动顺序显示说明。
+async function hydrateApiKey(settings: AppSettings): Promise<HydrateApiKeyResult> {
   try {
     const legacy = settings.ai.apiKey;
     let stored = await api.aiKeychainGet(settings.ai.adapter);
@@ -53,10 +70,16 @@ async function hydrateApiKey(settings: AppSettings): Promise<AppSettings> {
       await api.aiKeychainSet(settings.ai.adapter, legacy);
       stored = legacy;
     }
-    return { ...settings, ai: { ...settings.ai, apiKey: stored ?? '' } };
-  } catch (e) {
-    console.warn('[settings] 钥匙串读取失败, API key 不可用:', e);
-    return { ...settings, ai: { ...settings.ai, apiKey: '' } };
+    return {
+      settings: { ...settings, ai: { ...settings.ai, apiKey: stored ?? '' } },
+      accessDenied: false,
+    };
+  } catch (error) {
+    console.warn('[settings] 钥匙串读取失败, API key 不可用:', error);
+    return {
+      settings: { ...settings, ai: { ...settings.ai, apiKey: '' } },
+      accessDenied: isKeychainAccessDenied(error),
+    };
   }
 }
 
@@ -67,11 +90,16 @@ interface SettingsStore {
   activeCategory: keyof AppSettings;
   searchQuery: string;
   loaded: boolean;
+  keychainPermissionPromptOpen: boolean;
+  keychainPermissionRetrying: boolean;
+  keychainPermissionRetryError: KeychainPermissionRetryError;
 
   open: (category?: keyof AppSettings) => void;
   close: () => void;
   openAbout: () => void;
   closeAbout: () => void;
+  dismissKeychainPermissionPrompt: (dontRemind: boolean) => void;
+  retryKeychainPermission: () => Promise<void>;
   setActiveCategory: (c: keyof AppSettings) => void;
   setSearchQuery: (q: string) => void;
 
@@ -208,6 +236,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   activeCategory: 'general',
   searchQuery: '',
   loaded: false,
+  keychainPermissionPromptOpen: false,
+  keychainPermissionRetrying: false,
+  keychainPermissionRetryError: null,
 
   open: (category) =>
     set({
@@ -218,6 +249,39 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   close: () => set({ isOpen: false }),
   openAbout: () => set({ isAboutOpen: true }),
   closeAbout: () => set({ isAboutOpen: false }),
+  dismissKeychainPermissionPrompt: (dontRemind) => {
+    if (dontRemind) {
+      get().update('general', 'suppressKeychainPermissionReminder', true);
+    }
+    set({
+      keychainPermissionPromptOpen: false,
+      keychainPermissionRetrying: false,
+      keychainPermissionRetryError: null,
+    });
+  },
+  retryKeychainPermission: async () => {
+    if (get().keychainPermissionRetrying) return;
+    set({ keychainPermissionRetrying: true, keychainPermissionRetryError: null });
+    try {
+      const adapter = get().settings.ai.adapter;
+      const key = await api.aiKeychainGet(adapter);
+      set((state) => ({
+        settings: {
+          ...state.settings,
+          ai: { ...state.settings.ai, apiKey: key ?? '' },
+        },
+        keychainPermissionPromptOpen: false,
+        keychainPermissionRetrying: false,
+        keychainPermissionRetryError: null,
+      }));
+    } catch (error) {
+      console.warn('[settings] 再次请求钥匙串访问失败:', error);
+      set({
+        keychainPermissionRetrying: false,
+        keychainPermissionRetryError: isKeychainAccessDenied(error) ? 'denied' : 'failed',
+      });
+    }
+  },
   setActiveCategory: (c) => set({ activeCategory: c }),
   setSearchQuery: (q) => set({ searchQuery: q }),
 
@@ -226,23 +290,46 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       const raw = await getStore().get<AppSettings>(STORE_KEY);
       if (raw) {
         // 与默认值合并, 防止新版本缺失字段
-        const merged = await hydrateApiKey(migrateSettings(deepMergeSettings(DEFAULT_SETTINGS, raw)));
-        set({ settings: merged, loaded: true });
+        const base = migrateSettings(deepMergeSettings(DEFAULT_SETTINGS, raw));
+        const hydrated = await hydrateApiKey(base);
+        const merged = hydrated.settings;
+        set({
+          settings: merged,
+          loaded: true,
+          keychainPermissionPromptOpen:
+            hydrated.accessDenied && !base.general.suppressKeychainPermissionReminder,
+          keychainPermissionRetrying: false,
+          keychainPermissionRetryError: null,
+        });
         // 将旧版性能字段的一次性迁移结果写回，避免每次启动重复携带废弃键。
         await getStore().set(STORE_KEY, sanitizeForPersist(merged));
         applyAppearance(merged.appearance);
         applyDataCapacity(merged);
         applyPipelineConfig(merged);
       } else {
-        const merged = await hydrateApiKey(DEFAULT_SETTINGS);
-        set({ settings: merged, loaded: true });
+        const hydrated = await hydrateApiKey(DEFAULT_SETTINGS);
+        const merged = hydrated.settings;
+        set({
+          settings: merged,
+          loaded: true,
+          keychainPermissionPromptOpen:
+            hydrated.accessDenied &&
+            !DEFAULT_SETTINGS.general.suppressKeychainPermissionReminder,
+          keychainPermissionRetrying: false,
+          keychainPermissionRetryError: null,
+        });
         applyAppearance(merged.appearance);
         applyDataCapacity(merged);
         applyPipelineConfig(merged);
       }
     } catch (e) {
       console.warn('[settings] 加载失败, 使用默认值:', e);
-      set({ loaded: true });
+      set({
+        loaded: true,
+        keychainPermissionPromptOpen: false,
+        keychainPermissionRetrying: false,
+        keychainPermissionRetryError: null,
+      });
       applyAppearance(DEFAULT_SETTINGS.appearance);
       applyDataCapacity(DEFAULT_SETTINGS);
       applyPipelineConfig(DEFAULT_SETTINGS);
@@ -303,7 +390,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
 
   reset: () => {
-    set({ settings: DEFAULT_SETTINGS });
+    set({
+      settings: DEFAULT_SETTINGS,
+      keychainPermissionPromptOpen: false,
+      keychainPermissionRetrying: false,
+      keychainPermissionRetryError: null,
+    });
     applyAppearance(DEFAULT_SETTINGS.appearance);
     applyDataCapacity(DEFAULT_SETTINGS);
     applyPipelineConfig(DEFAULT_SETTINGS);

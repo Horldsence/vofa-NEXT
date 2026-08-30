@@ -159,6 +159,18 @@ aiErrProviderRequest: 请求 {adapter} / {model} 失败
 aiErrMaxToolRounds: 工具调用循环超过 {rounds} 轮仍未得到最终回答
 aiErrCancelled: 对话已取消
 aiErrKeyring: 系统钥匙串访问失败
+aiErrKeyringAccessDenied: 系统钥匙串访问授权被拒绝
+keychainPermissionTitle: 需要访问系统钥匙串
+keychainPermissionDescription: 上次请求访问系统钥匙串时未获得授权，已保存的 AI 服务商密钥暂时无法读取。
+keychainPermissionPurpose: VOFA-NEXT 使用系统钥匙串安全保存 AI 服务商 API Key，密钥不会写入设置文件。
+keychainPermissionImpact: 拒绝访问只会影响 AI 密钥的读取和保存；串口、图表及其他功能不受影响。
+keychainPermissionRetryHint: 点击“再次请求”后，macOS 将重新显示系统授权窗口。
+keychainPermissionDontRemind: 不再提醒
+keychainPermissionLater: 稍后处理
+keychainPermissionRequestAgain: 再次请求
+keychainPermissionRequesting: 正在请求…
+keychainPermissionDeniedAgain: 钥匙串访问仍未获得授权。你可以再次尝试，或稍后处理。
+keychainPermissionRetryFailed: 无法访问系统钥匙串。请确认钥匙串可用后重试。
 aiErrUnknownSession: 会话不存在 (可能已被删除)
 aiErrPersist: 对话记录写入失败
 aiSendBlocked: 无法发送 —
@@ -970,6 +982,8 @@ tourDataTabsContent: 波形/CAN/逻辑/编译等窗口以 Tab 共存。<strong>�
 tourCanTitle: CAN 帧 · 总线分析
 tourCanContent: 已为你自动打开视图。切到 Slcan/CandleLight 协议+硬件即可看真实总线，<strong>顶部提示条</strong>可一键设置协议。
 tourActCanTab: 点击底部任一子页签切换视图
+tourAiTitle: AI 助手 · 对话即操作
+tourAiContent: 状态栏右侧的 AI 图标随时开关此面板（可停靠左/右/下或拖成浮动）。在 设置 → AI 配好服务商与 API Key 后，<strong>AI 可直接搭建节点图、读取波形与 CAN 数据、向设备发送命令</strong>；标题栏的 MCP 抽屉可接入外部工具，本机 127.0.0.1:8765/mcp 也可供 Claude Desktop 等外部 AI 客户端控制本软件。
 tourHelpTitle: 帮助中心 · 随时回来
 tourHelpContent: 问号图标随时回到本中心或重放引导；设置里可关闭首启引导与上下文提示条。
 tourNoEdgeSkip: 跳过
@@ -1055,6 +1069,14 @@ helpWindowResizeSteps: |-
   右键 Tab 可关闭当前 Tab、关闭其他 Tab；控件画布 Tab 还支持复制
   右键标题栏空白处可新建控件 Tab 或添加 CAN / 逻辑分析仪页面
   窗口布局（拆分方式与大小）会自动持久化，重启应用后保持不变
+helpAi: AI 助手
+helpAiDesc: 内置 AI 对话可直接操作软件、读取数据；本应用也可作为 MCP 服务交给外部 AI 客户端控制。
+helpAiSteps: |-
+  在 设置 → AI 选择模型服务商并填写 API Key——默认 OrcaRouter 聚合网关，模型名需带厂商前缀（如 openai/gpt-4o-mini）；密钥只存系统钥匙串，不写入设置文件
+  点击状态栏右侧的 AI 图标打开「AI 对话」面板——可停靠在左/右/下或拖成浮动窗口，标题栏管理多会话
+  设置中开启「内置工具」后，AI 能直接搭建与修改节点图、读取波形/CAN/原始数据、向设备发送数据，并可查询内置使用知识库
+  面板标题栏的「MCP 服务器」抽屉可添加外部 MCP server（stdio 命令或 http 地址），其工具随即提供给模型调用
+  本应用同时在 127.0.0.1:8765/mcp 提供 MCP 服务（仅监听本机回环，端口可在设置中修改），Claude Desktop 等外部客户端接入后即可控制本软件
 
 # CAN
 canFrames: CAN 帧

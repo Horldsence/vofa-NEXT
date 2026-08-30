@@ -3,7 +3,7 @@
 //! 章节数据集中管理，便于帮助中心和引导复用。
 //! 与首次使用向导 (OnboardingWizard) 的叙事口径保持一致:
 //! 模板起步 → 控件库 → 连线建卡 → 编译反馈 (错误定位 + 结果表增删连接)
-//! → CAN / 逻辑分析仪 → 自定义控件 → 窗口组织。
+//! → CAN / 逻辑分析仪 → 自定义控件 → 窗口组织 → AI 助手。
 
 import {
   Lightbulb,
@@ -16,6 +16,7 @@ import {
   BookOpen,
   PanelsTopLeft,
   Scaling,
+  Bot,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -98,5 +99,12 @@ export const HELP_SECTIONS: HelpSection[] = [
     titleKey: 'helpWindowResize',
     descKey: 'helpWindowResizeDesc',
     stepsKey: 'helpWindowResizeSteps',
+  },
+  {
+    id: 'ai',
+    icon: Bot,
+    titleKey: 'helpAi',
+    descKey: 'helpAiDesc',
+    stepsKey: 'helpAiSteps',
   },
 ];

@@ -46,6 +46,8 @@ export function formatAiKindError(
       return { summary: t(lang, 'aiErrCancelled') };
     case 'AiKeyring':
       return { summary: t(lang, 'aiErrKeyring'), detail };
+    case 'AiKeyringAccessDenied':
+      return { summary: t(lang, 'aiErrKeyringAccessDenied'), detail };
     case 'AiUnknownSession':
       return { summary: t(lang, 'aiErrUnknownSession') };
     case 'AiPersist':

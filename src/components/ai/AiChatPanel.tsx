@@ -472,6 +472,7 @@ export function AiChatPanel() {
 
   return (
     <div
+      data-tour="ai-chat"
       className={`relative h-full flex flex-col overflow-hidden ${
         draggingAiPanel ? 'ring-2 ring-inset ring-accent' : ''
       }`}

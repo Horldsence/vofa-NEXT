@@ -390,8 +390,22 @@ mod tests {
         // 顶层 kind 委托内层细粒度种类 (IPC 错误对象与 AI 错误事件共用)
         assert_eq!(e.kind(), "AiMaxToolRounds");
 
-        let e: AppError = AiError::Keyring { details: "locked".into() }.into();
+        let e: AppError = AiError::Keyring {
+            details: "locked".into(),
+        }
+        .into();
         assert_eq!(e.kind(), "AiKeyring");
+
+        let e: AppError = AiError::KeyringAccessDenied {
+            details: "cancelled".into(),
+        }
+        .into();
+        assert_eq!(e.kind(), "AiKeyringAccessDenied");
+        let value = serde_json::to_value(&e).expect("serialize keyring access denied");
+        assert_eq!(value["kind"], "AiKeyringAccessDenied");
+        assert!(value["data"]
+            .as_object()
+            .is_some_and(serde_json::Map::is_empty));
     }
 
     #[test]

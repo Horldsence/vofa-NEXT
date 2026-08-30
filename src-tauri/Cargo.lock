@@ -776,6 +776,7 @@ dependencies = [
  "mcp_client",
  "mcp_server",
  "parking_lot",
+ "security-framework 3.7.0",
  "serde",
  "serde_json",
  "tauri",

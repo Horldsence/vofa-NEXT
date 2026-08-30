@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { tauriMock } from '../../test/setup';
-import { DEFAULT_SETTINGS } from '../../settings/defaults';
+import { DEFAULT_SETTINGS, type AppSettings } from '../../settings/defaults';
 import { useSettingsStore } from '../settingsStore';
 
 const STORE_FILE = 'settings.json';
@@ -24,6 +24,9 @@ describe('settingsStore', () => {
       activeCategory: 'general',
       searchQuery: '',
       loaded: false,
+      keychainPermissionPromptOpen: false,
+      keychainPermissionRetrying: false,
+      keychainPermissionRetryError: null,
     });
   });
 
@@ -118,7 +121,13 @@ describe('settingsStore API key 钥匙串集成', () => {
   beforeEach(() => {
     tauriMock.fileStore.clear();
     vi.clearAllMocks();
-    useSettingsStore.setState({ settings: DEFAULT_SETTINGS, loaded: false });
+    useSettingsStore.setState({
+      settings: DEFAULT_SETTINGS,
+      loaded: false,
+      keychainPermissionPromptOpen: false,
+      keychainPermissionRetrying: false,
+      keychainPermissionRetryError: null,
+    });
   });
 
   function keychainCalls(cmd: string): [string, string][] {
@@ -174,6 +183,108 @@ describe('settingsStore API key 钥匙串集成', () => {
     useSettingsStore.getState().update('ai', 'adapter', 'deepseek');
     return vi.waitFor(() => {
       expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-deepseek');
+    });
+  });
+
+  it('启动读取被拒绝时打开授权提醒', async () => {
+    (tauriMock.invoke as unknown as {
+      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
+    }).mockImplementation(async (cmd: string) => {
+      if (cmd === 'ai_keychain_get') {
+        throw { kind: 'AiKeyringAccessDenied', message: 'cancelled', data: {} };
+      }
+      return undefined;
+    });
+
+    await useSettingsStore.getState().load();
+
+    expect(useSettingsStore.getState().keychainPermissionPromptOpen).toBe(true);
+    expect(useSettingsStore.getState().settings.ai.apiKey).toBe('');
+  });
+
+  it('普通钥匙串故障不打开授权提醒', async () => {
+    (tauriMock.invoke as unknown as {
+      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
+    }).mockImplementation(async (cmd: string) => {
+      if (cmd === 'ai_keychain_get') {
+        throw { kind: 'AiKeyring', message: 'locked', data: {} };
+      }
+      return undefined;
+    });
+
+    await useSettingsStore.getState().load();
+
+    expect(useSettingsStore.getState().keychainPermissionPromptOpen).toBe(false);
+  });
+
+  it('已选择不再提醒时忽略启动授权拒绝', async () => {
+    tauriMock.seedFile(STORE_FILE, STORE_KEY, {
+      general: { suppressKeychainPermissionReminder: true },
+    });
+    (tauriMock.invoke as unknown as {
+      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
+    }).mockImplementation(async (cmd: string) => {
+      if (cmd === 'ai_keychain_get') {
+        throw { kind: 'AiKeyringAccessDenied', message: 'cancelled', data: {} };
+      }
+      return undefined;
+    });
+
+    await useSettingsStore.getState().load();
+
+    expect(useSettingsStore.getState().keychainPermissionPromptOpen).toBe(false);
+  });
+
+  it('再次请求成功后水合密钥并关闭提醒', async () => {
+    useSettingsStore.setState({ keychainPermissionPromptOpen: true });
+    (tauriMock.invoke as unknown as {
+      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
+    }).mockImplementation(async (cmd: string) =>
+      cmd === 'ai_keychain_get' ? 'sk-restored' : undefined
+    );
+
+    await useSettingsStore.getState().retryKeychainPermission();
+
+    expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-restored');
+    expect(useSettingsStore.getState().keychainPermissionPromptOpen).toBe(false);
+    expect(useSettingsStore.getState().keychainPermissionRetryError).toBeNull();
+  });
+
+  it('再次拒绝时保留提醒并记录可本地化状态', async () => {
+    useSettingsStore.setState({ keychainPermissionPromptOpen: true });
+    (tauriMock.invoke as unknown as {
+      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
+    }).mockImplementation(async (cmd: string) => {
+      if (cmd === 'ai_keychain_get') {
+        throw { kind: 'AiKeyringAccessDenied', message: 'cancelled', data: {} };
+      }
+      return undefined;
+    });
+
+    await useSettingsStore.getState().retryKeychainPermission();
+
+    expect(useSettingsStore.getState().keychainPermissionPromptOpen).toBe(true);
+    expect(useSettingsStore.getState().keychainPermissionRetrying).toBe(false);
+    expect(useSettingsStore.getState().keychainPermissionRetryError).toBe('denied');
+  });
+
+  it('稍后处理只在勾选时持久化不再提醒', async () => {
+    useSettingsStore.setState({ keychainPermissionPromptOpen: true });
+    useSettingsStore.getState().dismissKeychainPermissionPrompt(false);
+    expect(useSettingsStore.getState().keychainPermissionPromptOpen).toBe(false);
+    expect(
+      useSettingsStore.getState().settings.general.suppressKeychainPermissionReminder
+    ).toBe(false);
+
+    useSettingsStore.setState({ keychainPermissionPromptOpen: true });
+    useSettingsStore.getState().dismissKeychainPermissionPrompt(true);
+    expect(
+      useSettingsStore.getState().settings.general.suppressKeychainPermissionReminder
+    ).toBe(true);
+
+    await vi.waitFor(() => {
+      const saved = tauriMock.fileStore.get(STORE_FILE)?.get(STORE_KEY) as AppSettings;
+      expect(saved.general.suppressKeychainPermissionReminder).toBe(true);
     });
   });
 });

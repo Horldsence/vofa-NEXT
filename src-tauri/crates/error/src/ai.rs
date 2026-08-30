@@ -79,6 +79,13 @@ pub enum AiError {
         details: String,
     },
 
+    /// 用户拒绝或取消了系统钥匙串授权。
+    #[error("系统钥匙串访问授权被拒绝: {details}")]
+    KeyringAccessDenied {
+        /// 底层系统错误描述。
+        details: String,
+    },
+
     /// read_skill 请求了不存在的知识库文档 id。
     #[error("知识库文档不存在: {skill}")]
     SkillNotFound {
@@ -100,6 +107,7 @@ impl Error for AiError {
             Self::UnknownSession { .. } => "AiUnknownSession",
             Self::Persist { .. } => "AiPersist",
             Self::Keyring { .. } => "AiKeyring",
+            Self::KeyringAccessDenied { .. } => "AiKeyringAccessDenied",
             Self::SkillNotFound { .. } => "AiSkillNotFound",
         }
     }

@@ -21,6 +21,8 @@ export interface AppSettings {
     updateChannel: 'stable' | 'beta' | null;
     /** 用户选择跳过的更新版本号 (内部字段, 不进设置 UI) */
     skippedUpdateVersion: string | null;
+    /** 用户选择不再显示启动时钥匙串授权提醒 (内部字段, 不进设置 UI) */
+    suppressKeychainPermissionReminder: boolean;
   };
   appearance: {
     theme: string;
@@ -125,6 +127,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoCheckUpdate: true,
     updateChannel: null,
     skippedUpdateVersion: null,
+    suppressKeychainPermissionReminder: false,
   },
   appearance: {
     theme: 'dark',

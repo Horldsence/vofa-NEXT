@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useLayoutStore } from '../../store/layoutStore';
 import { openDataPanelAndReveal } from '../../lib/utils/revealDataTab';
 import { t } from '../../i18n';
 import { TourSpotlight, type TourRect } from './TourSpotlight';
@@ -187,7 +188,16 @@ export function OnboardingWizard() {
         actionKey: 'tourActCanTab',
       },
     },
-    // 13. 帮助中心收尾
+    // 13. AI 助手 · 自动打开对话面板 (配置依赖 API Key, 不做实操门控)
+    {
+      anchor: 'ai-chat',
+      titleKey: 'tourAiTitle',
+      contentKey: 'tourAiContent',
+      side: 'left',
+      align: 'start',
+      prepare: () => useLayoutStore.getState().setAiPanelVisible(true),
+    },
+    // 14. 帮助中心收尾
     {
       anchor: 'help',
       titleKey: 'tourHelpTitle',

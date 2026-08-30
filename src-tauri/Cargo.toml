@@ -155,6 +155,7 @@ rmcp = { version = "3.1", default-features = false, features = [
 # AI provider 的 API key 存钥匙串而非明文 settings.json; 自研加密落盘仍可被提取,
 # 系统凭据库才是正确方案
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+security-framework = "3"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 futures = "0.3"
 async-trait = "0.1"

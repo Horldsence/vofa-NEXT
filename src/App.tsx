@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -24,6 +24,7 @@ import { t } from './i18n';
 import { createWidget } from './lib/utils/createWidget';
 import { openDataPanelAndReveal } from './lib/utils/revealDataTab';
 import { initAiToolHost } from './lib/ai/toolHost';
+import { resolveStartupFlow } from './lib/startupFlow';
 
 // 重型弹窗 — 懒加载 (各模块仅含 named export, 经 *.lazy.tsx 包装为 default)
 const SettingsModal = lazy(() => import('./components/SettingsModal.lazy'));
@@ -32,6 +33,9 @@ const CustomWidgetEditorContainer = lazy(() => import('./components/CustomWidget
 const OnboardingWizard = lazy(() => import('./components/onboarding/OnboardingWizard.lazy'));
 const HelpCenterModal = lazy(() => import('./components/onboarding/HelpCenterModal.lazy'));
 const UpdateDialog = lazy(() => import('./components/UpdateDialog.lazy'));
+const KeychainPermissionDialog = lazy(
+  () => import('./components/KeychainPermissionDialog.lazy')
+);
 
 function App() {
   const initEventListeners = useAppStore((s) => s.initEventListeners);
@@ -49,6 +53,9 @@ function App() {
   const isAboutOpen = useSettingsStore((s) => s.isAboutOpen);
   const closeAbout = useSettingsStore((s) => s.closeAbout);
   const isSettingsOpen = useSettingsStore((s) => s.isOpen);
+  const keychainPermissionPromptOpen = useSettingsStore(
+    (s) => s.keychainPermissionPromptOpen
+  );
 
   const settingsLoaded = useSettingsStore((s) => s.loaded);
   const showOnboarding = useSettingsStore((s) => s.settings.general.showOnboarding);
@@ -60,6 +67,16 @@ function App() {
   const isWizardOpen = useOnboardingStore((s) => s.isWizardOpen);
   const isHelpOpen = useOnboardingStore((s) => s.isHelpOpen);
   const isCustomEditorOpen = useAppStore((s) => s.customEditorState.open);
+  const autoUpdateStartedRef = useRef(false);
+
+  const startupFlow = resolveStartupFlow({
+    settingsLoaded,
+    showOnboarding,
+    hasOpenedOnboarding,
+    isOnboardingOpen: isWizardOpen,
+    keychainPermissionPromptOpen,
+    autoCheckUpdate,
+  });
 
   // 布局编排 (侧边栏与 AI 面板停靠; 中央区模块树由 dockStore 负责)
   const sidebarDock = useLayoutStore((s) => s.sidebarDock);
@@ -174,10 +191,15 @@ function App() {
 
   // 设置加载完成后: 自动检查更新 (仅一次; auto 失败不打断用户)
   useEffect(() => {
-    if (!settingsLoaded || !autoCheckUpdate) return;
+    if (
+      !startupFlow.canCheckForUpdates ||
+      autoUpdateStartedRef.current
+    ) {
+      return;
+    }
+    autoUpdateStartedRef.current = true;
     void useUpdateStore.getState().check('auto');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsLoaded]);
+  }, [startupFlow.canCheckForUpdates]);
 
   // 监听原生菜单事件 (menu:about / menu:settings / menu:new-tab / menu:close-tab / menu:toggle-sidebar)
   // 事件处理器内通过 getState() 读取最新状态, 避免订阅易变字段导致反复重订阅
@@ -449,7 +471,7 @@ function App() {
       <ContextMenu />
       <DockDragGhost />
       <NotificationToasts />
-      {/* 弹窗按需挂载: 打开时才触发懒加载, 避免启动时 5 个 lazy chunk 并发加载导致全屏遮罩闪烁 */}
+      {/* 弹窗按需挂载:打开时才触发懒加载,避免启动时多个 lazy chunk 并发加载导致全屏遮罩闪烁 */}
       {isSettingsOpen && (
         <Suspense fallback={<SuspenseFallback overlay />}>
           <SettingsModal />
@@ -468,6 +490,11 @@ function App() {
       {isWizardOpen && (
         <Suspense fallback={<SuspenseFallback overlay />}>
           <OnboardingWizard />
+        </Suspense>
+      )}
+      {startupFlow.showKeychainPermissionPrompt && (
+        <Suspense fallback={<SuspenseFallback overlay />}>
+          <KeychainPermissionDialog />
         </Suspense>
       )}
       {isHelpOpen && (
