@@ -4,11 +4,16 @@ import {
   subscribeRawDataFiltered,
   type RawDataFilterOptions,
 } from './rawDataSubscription';
+import {
+  createRawDataPreviewBuffer,
+  trackRawDataPreviewBuffer,
+} from './rawDataPreviewRegistry';
 
 interface RawDataTransportEntry {
   buffer: RawDataBuffer;
   refs: number;
   cancel: (() => void) | null;
+  untrack: () => void;
 }
 
 /// 按 Transport 节点注册的原始数据 buffer 注册表 (引用计数)
@@ -47,9 +52,10 @@ export function acquireRawDataTransport(
     existing.refs++;
     return existing.buffer;
   }
-  const buffer = new RawDataBuffer();
+  const buffer = createRawDataPreviewBuffer();
+  const untrack = trackRawDataPreviewBuffer(buffer);
   const cancel = subscribeBuffer(transportId, buffer, filter);
-  registry.set(key, { buffer, refs: 1, cancel });
+  registry.set(key, { buffer, refs: 1, cancel, untrack });
   return buffer;
 }
 
@@ -62,6 +68,14 @@ export function releaseRawDataTransport(transportId: string, filter?: RawDataFil
   entry.refs--;
   if (entry.refs <= 0) {
     entry.cancel?.();
+    entry.untrack();
     registry.delete(key);
+  }
+}
+
+export function clearRawDataTransportBuffers(transportId: string): void {
+  const prefix = `${transportId}\u0000`;
+  for (const [key, entry] of registry) {
+    if (key.startsWith(prefix)) entry.buffer.clear();
   }
 }

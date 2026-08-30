@@ -2,6 +2,7 @@ import { t } from '../../../i18n';
 import type { Lang } from '../../../i18n';
 import { formatTime } from './rawDataViewHelpers';
 import type { PortSampleStatus } from '../../../lib/data/sampleProtocol';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 interface Props {
   numRows: Array<{ seq: number; ts: number; value: number }>;
@@ -15,6 +16,8 @@ interface Props {
   retentionEvicted: number;
   ingressDropped: number;
   error: string | null;
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  onScroll: () => void;
 }
 
 export function RawDataViewNumericContent({
@@ -26,7 +29,16 @@ export function RawDataViewNumericContent({
   retentionEvicted,
   ingressDropped,
   error,
+  scrollRef,
+  onScroll,
 }: Props) {
+  const virtualizer = useVirtualizer({
+    count: numRows.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 20,
+    overscan: 8,
+    getItemKey: (index) => numRows[index]?.seq ?? index,
+  });
   const labels =
     lang === 'zh'
       ? {
@@ -66,29 +78,35 @@ export function RawDataViewNumericContent({
           {retentionEvicted} · {labels.dropped} {ingressDropped}
         </div>
       )}
-      <div className="flex-1 overflow-auto min-h-0">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-auto min-h-0">
         {numRows.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-text-secondary text-sm">
             {emptyLabel}
           </div>
         ) : (
-          numRows.map((r) => (
-            <div
-              key={r.seq}
-              className="flex items-center gap-2 px-2 text-xs font-mono animate-rawdata-row"
-            >
-              {showTimestamp && (
-                <span className="text-accent min-w-[92px] text-right">
-                  {formatTime(r.ts)}
-                </span>
-              )}
-              <span className="text-text-primary">
-                {Number.isInteger(r.value)
-                  ? r.value.toFixed(0)
-                  : r.value.toFixed(4)}
-              </span>
-            </div>
-          ))
+          <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((virtualRow) => {
+              const r = numRows[virtualRow.index];
+              return (
+                <div
+                  key={virtualRow.key}
+                  className="absolute left-0 top-0 w-full flex items-center gap-2 px-2 text-xs font-mono"
+                  style={{ height: `${virtualRow.size}px`, transform: `translateY(${virtualRow.start}px)` }}
+                >
+                  {showTimestamp && (
+                    <span className="text-accent min-w-[92px] text-right">
+                      {formatTime(r.ts)}
+                    </span>
+                  )}
+                  <span className="text-text-primary">
+                    {Number.isInteger(r.value)
+                      ? r.value.toFixed(0)
+                      : r.value.toFixed(4)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>

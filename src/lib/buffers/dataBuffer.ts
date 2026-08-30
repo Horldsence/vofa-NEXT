@@ -208,6 +208,10 @@ export class RawDataBuffer {
     return Math.min(this.totalWritten, this.capacity);
   }
 
+  get capacityBytes(): number {
+    return this.capacity;
+  }
+
   /// 累计写入字节数 (绝对偏移空间; 最早保留偏移 = max(0, writtenTotal - storedBytes))
   get writtenTotal(): number {
     return this.totalWritten;

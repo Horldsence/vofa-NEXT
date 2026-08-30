@@ -313,6 +313,11 @@ impl DataPlaneState {
             h.abort();
         }
     }
+
+    /// 在主动中止读任务前同步发布下游断开状态；abort 不会执行 read_task 的退出清理。
+    pub fn mark_source_disconnected(&self, node_id: &str) {
+        read_task::mark_downstream_disconnected(self, node_id);
+    }
 }
 
 /// 流水线诊断指标 — 各 Transport 读任务共享, 每 2s 输出一次 (有活动时)。

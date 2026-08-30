@@ -1,5 +1,7 @@
 import { api } from '../../lib/tauri/tauri';
-import { rawDataBuffer, waveformWindow } from '../../lib/buffers/dataBuffer';
+import { waveformWindow } from '../../lib/buffers/dataBuffer';
+import { clearRawDataTransportBuffers } from '../../lib/buffers/rawDataTransportBuffer';
+import { resetPortSampleStoresForSource } from '../../lib/data/dataClient';
 import { notify } from '../../lib/tauri/notifications';
 import { nodeError } from '../../lib/tauri/errorGuidance';
 import { t } from '../../i18n';
@@ -44,9 +46,6 @@ export interface ConnectionSlice {
   /// TestData 生成开关 — 按 Transport 节点 id
   testDataRunning: Record<string, boolean>;
   ports: PortInfo[];
-  /// RawData 视图选中的字节源 (Transport 节点 id; null = 自动选第一个)
-  rawDataSourceNodeId: string | null;
-
   refreshPorts: () => Promise<void>;
   connectNode: (nodeId: string) => Promise<void>;
   disconnectNode: (nodeId: string) => Promise<void>;
@@ -56,7 +55,6 @@ export interface ConnectionSlice {
   sendAndCapture: (nodeId: string, protocolNode: string, data: number[]) => Promise<void>;
   sendText: (nodeId: string, text: string) => Promise<void>;
   sendWidgetValue: (nodeId: string, protocolNode: string | null, binding: WidgetBinding, value: number) => Promise<void>;
-  setRawDataSourceNodeId: (nodeId: string | null) => void;
 }
 
 export function createConnectionSlice(set: any, get: any): ConnectionSlice {
@@ -65,8 +63,6 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
     nodeStats: {},
     testDataRunning: {},
     ports: [],
-    rawDataSourceNodeId: null,
-
     refreshPorts: async () => {
       try {
         const ports = await api.listPorts();
@@ -100,6 +96,9 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
       const schema = protocolNode
         ? ((protocolNode.data as ProtocolNodeData).schema ?? schemaFromProtocolConfig(protocol))
         : null;
+      set((s: any) => ({
+        connectionStates: { ...s.connectionStates, [nodeId]: 'Connecting' as ConnectionState },
+      }));
       try {
         // 后端容量按源生效 — 连接前应用当前设置
         const cap = useSettingsStore.getState().settings.data;
@@ -109,7 +108,8 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
           await api.clearBuffer(downstreamId);
         }
         await api.clearRawDataBuffer(nodeId);
-        rawDataBuffer.clear();
+        clearRawDataTransportBuffers(nodeId);
+        if (downstreamId) resetPortSampleStoresForSource(downstreamId);
         waveformWindow.clear();
         await api.openTransport(nodeId, config, protocol, schema);
         set((s: any) => ({
@@ -135,14 +135,20 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
     },
 
     disconnectNode: async (nodeId) => {
+      const downstreamId = downstreamProtocolOf(nodeId, get().rfEdges, get().rfNodes);
+      set((s: any) => ({
+        connectionStates: { ...s.connectionStates, [nodeId]: 'Disconnected' as ConnectionState },
+        testDataRunning: { ...s.testDataRunning, [nodeId]: false },
+      }));
+      clearRawDataTransportBuffers(nodeId);
+      if (downstreamId) resetPortSampleStoresForSource(downstreamId);
       try {
         await api.closeTransport(nodeId);
-        set((s: any) => ({
-          connectionStates: { ...s.connectionStates, [nodeId]: 'Disconnected' as ConnectionState },
-          testDataRunning: { ...s.testDataRunning, [nodeId]: false },
-        }));
       } catch (e) {
         const lang = get().lang;
+        set((s: any) => ({
+          connectionStates: { ...s.connectionStates, [nodeId]: 'Error' as ConnectionState },
+        }));
         notify.error(
           t(lang, 'notifDisconnectFailed'),
           nodeError(lang, e),
@@ -224,7 +230,5 @@ export function createConnectionSlice(set: any, get: any): ConnectionSlice {
         notify.error(t(lang, 'notifSendFailed'), nodeError(lang, e), { source: 'sendWidget' });
       }
     },
-
-    setRawDataSourceNodeId: (nodeId) => set({ rawDataSourceNodeId: nodeId }),
   };
 }

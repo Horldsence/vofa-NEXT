@@ -17,7 +17,7 @@ use vofa_core::{ConnectionState, TransportStats};
 use super::{byte_router, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
 use crate::feed_parallel::FEED_PARALLEL_UNIT;
 
-fn mark_downstream_disconnected(plane: &DataPlaneState, transport_id: &str) {
+pub(super) fn mark_downstream_disconnected(plane: &DataPlaneState, transport_id: &str) {
     let plan = plane.byte_plan.lock();
     let nodes = plane.global_nodes.lock();
     let mut pending = VecDeque::from([transport_id.to_string()]);

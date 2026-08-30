@@ -20,7 +20,7 @@ import type { AppSettings } from '../../settings/defaults';
 import type { ControlTab, DataTab, ProtocolConfig, TransportConfig, WidgetConfig } from '../../types';
 import { api } from './tauri';
 import { rawDataPortId } from '../utils/nodeDef';
-import { rawDataBuffer } from '../buffers/dataBuffer';
+import { setRawDataPreviewCapacity } from '../buffers/rawDataPreviewRegistry';
 import { canFrameBuffer } from '../buffers/canBuffer';
 import { logicSampleBuffer } from '../buffers/logicBuffer';
 import { notify, formatError } from './notifications';
@@ -401,7 +401,7 @@ function applyDataCapacity(settings: AppSettings) {
   api.setLogicBufferCapacity(data.logicBufferSamples).catch((e: unknown) =>
     console.warn('[appExport] 设置逻辑缓冲区容量失败:', e)
   );
-  rawDataBuffer.setCapacity(data.rawDataBufferBytes);
+  setRawDataPreviewCapacity(data.rawDataBufferBytes);
   canFrameBuffer.setCapacity(data.canBufferFrames);
   logicSampleBuffer.setCapacity(data.logicBufferSamples);
 }

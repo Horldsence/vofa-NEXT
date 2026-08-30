@@ -227,11 +227,13 @@ impl RawDataCollector {
 
     /// 清空所有块并重置计数器
     pub fn clear(&mut self) {
+        // base_index 是活跃订阅游标所在的绝对空间。清空时推进到下一块，不能归零；
+        // 否则已有 RawDataSource 的 read_index 会落在新流未来的位置，重连后长期读不到数据。
+        self.base_index = self.base_index.saturating_add(self.chunks.len());
         self.chunks.clear();
         self.stored = 0;
         self.total_bytes = 0;
         self.dropped_bytes = 0;
-        self.base_index = 0;
     }
 
     /// 设置容量 (保留最近块)

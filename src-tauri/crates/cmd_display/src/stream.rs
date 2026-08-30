@@ -181,9 +181,12 @@ async fn spawn_sample_stream(
     state: &AppState,
     key: TopicKey,
     on_event: Channel<InvokeResponseBody>,
+    interval: Duration,
+    max_items: usize,
 ) -> bool {
     let data_bus = state.data_plane.eval.data_bus.clone();
-    let Some(mut receiver) = data_bus.subscribe(key.clone()).await else {
+    let max_items = max_items.max(1);
+    let Some(mut receiver) = data_bus.subscribe(key.clone(), max_items).await else {
         return false;
     };
     let channel_id = on_event.id();
@@ -191,13 +194,41 @@ async fn spawn_sample_stream(
     let mut cancel = subscription::register_cancel(&state.subscriptions, channel_id);
     let subscriptions = state.subscriptions.clone();
     tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval.max(Duration::from_millis(1)));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut pending: Option<std::sync::Arc<SampleBatch>> = None;
+        let mut stream_preview_skipped = 0_u64;
+        let mut skipped_since_report = 0_u64;
         loop {
             tokio::select! {
+                biased;
                 _ = &mut cancel => break,
+                _ = ticker.tick() => {
+                    let Some(batch) = pending.take() else { continue };
+                    let start = batch.samples.len().saturating_sub(max_items);
+                    let limited = SampleBatch {
+                        topic: batch.topic.clone(),
+                        sequence: batch.sequence,
+                        samples: batch.samples[start..].to_vec().into(),
+                        status: batch.status.clone(),
+                        preview_skipped: stream_preview_skipped.max(batch.preview_skipped),
+                        retention_evicted: batch.retention_evicted,
+                        ingress_dropped: batch.ingress_dropped,
+                    };
+                    if skipped_since_report > 0 {
+                        data_bus.record_preview_skipped(&key, skipped_since_report);
+                        skipped_since_report = 0;
+                    }
+                    if on_event.send(InvokeResponseBody::Raw(encode_samples(&limited))).is_err() {
+                        break;
+                    }
+                }
                 event = receiver.recv() => match event {
                     Ok(batch) => {
-                        if on_event.send(InvokeResponseBody::Raw(encode_samples(&batch))).is_err() {
-                            break;
+                        stream_preview_skipped = stream_preview_skipped.max(batch.preview_skipped);
+                        if pending.replace(batch).is_some() {
+                            stream_preview_skipped = stream_preview_skipped.saturating_add(1);
+                            skipped_since_report = skipped_since_report.saturating_add(1);
                         }
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
@@ -237,10 +268,15 @@ pub async fn subscribe_data(
             source_handle,
         } => {
             mode = "binary";
+            let limits = state.data_plane.eval.data_bus.limits();
+            let fps = u64::from(limits.preview_fps_limit.max(1));
+            let minimum_ms = 1_000_u64.saturating_add(fps - 1) / fps;
             let _ = spawn_sample_stream(
                 &state,
                 TopicKey::new(source_node_id, source_handle),
                 on_event,
+                interval.max(Duration::from_millis(minimum_ms)),
+                max_items,
             )
             .await;
         }
@@ -433,7 +469,13 @@ mod tests {
     async fn firewater_ch3_reaches_sample_topic_within_preview_budget() {
         let state = AppState::new();
         let key = TopicKey::new("firewater", "ch3");
-        let mut receiver = state.data_plane.eval.data_bus.subscribe(key).await.unwrap();
+        let mut receiver = state
+            .data_plane
+            .eval
+            .data_bus
+            .subscribe(key, 500)
+            .await
+            .unwrap();
         let frames = [
             DataFrame {
                 timestamp: 10,
@@ -468,7 +510,13 @@ mod tests {
     async fn out_of_range_topic_reports_status_without_zero_sample() {
         let state = AppState::new();
         let key = TopicKey::new("firewater", "ch9");
-        let mut receiver = state.data_plane.eval.data_bus.subscribe(key).await.unwrap();
+        let mut receiver = state
+            .data_plane
+            .eval
+            .data_bus
+            .subscribe(key, 500)
+            .await
+            .unwrap();
         pipeline_data_plane::data_plane::frame_dispatch::on_frames(
             &state.data_plane,
             "firewater",

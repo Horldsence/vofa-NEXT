@@ -18,7 +18,7 @@ import {
   type ThemeToken,
 } from '../settings/theme';
 import { api, type PipelineConfig } from '../lib/tauri/tauri';
-import { rawDataBuffer } from '../lib/buffers/dataBuffer';
+import { setRawDataPreviewCapacity } from '../lib/buffers/rawDataPreviewRegistry';
 import { canFrameBuffer } from '../lib/buffers/canBuffer';
 import { logicSampleBuffer } from '../lib/buffers/logicBuffer';
 import { transitionStore } from '../lib/utils/transitionStore';
@@ -111,7 +111,7 @@ function applyDataCapacity(settings: AppSettings) {
   );
 
   // 前端 buffer 实例同步容量 (后端容量调整不自动影响前端缓存)
-  rawDataBuffer.setCapacity(data.rawDataBufferBytes);
+  setRawDataPreviewCapacity(data.rawDataBufferBytes);
   canFrameBuffer.setCapacity(data.canBufferFrames);
   logicSampleBuffer.setCapacity(data.logicBufferSamples);
 }

@@ -1,5 +1,6 @@
 import { api } from '../../lib/tauri/tauri';
-import { waveformWindow, rawDataBuffer } from '../../lib/buffers/dataBuffer';
+import { waveformWindow } from '../../lib/buffers/dataBuffer';
+import { clearAllRawDataPreviewBuffers } from '../../lib/buffers/rawDataPreviewRegistry';
 import { isGlobalNode } from '../appStoreHelpers';
 import { notify, formatError } from '../../lib/tauri/notifications';
 import { t } from '../../i18n';
@@ -26,7 +27,7 @@ export function createDataSlice(set: any, get: any): DataSlice {
         const lang = get().lang;
         notify.error(t(lang, 'notifClearBufferFailed'), formatError(e), { source: 'clearBuffer' });
       }
-      rawDataBuffer.clear();
+      clearAllRawDataPreviewBuffers();
       waveformWindow.clear();
       set({ rawDataVersion: Date.now() });
     },

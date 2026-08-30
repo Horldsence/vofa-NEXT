@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { canFrameBuffer } from '../../lib/buffers/canBuffer';
-import { rawDataBuffer, waveformWindow } from '../../lib/buffers/dataBuffer';
+import { waveformWindow } from '../../lib/buffers/dataBuffer';
+import { subscribeRawDataPreviewStats } from '../../lib/buffers/rawDataPreviewRegistry';
 import { logicSampleBuffer, decodedEventBuffer } from '../../lib/buffers/logicBuffer';
 
 interface BufferStats {
@@ -82,7 +83,7 @@ export function BufferUsageStats({ compact = false }: { compact?: boolean }) {
     const unsubCan = canFrameBuffer.subscribeStats((usage, length, capacity) =>
       setCanStats({ usage, length, capacity })
     );
-    const unsubRaw = rawDataBuffer.subscribeStats((usage, length, capacity) =>
+    const unsubRaw = subscribeRawDataPreviewStats((usage, length, capacity) =>
       setRawStats({ usage, length, capacity })
     );
     const unsubLogic = logicSampleBuffer.subscribeStats((usage, length, capacity) =>

@@ -53,9 +53,24 @@ fn clear() {
     col.clear();
     assert_eq!(col.total_bytes(), 0);
     assert_eq!(col.dropped_bytes(), 0);
-    assert_eq!(col.base_index(), 0);
+    assert_eq!(col.base_index(), 1);
     let (chunks, _) = col.read_from(0, 1024);
     assert!(chunks.is_empty());
+}
+
+#[test]
+fn active_cursor_reads_first_chunk_after_clear() {
+    let mut col = RawDataCollector::with_capacity(1024);
+    col.push_chunk(1, RawDataDirection::Rx, b"before");
+    let (_, cursor) = col.read_from(0, 1024);
+
+    col.clear();
+    col.push_chunk(2, RawDataDirection::Rx, b"after");
+
+    let (chunks, next) = col.read_from(cursor, 1024);
+    assert_eq!(chunks.len(), 1);
+    assert_eq!(chunks[0].2, b"after");
+    assert_eq!(next, cursor + 1);
 }
 
 #[test]

@@ -12,7 +12,6 @@ import { subscribeLogicSamples, subscribeDecodedEvents } from '../../lib/buffers
 import {
   setPrimaryWaveformSource,
   getPrimaryWaveformSource,
-  setRawDataSource,
   cleanupSourceManagers,
 } from '../../lib/buffers/sourceManagers';
 import { isGlobalNode, adoptSourceGraph, isSyncInFlight, hydrateWorkspaceFromBackend, syncWorkspaceMeta } from '../appStoreHelpers';
@@ -157,17 +156,12 @@ export interface EventSlice {
 }
 
 export function createEventSlice(set: any, get: any): EventSlice {
-  /// 数据源对账: 主波形源 = 第一个 Protocol 节点; rawdata 源 = 选中或第一个 Transport 节点
+  /// 数据源对账: 主波形源 = 第一个 Protocol 节点。RawData 由可见视图自行订阅。
   const reconcileSources = () => {
     const nodes: any[] = get().rfNodes;
     const firstProtocol = nodes.find((n) => n.type === 'protocol' && isGlobalNode(n));
     const primary = firstProtocol?.id ?? null;
     if (primary !== getPrimaryWaveformSource()) setPrimaryWaveformSource(primary);
-    const selected: string | null = get().rawDataSourceNodeId;
-    const transportIds = nodes.filter((n) => n.type === 'transport' && isGlobalNode(n)).map((n) => n.id);
-    const effective =
-      selected && transportIds.includes(selected) ? selected : (transportIds[0] ?? null);
-    setRawDataSource(effective);
   };
 
   return {
@@ -326,11 +320,9 @@ export function createEventSlice(set: any, get: any): EventSlice {
       reconcileSources();
       if (storeUnsub) storeUnsub();
       let prevNodes: unknown = null;
-      let prevRawSource: unknown = undefined;
       storeUnsub = useAppStore.subscribe((s) => {
-        if (s.rfNodes !== prevNodes || s.rawDataSourceNodeId !== prevRawSource) {
+        if (s.rfNodes !== prevNodes) {
           prevNodes = s.rfNodes;
-          prevRawSource = s.rawDataSourceNodeId;
           reconcileSources();
         }
       });

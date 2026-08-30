@@ -6,7 +6,7 @@
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, oneshot};
@@ -124,17 +124,21 @@ impl Metrics {
 
 #[derive(Clone)]
 struct TopicHandle {
-    commands: mpsc::Sender<Command>,
+    ingress: mpsc::Sender<PublishCommand>,
+    control: mpsc::UnboundedSender<ControlCommand>,
     subscribers: Arc<AtomicU64>,
+    overrun_pending: Arc<AtomicBool>,
 }
 
-enum Command {
-    Publish {
-        timestamps: Arc<[u64]>,
-        values: Arc<[f64]>,
-    },
+struct PublishCommand {
+    timestamps: Arc<[u64]>,
+    values: Arc<[f64]>,
+}
+
+enum ControlCommand {
     SetStatus(SampleStatus),
     Subscribe {
+        replay_limit: usize,
         reply: oneshot::Sender<broadcast::Receiver<Arc<SampleBatch>>>,
     },
     Ack {
@@ -261,10 +265,13 @@ impl DataBus {
                 return None;
             }
         };
-        let (commands, receiver) = mpsc::channel(COMMAND_CAPACITY);
+        let (ingress, ingress_rx) = mpsc::channel(COMMAND_CAPACITY);
+        let (control, control_rx) = mpsc::unbounded_channel();
         let handle = TopicHandle {
-            commands,
+            ingress,
+            control,
             subscribers: Arc::new(AtomicU64::new(0)),
+            overrun_pending: Arc::new(AtomicBool::new(false)),
         };
         let mut topics = self.inner.topics.lock();
         if let Some(existing) = topics.get(key).cloned() {
@@ -273,7 +280,8 @@ impl DataBus {
         topics.insert(key.clone(), handle.clone());
         runtime.spawn(run_topic(
             key.clone(),
-            receiver,
+            ingress_rx,
+            control_rx,
             self.samples_per_topic(),
             self.inner.metrics.clone(),
             self.limits(),
@@ -291,36 +299,46 @@ impl DataBus {
         };
         let count = values.len() as u64;
         if topic
-            .commands
-            .try_send(Command::Publish { timestamps, values })
+            .ingress
+            .try_send(PublishCommand { timestamps, values })
             .is_err()
         {
             self.inner
                 .metrics
                 .ingress_dropped
                 .fetch_add(count, Ordering::Relaxed);
-            let total = self.inner.metrics.ingress_dropped.load(Ordering::Relaxed);
-            let _ = topic
-                .commands
-                .try_send(Command::SetStatus(SampleStatus::Overrun {
-                    lost_samples: total,
-                }));
+            if !topic.overrun_pending.swap(true, Ordering::Relaxed) {
+                let total = self.inner.metrics.ingress_dropped.load(Ordering::Relaxed);
+                let _ = topic
+                    .control
+                    .send(ControlCommand::SetStatus(SampleStatus::Overrun {
+                        lost_samples: total,
+                    }));
+            }
+        } else {
+            topic.overrun_pending.store(false, Ordering::Relaxed);
         }
     }
 
     pub fn set_status(&self, key: TopicKey, status: SampleStatus) {
         if let Some(topic) = self.ensure_topic(&key) {
-            let _ = topic.commands.try_send(Command::SetStatus(status));
+            let _ = topic.control.send(ControlCommand::SetStatus(status));
         }
     }
 
-    pub async fn subscribe(&self, key: TopicKey) -> Option<broadcast::Receiver<Arc<SampleBatch>>> {
+    pub async fn subscribe(
+        &self,
+        key: TopicKey,
+        replay_limit: usize,
+    ) -> Option<broadcast::Receiver<Arc<SampleBatch>>> {
         let topic = self.ensure_topic(&key)?;
         let (reply, response) = oneshot::channel();
         topic
-            .commands
-            .send(Command::Subscribe { reply })
-            .await
+            .control
+            .send(ControlCommand::Subscribe {
+                replay_limit,
+                reply,
+            })
             .ok()?;
         let receiver = response.await.ok()?;
         if topic.subscribers.fetch_add(1, Ordering::Relaxed) == 0 {
@@ -381,14 +399,14 @@ impl DataBus {
     pub fn record_preview_skipped(&self, key: &TopicKey, skipped: u64) {
         let topic = self.inner.topics.lock().get(key).cloned();
         if let Some(topic) = topic {
-            let _ = topic.commands.try_send(Command::PreviewSkipped(skipped));
+            let _ = topic.control.send(ControlCommand::PreviewSkipped(skipped));
         }
     }
 
     pub fn ack(&self, key: &TopicKey, sequence: u64, buffered_bytes: usize, render_ms: f64) {
         let topic = self.inner.topics.lock().get(key).cloned();
         if let Some(topic) = topic {
-            let _ = topic.commands.try_send(Command::Ack {
+            let _ = topic.control.send(ControlCommand::Ack {
                 sequence,
                 buffered_bytes,
                 render_ms,
@@ -399,7 +417,8 @@ impl DataBus {
 
 async fn run_topic(
     key: TopicKey,
-    mut commands: mpsc::Receiver<Command>,
+    mut ingress: mpsc::Receiver<PublishCommand>,
+    mut control: mpsc::UnboundedReceiver<ControlCommand>,
     capacity: usize,
     metrics: Arc<Metrics>,
     limits: RuntimeLimits,
@@ -412,9 +431,88 @@ async fn run_topic(
     let mut retention_evicted = 0_u64;
     let mut preview_skipped = 0_u64;
 
-    while let Some(command) = commands.recv().await {
-        match command {
-            Command::Publish { timestamps, values } => {
+    loop {
+        tokio::select! {
+            biased;
+            command = control.recv() => {
+                let Some(command) = command else { break };
+                match command {
+                    ControlCommand::SetStatus(next) => {
+                        if next == SampleStatus::Disconnected {
+                            // 断开是生命周期屏障：丢弃断开前尚未处理的预览批次，
+                            // 防止它们随后把状态重新覆盖成 Live，并淹没断开事件。
+                            while ingress.try_recv().is_ok() {
+                                preview_skipped = preview_skipped.saturating_add(1);
+                                metrics.preview_skipped.fetch_add(1, Ordering::Relaxed);
+                            }
+                        }
+                        status = next;
+                        let _ = events.send(Arc::new(SampleBatch {
+                            topic: key.clone(),
+                            sequence: event_sequence,
+                            samples: Arc::from([]),
+                            status: status.clone(),
+                            preview_skipped,
+                            retention_evicted,
+                            ingress_dropped: metrics.ingress_dropped.load(Ordering::Relaxed),
+                        }));
+                        event_sequence = event_sequence.wrapping_add(1);
+                    }
+                    ControlCommand::Subscribe { replay_limit, reply } => {
+                        let receiver = events.subscribe();
+                        let _ = reply.send(receiver);
+                        if !history.is_empty() || status != SampleStatus::Waiting {
+                            let start = history.len().saturating_sub(replay_limit);
+                            let recent: Arc<[Sample]> = history
+                                .iter()
+                                .skip(start)
+                                .copied()
+                                .collect::<Vec<_>>()
+                                .into();
+                            let _ = events.send(Arc::new(SampleBatch {
+                                topic: key.clone(),
+                                sequence: event_sequence,
+                                samples: recent,
+                                status: status.clone(),
+                                preview_skipped,
+                                retention_evicted,
+                                ingress_dropped: metrics.ingress_dropped.load(Ordering::Relaxed),
+                            }));
+                            event_sequence = event_sequence.wrapping_add(1);
+                        }
+                    }
+                    ControlCommand::Ack {
+                        sequence,
+                        buffered_bytes,
+                        render_ms,
+                    } => {
+                        metrics.last_ack_sequence.store(sequence, Ordering::Relaxed);
+                        let min_interval = 1_000_u64 / u64::from(limits.preview_fps_limit.max(1));
+                        let overloaded = render_ms > 16.0
+                            || buffered_bytes
+                                > limits
+                                    .preview_bandwidth_mb_per_sec
+                                    .saturating_mul(1024 * 1024);
+                        let interval = if overloaded {
+                            Duration::from_millis(min_interval).saturating_mul(2)
+                        } else {
+                            Duration::from_millis(min_interval)
+                        };
+                        metrics.recommended_interval_ms.store(
+                            u64::try_from(interval.as_millis()).unwrap_or(u64::MAX),
+                            Ordering::Relaxed,
+                        );
+                    }
+                    ControlCommand::PreviewSkipped(skipped) => {
+                        preview_skipped = preview_skipped.saturating_add(skipped);
+                        metrics
+                            .preview_skipped
+                            .fetch_add(skipped, Ordering::Relaxed);
+                    }
+                }
+            }
+            command = ingress.recv() => {
+                let Some(PublishCommand { timestamps, values }) = command else { break };
                 let mut samples = Vec::with_capacity(values.len());
                 let mut evicted_now = 0_u64;
                 for (&timestamp_us, &value) in timestamps.iter().zip(values.iter()) {
@@ -453,64 +551,6 @@ async fn run_topic(
                     preview_skipped = preview_skipped.saturating_add(1);
                     metrics.preview_skipped.fetch_add(1, Ordering::Relaxed);
                 }
-            }
-            Command::SetStatus(next) => {
-                status = next;
-                let _ = events.send(Arc::new(SampleBatch {
-                    topic: key.clone(),
-                    sequence: event_sequence,
-                    samples: Arc::from([]),
-                    status: status.clone(),
-                    preview_skipped,
-                    retention_evicted,
-                    ingress_dropped: metrics.ingress_dropped.load(Ordering::Relaxed),
-                }));
-                event_sequence = event_sequence.wrapping_add(1);
-            }
-            Command::Subscribe { reply } => {
-                let receiver = events.subscribe();
-                let _ = reply.send(receiver);
-                if !history.is_empty() || status != SampleStatus::Waiting {
-                    let recent: Arc<[Sample]> = history.iter().copied().collect::<Vec<_>>().into();
-                    let _ = events.send(Arc::new(SampleBatch {
-                        topic: key.clone(),
-                        sequence: event_sequence,
-                        samples: recent,
-                        status: status.clone(),
-                        preview_skipped,
-                        retention_evicted,
-                        ingress_dropped: metrics.ingress_dropped.load(Ordering::Relaxed),
-                    }));
-                    event_sequence = event_sequence.wrapping_add(1);
-                }
-            }
-            Command::Ack {
-                sequence,
-                buffered_bytes,
-                render_ms,
-            } => {
-                metrics.last_ack_sequence.store(sequence, Ordering::Relaxed);
-                let min_interval = 1_000_u64 / u64::from(limits.preview_fps_limit.max(1));
-                let overloaded = render_ms > 16.0
-                    || buffered_bytes
-                        > limits
-                            .preview_bandwidth_mb_per_sec
-                            .saturating_mul(1024 * 1024);
-                let interval = if overloaded {
-                    Duration::from_millis(min_interval).saturating_mul(2)
-                } else {
-                    Duration::from_millis(min_interval)
-                };
-                metrics.recommended_interval_ms.store(
-                    u64::try_from(interval.as_millis()).unwrap_or(u64::MAX),
-                    Ordering::Relaxed,
-                );
-            }
-            Command::PreviewSkipped(skipped) => {
-                preview_skipped = preview_skipped.saturating_add(skipped);
-                metrics
-                    .preview_skipped
-                    .fetch_add(skipped, Ordering::Relaxed);
             }
         }
     }
@@ -628,7 +668,7 @@ mod tests {
     async fn zero_is_a_valid_sample_but_waiting_has_no_sample() {
         let bus = DataBus::default();
         let key = TopicKey::new("protocol", "ch3");
-        let mut rx = bus.subscribe(key.clone()).await.unwrap();
+        let mut rx = bus.subscribe(key.clone(), 500).await.unwrap();
         bus.publish_samples(key, Arc::from([10]), Arc::from([0.0]));
         let batch = rx.recv().await.unwrap();
         assert_eq!(batch.status, SampleStatus::Live);
@@ -639,7 +679,7 @@ mod tests {
     async fn invalid_channel_status_does_not_fabricate_zero() {
         let bus = DataBus::default();
         let key = TopicKey::new("protocol", "ch9");
-        let mut rx = bus.subscribe(key.clone()).await.unwrap();
+        let mut rx = bus.subscribe(key.clone(), 500).await.unwrap();
         bus.set_status(
             key,
             SampleStatus::ChannelOutOfRange {
@@ -659,7 +699,7 @@ mod tests {
     async fn topic_activity_tracks_subscription_lifetime() {
         let bus = DataBus::default();
         let key = TopicKey::new("protocol", "ch0");
-        let _receiver = bus.subscribe(key.clone()).await.unwrap();
+        let _receiver = bus.subscribe(key.clone(), 500).await.unwrap();
         assert!(bus.is_active(&key));
         assert_eq!(bus.health().active_topics, 1);
 
@@ -670,5 +710,60 @@ mod tests {
         bus.unregister_subscription(42);
         assert!(!bus.is_active(&key));
         assert_eq!(bus.health().active_topics, 0);
+    }
+
+    #[tokio::test]
+    async fn replay_is_bounded_to_latest_samples() {
+        let bus = DataBus::default();
+        let key = TopicKey::new("protocol", "ch1");
+        let mut first = bus.subscribe(key.clone(), 500).await.unwrap();
+        bus.publish_samples(
+            key.clone(),
+            Arc::from([1, 2, 3, 4, 5]),
+            Arc::from([1.0, 2.0, 3.0, 4.0, 5.0]),
+        );
+        let _ = first.recv().await.unwrap();
+        bus.unsubscribe(&key);
+
+        let mut replay = bus.subscribe(key, 2).await.unwrap();
+        let batch = replay.recv().await.unwrap();
+        assert_eq!(
+            batch
+                .samples
+                .iter()
+                .map(|sample| sample.value)
+                .collect::<Vec<_>>(),
+            vec![4.0, 5.0]
+        );
+    }
+
+    #[tokio::test]
+    async fn lifecycle_status_bypasses_saturated_ingress() {
+        let bus = DataBus::default();
+        let key = TopicKey::new("protocol", "ch2");
+        let mut rx = bus.subscribe(key.clone(), 1).await.unwrap();
+        let waiter = tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(batch) if batch.status == SampleStatus::Disconnected => break batch,
+                    Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    Err(error) => panic!("topic closed before disconnect status: {error}"),
+                }
+            }
+        });
+        for i in 0..u32::try_from(COMMAND_CAPACITY * 4).unwrap() {
+            bus.publish_samples(
+                key.clone(),
+                Arc::from([u64::from(i)]),
+                Arc::from([f64::from(i)]),
+            );
+        }
+        bus.set_status(key, SampleStatus::Disconnected);
+
+        let status = tokio::time::timeout(Duration::from_millis(100), waiter)
+            .await
+            .expect("disconnect status should not wait behind sample ingress")
+            .unwrap();
+        assert!(status.samples.is_empty());
     }
 }

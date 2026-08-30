@@ -176,8 +176,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   }, [nodeBufferKey, backendFilter]);
 
   // 字节源通道 buffer: 按 Transport 引用计数获取 (同 Transport 多卡片自动共享同一订阅);
-  // 上溯失败 (无 transportId) 用空 buffer 占位。全局 rawDataBuffer 不再参与视图,
-  // 仅保留给统计/导出 (BufferUsageStats / appExport)
+  // 上溯失败 (无 transportId) 用空 buffer 占位；RawData 不再维持隐藏的全局订阅。
   const byteTransportId = isByteSrc ? (channelInfo?.transportId ?? null) : null;
   const transportBufferKey = byteTransportId ?? null;
   const [transportBuffer, setTransportBuffer] = useState<RawDataBuffer | null>(null);
@@ -244,12 +243,6 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   );
   const numRows = sampleSnapshot.rows;
 
-  useEffect(() => {
-    if (!autoScroll) return;
-    const el = numScrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [numRows, autoScroll]);
-
   const lineCount = buffer.lineCount;
   const modeCount = grouping === 'line' ? buffer.newlineLineCount : lineCount;
   const totalBytes = buffer.totalBytes;
@@ -264,49 +257,43 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
 
   useEffect(() => {
     clearSelection();
+    userScrolledRef.current = false;
   }, [clearSelection, grouping, channel]);
 
-  // 自动滚动动画
+  // 自动滚动到最新结果：每次数据帧只安排一次末尾锚定，不做会持续追赶的平滑动画。
   useEffect(() => {
     if (!autoScroll) {
       isAutoScrollingRef.current = false;
       return;
     }
-    if (userScrolledRef.current || modeCount === 0) return;
-    isAutoScrollingRef.current = true;
-    const el = parentRef.current;
-    if (el) {
-      const start = el.scrollTop;
-      const duration = 250;
-      const t0 = performance.now();
-      const easeOutCubic = (p: number) => 1 - Math.pow(1 - p, 3);
-      const step = (now: number) => {
-        const p = Math.min(1, (now - t0) / duration);
-        const target = Math.max(0, el.scrollHeight - el.clientHeight);
-        el.scrollTop = start + (target - start) * easeOutCubic(p);
-        if (p < 1) {
-          scrollAnimRef.current = requestAnimationFrame(step);
-        } else {
-          scrollAnimRef.current = null;
-          isAutoScrollingRef.current = false;
-        }
-      };
-      scrollAnimRef.current = requestAnimationFrame(step);
-    }
+    const activeCount = isNum ? numRows.length : modeCount;
+    if (userScrolledRef.current || activeCount === 0) return;
+    if (scrollAnimRef.current !== null) cancelAnimationFrame(scrollAnimRef.current);
+    scrollAnimRef.current = requestAnimationFrame(() => {
+      scrollAnimRef.current = null;
+      const el = isNum ? numScrollRef.current : parentRef.current;
+      if (!el) return;
+      isAutoScrollingRef.current = true;
+      el.scrollTop = el.scrollHeight;
+      requestAnimationFrame(() => {
+        isAutoScrollingRef.current = false;
+      });
+    });
     return () => {
       if (scrollAnimRef.current !== null) {
         cancelAnimationFrame(scrollAnimRef.current);
         scrollAnimRef.current = null;
       }
     };
-  }, [modeCount, autoScroll, version, buffer]);
+  }, [modeCount, numRows.length, sampleSnapshot.version, isNum, autoScroll, version, buffer]);
 
   const handleScroll = useCallback(() => {
-    if (isAutoScrollingRef.current || !parentRef.current) return;
-    const el = parentRef.current;
+    if (isAutoScrollingRef.current) return;
+    const el = isNum ? numScrollRef.current : parentRef.current;
+    if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 30;
     userScrolledRef.current = !atBottom;
-  }, []);
+  }, [isNum]);
 
   const handleClear = () => {
     if (isNum) {
@@ -436,7 +423,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
           <>
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
               {isNum ? (
-                <div ref={numScrollRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                   <RawDataViewNumericContent
                     numRows={numRows}
                     status={sampleSnapshot.status}
@@ -449,6 +436,8 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
                     grouping={grouping}
                     repr={repr}
                     channel={channel}
+                    scrollRef={numScrollRef}
+                    onScroll={handleScroll}
                   />
                 </div>
               ) : (
@@ -506,7 +495,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
         ) : (
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
             {isNum ? (
-              <div ref={numScrollRef} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <RawDataViewNumericContent
                   numRows={numRows}
                   status={sampleSnapshot.status}
@@ -519,6 +508,8 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
                   grouping={grouping}
                   repr={repr}
                   channel={channel}
+                  scrollRef={numScrollRef}
+                  onScroll={handleScroll}
                 />
               </div>
             ) : (

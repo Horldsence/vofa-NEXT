@@ -4,11 +4,16 @@ import {
   subscribeRawDataNodeFiltered,
   type RawDataFilterOptions,
 } from './rawDataSubscription';
+import {
+  createRawDataPreviewBuffer,
+  trackRawDataPreviewBuffer,
+} from './rawDataPreviewRegistry';
 
 interface RawDataNodeEntry {
   buffer: RawDataBuffer;
   refs: number;
   cancel: (() => void) | null;
+  untrack: () => void;
 }
 
 /// 按节点注册的原始数据 buffer 注册表 (引用计数)
@@ -32,12 +37,13 @@ export function acquireRawDataNode(
     existing.refs++;
     return existing.buffer;
   }
-  const buffer = new RawDataBuffer();
+  const buffer = createRawDataPreviewBuffer();
+  const untrack = trackRawDataPreviewBuffer(buffer);
   const options = { intervalMs: 100, maxBytes: 65536 };
   const { cancel } = filter
     ? subscribeRawDataNodeFiltered(nodeId, filter, (batch) => buffer.pushBatch(batch), options)
     : subscribeRawDataNode(nodeId, (batch) => buffer.pushBatch(batch), options);
-  registry.set(key, { buffer, refs: 1, cancel });
+  registry.set(key, { buffer, refs: 1, cancel, untrack });
   return buffer;
 }
 
@@ -50,6 +56,7 @@ export function releaseRawDataNode(nodeId: string, filter?: RawDataFilterOptions
   entry.refs--;
   if (entry.refs <= 0) {
     entry.cancel?.();
+    entry.untrack();
     registry.delete(key);
   }
 }

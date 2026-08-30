@@ -58,6 +58,7 @@ pub async fn close_transport(
     state: State<'_, AppState>,
     node_id: String,
 ) -> Result<()> {
+    state.data_plane.mark_source_disconnected(&node_id);
     state.data_plane.detach(&node_id);
     state.transport.lock().await.close(&node_id);
     emit_transport_state(&app, &node_id, ConnectionState::Disconnected);

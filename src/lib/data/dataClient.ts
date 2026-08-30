@@ -25,7 +25,17 @@ interface Entry {
   channel: Channel<ArrayBuffer> | null;
   listeners: Set<() => void>;
   snapshot: PortSampleSnapshot;
-  starting: boolean;
+  generation: number;
+  startingGeneration: number | null;
+  inFlightGeneration: number | null;
+  pendingDecode: DecodeJob | null;
+  localPreviewSkipped: number;
+}
+
+interface DecodeJob {
+  buffer: ArrayBuffer;
+  generation: number;
+  receivedAt: number;
 }
 
 const EMPTY_SNAPSHOT: PortSampleSnapshot = Object.freeze({
@@ -60,17 +70,29 @@ function getWorker(): Worker | null {
   decoderWorker.onmessage = (
     event: MessageEvent<{
       key: string;
+      generation: number;
+      receivedAt: number;
       batch?: DecodedSampleBatch;
       error?: string;
     }>,
   ) => {
     const entry = entries.get(event.data.key);
     if (!entry) return;
-    if (event.data.error) {
-      updateEntry(entry, undefined, event.data.error);
-    } else if (event.data.batch) {
-      updateEntry(entry, event.data.batch);
+    if (entry.inFlightGeneration !== event.data.generation) return;
+    entry.inFlightGeneration = null;
+    if (entry.generation === event.data.generation) {
+      if (event.data.error) {
+        updateEntry(entry, undefined, event.data.error);
+      } else if (event.data.batch) {
+        updateEntry(
+          entry,
+          event.data.batch,
+          null,
+          performance.now() - event.data.receivedAt,
+        );
+      }
     }
+    dispatchPendingDecode(entry);
   };
   return decoderWorker;
 }
@@ -79,6 +101,7 @@ function updateEntry(
   entry: Entry,
   batch?: DecodedSampleBatch,
   error: string | null = null,
+  elapsedMs = 0,
 ) {
   const start = performance.now();
   if (batch) {
@@ -91,7 +114,7 @@ function updateEntry(
       status: batch.status,
       rows:
         rows.length > MAX_PREVIEW_ROWS ? rows.slice(-MAX_PREVIEW_ROWS) : rows,
-      previewSkipped: batch.previewSkipped,
+      previewSkipped: batch.previewSkipped + entry.localPreviewSkipped,
       retentionEvicted: batch.retentionEvicted,
       ingressDropped: batch.ingressDropped,
       error,
@@ -109,7 +132,7 @@ function updateEntry(
       subscriptionId: entry.channel.id,
       sequence: batch.sequence,
       bufferedBytes: batch.byteLength,
-      renderMs: performance.now() - start,
+      renderMs: elapsedMs + performance.now() - start,
     });
   }
 }
@@ -122,20 +145,20 @@ function normalizeBuffer(value: ArrayBuffer | Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-function start(entry: Entry) {
-  if (entry.channel || entry.starting) return;
-  entry.starting = true;
-  const channel = new Channel<ArrayBuffer>();
-  entry.channel = channel;
-  channel.onmessage = (message) => {
-    const buffer = normalizeBuffer(message as ArrayBuffer | Uint8Array);
-    const worker = getWorker();
-    if (worker) {
-      worker.postMessage({ key: entry.key, buffer }, [buffer]);
-      return;
-    }
+function dispatchPendingDecode(entry: Entry) {
+  if (entry.inFlightGeneration !== null) return;
+  const job = entry.pendingDecode;
+  entry.pendingDecode = null;
+  if (!job || job.generation !== entry.generation) return;
+  const worker = getWorker();
+  if (!worker) {
     try {
-      updateEntry(entry, decodeSampleEnvelope(buffer));
+      updateEntry(
+        entry,
+        decodeSampleEnvelope(job.buffer),
+        null,
+        performance.now() - job.receivedAt,
+      );
     } catch (error) {
       updateEntry(
         entry,
@@ -143,6 +166,43 @@ function start(entry: Entry) {
         error instanceof Error ? error.message : String(error),
       );
     }
+    return;
+  }
+  entry.inFlightGeneration = job.generation;
+  worker.postMessage(
+    {
+      key: entry.key,
+      generation: job.generation,
+      receivedAt: job.receivedAt,
+      buffer: job.buffer,
+    },
+    [job.buffer],
+  );
+}
+
+function enqueueDecode(entry: Entry, job: DecodeJob) {
+  if (job.generation !== entry.generation) return;
+  if (entry.pendingDecode) entry.localPreviewSkipped++;
+  entry.pendingDecode = job;
+  dispatchPendingDecode(entry);
+}
+
+function start(entry: Entry) {
+  if (entry.channel || entry.startingGeneration !== null) return;
+  const generation = entry.generation + 1;
+  entry.generation = generation;
+  entry.startingGeneration = generation;
+  entry.localPreviewSkipped = 0;
+  entry.snapshot = {
+    ...EMPTY_SNAPSHOT,
+    version: entry.snapshot.version + 1,
+  };
+  const channel = new Channel<ArrayBuffer>();
+  entry.channel = channel;
+  channel.onmessage = (message) => {
+    if (entry.generation !== generation || entry.channel !== channel) return;
+    const buffer = normalizeBuffer(message as ArrayBuffer | Uint8Array);
+    enqueueDecode(entry, { buffer, generation, receivedAt: performance.now() });
   };
   void invoke('subscribe_data', {
     request: {
@@ -151,16 +211,33 @@ function start(entry: Entry) {
       source_handle: entry.sourceHandle,
     },
     onEvent: channel,
-    intervalMs: null,
-    maxItems: null,
+    intervalMs: 17,
+    maxItems: MAX_PREVIEW_ROWS,
   })
-    .catch((error: unknown) => updateEntry(entry, undefined, String(error)))
+    .catch((error: unknown) => {
+      if (entry.generation === generation) {
+        updateEntry(entry, undefined, String(error));
+      }
+    })
     .finally(() => {
-      entry.starting = false;
+      if (entry.startingGeneration === generation) {
+        entry.startingGeneration = null;
+      }
+      if (
+        entry.generation !== generation ||
+        entry.channel !== channel ||
+        entry.listeners.size === 0
+      ) {
+        void closeTauriChannel(channel, 'unsubscribe_data', channel.id);
+      }
+      if (entry.listeners.size > 0 && !entry.channel) start(entry);
     });
 }
 
 function stop(entry: Entry) {
+  entry.generation++;
+  entry.startingGeneration = null;
+  entry.pendingDecode = null;
   const channel = entry.channel;
   entry.channel = null;
   if (channel) void closeTauriChannel(channel, 'unsubscribe_data', channel.id);
@@ -193,7 +270,11 @@ export function getPortSampleStore(
       channel: null,
       listeners: new Set(),
       snapshot: EMPTY_SNAPSHOT,
-      starting: false,
+      generation: 0,
+      startingGeneration: null,
+      inFlightGeneration: null,
+      pendingDecode: null,
+      localPreviewSkipped: 0,
     };
     entries.set(key, entry);
   }
@@ -216,4 +297,20 @@ export function getPortSampleStore(
       for (const listener of target.listeners) listener();
     },
   };
+}
+
+export function resetPortSampleStoresForSource(sourceNodeId: string): void {
+  for (const entry of entries.values()) {
+    if (entry.sourceNodeId !== sourceNodeId) continue;
+    const shouldRestart = entry.listeners.size > 0;
+    stop(entry);
+    entry.snapshot = {
+      ...EMPTY_SNAPSHOT,
+      version: entry.snapshot.version + 1,
+    };
+    entry.localPreviewSkipped = 0;
+    entry.pendingDecode = null;
+    for (const listener of entry.listeners) listener();
+    if (shouldRestart) start(entry);
+  }
 }
