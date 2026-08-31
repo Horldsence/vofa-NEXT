@@ -132,3 +132,19 @@ describe('port sample client backpressure and lifecycle', () => {
     unsubscribe();
   });
 });
+
+describe('port sample store facade identity', () => {
+  it('returns the same facade object for the same port key', async () => {
+    const { getPortSampleStore } = await import('../dataClient');
+    // useSyncExternalStore 依赖 subscribe/getSnapshot 引用稳定:
+    // facade 每次新建会导致渲染→重订阅→快照替换的死循环。
+    expect(getPortSampleStore('facade', 'ch1')).toBe(getPortSampleStore('facade', 'ch1'));
+    expect(getPortSampleStore('facade', 'ch1')).not.toBe(getPortSampleStore('facade', 'ch2'));
+    expect(getPortSampleStore('facade-a', 'ch1')).not.toBe(getPortSampleStore('facade-b', 'ch1'));
+  });
+
+  it('returns one shared facade for invalid ports', async () => {
+    const { getPortSampleStore } = await import('../dataClient');
+    expect(getPortSampleStore(undefined, 'ch1')).toBe(getPortSampleStore('', undefined));
+  });
+});

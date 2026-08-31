@@ -49,6 +49,16 @@ const EMPTY_SNAPSHOT: PortSampleSnapshot = Object.freeze({
 });
 
 const entries = new Map<string, Entry>();
+// facade 缓存: 同一 key 必须复用同一 store 对象 — useSyncExternalStore 依赖
+// subscribe/getSnapshot 引用稳定, 若每次调用都新建 facade, React 会在每次渲染后
+// 退订/重订阅, 叠加 start() 同步替换快照, 形成 "Maximum update depth" 死循环。
+const stores = new Map<string, PortSampleStore>();
+
+const INVALID_PORT_STORE: PortSampleStore = {
+  subscribe: () => () => { return undefined; },
+  getSnapshot: () => EMPTY_SNAPSHOT,
+  clear: () => { return undefined; },
+};
 let decoderWorker: Worker | null | undefined;
 
 function topicKey(sourceNodeId: string, sourceHandle: string): string {
@@ -255,13 +265,11 @@ export function getPortSampleStore(
   sourceHandle: string | undefined,
 ): PortSampleStore {
   if (!sourceNodeId || !sourceHandle) {
-    return {
-      subscribe: () => () => { return undefined; },
-      getSnapshot: () => EMPTY_SNAPSHOT,
-      clear: () => { return undefined; },
-    };
+    return INVALID_PORT_STORE;
   }
   const key = topicKey(sourceNodeId, sourceHandle);
+  let store = stores.get(key);
+  if (store) return store;
   let entry = entries.get(key);
   if (!entry) {
     entry = {
@@ -280,7 +288,7 @@ export function getPortSampleStore(
     entries.set(key, entry);
   }
   const target = entry;
-  return {
+  store = {
     subscribe(listener) {
       target.listeners.add(listener);
       if (target.listeners.size === 1) start(target);
@@ -298,6 +306,8 @@ export function getPortSampleStore(
       for (const listener of target.listeners) listener();
     },
   };
+  stores.set(key, store);
+  return store;
 }
 
 export function resetPortSampleStoresForSource(sourceNodeId: string): void {

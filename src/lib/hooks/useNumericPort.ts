@@ -92,6 +92,9 @@ function storeFor(ref: NumericPortRef | null): PortSampleStore {
 }
 
 function useResolvedPort(resolved: ResolvedNumericPort): NumericPortState {
+  // storeFor 对相同 key 返回缓存的 facade (见 dataClient.getPortSampleStore),
+  // 保证 subscribe/getSnapshot 引用跨渲染稳定 — 否则 useSyncExternalStore 会
+  // 每次渲染退订重订阅, 触发 "Maximum update depth exceeded"。
   const store = storeFor(resolved.ref);
   const snapshot = useSyncExternalStore(
     store.subscribe,
@@ -162,7 +165,9 @@ function aggregateStore(refs: readonly (NumericPortRef | null)[]) {
     snapshots: stores.map((store) => store.getSnapshot()),
   };
   return {
-    subscribe(listener: () => void) {
+    // 箭头函数属性 (非方法简写): 解构使用时避免 unbound-method 语义,
+    // 且保证每个 aggregate 实例的 subscribe/getSnapshot 引用唯一且稳定。
+    subscribe: (listener: () => void) => {
       const unsubs = stores.map((store, index) =>
         store.subscribe(() => {
           const next = store.getSnapshot();
@@ -220,11 +225,11 @@ export function useNumericInputs<const T extends readonly string[]>(
         });
     return aggregateStore(refs);
   }, [refsKey]);
-  const snapshot = useSyncExternalStore(
-    (listener) => aggregate.subscribe(listener),
-    () => aggregate.getSnapshot(),
-    () => aggregate.getSnapshot(),
-  );
+  // subscribe/getSnapshot 是 aggregateStore 实例上的方法 (每个 aggregate 只创建一次),
+  // 解构后引用稳定 — 内联箭头函数会让 useSyncExternalStore 每次渲染重订阅,
+  // 触发 "Maximum update depth exceeded"。
+  const { subscribe, getSnapshot } = aggregate;
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const result: Record<string, NumericPortState> = {};
   for (let index = 0; index < inputHandles.length; index++) {
     result[inputHandles[index]] = stateFromSnapshot(
