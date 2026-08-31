@@ -13,10 +13,15 @@ export function CustomWidgetHelpModal({ isOpen, onClose }: CustomWidgetHelpModal
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClose(); } }}
+      role="button"
+      tabIndex={0}
+    >
       <div
         className="flex flex-col bg-bg-sidebar border border-border rounded-lg overflow-hidden shadow-modal animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         style={{ width: '80vw', height: '85vh', maxWidth: 1000, maxHeight: 800 }}
       >
         <div className="flex items-center gap-2 px-3 py-2 bg-bg-panel-header border-b border-border text-text-primary font-semibold">

@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 import { RefreshCw, Search, Usb } from 'lucide-react';
 import type { PortInfo } from '../../types';
+import { activateOnKeyboard } from '../../lib/utils/a11y';
 
 /// 端口条目 (端口信息 + 在原始列表中的索引)
 interface PortEntry {
@@ -150,6 +151,9 @@ export function PortPicker({
                     : 'border-transparent hover:bg-bg-hover hover:border-border'
                 }`}
                 onClick={() => onSelect(port.name)}
+                onKeyDown={activateOnKeyboard}
+                role="button"
+                tabIndex={0}
               >
                 {/* 端口图标 */}
                 <div
@@ -179,6 +183,9 @@ export function PortPicker({
                     <div
                       className="flex items-center gap-0.5 w-fit p-0.5 rounded-md bg-bg-editor border border-border"
                       onClick={(e) => e.stopPropagation()}
+                      onKeyDown={activateOnKeyboard}
+                      role="button"
+                      tabIndex={0}
                     >
                       {(['cu', 'tty'] as const).map((v) => {
                         const entry = v === 'cu' ? group.cu! : group.tty!;

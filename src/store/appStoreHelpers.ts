@@ -834,5 +834,5 @@ export function syncWorkspaceMeta(): void {
     closable: t.closable,
     ...(t.widgetId != null ? { widget_id: t.widgetId } : {}),
   }));
-  void api.workspaceSetTabs(tabs, dataTabs).catch(() => {});
+  void api.workspaceSetTabs(tabs, dataTabs).catch(() => { return undefined; });
 }

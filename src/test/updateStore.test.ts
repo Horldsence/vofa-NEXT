@@ -18,11 +18,11 @@ const eventMock = vi.hoisted(() => {
   const handlers = new Map<string, ListenHandler>();
   return {
     handlers,
-    listen: vi.fn(async (name: string, cb: ListenHandler) => {
+    listen: vi.fn((name: string, cb: ListenHandler) => {
       handlers.set(name, cb);
-      return () => {};
+      return Promise.resolve(() => undefined);
     }),
-    emit: vi.fn(async () => undefined),
+    emit: vi.fn(() => Promise.resolve(undefined)),
   };
 });
 
@@ -33,12 +33,12 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 /// @tauri-apps/api/app 不在全局 setup 中 — 按测试需要 mock getVersion
 const appApiMock = vi.hoisted(() => ({
-  getVersion: vi.fn(async () => '0.1.9'),
+  getVersion: vi.fn(() => Promise.resolve('0.1.9')),
 }));
 
 vi.mock('@tauri-apps/api/app', () => ({
   getVersion: appApiMock.getVersion,
-  getName: vi.fn(async () => 'VOFA-Next'),
+  getName: vi.fn(() => Promise.resolve('VOFA-Next')),
 }));
 
 /// 模拟后端 emit 事件
@@ -77,7 +77,7 @@ function checkUpdateChannels(): unknown[] {
 
 function resetStores() {
   useSettingsStore.setState({
-    settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
+    settings: structuredClone(DEFAULT_SETTINGS),
     loaded: true,
   });
   useUpdateStore.setState({
@@ -99,7 +99,7 @@ beforeEach(() => {
 
 describe('updateStore.check', () => {
   it('auto 检查发现更新且未被跳过 → available + 自动打开弹窗', async () => {
-    mockInvoke(async (cmd: string) =>
+    mockInvoke((cmd: string) =>
       cmd === 'check_update' ? AVAILABLE_RESPONSE : undefined
     );
 
@@ -116,7 +116,7 @@ describe('updateStore.check', () => {
 
   it('auto 检查发现更新但版本已被跳过 → available 但不打开弹窗', async () => {
     useSettingsStore.getState().update('general', 'skippedUpdateVersion', '0.2.0');
-    mockInvoke(async (cmd: string) =>
+    mockInvoke((cmd: string) =>
       cmd === 'check_update' ? AVAILABLE_RESPONSE : undefined
     );
 
@@ -128,7 +128,7 @@ describe('updateStore.check', () => {
   });
 
   it('manual 检查发现更新 → 不自动打开弹窗', async () => {
-    mockInvoke(async (cmd: string) =>
+    mockInvoke((cmd: string) =>
       cmd === 'check_update' ? AVAILABLE_RESPONSE : undefined
     );
 
@@ -140,7 +140,7 @@ describe('updateStore.check', () => {
   });
 
   it('检查无更新 → up-to-date', async () => {
-    mockInvoke(async (cmd: string) =>
+    mockInvoke((cmd: string) =>
       cmd === 'check_update' ? UP_TO_DATE_RESPONSE : undefined
     );
 
@@ -153,8 +153,8 @@ describe('updateStore.check', () => {
   });
 
   it('检查失败 (reject) → error 状态并记录错误消息', async () => {
-    mockInvoke(async (cmd: string) => {
-      if (cmd === 'check_update') throw 'network unreachable';
+    mockInvoke((cmd: string) => {
+      if (cmd === 'check_update') throw new Error('network unreachable');
       return undefined;
     });
 
@@ -168,7 +168,7 @@ describe('updateStore.check', () => {
 
   it('updateChannel=null 且当前版本含 "-" → 以 beta 通道检查', async () => {
     appApiMock.getVersion.mockResolvedValue('0.1.9-beta.2');
-    mockInvoke(async () => UP_TO_DATE_RESPONSE);
+    mockInvoke(() => UP_TO_DATE_RESPONSE);
 
     await useUpdateStore.getState().check('auto');
 
@@ -177,7 +177,7 @@ describe('updateStore.check', () => {
 
   it('updateChannel=null 且当前版本不含 "-" → 以 stable 通道检查', async () => {
     appApiMock.getVersion.mockResolvedValue('0.1.9');
-    mockInvoke(async () => UP_TO_DATE_RESPONSE);
+    mockInvoke(() => UP_TO_DATE_RESPONSE);
 
     await useUpdateStore.getState().check('auto');
 
@@ -187,7 +187,7 @@ describe('updateStore.check', () => {
   it('显式设置的 updateChannel 优先于版本推导', async () => {
     useSettingsStore.getState().update('general', 'updateChannel', 'beta');
     appApiMock.getVersion.mockResolvedValue('0.1.9');
-    mockInvoke(async () => UP_TO_DATE_RESPONSE);
+    mockInvoke(() => UP_TO_DATE_RESPONSE);
 
     await useUpdateStore.getState().check('auto');
 
@@ -197,7 +197,7 @@ describe('updateStore.check', () => {
 
 describe('updateStore.skipVersion', () => {
   it('写入 skippedUpdateVersion 设置、关闭弹窗并回到 idle', async () => {
-    mockInvoke(async (cmd: string) =>
+    mockInvoke((cmd: string) =>
       cmd === 'check_update' ? AVAILABLE_RESPONSE : undefined
     );
     await useUpdateStore.getState().check('auto');
@@ -214,7 +214,7 @@ describe('updateStore.skipVersion', () => {
 
 describe('updateStore.downloadAndInstall', () => {
   it('按 update://progress 事件更新进度, invoke 完成后进入 ready', async () => {
-    mockInvoke(async (cmd: string) => {
+    mockInvoke((cmd: string) => {
       if (cmd === 'download_and_install_update') {
         emitTauri('update://progress', { received: 50, total: 100 });
         // total 为 null 时不确定态 — 进度保持不变
@@ -239,7 +239,7 @@ describe('updateStore.downloadAndInstall', () => {
   });
 
   it('update://ready 事件先于 invoke resolve 到达时也进入 ready', async () => {
-    mockInvoke(async (cmd: string) => {
+    mockInvoke((cmd: string) => {
       if (cmd === 'download_and_install_update') {
         emitTauri('update://ready', null);
       }
@@ -252,8 +252,8 @@ describe('updateStore.downloadAndInstall', () => {
   });
 
   it('下载安装失败 (reject) → error 状态', async () => {
-    mockInvoke(async (cmd: string) => {
-      if (cmd === 'download_and_install_update') throw 'download failed';
+    mockInvoke((cmd: string) => {
+      if (cmd === 'download_and_install_update') throw new Error('download failed');
       return undefined;
     });
 
@@ -267,7 +267,7 @@ describe('updateStore.downloadAndInstall', () => {
 
 describe('updateStore.setChannel', () => {
   it('写入 updateChannel 设置并触发 manual 检查', async () => {
-    mockInvoke(async (cmd: string) =>
+    mockInvoke((cmd: string) =>
       cmd === 'check_update' ? AVAILABLE_RESPONSE : undefined
     );
 

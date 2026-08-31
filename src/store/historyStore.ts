@@ -251,7 +251,7 @@ function restoreSnapshot(snapshot: DocSnapshot): void {
     restoring = false;
   }
   for (const id of removedTransports) {
-    void api.closeTransport(id).catch(() => {});
+    void api.closeTransport(id).catch(() => { return undefined; });
   }
 }
 

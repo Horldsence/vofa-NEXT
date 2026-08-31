@@ -15,6 +15,7 @@ import { Plus, Trash2, ChevronDown, ChevronRight, Play, Radio } from 'lucide-rea
 import { useAppStore } from '../../store/appStore';
 import { useNumericInput, useNumericOutput } from '../../lib/hooks/useNumericPort';
 import { t } from '../../i18n';
+import { activateOnKeyboard } from '../../lib/utils/a11y';
 import { nanoid } from 'nanoid';
 import type { TriggerConfig, TriggerMatchType, TriggerRule } from '../../types';
 import type { WidgetConfig } from '../../types';
@@ -57,7 +58,13 @@ function TriggerRuleRow({ rule, expanded, onToggleExpand, onUpdate, onRemove, la
   const cfg = MATCH_TYPE_CONFIG[rule.matchType];
   return (
     <div className="border border-border rounded-sm">
-      <div className="flex items-center gap-1.5 px-1.5 py-1 cursor-pointer select-none" onClick={onToggleExpand}>
+      <div
+        className="flex items-center gap-1.5 px-1.5 py-1 cursor-pointer select-none"
+        onClick={onToggleExpand}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
+      >
         <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase border ${cfg.badgeClass}`}>
           <span className="font-mono">{cfg.icon}</span>
           {t(lang, cfg.labelKey)}

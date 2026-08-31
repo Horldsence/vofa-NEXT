@@ -35,7 +35,7 @@ export function createRawDataPreviewBuffer(): RawDataBuffer {
 
 export function trackRawDataPreviewBuffer(buffer: RawDataBuffer): () => void {
   const existing = tracked.get(buffer);
-  if (existing) return () => {};
+  if (existing) return () => { return undefined; };
   const unsubscribe = buffer.subscribeStats(() => notify());
   tracked.set(buffer, unsubscribe);
   notify();

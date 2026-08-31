@@ -7,11 +7,11 @@ import { downstreamProtocolOf, isGlobalNode } from '../../store/appStoreHelpers'
 /// - protocol: 该 Transport 字节边下游的 Protocol 节点, 缺省第一个 Protocol 节点
 function resolveSendTarget(): [string | null, string | null] {
   const s = useAppStore.getState();
-  const transport = s.rfNodes.find((n: any) => n.type === 'transport' && isGlobalNode(n));
+  const transport = s.rfNodes.find((n) => n.type === 'transport' && isGlobalNode(n));
   if (!transport) return [null, null];
   const downstream = downstreamProtocolOf(transport.id, s.rfEdges, s.rfNodes);
   if (downstream) return [transport.id, downstream];
-  const protocol = s.rfNodes.find((n: any) => n.type === 'protocol' && isGlobalNode(n));
+  const protocol = s.rfNodes.find((n) => n.type === 'protocol' && isGlobalNode(n));
   return [transport.id, protocol?.id ?? null];
 }
 
@@ -29,7 +29,7 @@ export function sendBindingValue(binding: WidgetBinding, value: number) {
       return;
     case 'Auto': {
       if (!protocolId) return;
-      const protocolNode = state.rfNodes.find((n: any) => n.id === protocolId);
+      const protocolNode = state.rfNodes.find((n) => n.id === protocolId);
       const config = protocolNode?.data?.config as { kind?: string } | undefined;
       if (config?.kind === 'RawData') return;
       state.sendWidgetValue(transportId, protocolId, binding, value);

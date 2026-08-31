@@ -4,6 +4,7 @@ import type { Lang } from '../../../i18n';
 import { t } from '../../../i18n';
 import { BLOCK_TYPE_CONFIG, blockSummary } from './commandSenderShared';
 import { CommandBlockEditor } from './CommandSenderBlockEditor';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 
 interface Props {
   blocks: CommandBlock[];
@@ -91,6 +92,9 @@ export function CommandSenderBlockList({
               <div
                 className="flex items-center gap-1.5 px-1.5 py-1 cursor-pointer select-none"
                 onClick={() => onToggleExpand(block.id)}
+                onKeyDown={activateOnKeyboard}
+                role="button"
+                tabIndex={0}
               >
                 <div
                   className="inline-flex items-center justify-center p-0.5 cursor-grab active:cursor-grabbing text-text-secondary hover:text-text-primary shrink-0"

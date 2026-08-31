@@ -300,7 +300,7 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                 <CustomWidget
                   key={previewKey}
                   widget={previewWidget}
-                  onRemove={() => {}}
+                  onRemove={() => { return undefined; }}
                   height={200}
                 />
               ) : (

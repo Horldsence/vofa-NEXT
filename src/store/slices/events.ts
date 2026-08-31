@@ -156,7 +156,7 @@ export interface EventSlice {
 export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
   /// 数据源对账: 主波形源 = 第一个 Protocol 节点。RawData 由可见视图自行订阅。
   const reconcileSources = () => {
-    const nodes: any[] = get().rfNodes;
+    const nodes = get().rfNodes;
     const firstProtocol = nodes.find((n) => n.type === 'protocol' && isGlobalNode(n));
     const primary = firstProtocol?.id ?? null;
     if (primary !== getPrimaryWaveformSource()) setPrimaryWaveformSource(primary);
@@ -170,7 +170,7 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
       const unlistenState = await listen<unknown>('transport:state', (event) => {
         const parsed = parseStateEvent(event.payload);
         if (!parsed) return;
-        set((s: any) => ({
+        set((s) => ({
           connectionStates: { ...s.connectionStates, [parsed.nodeId]: parsed.state },
         }));
       });
@@ -179,7 +179,7 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
         const parsed = parseRxEvent(event.payload);
         if (!parsed) return;
         const st = parsed.stats;
-        set((s: any) => {
+        set((s) => {
           const prev = s.nodeStats[parsed.nodeId] ?? EMPTY_NODE_STATS;
           return {
             nodeStats: {
@@ -205,8 +205,8 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
         // 写 detectedChannels (后端单一权威; UI 派生端口表 / 通道数随之刷新)
         // 命中节点 → 计算 effective, 更新节点 data.channels 并重同步全 tab 图
         // (ProtocolSource 的 ch 端口数随之变化)
-        set((s: any) => {
-          const node = s.rfNodes.find((n: any) => n.id === nodeId && n.type === 'protocol');
+        set((s) => {
+          const node = s.rfNodes.find((n) => n.id === nodeId && n.type === 'protocol');
           if (!node) {
             // 节点已删 (前端未同步移除) — 清理孤儿 key 避免后续误用
             if (nodeId in s.detectedChannels) {
@@ -218,12 +218,12 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
           const config = (node.data as { config: { channels?: number | null } }).config;
           const manual = config?.channels ?? null;
           const effective = manual != null ? manual : channels;
-          const rfNodes = s.rfNodes.map((n: any) =>
+          const rfNodes = s.rfNodes.map((n) =>
             n.id === nodeId ? { ...n, data: { ...n.data, channels: effective } } : n
           );
           return { detectedChannels: { ...s.detectedChannels, [nodeId]: channels }, rfNodes };
         });
-        get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+        get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
       });
 
       // graph:derived — 后端 update_tab_graph / remove_tab_graph 提交后 emit;
@@ -332,7 +332,7 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
       }
       set({ workspaceReady: true, workspaceRestored: restored });
       if (!restored) {
-        get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+        get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
       }
 
       return () => {

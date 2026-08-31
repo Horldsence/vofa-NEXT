@@ -6,6 +6,7 @@
 //! - 支持新建/复制/重命名/删除自定义主题
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { activateOnKeyboard } from '../lib/utils/a11y';
 import {
   X,
   Plus,
@@ -327,7 +328,8 @@ export function ThemeEditor({
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const imported = JSON.parse(String(reader.result)) as ThemeDefinition;
+        if (typeof reader.result !== 'string') return;
+        const imported = JSON.parse(reader.result) as ThemeDefinition;
         if (!imported.tokens || !imported.name) return;
         const newTheme: ThemeDefinition = {
           ...imported,
@@ -351,11 +353,13 @@ export function ThemeEditor({
   return (
     <div
       className="fixed inset-0 bg-bg-overlay z-[9100] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]"
-      onClick={onClose}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onKeyDown={activateOnKeyboard}
+      role="button"
+      tabIndex={0}
     >
       <div
         className="w-[880px] max-w-[94vw] h-[640px] max-h-[90vh] bg-bg-sidebar border border-border rounded-lg shadow-modal flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
@@ -426,6 +430,9 @@ export function ThemeEditor({
                           active ? 'bg-bg-active text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                         }`}
                         onClick={() => setSelectedThemeId(theme.id)}
+                        onKeyDown={activateOnKeyboard}
+                        role="button"
+                        tabIndex={0}
                       >
                         <div
                           className="w-3 h-3 rounded-full border border-border flex-shrink-0"
@@ -612,6 +619,9 @@ export function ThemeEditor({
                           active ? 'bg-bg-active text-text-primary' : 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
                         }`}
                         onClick={() => setSelectedCssThemeId(theme.id)}
+                        onKeyDown={activateOnKeyboard}
+                        role="button"
+                        tabIndex={0}
                       >
                         <FileCode size={14} className="flex-shrink-0" />
                         <span className="flex-1 truncate">{theme.name}</span>

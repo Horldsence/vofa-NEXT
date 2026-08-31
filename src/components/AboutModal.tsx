@@ -42,11 +42,13 @@ export function AboutModal({ isOpen, onClose }: AboutModalProps) {
   return (
     <div
       className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]"
-      onClick={onClose}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClose(); } }}
+      role="button"
+      tabIndex={0}
     >
       <div
         className="w-[400px] max-w-[90vw] bg-bg-sidebar border border-border rounded-lg shadow-modal py-7 px-8 flex flex-col items-center gap-2 relative animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >

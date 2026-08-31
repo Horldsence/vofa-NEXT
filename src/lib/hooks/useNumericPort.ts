@@ -23,9 +23,9 @@ const EMPTY_SNAPSHOT: PortSampleSnapshot = Object.freeze({
 });
 
 const EMPTY_STORE: PortSampleStore = {
-  subscribe: () => () => {},
+  subscribe: () => () => { return undefined; },
   getSnapshot: () => EMPTY_SNAPSHOT,
-  clear: () => {},
+  clear: () => { return undefined; },
 };
 
 interface ResolvedNumericPort {

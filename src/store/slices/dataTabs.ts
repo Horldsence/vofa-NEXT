@@ -32,13 +32,13 @@ export const createDataTabSlice: AppSlice<DataTabSlice> = (set, get) => {
     activeDataTabId: 'compile-results-fixed',
 
     addDataTab: (tab) =>
-      set((s: any) => ({
+      set((s) => ({
         dataTabs: [...s.dataTabs, tab],
         activeDataTabId: tab.id,
       })),
 
     removeDataTab: (tabId) =>
-      set((s: any) => {
+      set((s) => {
         const tab = s.dataTabs.find((t: DataTab) => t.id === tabId);
         if (!tab?.closable) return s;
         const remaining = s.dataTabs.filter((t: DataTab) => t.id !== tabId);

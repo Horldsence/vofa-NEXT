@@ -53,7 +53,7 @@ export function CanLoadView() {
     api
       .getCurrentCanBitrate(canNodeId)
       .then(([bps, source]) => setDetectedBitrate({ bps, source }))
-      .catch(() => {});
+      .catch(() => { return undefined; });
   }, [transportConfig, canNodeId]);
 
   // 设置窗口大小时同步后端
@@ -76,7 +76,7 @@ export function CanLoadView() {
   useEffect(() => {
     if (!canNodeId) return;
     const effectiveBitrate = autoBitrate ? null : bitrateOverride;
-    api.getCanLoadStats(canNodeId, effectiveBitrate).then(setSnapshot).catch(() => {});
+    api.getCanLoadStats(canNodeId, effectiveBitrate).then(setSnapshot).catch(() => { return undefined; });
   }, [autoBitrate, bitrateOverride, canNodeId]);
 
   const handleClear = () => {

@@ -76,7 +76,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
       if (isGlobalNode(node)) touchesGlobal = true;
       else if (node.data?.tabId) tabs.add(node.data.tabId as string);
     }
-    if (touchesGlobal) return state.controlTabs.map((t: any) => t.id as string);
+    if (touchesGlobal) return state.controlTabs.map((t) => t.id as string);
     return [...tabs];
   };
 
@@ -92,7 +92,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
     syncTabGraph: (tabId) => syncTabGraphToBackend(tabId),
 
     syncAllTabGraphs: () => {
-      get().controlTabs.forEach((tab: any) => get().syncTabGraph(tab.id));
+      get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
     },
 
     removeTabGraph: (tabId) => {
@@ -123,7 +123,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
         { opKey: 'opAddTransportNode', detailText: kind, target: { kind: 'node', node: { kind: 'transport' } } },
         () => {
         const node = createTransportNode(kind, position);
-        set((s: any) => ({ rfNodes: [...s.rfNodes, node] }));
+        set((s) => ({ rfNodes: [...s.rfNodes, node] }));
         get().syncAllTabGraphs();
       }),
 
@@ -136,7 +136,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
         },
         () => {
         const node = createProtocolNode(config, position);
-        set((s: any) => ({ rfNodes: [...s.rfNodes, node] }));
+        set((s) => ({ rfNodes: [...s.rfNodes, node] }));
         get().syncAllTabGraphs();
       }),
 
@@ -153,8 +153,8 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           const node = get().rfNodes.find((n: Node) => n.id === nodeId);
           if (!node || !isGlobalNode(node)) return;
           // 关闭仍打开的连接 (尽力而为)
-          if (node.type === 'transport') void api.closeTransport(nodeId).catch(() => {});
-          set((s: any) => ({
+          if (node.type === 'transport') void api.closeTransport(nodeId).catch(() => { return undefined; });
+          set((s) => ({
             rfNodes: s.rfNodes.filter((n: Node) => n.id !== nodeId),
             rfEdges: s.rfEdges.filter((e: Edge) => e.source !== nodeId && e.target !== nodeId),
           }));
@@ -174,7 +174,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           target: { kind: 'node', node: { kind: 'transport' } },
         },
         () => {
-          set((s: any) => ({
+          set((s) => ({
             rfNodes: s.rfNodes.map((n: Node) =>
               n.id === nodeId && n.type === 'transport'
                 ? { ...n, data: { ...n.data, config, label: config.kind } }
@@ -191,7 +191,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
       // 默认设备选 TestData — 新用户无硬件也能连接后立即看到数据
       const transport = createTransportNode('TestData', { x: 60, y: 100 });
       const protocol = createProtocolNode(DEFAULT_PROTOCOL_CONFIG, { x: 300, y: 100 });
-      set((s: any) => ({ rfNodes: [...s.rfNodes, transport, protocol] }));
+      set((s) => ({ rfNodes: [...s.rfNodes, transport, protocol] }));
       // onConnect 负责 RawData 动态端口改写 (rawDataPortId) 与图同步
       get().onConnect({ source: transport.id, sourceHandle: 'rx', target: protocol.id, targetHandle: 'in' });
       get().onConnect({ source: protocol.id, sourceHandle: 'out', target: rawDataWidgetId, targetHandle: 'data' });
@@ -220,7 +220,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
             }
           }
         }
-        set((s: any) => ({
+        set((s) => ({
           rfNodes: applyNodeChanges(changes, s.rfNodes),
           rfEdges: removedGlobalIds.length
             ? s.rfEdges.filter((e: Edge) => !removedGlobalIds.includes(e.source) && !removedGlobalIds.includes(e.target))
@@ -236,14 +236,14 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
             if (node) finalPos[ch.id] = { x: node.position.x, y: node.position.y };
           }
           if (Object.keys(finalPos).length) {
-            void api.setNodePositions(finalPos).catch(() => {});
+            void api.setNodePositions(finalPos).catch(() => { return undefined; });
           }
         }
         // 同步清理被删节点的派生端口表
         if (removedGlobalIds.length) {
           get().removeDerived(removedGlobalIds);
           for (const id of removedTransportIds) {
-            void api.closeTransport(id).catch(() => {});
+            void api.closeTransport(id).catch(() => { return undefined; });
           }
           get().syncAllTabGraphs();
         }
@@ -284,13 +284,13 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
             source = edge?.source;
             target = edge?.target;
           } else {
-            if ('source' in ch) source = (ch as any).source;
-            if ('target' in ch) target = (ch as any).target;
+            if ('source' in ch && typeof ch.source === 'string') source = ch.source;
+            if ('target' in ch && typeof ch.target === 'string') target = ch.target;
           }
           if (source) affectedTabsOf([source]).forEach((t) => affected.add(t));
           if (target) affectedTabsOf([target]).forEach((t) => affected.add(t));
         }
-        set((s: any) => ({
+        set((s) => ({
           rfEdges: applyEdgeChanges(changes, s.rfEdges),
         }));
         affected.forEach((tabId) => get().syncTabGraph(tabId));
@@ -351,7 +351,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           if (targetWidget?.kind === 'RawData') {
             newEdge.targetHandle = rawDataPortId(connection.source, connection.sourceHandle);
           }
-          set((s: any) => ({
+          set((s) => ({
             rfEdges: addEdge(newEdge, s.rfEdges),
           }));
           if (tabId) get().syncTabGraph(tabId);

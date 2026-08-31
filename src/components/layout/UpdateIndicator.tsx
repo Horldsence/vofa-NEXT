@@ -12,6 +12,7 @@ import { RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useUpdateStore } from '../../store/updateStore';
 import { t } from '../../i18n';
+import { activateOnKeyboard } from '../../lib/utils/a11y';
 
 /// "已是最新" 提示的显示时长 (ms)
 const UP_TO_DATE_HINT_MS = 5_000;
@@ -49,6 +50,9 @@ export function UpdateIndicator() {
         className="flex items-center gap-1.5 px-1.5 cursor-pointer hover:bg-bg-hover rounded"
         title={t(lang, 'updateAvailableTitle')}
         onClick={openDialog}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <span className="w-2 h-2 rounded-full bg-accent animate-pulse inline-block" />
         <span className="text-accent font-mono text-[10px]">v{updateInfo.version}</span>
@@ -62,6 +66,9 @@ export function UpdateIndicator() {
         className="flex items-center gap-1.5 px-1.5 cursor-pointer hover:bg-bg-hover rounded tabular-nums"
         title={t(lang, 'updateDownloading')}
         onClick={openDialog}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <span className="text-text-secondary font-mono text-[10px]">{progress}%</span>
       </div>
@@ -74,6 +81,9 @@ export function UpdateIndicator() {
         className="flex items-center gap-1.5 px-1.5 cursor-pointer hover:bg-bg-hover rounded"
         title={t(lang, 'updateReadyHint')}
         onClick={() => void relaunch()}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <span className="w-2 h-2 rounded-full bg-green inline-block" />
         <span className="text-green text-[10px]">{t(lang, 'updateRestart')}</span>

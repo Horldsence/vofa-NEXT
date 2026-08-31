@@ -57,7 +57,7 @@ export const createCompileStatusSlice: AppSlice<CompileStatusSlice> = (set, _get
     canvasHighlight: null,
 
     setCompileEvent: (e) =>
-      set((s: any) => {
+      set((s) => {
         const tabId = e.tab_id;
         const nextStates = { ...s.tabStates, [tabId]: e.state };
         const nextErrors = { ...s.tabErrors };
@@ -93,7 +93,7 @@ export const createCompileStatusSlice: AppSlice<CompileStatusSlice> = (set, _get
       }),
 
     resetStatus: (tabId) =>
-      set((s: any) => {
+      set((s) => {
         if (tabId === undefined) {
           return {
             tabStates: {},

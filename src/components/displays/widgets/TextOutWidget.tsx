@@ -103,7 +103,7 @@ export const TextOutWidget = memo(function TextOutWidget({ widget }: TextOutWidg
           <button
             type="button"
             disabled={!targetTransport}
-            onClick={() => void api.sendTextOutNow(id).catch(() => {})}
+            onClick={() => void api.sendTextOutNow(id).catch(() => { return undefined; })}
             title={
               targetTransport
                 ? t(lang, 'textOutSendNow')

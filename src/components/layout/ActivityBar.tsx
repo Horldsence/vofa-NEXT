@@ -16,6 +16,7 @@ import { useSettingsStore } from '../../store/settingsStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
+import { activateOnKeyboard } from '../../lib/utils/a11y';
 import { t } from '../../i18n';
 
 interface ActivityBarProps {
@@ -92,6 +93,9 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
           )}
           title={t(lang, item.key)}
           onClick={() => transitionStore(() => onSelect(item.view))}
+          onKeyDown={activateOnKeyboard}
+          role="button"
+          tabIndex={0}
         >
           {item.icon}
         </div>
@@ -102,6 +106,9 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
         className="w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer text-text-secondary hover:text-text-primary hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'helpCenterOpen')}
         onClick={openHelp}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <HelpCircle size={22} />
       </div>
@@ -109,6 +116,9 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
         className="w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer text-text-secondary hover:text-text-primary hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'about')}
         onClick={openAbout}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <Info size={22} />
       </div>
@@ -116,6 +126,9 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
         className="w-10 h-10 mx-1 rounded-md flex items-center justify-center cursor-pointer text-text-secondary hover:text-text-primary hover:bg-bg-hover active:bg-accent-active transition-colors duration-150"
         title={t(lang, 'settings')}
         onClick={() => openSettings()}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <Settings size={22} />
       </div>

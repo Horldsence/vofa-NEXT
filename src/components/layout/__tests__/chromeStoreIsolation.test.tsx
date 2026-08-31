@@ -133,7 +133,7 @@ describe('chrome store subscription granularity', () => {
   describe('ActivityBar (订阅 sidebar/settings/onboarding slice)', () => {
     it('data slice 更新不重渲染', () => {
       const spy = spyMemoRender(ActivityBar as unknown as { type: FunctionComponent });
-      render(<ActivityBar activeView="widgets" onSelect={() => {}} />);
+      render(<ActivityBar activeView="widgets" onSelect={() => { return undefined; }} />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       bumpDataVersion();
@@ -143,7 +143,7 @@ describe('chrome store subscription granularity', () => {
 
     it('自身 slice (lang) 更新时重渲染', () => {
       const spy = spyMemoRender(ActivityBar as unknown as { type: FunctionComponent });
-      render(<ActivityBar activeView="widgets" onSelect={() => {}} />);
+      render(<ActivityBar activeView="widgets" onSelect={() => { return undefined; }} />);
       expect(spy).toHaveBeenCalledTimes(1);
 
       act(() => useAppStore.setState({ lang: 'en' }));

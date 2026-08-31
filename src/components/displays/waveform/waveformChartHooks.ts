@@ -419,7 +419,7 @@ function maybeShowInteractHint() {
   notify.info(
     t(lang, 'waveformInteractHintTitle'),
     t(lang, 'waveformInteractHintMessage'),
-    { actions: [{ label: t(lang, 'closeHintGotIt'), run: () => {} }] }
+    { actions: [{ label: t(lang, 'closeHintGotIt'), run: () => { return undefined; } }] }
   );
 }
 

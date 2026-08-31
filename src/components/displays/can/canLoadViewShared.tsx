@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useAppStore } from '../../../store/appStore';
 import { t } from '../../../i18n';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 import type { CanLoadSnapshot, CanIdLoadHistory } from '../../../types';
 
 /// 窗口预设
@@ -112,6 +113,9 @@ export function IdLoadDistribution({
                     : 'border border-transparent hover:bg-bg-hover'
                 } ${selectedId && !isSelected ? 'opacity-50' : ''}`}
                 onClick={() => onSelectId(s.id, s.extended)}
+                onKeyDown={activateOnKeyboard}
+                role="button"
+                tabIndex={0}
                 title={t(lang, 'canLoadIdFilterHint')}
               >
                 <span className="text-text-bright truncate">

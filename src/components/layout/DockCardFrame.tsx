@@ -107,7 +107,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
       notify.info(
         t(lang, 'closeHintTitle'),
         t(lang, 'closeHintMessage').replace('{{name}}', tab.name),
-        { actions: [{ label: t(lang, 'closeHintGotIt'), run: () => {} }] }
+        { actions: [{ label: t(lang, 'closeHintGotIt'), run: () => { return undefined; } }] }
       );
     },
     [lang]

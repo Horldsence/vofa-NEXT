@@ -36,11 +36,13 @@ export function UpdateDialog() {
   return (
     <div
       className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]"
-      onClick={() => closable && closeDialog()}
+      onClick={(event) => { if (event.target === event.currentTarget && closable) closeDialog(); }}
+      onKeyDown={(event) => { if (closable && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); closeDialog(); } }}
+      role="button"
+      tabIndex={0}
     >
       <div
         className="w-[440px] max-w-[90vw] max-h-[80vh] bg-bg-sidebar border border-border rounded-lg shadow-modal py-6 px-7 flex flex-col gap-2 relative animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >

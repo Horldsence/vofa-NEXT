@@ -82,13 +82,13 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
     },
 
     connectNode: async (nodeId) => {
-      const node = get().rfNodes.find((n: any) => n.id === nodeId && n.type === 'transport');
+      const node = get().rfNodes.find((n) => n.id === nodeId && n.type === 'transport');
       if (!node) return;
       const config = (node.data as TransportNodeData).config;
       // TestData 生成器需要协议参数: 取字节边下游的 Protocol 节点配置, 缺省 JustFloat
       const downstreamId = downstreamProtocolOf(nodeId, get().rfEdges, get().rfNodes);
       const protocolNode = downstreamId
-        ? get().rfNodes.find((n: any) => n.id === downstreamId)
+        ? get().rfNodes.find((n) => n.id === downstreamId)
         : undefined;
       const protocol: ProtocolConfig = protocolNode
         ? (protocolNode.data as ProtocolNodeData).config
@@ -97,15 +97,15 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
       const schema = protocolNode
         ? ((protocolNode.data as ProtocolNodeData).schema ?? schemaFromProtocolConfig(protocol))
         : null;
-      set((s: any) => ({
+      set((s) => ({
         connectionStates: { ...s.connectionStates, [nodeId]: 'Connecting' as ConnectionState },
       }));
       try {
         // 后端容量按源生效 — 连接前应用当前设置
         const cap = useSettingsStore.getState().settings.data;
-        await api.setRawDataBufferCapacity(nodeId, cap.rawDataBufferBytes).catch(() => {});
+        await api.setRawDataBufferCapacity(nodeId, cap.rawDataBufferBytes).catch(() => { return undefined; });
         if (downstreamId) {
-          await api.setWaveformBufferCapacity(downstreamId, cap.waveformBufferPoints).catch(() => {});
+          await api.setWaveformBufferCapacity(downstreamId, cap.waveformBufferPoints).catch(() => { return undefined; });
           await api.clearBuffer(downstreamId);
         }
         await api.clearRawDataBuffer(nodeId);
@@ -113,7 +113,7 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
         if (downstreamId) resetPortSampleStoresForSource(downstreamId);
         waveformWindow.clear();
         await api.openTransport(nodeId, config, protocol, schema);
-        set((s: any) => ({
+        set((s) => ({
           connectionStates: { ...s.connectionStates, [nodeId]: 'Connected' as ConnectionState },
           testDataRunning: { ...s.testDataRunning, [nodeId]: false },
           nodeStats: { ...s.nodeStats, [nodeId]: { ...EMPTY_NODE_STATS } },
@@ -121,7 +121,7 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
         }));
       } catch (e) {
         const lang = get().lang;
-        set((s: any) => ({
+        set((s) => ({
           connectionStates: { ...s.connectionStates, [nodeId]: 'Error' as ConnectionState },
         }));
         notify.error(
@@ -137,7 +137,7 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
 
     disconnectNode: async (nodeId) => {
       const downstreamId = downstreamProtocolOf(nodeId, get().rfEdges, get().rfNodes);
-      set((s: any) => ({
+      set((s) => ({
         connectionStates: { ...s.connectionStates, [nodeId]: 'Disconnected' as ConnectionState },
         testDataRunning: { ...s.testDataRunning, [nodeId]: false },
       }));
@@ -147,7 +147,7 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
         await api.closeTransport(nodeId);
       } catch (e) {
         const lang = get().lang;
-        set((s: any) => ({
+        set((s) => ({
           connectionStates: { ...s.connectionStates, [nodeId]: 'Error' as ConnectionState },
         }));
         notify.error(
@@ -164,7 +164,7 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
     startTestData: async (nodeId) => {
       try {
         await api.startTestData(nodeId);
-        set((s: any) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: true } }));
+        set((s) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: true } }));
       } catch (e) {
         const lang = get().lang;
         notify.error(t(lang, 'notifStartTestDataFailed'), nodeError(lang, e), { source: 'startTestData' });
@@ -174,7 +174,7 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
     stopTestData: async (nodeId) => {
       try {
         await api.stopTestData(nodeId);
-        set((s: any) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: false } }));
+        set((s) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: false } }));
       } catch (e) {
         const lang = get().lang;
         notify.error(t(lang, 'notifStopTestDataFailed'), nodeError(lang, e), { source: 'stopTestData' });
@@ -193,8 +193,8 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
     sendAndCapture: async (nodeId, protocolNode, data) => {
       try {
         const result = await api.sendAndCapture(nodeId, protocolNode, data);
-        set((s: any) => ({
-          widgets: s.widgets.map((w: any) => {
+        set((s) => ({
+          widgets: s.widgets.map((w) => {
             if (w.kind !== 'Command' || !w.params.loopbackEnabled) return w;
             return {
               ...w,

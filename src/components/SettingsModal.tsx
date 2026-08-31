@@ -7,6 +7,7 @@
 //! - ESC 关闭, 点击遮罩关闭
 
 import { Fragment, useEffect, useMemo, useRef, useState, useActionState } from 'react';
+import { activateOnKeyboard } from '../lib/utils/a11y';
 import {
   X,
   Search,
@@ -146,7 +147,7 @@ export function SettingsModal() {
 
   // Done / Reset Category 提交 action — 包装现有 store action, isPending 禁用按钮
   const [saveState, saveAction, isSaving] = useActionState<{ ok: boolean; error?: string }>(
-    async () => {
+    () => {
       try {
         close();
         return { ok: true };
@@ -158,7 +159,7 @@ export function SettingsModal() {
   );
 
   const [resetCategoryState, resetCategoryAction, isResettingCategory] = useActionState<{ ok: boolean; error?: string }>(
-    async () => {
+    () => {
       try {
         resetCategory(activeCategory);
         return { ok: true };
@@ -196,8 +197,7 @@ export function SettingsModal() {
   // 渲染单个控件
   const renderControl = (def: SettingFieldDef) => {
     const category = def.category;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const value = (settings[category] as any)[def.field];
+    const value = (settings[category] as Record<string, unknown>)[def.field];
 
     const handleChange = (v: unknown) => {
       // 设置项的 category+field 组合来自 SETTING_FIELDS 静态表, 类型保证安全
@@ -218,6 +218,7 @@ export function SettingsModal() {
       case 'toggle':
         return (
           <label className="settings-toggle">
+            <span className="sr-only">{def.field}</span>
             <input
               type="checkbox"
               checked={Boolean(value)}
@@ -306,10 +307,15 @@ export function SettingsModal() {
   };
 
   return (
-    <div className="fixed inset-0 bg-bg-overlay z-[9000] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]" onClick={close}>
+    <div
+      className="fixed inset-0 bg-bg-overlay z-[9000] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]"
+      onClick={(event) => { if (event.target === event.currentTarget) close(); }}
+      onKeyDown={activateOnKeyboard}
+      role="button"
+      tabIndex={0}
+    >
       <div
         className="w-[820px] max-w-[92vw] h-[600px] max-h-[88vh] bg-bg-sidebar border border-border rounded-lg shadow-modal flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
@@ -349,6 +355,9 @@ export function SettingsModal() {
                     setActiveCategory(cat);
                     setSearchQuery('');
                   }}
+                  onKeyDown={activateOnKeyboard}
+                  role="button"
+                  tabIndex={0}
                 >
                   {CATEGORY_ICONS[cat]}
                   <span>{t(lang, CATEGORY_LABEL_KEY[cat])}</span>
@@ -444,6 +453,9 @@ export function SettingsModal() {
             <div
               className="flex items-center gap-2.5 px-4 py-2 text-text-secondary text-sm cursor-pointer transition-all duration-150 border-l-2 border-transparent hover:bg-bg-hover hover:text-text-primary"
               onClick={reset}
+              onKeyDown={activateOnKeyboard}
+              role="button"
+              tabIndex={0}
               title={t(lang, 'settingsReset')}
             >
               <RotateCcw size={14} />
@@ -587,10 +599,12 @@ export function SettingsModal() {
             e.stopPropagation();
             setPendingChannel(null);
           }}
+          onKeyDown={activateOnKeyboard}
+          role="button"
+          tabIndex={0}
         >
           <div
             className="w-[360px] max-w-[90vw] bg-bg-sidebar border border-border rounded-lg shadow-modal p-5 flex flex-col gap-3 animate-[settings-slide-in_0.2s_ease-out]"
-            onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
           >

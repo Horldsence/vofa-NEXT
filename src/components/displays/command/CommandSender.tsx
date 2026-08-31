@@ -13,6 +13,7 @@ import {
   type ComputedFrame,
 } from '../../../lib/utils/commandFrames';
 import { t, type Lang } from '../../../i18n';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 import { nanoid } from 'nanoid';
 import { Plus, X } from 'lucide-react';
 import { CommandSenderBlockList } from './CommandSenderBlockList';
@@ -123,6 +124,9 @@ function CommandFrameTabBar({
                 : 'bg-bg-input text-text-secondary border-border hover:text-text-primary'
             }`}
             onClick={() => onSelect(f.id)}
+            onKeyDown={activateOnKeyboard}
+            role="button"
+            tabIndex={0}
             onDoubleClick={() => {
               setEditingId(f.id);
               setEditingLabel(f.label);

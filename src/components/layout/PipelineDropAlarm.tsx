@@ -9,6 +9,7 @@ import { notify } from '../../lib/tauri/notifications';
 import { t } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { DroppedInfoPopover } from '../common/DroppedInfoPopover';
+import { activateOnKeyboard } from '../../lib/utils/a11y';
 
 /// 告警通知节流间隔 (ms)
 const ALARM_THROTTLE_MS = 30_000;
@@ -47,6 +48,9 @@ export function PipelineDropAlarm() {
         className="flex items-center gap-1.5 px-1.5 cursor-pointer hover:bg-bg-hover rounded"
         title={t(lang, 'statusDropped')}
         onClick={() => setInfoOpen(true)}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         <span className="w-2 h-2 rounded-full bg-red animate-pulse inline-block" />
         <span className="text-red font-mono text-[10px]">

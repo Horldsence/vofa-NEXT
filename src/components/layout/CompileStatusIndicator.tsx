@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../../store/appStore';
+import type { AppStore } from '../../store/appStore';
 import { Loader2, AlertTriangle, CheckCircle, Circle } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -17,7 +18,7 @@ export interface CompileStatus {
 }
 
 /// 统一编译状态结算接口 — 计算单个 Tab 或全局编译状态/计数
-export function getCompileStatus(state: any, tabId?: string): CompileStatus {
+export function getCompileStatus(state: AppStore, tabId?: string): CompileStatus {
   if (tabId) {
     const tabState = state.tabStates[tabId] ?? 'ok';
     const isPending = state.pendingTabs.includes(tabId);

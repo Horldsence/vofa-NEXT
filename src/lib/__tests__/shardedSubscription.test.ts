@@ -25,7 +25,7 @@ describe('subscribeDisplay (统一单通道显示订阅)', () => {
     const sub = subscribeDisplay<Batch>(
       { kind: 'can_frames' },
       'can_frames',
-      () => {},
+      () => { return undefined; },
     );
     await new Promise((r) => setTimeout(r, 0));
 

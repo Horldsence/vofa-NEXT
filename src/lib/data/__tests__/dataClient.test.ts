@@ -60,7 +60,7 @@ describe('port sample client backpressure and lifecycle', () => {
   it('restarts after an in-flight unsubscribe and ignores the stale worker result', async () => {
     const { getPortSampleStore } = await import('../dataClient');
     const store = getPortSampleStore('protocol-restart', 'ch1');
-    const firstUnsubscribe = store.subscribe(() => {});
+    const firstUnsubscribe = store.subscribe(() => { return undefined; });
     const firstChannel = subscribeCalls()[0][1].onEvent as {
       onmessage: (buffer: ArrayBuffer) => void;
     };
@@ -68,7 +68,7 @@ describe('port sample client backpressure and lifecycle', () => {
     const stalePost = MockWorker.instance.posts[0];
 
     firstUnsubscribe();
-    const secondUnsubscribe = store.subscribe(() => {});
+    const secondUnsubscribe = store.subscribe(() => { return undefined; });
     expect(subscribeCalls()).toHaveLength(2);
     const secondChannel = subscribeCalls()[1][1].onEvent as {
       onmessage: (buffer: ArrayBuffer) => void;
@@ -88,7 +88,7 @@ describe('port sample client backpressure and lifecycle', () => {
   it('keeps only one in-flight and one replaceable pending decode per topic', async () => {
     const { getPortSampleStore } = await import('../dataClient');
     const store = getPortSampleStore('protocol-burst', 'ch2');
-    const unsubscribe = store.subscribe(() => {});
+    const unsubscribe = store.subscribe(() => { return undefined; });
     const channel = subscribeCalls()[0][1].onEvent as {
       onmessage: (buffer: ArrayBuffer) => void;
     };
@@ -108,7 +108,7 @@ describe('port sample client backpressure and lifecycle', () => {
   it('restarts the channel and rejects a pre-reconnect worker result when resetting a source', async () => {
     const { getPortSampleStore, resetPortSampleStoresForSource } = await import('../dataClient');
     const store = getPortSampleStore('protocol-reset', 'ch3');
-    const unsubscribe = store.subscribe(() => {});
+    const unsubscribe = store.subscribe(() => { return undefined; });
     const firstChannel = subscribeCalls()[0][1].onEvent as {
       onmessage: (buffer: ArrayBuffer) => void;
     };

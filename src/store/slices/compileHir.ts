@@ -67,7 +67,7 @@ export const createCompileHirSlice: AppSlice<CompileHirSlice> = (set, _get) => {
       set({ hirLoading: true });
       try {
         const hir = await invoke<GraphHir>('get_graph_hir', { tabId });
-        set((s: any) => ({
+        set((s) => ({
           hirByTab: { ...s.hirByTab, [tabId]: hir },
           hirLoading: false,
         }));

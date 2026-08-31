@@ -48,7 +48,7 @@ export const createDerivedSlice: AppSlice<DerivedSlice> = (set, _get) => {
     derivedPorts: {},
 
     setDerived: (nodes) =>
-      set((s: any) => {
+      set((s) => {
         const next = { ...s.derivedPorts };
         for (const n of nodes) {
           next[n.node_id] = {
@@ -61,7 +61,7 @@ export const createDerivedSlice: AppSlice<DerivedSlice> = (set, _get) => {
       }),
 
     removeDerived: (nodeIds) =>
-      set((s: any) => {
+      set((s) => {
         if (nodeIds.length === 0) return {};
         const next = { ...s.derivedPorts };
         for (const id of nodeIds) delete next[id];

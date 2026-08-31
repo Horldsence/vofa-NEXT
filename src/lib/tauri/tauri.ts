@@ -132,7 +132,7 @@ export async function closeTauriChannel<T>(
     ch.cleanupCallback();
   }
   // 3. 清空 handler
-  channel.onmessage = () => {};
+  channel.onmessage = () => { return undefined; };
 }
 
 /// 数据管道性能配置 (snake_case, 与后端 PipelineConfig 对应)

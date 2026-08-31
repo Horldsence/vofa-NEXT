@@ -23,6 +23,42 @@ export type DockNode =
   | { id: string; type: 'card'; cardId: string }
   | { id: string; type: 'split'; dir: DockDirection; children: DockNode[]; sizes: number[] };
 
+interface LegacyDockCardNode {
+  id: string;
+  type: 'card';
+  cardId: string;
+}
+
+interface LegacyDockSplitNode {
+  id: string;
+  type: 'split';
+  dir: DockDirection;
+  a: LegacyDockNode;
+  b: LegacyDockNode;
+  ratio?: number;
+}
+
+type LegacyDockNode = LegacyDockCardNode | LegacyDockSplitNode;
+
+function isLegacyDockNode(value: unknown): value is LegacyDockNode {
+  if (typeof value !== 'object' || value === null || !('type' in value)) return false;
+  if (value.type === 'card') {
+    return 'id' in value && typeof value.id === 'string' && 'cardId' in value && typeof value.cardId === 'string';
+  }
+  return (
+    value.type === 'split' &&
+    'id' in value &&
+    typeof value.id === 'string' &&
+    'dir' in value &&
+    (value.dir === 'row' || value.dir === 'col') &&
+    'a' in value &&
+    'b' in value &&
+    isLegacyDockNode(value.a) &&
+    isLegacyDockNode(value.b) &&
+    (!('ratio' in value) || typeof value.ratio === 'number')
+  );
+}
+
 export interface DragTabPayload {
   kind: CardKind;
   tabId: string;
@@ -436,8 +472,8 @@ export const useDockStore = create<DockState>()(
       // v1 → v2: 二叉 split {a, b, ratio} → N 叉 {children, sizes}
       migrate: (persisted: unknown, version: number) => {
         const state = persisted as { root?: unknown; cards?: unknown; focusedCardId?: string | null };
-        if (version < 2 && state?.root) {
-          const conv = (n: any): DockNode =>
+        if (version < 2 && isLegacyDockNode(state.root)) {
+          const conv = (n: LegacyDockNode): DockNode =>
             n.type === 'card'
               ? n
               : {

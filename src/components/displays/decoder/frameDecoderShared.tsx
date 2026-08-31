@@ -147,7 +147,13 @@ export function loadHistory(): HistoryEntry[] {
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
     return arr.filter(
-      (e: any) => e && typeof e.input === 'string' && typeof e.format === 'string'
+      (entry): entry is HistoryEntry =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        'input' in entry &&
+        'format' in entry &&
+        typeof entry.input === 'string' &&
+        typeof entry.format === 'string'
     );
   } catch {
     return [];

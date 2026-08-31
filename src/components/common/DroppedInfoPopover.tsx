@@ -39,11 +39,13 @@ export function DroppedInfoPopover({ open, onClose, variant }: DroppedInfoPopove
   return (
     <div
       className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]"
-      onClick={onClose}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClose(); } }}
+      role="button"
+      tabIndex={0}
     >
       <div
         className="w-[420px] max-w-[90vw] prompt-card p-6 flex flex-col gap-3 relative animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >

@@ -18,8 +18,8 @@ function createBuffer(bytes: number[]): RawDataLineSource {
     droppedBytes: 0,
     getLine: () => line,
     getNewlineLine: () => line,
-    subscribe: () => () => {},
-    clear: () => {},
+    subscribe: () => () => { return undefined; },
+    clear: () => { return undefined; },
   };
 }
 

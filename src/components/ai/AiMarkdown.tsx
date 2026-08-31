@@ -66,15 +66,16 @@ const components: Components = {
   },
   // 外链经系统浏览器打开 (Tauri webview 内直接导航会被拦截)
   a: ({ children, href }) => (
-    <a
-      className="text-accent underline underline-offset-2 break-all cursor-pointer"
+    <button
+      type="button"
+      className="text-accent underline underline-offset-2 break-all cursor-pointer border-0 bg-transparent p-0 text-left"
       onClick={(e) => {
         e.preventDefault();
         if (href) void openUrl(href);
       }}
     >
       {children}
-    </a>
+    </button>
   ),
   p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
   h1: ({ children }) => <h1 className="text-sm font-semibold mt-2">{children}</h1>,

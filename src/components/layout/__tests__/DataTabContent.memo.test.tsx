@@ -59,9 +59,9 @@ describe('DataTabContent sibling-tab isolation', () => {
     vi.stubGlobal(
       'ResizeObserver',
       class {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
+        observe() { return undefined; }
+        unobserve() { return undefined; }
+        disconnect() { return undefined; }
       }
     );
     // 固定定时器: PieChart 内部 100ms 轮询永不触发, 保证渲染计数确定性

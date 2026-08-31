@@ -256,9 +256,9 @@ export function getPortSampleStore(
 ): PortSampleStore {
   if (!sourceNodeId || !sourceHandle) {
     return {
-      subscribe: () => () => {},
+      subscribe: () => () => { return undefined; },
       getSnapshot: () => EMPTY_SNAPSHOT,
-      clear: () => {},
+      clear: () => { return undefined; },
     };
   }
   const key = topicKey(sourceNodeId, sourceHandle);

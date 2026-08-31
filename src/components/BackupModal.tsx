@@ -86,11 +86,13 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
   return (
     <div
       className="fixed inset-0 bg-bg-overlay z-[9500] flex items-center justify-center animate-[settings-fade-in_0.15s_ease-out]"
-      onClick={onClose}
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClose(); } }}
+      role="button"
+      tabIndex={0}
     >
       <div
         className="w-[460px] max-w-[92vw] max-h-[88vh] bg-bg-sidebar border border-border rounded-lg shadow-modal flex flex-col overflow-hidden animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
       >
@@ -129,9 +131,10 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
           {SECTION_META.map((meta) => {
             const checked = selected.has(meta.id);
             return (
-              <div
+              <button
+                type="button"
                 key={meta.id}
-                className="flex items-start gap-2.5 p-2.5 bg-bg-input border border-border-subtle rounded-md cursor-pointer transition-colors hover:border-accent/50"
+                className="flex w-full items-start gap-2.5 p-2.5 bg-bg-input border border-border-subtle rounded-md cursor-pointer transition-colors hover:border-accent/50 text-left"
                 onClick={() => toggle(meta.id)}
               >
                 <span className="text-accent flex-shrink-0 mt-0.5">
@@ -143,7 +146,7 @@ export function BackupModal({ isOpen, onClose }: BackupModalProps) {
                     {t(lang, meta.descKey)}
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })}
 

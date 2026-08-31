@@ -28,11 +28,11 @@ const tauriMock = vi.hoisted(() => {
     },
 
     // ---- @tauri-apps/api/core ----
-    invoke: vi.fn(async () => undefined),
+    invoke: vi.fn(() => Promise.resolve(undefined)),
 
     // ---- @tauri-apps/api/event ----
-    listen: vi.fn(async () => () => {}),
-    emit: vi.fn(async () => undefined),
+    listen: vi.fn(() => Promise.resolve(() => undefined)),
+    emit: vi.fn(() => Promise.resolve(undefined)),
 
     // ---- @tauri-apps/plugin-log ----
     logTrace: vi.fn(),
@@ -42,27 +42,27 @@ const tauriMock = vi.hoisted(() => {
     logError: vi.fn(),
 
     // ---- @tauri-apps/plugin-dialog ----
-    dialogSave: vi.fn(async () => null),
-    dialogOpen: vi.fn(async () => null),
+    dialogSave: vi.fn(() => Promise.resolve(null)),
+    dialogOpen: vi.fn(() => Promise.resolve(null)),
 
     // ---- @tauri-apps/plugin-notification ----
-    isPermissionGranted: vi.fn(async () => true),
-    requestPermission: vi.fn(async () => 'granted'),
+    isPermissionGranted: vi.fn(() => Promise.resolve(true)),
+    requestPermission: vi.fn(() => Promise.resolve('granted')),
     sendNotification: vi.fn(),
 
     // ---- @tauri-apps/plugin-fs ----
-    readTextFile: vi.fn(async () => ''),
-    writeTextFile: vi.fn(async () => undefined),
+    readTextFile: vi.fn(() => Promise.resolve('')),
+    writeTextFile: vi.fn(() => Promise.resolve(undefined)),
 
     // ---- @tauri-apps/plugin-opener ----
-    openUrl: vi.fn(async () => undefined),
+    openUrl: vi.fn(() => Promise.resolve(undefined)),
 
     // ---- @tauri-apps/plugin-process ----
-    relaunch: vi.fn(async () => undefined),
-    exit: vi.fn(async () => undefined),
+    relaunch: vi.fn(() => Promise.resolve(undefined)),
+    exit: vi.fn(() => Promise.resolve(undefined)),
 
     // ---- @tauri-apps/plugin-updater ----
-    check: vi.fn(async () => null),
+    check: vi.fn(() => Promise.resolve(null)),
   };
 });
 
@@ -77,10 +77,10 @@ vi.stubGlobal(
       matches: false,
       media: query,
       onchange: null,
-      addListener: () => {},
-      removeListener: () => {},
-      addEventListener: () => {},
-      removeEventListener: () => {},
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
       dispatchEvent: () => false,
     })
 );
@@ -90,9 +90,9 @@ vi.stubGlobal(
 vi.stubGlobal(
   'ResizeObserver',
   class ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
+    observe() { return undefined; }
+    unobserve() { return undefined; }
+    disconnect() { return undefined; }
   }
 );
 
@@ -141,23 +141,24 @@ vi.mock('@tauri-apps/plugin-store', () => {
       this.file = file;
     }
 
-    async get<T>(key: string): Promise<T | null> {
+    get<T>(key: string): Promise<T | null> {
       const entry = tauriMock.fileStore.get(this.file);
-      return (entry?.get(key) as T | undefined) ?? null;
+      return Promise.resolve((entry?.get(key) as T | undefined) ?? null);
     }
 
-    async set(key: string, value: unknown): Promise<void> {
+    set(key: string, value: unknown): Promise<void> {
       let entry = tauriMock.fileStore.get(this.file);
       if (!entry) {
         entry = new Map();
         tauriMock.fileStore.set(this.file, entry);
       }
       entry.set(key, value);
+      return Promise.resolve();
     }
 
-    async save(): Promise<void> {}
+    save(): Promise<void> { return Promise.resolve(); }
 
-    async load(): Promise<void> {}
+    load(): Promise<void> { return Promise.resolve(); }
   }
 
   return { LazyStore: FakeLazyStore, Store: FakeLazyStore };
@@ -166,9 +167,9 @@ vi.mock('@tauri-apps/plugin-store', () => {
 vi.mock('@tauri-apps/plugin-dialog', () => ({
   open: tauriMock.dialogOpen,
   save: tauriMock.dialogSave,
-  ask: vi.fn(async () => true),
-  confirm: vi.fn(async () => true),
-  message: vi.fn(async () => undefined),
+  ask: vi.fn(() => Promise.resolve(true)),
+  confirm: vi.fn(() => Promise.resolve(true)),
+  message: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@tauri-apps/plugin-notification', () => ({
@@ -180,17 +181,17 @@ vi.mock('@tauri-apps/plugin-notification', () => ({
 vi.mock('@tauri-apps/plugin-fs', () => ({
   readTextFile: tauriMock.readTextFile,
   writeTextFile: tauriMock.writeTextFile,
-  readFile: vi.fn(async () => new Uint8Array()),
-  writeFile: vi.fn(async () => undefined),
-  exists: vi.fn(async () => true),
-  mkdir: vi.fn(async () => undefined),
-  remove: vi.fn(async () => undefined),
+  readFile: vi.fn(() => Promise.resolve(new Uint8Array())),
+  writeFile: vi.fn(() => Promise.resolve(undefined)),
+  exists: vi.fn(() => Promise.resolve(true)),
+  mkdir: vi.fn(() => Promise.resolve(undefined)),
+  remove: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@tauri-apps/plugin-opener', () => ({
   openUrl: tauriMock.openUrl,
-  openPath: vi.fn(async () => undefined),
-  revealItemInDir: vi.fn(async () => undefined),
+  openPath: vi.fn(() => Promise.resolve(undefined)),
+  revealItemInDir: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 vi.mock('@tauri-apps/plugin-process', () => ({
@@ -200,6 +201,6 @@ vi.mock('@tauri-apps/plugin-process', () => ({
 
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: tauriMock.check,
-  download: vi.fn(async () => undefined),
-  install: vi.fn(async () => undefined),
+  download: vi.fn(() => Promise.resolve(undefined)),
+  install: vi.fn(() => Promise.resolve(undefined)),
 }));

@@ -19,8 +19,8 @@ export const createDataSlice: AppSlice<DataSlice> = (set, get) => {
       try {
         // 波形缓冲区按 Protocol 节点分实例 — 逐源清空
         const protocolIds: string[] = get().rfNodes
-          .filter((n: any) => n.type === 'protocol' && isGlobalNode(n))
-          .map((n: any) => n.id);
+          .filter((n) => n.type === 'protocol' && isGlobalNode(n))
+          .map((n) => n.id);
         await Promise.all(protocolIds.map((id) => api.clearBuffer(id)));
         // 缺省清空全部 Transport 源的原始数据收集器
         await api.clearRawDataBuffer();

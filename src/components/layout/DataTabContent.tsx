@@ -46,7 +46,7 @@ import { traceProtocolSource } from '../../store/appStoreHelpers';
 const Model3DWidget = lazy(() => import('../displays/widgets/Model3DWidget.lazy'));
 
 /// 稳定空回调 — DataPanel 展示控件不可删除; 共享引用让 memo 包装的控件跳过父级重渲染
-const noopRemove = () => {};
+const noopRemove = () => { return undefined; };
 
 // =====================================================================
 // 各 Tab 类型分支 — 全部 memo 化, 且只接收稳定 props (模块级常量回调 /

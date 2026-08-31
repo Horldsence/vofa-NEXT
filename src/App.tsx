@@ -121,7 +121,7 @@ function App() {
         id: 'refresh-ports',
         label: t(lang, 'refreshPorts'),
         icon: <RefreshCw />,
-        onClick: () => refreshPorts(),
+        onClick: () => { void refreshPorts(); },
       },
       {
         id: 'toggle-sidebar',
@@ -140,20 +140,20 @@ function App() {
     void loadSettings();
     const cleanupRef: { fn: (() => void) | null } = { fn: null };
     let cancelled = false;
-    initEventListeners().then((fn) => {
+    void initEventListeners().then((fn) => {
       if (cancelled) {
         fn();
       } else {
         cleanupRef.fn = fn;
       }
-    });
-    refreshPorts();
+    }).catch((error: unknown) => console.error('Failed to initialize event listeners:', error));
+    void refreshPorts();
 
     return () => {
       cancelled = true;
       cleanupRef.fn?.();
     };
-  }, []);
+  }, [initEventListeners, loadSettings, refreshPorts]);
 
   // 首次启动种子: 工作区由后端持久化, 仅在"无持久化工作区且画布为空"时
   // 默认放一个 RawData 控件, 以保留旧版固定 raw Tab 的常驻行为
@@ -182,7 +182,7 @@ function App() {
   // AI 前端托管工具宿主 — 监听 ai_tool_invoke, 让内置 AI 编辑节点/操作软件 (幂等)
   useEffect(() => {
     initAiToolHost();
-  }, []);
+  }, [openSettings]);
 
   // 设置加载完成后，根据 showOnboarding 自动弹出首次引导（仅一次）
   useEffect(() => {
@@ -285,7 +285,7 @@ function App() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [openSettings]);
 
   // 全局快捷键: 文档域撤销/重做 — Ctrl/Cmd+Z / Ctrl+Y (Shift 反转 Z 方向)。
   // 焦点在文本输入类元素 (input/textarea/contentEditable, 含 CodeMirror) 时

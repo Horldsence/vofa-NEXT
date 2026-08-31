@@ -35,7 +35,7 @@ import { Trigger } from '../Trigger';
 import type { WidgetConfig } from '../../../types';
 
 const TRIGGER_ID = 'test-trigger-1';
-const NOOP = () => {};
+const NOOP = () => { return undefined; };
 
 function makeWidget(overrides: Record<string, unknown> = {}): Extract<WidgetConfig, { kind: 'Trigger' }> {
   return {
