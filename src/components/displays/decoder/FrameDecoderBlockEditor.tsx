@@ -45,8 +45,9 @@ export function BlockEditor({ block, updateBlock, lang }: BlockEditorProps) {
       {/* header / tail: HEX */}
       {(block.type === 'header' || block.type === 'tail') && (
         <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-          <label className={labelClass}>HEX</label>
+          <label htmlFor={`decoder-block-${bid}-hex`} className={labelClass}>HEX</label>
           <input
+            id={`decoder-block-${bid}-hex`}
             type="text"
             value={block.hex ?? ''}
             onChange={(e) => updateBlock(bid, { hex: e.target.value })}

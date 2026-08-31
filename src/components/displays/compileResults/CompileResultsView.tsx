@@ -10,6 +10,7 @@ import {
   type HirNodeView,
   type PortDomain,
 } from '../../../store/slices/compileHir';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 import {
   Trash2,
   Copy as CopyIcon,
@@ -132,7 +133,7 @@ export const CompileResultsView = memo(function CompileResultsView() {
     if (node.type === 'transport') return t(lang, 'nodeTypeTransport');
     if (node.type === 'protocol') return t(lang, 'nodeTypeProtocol');
     const widget = (node.data as { widget?: { params?: { label?: string }; kind?: string } } | undefined)?.widget;
-    return widget?.params?.label || widget?.kind || id;
+    return (widget?.params?.label ?? widget?.kind) ?? id;
   };
 
   const handleHighlight = (nodeId: string) => {
@@ -254,7 +255,7 @@ export const CompileResultsView = memo(function CompileResultsView() {
           </button>
           <button
             className="flex items-center gap-1 px-2 py-1 bg-bg-button hover:bg-bg-hover text-text-primary rounded text-xs disabled:opacity-50"
-            onClick={handlePaste}
+            onClick={() => { void handlePaste(); }}
             disabled={!clipboardEdge || hirLoading}
           >
             <ClipboardPaste size={14} /> {t(lang, 'pasteConnection')}
@@ -314,14 +315,16 @@ export const CompileResultsView = memo(function CompileResultsView() {
                   >
                     <td className="px-4 py-2">
                       <div className="flex flex-col gap-1">
-                        <span
+                        <button
+                          type="button"
                           className={`font-medium cursor-pointer hover:underline ${
                             isErroredSource ? 'text-red-400' : 'text-text-primary'
                           }`}
                           onClick={() => handleHighlight(edge.sourceNode)}
+                          onKeyDown={activateOnKeyboard}
                         >
                           {getNodeName(edge.sourceNode)}
-                        </span>
+                        </button>
                         <span className="text-text-muted font-mono bg-bg-input px-1 rounded inline-block w-fit">
                           {edge.sourceHandle || t(lang, 'defaultHandle')}
                         </span>
@@ -329,14 +332,16 @@ export const CompileResultsView = memo(function CompileResultsView() {
                     </td>
                     <td className="px-4 py-2">
                       <div className="flex flex-col gap-1">
-                        <span
+                        <button
+                          type="button"
                           className={`font-medium cursor-pointer hover:underline ${
                             isErroredTarget ? 'text-red-400' : 'text-text-primary'
                           }`}
                           onClick={() => handleHighlight(edge.targetNode)}
+                          onKeyDown={activateOnKeyboard}
                         >
                           {getNodeName(edge.targetNode)}
-                        </span>
+                        </button>
                         <span className="text-text-muted font-mono bg-bg-input px-1 rounded inline-block w-fit">
                           {edge.targetHandle || t(lang, 'defaultHandle')}
                         </span>
@@ -397,7 +402,7 @@ export const CompileResultsView = memo(function CompileResultsView() {
                         <button
                           className="p-1 text-red-500 hover:text-red-400 transition-colors"
                           title={t(lang, 'contextMenuDelete')}
-                          onClick={() => handleDelete(edge.edgeId)}
+                          onClick={() => { void handleDelete(edge.edgeId); }}
                           disabled={hirLoading}
                         >
                           <Trash2 size={14} />
@@ -496,7 +501,7 @@ export const CompileResultsView = memo(function CompileResultsView() {
               </button>
               <button
                 className="px-3 py-1 bg-accent-primary hover:opacity-80 text-text-primary rounded text-xs disabled:opacity-50"
-                onClick={submitModal}
+                onClick={() => { void submitModal(); }}
                 disabled={
                   !modal.sourceNode ||
                   !modal.targetNode ||

@@ -82,7 +82,7 @@ function errorItemFromRejection(err: unknown): AiViewItem {
     const e = err as { message?: string; kind?: string; data?: Record<string, string> };
     return {
       role: 'assistant',
-      text: e.message ?? String(err),
+      text: e.message ?? 'AI request failed',
       error: true,
       error_kind: e.kind,
       error_data: e.data,
@@ -430,7 +430,7 @@ export const useAiChatStore = create<AiChatState>()((set, get) => {
     },
 
     removeServer: async (id) => {
-      api.mcpRemoveServer(id);
+      void api.mcpRemoveServer(id);
       await get().refreshServers();
       await get().refreshTools();
     },

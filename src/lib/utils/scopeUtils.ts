@@ -31,8 +31,7 @@ export function applyCoupling(values: number[], coupling: Coupling): number[] {
   // AC: 减去非 NaN 均值
   let sum = 0;
   let n = 0;
-  for (let i = 0; i < values.length; i++) {
-    const v = values[i];
+  for (const v of values) {
     if (!isNaN(v)) { sum += v; n++; }
   }
   if (n === 0) return values;
@@ -51,8 +50,7 @@ export function computeMeasurements(
   let sum = 0;
   let sqSum = 0;
   let n = 0;
-  for (let i = 0; i < values.length; i++) {
-    const v = values[i];
+  for (const v of values) {
     if (isNaN(v)) continue;
     if (v < vmin) vmin = v;
     if (v > vmax) vmax = v;

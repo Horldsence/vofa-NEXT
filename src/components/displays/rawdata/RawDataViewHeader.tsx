@@ -12,6 +12,7 @@ import {
 import { t } from '../../../i18n';
 import type { Lang } from '../../../i18n';
 import type { RawDataGrouping, RawDataRepr, DirectionFilter } from './rawDataViewHelpers';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 import { directionColorClass } from './rawDataViewHelpers';
 
 const GROUPING_OPTIONS: { value: RawDataGrouping; label: string }[] = [
@@ -208,7 +209,7 @@ export function RawDataViewHeader({
             >
               {channelOptions.map((o) => (
                 <option key={o.key} value={o.key}>
-                  {o.label ?? (o.sourceHandle || sourceLabel(o.sourceId))}
+                  {o.label ?? (o.sourceHandle ?? sourceLabel(o.sourceId))}
                 </option>
               ))}
             </select>
@@ -227,6 +228,9 @@ export function RawDataViewHeader({
               className="text-yellow flex items-center gap-0.5 cursor-pointer hover:underline"
               title={t(lang, 'rawDataDropped')}
               onClick={onDroppedInfoOpen}
+              onKeyDown={activateOnKeyboard}
+              role="button"
+              tabIndex={0}
             >
               <FileWarning size={12} />
               +{droppedBytes.toLocaleString()}

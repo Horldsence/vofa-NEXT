@@ -76,7 +76,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
       if (isGlobalNode(node)) touchesGlobal = true;
       else if (node.data?.tabId) tabs.add(node.data.tabId as string);
     }
-    if (touchesGlobal) return state.controlTabs.map((t) => t.id as string);
+    if (touchesGlobal) return state.controlTabs.map((t) => t.id);
     return [...tabs];
   };
 
@@ -92,7 +92,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
     syncTabGraph: (tabId) => syncTabGraphToBackend(tabId),
 
     syncAllTabGraphs: () => {
-      get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
+      get().controlTabs.forEach((tab) => { void get().syncTabGraph(tab.id); });
     },
 
     removeTabGraph: (tabId) => {
@@ -247,7 +247,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           }
           get().syncAllTabGraphs();
         }
-        removedWidgetTabIds.forEach((tabId) => get().syncTabGraph(tabId));
+        removedWidgetTabIds.forEach((tabId) => { void get().syncTabGraph(tabId); });
       };
       if (removing || moving) {
         // 删除型批: 取首个被删节点作为徽章归属; 移动/混合删除为中性
@@ -293,7 +293,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
         set((s) => ({
           rfEdges: applyEdgeChanges(changes, s.rfEdges),
         }));
-        affected.forEach((tabId) => get().syncTabGraph(tabId));
+        affected.forEach((tabId) => { void get().syncTabGraph(tabId); });
       };
       if (removing) {
         // 双端点视觉: 取第一条被删边的两端 (连线通常是单条操作)
@@ -343,7 +343,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           let tabId: string | undefined =
             (sourceNode && !isGlobalNode(sourceNode) ? (sourceNode.data?.tabId as string) : undefined) ??
             (targetNode && !isGlobalNode(targetNode) ? (targetNode.data?.tabId as string) : undefined);
-          if (!tabId) tabId = get().activeControlTabId;
+          tabId ??= get().activeControlTabId;
           // RawData 输入端口是动态派生的 (`src:<source>:<handle>`), 连接时它显示的回退端口 'data'
           // 在入边建立后即消失 — 必须把边的 targetHandle 改写为派生端口 id,
           // 否则 React Flow 找不到 handle (warning #008), 边无法渲染
@@ -354,7 +354,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           set((s) => ({
             rfEdges: addEdge(newEdge, s.rfEdges),
           }));
-          if (tabId) get().syncTabGraph(tabId);
+          if (tabId) void get().syncTabGraph(tabId);
         }
       );
     },

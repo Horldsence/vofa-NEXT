@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { t } from '../../../i18n';
+import type { Lang } from '../../../i18n';
 
 export interface LiveModePanelProps {
   portNames: string[];
@@ -8,7 +9,7 @@ export interface LiveModePanelProps {
   enableFrameCount: boolean;
   enableLastTimestamp: boolean;
   enableFps: boolean;
-  lang: ReturnType<typeof import('../../../store/appStore').useAppStore.getState>['lang'];
+  lang: Lang;
 }
 
 export function LiveModePanel({ portNames, liveOutputs, enableValid, enableFrameCount, enableLastTimestamp, enableFps, lang }: LiveModePanelProps) {

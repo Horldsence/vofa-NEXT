@@ -73,6 +73,7 @@ function CanBusChart() {
   }, []);
 
   const idStats = useMemo(() => {
+    void chartVersion;
     const frames = framesRef.current;
     const map = new Map<string, { count: number; rx: number; tx: number; extended: boolean }>();
     for (const f of frames) {
@@ -89,7 +90,7 @@ function CanBusChart() {
       .map(([id, stats]) => ({ id, ...stats }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
-    }, [chartVersion]);
+  }, [chartVersion]);
 
   const maxCount = Math.max(...idStats.map((s) => s.count), 1);
 

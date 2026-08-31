@@ -84,7 +84,7 @@ export function parseTemplate(
   input: string,
   variables: Record<string, string | number>
 ): Uint8Array {
-  const replaced = input.replace(/\$\{(\w+)\}/g, (_match, name) => {
+  const replaced = input.replace(/\$\{(\w+)\}/g, (_match: string, name: string) => {
     const v = variables[name];
     return v !== undefined ? String(v) : '';
   });

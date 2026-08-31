@@ -173,5 +173,5 @@ export function nodeLabelOf(node: Node | undefined | null): string {
   if (typeof label === 'string' && label) return label;
   const widget = node.data?.widget as WidgetConfig | undefined;
   const params = widget?.params as { label?: string } | undefined;
-  return params?.label || widget?.kind || '?';
+  return (params?.label ?? widget?.kind) ?? '?';
 }

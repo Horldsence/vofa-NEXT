@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import { tauriMock } from '../../test/setup';
 import { subscribeDisplay } from '../buffers/shardedSubscription';
+import type { Mock } from 'vitest';
 
 interface Batch { seq: number; tag: string }
 
@@ -10,7 +11,7 @@ beforeEach(() => {
 
 describe('subscribeDisplay (统一单通道显示订阅)', () => {
   // tauriMock.invoke 声明为 () => Promise<undefined>, 此处放宽为任意 mock 以便自定义返回值/读参数
-  const invokeMock = tauriMock.invoke as unknown as import('vitest').Mock;
+  const invokeMock = tauriMock.invoke as unknown as Mock;
   const subCalls = () =>
     (invokeMock.mock.calls as [string, Record<string, unknown>][]).filter(
       (c) => c[0] === 'subscribe_data',

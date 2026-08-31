@@ -46,7 +46,7 @@ const TRANSPORT_KINDS = ['Serial', 'Udp', 'TcpClient', 'TcpServer', 'TestData', 
 const PROTOCOL_KINDS = ['JustFloat', 'FireWater', 'RawData', 'Slcan', 'CandleLight', 'LogicDecode'] as const;
 
 /** 工具 handler — 返回值作为工具结果回传 (JSON 序列化);抛错即工具失败。 */
-type ToolHandler = (args: Record<string, unknown>) => Promise<unknown> | unknown;
+type ToolHandler = (args: Record<string, unknown>) => unknown;
 
 // ============ 参数辅助 ============
 

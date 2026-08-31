@@ -150,7 +150,7 @@ function dispatchPendingDecode(entry: Entry) {
   if (entry.inFlightGeneration !== null) return;
   const job = entry.pendingDecode;
   entry.pendingDecode = null;
-  if (!job || job.generation !== entry.generation) return;
+  if (job?.generation !== entry.generation) return;
   const worker = getWorker();
   if (!worker) {
     try {

@@ -137,7 +137,6 @@ function CommandFrameTabBar({
               <input
                 type="text"
                 value={editingLabel}
-                autoFocus
                 onChange={(e) => setEditingLabel(e.target.value)}
                 onBlur={commitRename}
                 onKeyDown={(e) => {
@@ -413,7 +412,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
           error={error}
           lastSent={lastSent}
           routeMissing={!hasByteRoute}
-          onSend={handleSend}
+          onSend={() => { void handleSend(); }}
           onUpdateParams={updateParams}
           onUpdateFrame={(changes) => updateFrame(activeFrame.id, changes)}
           lang={lang}

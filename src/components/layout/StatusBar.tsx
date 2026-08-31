@@ -106,14 +106,14 @@ export const StatusBar = memo(function StatusBar() {
     if (el && el.scrollWidth > el.clientWidth + 1 && tier < TIER_MAX) {
       setTier(tier + 1);
     }
-  });
+  }, [tier]);
 
   const onContextMenu = useContextMenu([
     {
       id: 'refresh-ports',
       label: t(lang, 'refresh'),
       icon: <RefreshCw />,
-      onClick: () => refreshPorts(),
+      onClick: () => { void refreshPorts(); },
     },
     { kind: 'separator' },
     {
@@ -231,7 +231,7 @@ export const StatusBar = memo(function StatusBar() {
       <button
         className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors duration-150 shrink-0"
         title={t(lang, 'refresh')}
-        onClick={() => refreshPorts()}
+        onClick={() => { void refreshPorts(); }}
       >
         <RefreshCw size={12} />
       </button>

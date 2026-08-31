@@ -221,7 +221,7 @@ export function OnboardingWizard() {
     clearAdvanceTimer();
     setGatePassed(false);
     setStepIndex((i) => Math.min(i + 1, defs.length - 1));
-  }, []);
+  }, [defs.length]);
 
   const gotoPrev = useCallback(() => {
     clearAdvanceTimer();

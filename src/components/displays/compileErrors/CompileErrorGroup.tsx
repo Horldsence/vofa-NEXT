@@ -4,6 +4,7 @@ import { useAppStore } from '../../../store/appStore';
 import { CompileErrorItem } from './CompileErrorItem';
 import { t } from '../../../i18n';
 import type { CompileReport } from '../../../store/slices/compileError';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 
 interface CompileErrorGroupProps {
   tabId: string;
@@ -27,6 +28,9 @@ export const CompileErrorGroup = memo(function CompileErrorGroup({
       {/* Group Header */}
       <div
         onClick={() => setIsOpen((prev) => !prev)}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
         className="flex items-center justify-between px-3 py-2 cursor-pointer bg-bg-panel-header hover:bg-bg-hover transition-colors select-none"
       >
         <div className="flex items-center gap-2 min-w-0">

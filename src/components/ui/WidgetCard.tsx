@@ -114,7 +114,7 @@ export const WidgetCard = memo(function WidgetCard({
       )}
 
       {/* Header row: badge pill + label text */}
-      {(badge || label) && (
+      {(badge ?? label) && (
         <div className="flex items-center gap-1.5">
           {badge && (
             <span

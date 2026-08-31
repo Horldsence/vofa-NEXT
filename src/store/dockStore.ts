@@ -320,7 +320,7 @@ export const useDockStore = create<DockState>()(
         set((state) => {
           const cur = state.dropTarget;
           if (cur === dropTarget) return state;
-          if (cur && dropTarget && cur.cardId === dropTarget.cardId && cur.edge === dropTarget.edge) {
+          if (cur && cur.cardId === dropTarget?.cardId && cur.edge === dropTarget.edge) {
             return state;
           }
           return { dropTarget };
@@ -364,7 +364,7 @@ export const useDockStore = create<DockState>()(
         set((state) => {
           // 单 Tab 卡片拖到自身边缘无意义
           const d = state.draggingTab;
-          if (d && d.fromCardId === targetCardId) {
+          if (d?.fromCardId === targetCardId) {
             const origin = state.cards[d.fromCardId];
             if (!origin || origin.tabIds.length <= 1) return { draggingTab: null, dropTarget: null };
           }

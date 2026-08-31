@@ -15,7 +15,7 @@ export function Checkbox({ widget, onRemove }: CheckboxProps) {
   const { label, checked_value, unchecked_value, binding, id } = widget.params;
   const checked = useAppStore((s) => {
     const w = s.widgets.find((w) => w.params.id === widget.params.id);
-    if (w && w.kind === 'Checkbox') return w.params.default;
+    if (w?.kind === 'Checkbox') return w.params.default;
     return widget.params.default;
   });
   const updateWidget = useAppStore((s) => s.updateWidget);

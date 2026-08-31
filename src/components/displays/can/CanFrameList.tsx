@@ -82,6 +82,7 @@ const Row = memo(function Row({ index, frame, isSelected, onMouseDown }: RowProp
       }`}
       style={{ height: ROW_HEIGHT }}
       onMouseDown={(e) => onMouseDown(e, index)}
+      role="presentation"
     >
       <span className="px-3 py-1 text-accent whitespace-nowrap min-w-[132px]">
         {formatCanTime(frame.timestamp)}
@@ -173,14 +174,13 @@ export function CanFrameList() {
 
   // 当前数据源: 过滤模式下后端已筛选, 直接取内部引用 (无需前端再过滤)
   const frames = buffer.getUnsafeRef();
-  void version; // version 仅用于触发重渲染
-
   // Rx/Tx 计数: 从内部引用遍历, 避免两次 getAll 拷贝
   const rxTxCounts = useMemo(() => {
+    void version; // version 仅用于触发统计重算
     const all = buffer.getUnsafeRef();
     let rx = 0, tx = 0;
-    for (let i = 0; i < all.length; i++) {
-      if (all[i].direction === 'Rx') rx++;
+    for (const frame of all) {
+      if (frame.direction === 'Rx') rx++;
       else tx++;
     }
     return { rxCount: rx, txCount: tx, total: all.length };
@@ -370,6 +370,7 @@ export function CanFrameList() {
         onScroll={handleScroll}
         onKeyDown={handleKeyDown}
         tabIndex={0}
+        role="grid"
       >
         {frames.length === 0 ? (
           <div className="flex items-center justify-center h-48 text-text-secondary text-xs">

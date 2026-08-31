@@ -107,14 +107,14 @@ export async function saveJsonFile(
 /** 通过系统"打开"对话框读取并解析备份文件; 用户取消/失败返回 null。 */
 export async function readSnapshotFromFile(): Promise<AppSnapshot | null> {
   try {
-    const selected = await open({
+    const selected: unknown = await open({
       multiple: false,
       directory: false,
       filters: JSON_FILTERS,
     });
     if (!selected) return null;
-    const path = Array.isArray(selected) ? selected[0] : selected;
-    if (!path) return null;
+    const path: unknown = Array.isArray(selected) ? (selected as unknown[])[0] : selected;
+    if (typeof path !== 'string' || path === '') return null;
     const json = await readTextFile(path);
     return parseSnapshot(json);
   } catch (e) {
@@ -268,7 +268,7 @@ export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
     if (n.type === 'channelSource') continue; // 删除通道源节点
     if (n.data?.global === true && n.type === 'transport' && !transportId) transportId = n.id;
     if (n.data?.global === true && n.type === 'protocol') {
-      if (!protocolId) protocolId = n.id;
+      protocolId ??= n.id;
       // 缺 schema → 按 config 工厂补齐 (幂等: 已有 schema 原样保留)
       if (n.data.schema == null) {
         const config = n.data.config as ProtocolConfig;

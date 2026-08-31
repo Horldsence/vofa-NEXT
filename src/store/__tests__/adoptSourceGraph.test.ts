@@ -328,18 +328,21 @@ describe('syncTabGraphToBackend (端口提示 / 版本冲突重试)', () => {
   it('版本冲突 → 拉权威源图采纳 → 以新版本重试一次', async () => {
     let graphCalls = 0;
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string, args?: unknown) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) => {
+      mockImplementation: (f: (cmd: string, args?: unknown) => unknown) => void;
+    }).mockImplementation((cmd: string) => {
       if (cmd === 'update_tab_graph') {
         graphCalls += 1;
         if (graphCalls === 1) {
           // 模拟期间拓扑 op 推进了版本
-          throw { kind: 'Config', message: '图版本冲突: 基线过期 (后端当前 v5)', data: { current: '5' } };
+          return Promise.reject(Object.assign(new Error('图版本冲突: 基线过期 (后端当前 v5)'), {
+            kind: 'Config',
+            data: { current: '5' },
+          }));
         }
-        return { nodes: [], version: 6 };
+        return Promise.resolve({ nodes: [], version: 6 });
       }
       if (cmd === 'get_source_graph') {
-        return {
+        return Promise.resolve({
           tab_id: 'default',
           version: 5,
           nodes: [],
@@ -347,9 +350,9 @@ describe('syncTabGraphToBackend (端口提示 / 版本冲突重试)', () => {
             { id: 'e-byte', source: 'transport-1', source_handle: 'rx', target: 'protocol-1', target_handle: 'in' },
             { id: 'e-remote', source: 'protocol-1', source_handle: 'ch0', target: 'w-gauge', target_handle: 'value' },
           ],
-        };
+        });
       }
-      return { nodes: [] };
+      return Promise.resolve({ nodes: [] });
     });
 
     const err = await syncTabGraphToBackend('default');
@@ -369,12 +372,15 @@ describe('syncTabGraphToBackend (端口提示 / 版本冲突重试)', () => {
 
   it('编译失败返回用户可读错误文案 (供 AI 工具结果回传)', async () => {
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) => {
+      mockImplementation: (f: (cmd: string) => unknown) => void;
+    }).mockImplementation((cmd: string) => {
       if (cmd === 'update_tab_graph') {
-        throw { kind: 'Config', message: '图编译失败: 边 e1 端口域不匹配: pt.out (bytes) → m1.in0 (f32)' };
+        return Promise.reject(Object.assign(
+          new Error('图编译失败: 边 e1 端口域不匹配: pt.out (bytes) → m1.in0 (f32)'),
+          { kind: 'Config' },
+        ));
       }
-      return { nodes: [] };
+      return Promise.resolve({ nodes: [] });
     });
 
     const err = await syncTabGraphToBackend('default');

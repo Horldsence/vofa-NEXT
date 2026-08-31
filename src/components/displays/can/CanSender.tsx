@@ -3,7 +3,7 @@ import { useAppStore } from '../../../store/appStore';
 import { sendCanFrame } from '../../../lib/buffers/canSubscription';
 import { t } from '../../../i18n';
 import { Send, Clock, AlertCircle } from 'lucide-react';
-import type { CanFrame, CanDirection } from '../../../types';
+import type { CanFrame } from '../../../types';
 
 /// 格式化数据为 HEX 字符串
 function formatDataHex(data: number[]): string {
@@ -80,8 +80,9 @@ export function CanSender() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">CAN ID (HEX)</label>
+            <label htmlFor="can-sender-id" className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">CAN ID (HEX)</label>
             <input
+              id="can-sender-id"
               type="text"
               className="w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded text-sm font-mono focus:outline-none focus:border-accent transition-colors"
               value={idText}
@@ -90,8 +91,9 @@ export function CanSender() {
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">DLC</label>
+            <label htmlFor="can-sender-dlc" className="block text-[10px] uppercase tracking-wide text-text-secondary mb-1">DLC</label>
             <input
+              id="can-sender-dlc"
               type="number"
               min={0}
               max={8}
@@ -146,7 +148,7 @@ export function CanSender() {
         <button
           type="button"
           className="w-full px-3 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm flex items-center justify-center gap-1.5 hover:bg-bg-button-hover transition-colors"
-          onClick={handleSend}
+          onClick={() => { void handleSend(); }}
         >
           <Send size={14} />
           {t(lang, 'send')}

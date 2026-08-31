@@ -191,6 +191,7 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
 
     case 'Spectrum':
       // 频谱展示 (纯展示) → 无后端计算, 仅从频谱数据通道读取 FFT 求解器结果
+      // falls through
     case 'Waveform':
     case 'PieChart':
     case 'Image':

@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import type { Model3DConfig, WidgetConfig, WindowType, SpectrumOutput } from '../../types';
+import type { Model3DConfig, WidgetConfig } from '../../types';
 
 /// Custom widget 编辑器默认代码 (与 CustomWidgetEditor 中常量保持一致)
 export const DEFAULT_CUSTOM_CODE = `({

@@ -41,7 +41,7 @@ function squarePointsBuilder(): uPlot.Series.Points.PathBuilder {
     const dataX = u.data[0];
     const dataY = u.data[seriesIdx];
     if (!dataX || !dataY) return null;
-    const scaleKey = u.series[seriesIdx].scale || 'y';
+    const scaleKey = u.series[seriesIdx].scale ?? 'y';
     const series = u.series[seriesIdx];
     const pxRound = ((series as unknown as { pxRound?: (v: number) => number }).pxRound) ?? Math.round;
     const sizeCss = series.points?.size ?? 4;

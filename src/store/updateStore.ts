@@ -73,6 +73,10 @@ export async function resolveUpdateChannel(): Promise<UpdateChannel> {
   }
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export const useUpdateStore = create<UpdateStore>((set, get) => ({
   status: 'idle',
   lastTrigger: 'manual',
@@ -107,7 +111,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
       }
     } catch (e) {
       // auto 失败不打断用户 — 仅记录状态, UI 层对 auto 失败保持静默
-      set({ status: 'error', error: String(e) });
+      set({ status: 'error', error: errorMessage(e) });
     }
   },
 
@@ -131,7 +135,7 @@ export const useUpdateStore = create<UpdateStore>((set, get) => ({
         set({ status: 'ready', progress: 100 });
       }
     } catch (e) {
-      set({ status: 'error', error: String(e) });
+      set({ status: 'error', error: errorMessage(e) });
     } finally {
       unlisten?.();
     }

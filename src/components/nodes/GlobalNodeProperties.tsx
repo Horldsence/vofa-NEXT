@@ -8,7 +8,6 @@ import { ProtocolConfigForm } from '../panels/protocol/ProtocolConfigForm';
 import { useConnectAction } from '../panels/transport/useConnectAction';
 import { isRawDataPreset } from '../../lib/utils/protocolSchema';
 import { downstreamProtocolOf, type ProtocolNodeData, type TransportNodeData } from '../../store/appStoreHelpers';
-import type { ProtocolConfig } from '../../types';
 
 /// Transport 节点属性 — 配置表单 + 连接/断开 + TestData 启停
 const TransportProperties = memo(function TransportProperties({ node }: { node: Node }) {
@@ -58,7 +57,7 @@ const TransportProperties = memo(function TransportProperties({ node }: { node: 
           {testDataRunning ? (
             <button
               type="button"
-              onClick={() => stopTestData(node.id)}
+              onClick={() => { void stopTestData(node.id); }}
               disabled={!isConnected}
               className="w-full px-3 h-8 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             >
@@ -68,7 +67,7 @@ const TransportProperties = memo(function TransportProperties({ node }: { node: 
           ) : (
             <button
               type="button"
-              onClick={() => startTestData(node.id)}
+              onClick={() => { void startTestData(node.id); }}
               disabled={!isConnected}
               className="w-full px-3 h-8 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
             >
@@ -84,7 +83,7 @@ const TransportProperties = memo(function TransportProperties({ node }: { node: 
         {isConnected ? (
           <button
             className="w-full px-3 h-8 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5"
-            onClick={() => disconnectNode(node.id)}
+            onClick={() => { void disconnectNode(node.id); }}
           >
             <PlugZap size={14} />
             {t(lang, 'disconnect')}

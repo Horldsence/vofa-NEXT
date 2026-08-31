@@ -51,7 +51,7 @@ describe('createFrameBatcher', () => {
     batcher.push(4);
     t.flush();
 
-    expect(onFlush.mock.calls.map((c) => c[0])).toEqual([1, 3, 4]);
+    expect((onFlush.mock.calls as [number][]).map((c) => c[0])).toEqual([1, 3, 4]);
   });
 
   it('drops the pending value after cancel', () => {

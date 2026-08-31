@@ -39,9 +39,7 @@ export function tickMetric(key: string, bytes = 0, extra = 0): void {
   m.bytes += bytes;
   if (extra > m.maxExtra) m.maxExtra = extra;
   if (now - m.lastFlush >= 1000) {
-    console.debug(
-      `[perf] ${key}: ${m.count} msg/s, ${(m.bytes / 1048576).toFixed(1)} MB/s, maxExtra=${m.maxExtra}`
-    );
+    console.info(`[perf ${key}] ${m.count}/s, ${m.bytes} B/s, max-extra=${m.maxExtra}`);
     m.count = 0;
     m.bytes = 0;
     m.maxExtra = 0;
@@ -52,5 +50,5 @@ export function tickMetric(key: string, bytes = 0, extra = 0): void {
 /// 输出一次性事件 (订阅创建/取消、视图切换等), 附时间戳
 export function perfEvent(msg: string): void {
   if (!perfLogEnabled) return;
-  console.debug(`[perf] ${msg} @${performance.now().toFixed(0)}ms`);
+  console.info(`[perf ${performance.now().toFixed(1)}] ${msg}`);
 }

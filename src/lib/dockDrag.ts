@@ -260,15 +260,14 @@ function hitTest(x: number, y: number): Hover | null {
   let zone: Element | null = el.closest('[data-dock-zone]');
   while (zone) {
     const type = zone.getAttribute('data-dock-zone');
-    let skip = type === 'canvas' && (!drag || drag.spec.kind !== 'widget');
+    let skip = type === 'canvas' && (drag?.spec.kind !== 'widget');
     if (type === 'merge') {
       const cardId = zone.getAttribute('data-dock-card');
       const kind = zone.getAttribute('data-dock-kind') as CardKind | null;
       const st = useDockStore.getState();
       skip = !(
         cardId &&
-        st.draggingTab &&
-        kind === st.draggingTab.kind &&
+        kind === st.draggingTab?.kind &&
         st.draggingTab.fromCardId !== cardId
       );
     }
@@ -308,7 +307,7 @@ function hitTest(x: number, y: number): Hover | null {
     case 'merge': {
       if (!cardId || !st.draggingTab) return null;
       const card = st.cards[cardId];
-      if (!card || kind !== card.kind) return null;
+      if (kind !== card?.kind) return null;
       if (st.draggingTab.kind !== card.kind || st.draggingTab.fromCardId === cardId) return null;
       return { type: 'merge', cardId };
     }
@@ -381,7 +380,7 @@ export function consumeClick(): boolean {
 /** 幽灵元素订阅 — 返回取消订阅函数 */
 export function subscribeGhost(fn: (g: GhostState | null) => void): () => void {
   ghostSubs.add(fn);
-  fn(drag && drag.active ? { x: drag.lastX, y: drag.lastY, label: drag.spec.label } : null);
+  fn(drag?.active ? { x: drag.lastX, y: drag.lastY, label: drag.spec.label } : null);
   return () => {
     ghostSubs.delete(fn);
   };

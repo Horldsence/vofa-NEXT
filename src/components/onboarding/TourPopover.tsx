@@ -176,8 +176,8 @@ function computePosition(
     };
   }
 
-  let left = 0;
-  let top = 0;
+  let left: number;
+  let top: number;
   const cx = rect.x + rect.w / 2;
   const cy = rect.y + rect.h / 2;
 

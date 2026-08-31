@@ -5,10 +5,10 @@ import { MenuBar } from '../MenuBar';
 
 // @tauri-apps/api/window 系列在 jsdom 无真实后端 — 桩掉窗口 API 与退出
 const windowApiMock = vi.hoisted(() => ({
-  setZoom: vi.fn(async (_factor: number) => undefined),
-  minimize: vi.fn(async () => undefined),
-  toggleMaximize: vi.fn(async () => undefined),
-  close: vi.fn(async () => undefined),
+  setZoom: vi.fn((_factor: number) => Promise.resolve()),
+  minimize: vi.fn(() => Promise.resolve()),
+  toggleMaximize: vi.fn(() => Promise.resolve()),
+  close: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('@tauri-apps/api/webviewWindow', () => ({
@@ -16,7 +16,7 @@ vi.mock('@tauri-apps/api/webviewWindow', () => ({
 }));
 
 vi.mock('@tauri-apps/plugin-process', () => ({
-  exit: vi.fn(async () => undefined),
+  exit: vi.fn(() => Promise.resolve()),
 }));
 
 /// 模拟 Windows 平台 UA (isWindowsPlatform 在渲染时读取 navigator.userAgent)

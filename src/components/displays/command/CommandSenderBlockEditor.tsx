@@ -35,8 +35,9 @@ export function CommandBlockEditor({
       {/* const_hex */}
       {block.type === 'const_hex' && (
         <div className="grid grid-cols-[60px_1fr] gap-1.5 items-center">
-          <label className="text-[10px] text-text-secondary">HEX</label>
+          <label htmlFor={`command-block-${block.id}-hex`} className="text-[10px] text-text-secondary">HEX</label>
           <input
+            id={`command-block-${block.id}-hex`}
             type="text"
             value={block.hex ?? ''}
             onChange={(e) => updateBlock(block.id, { hex: e.target.value })}

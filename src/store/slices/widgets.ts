@@ -103,7 +103,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
             );
             return newState;
           });
-          get().syncTabGraph(tabId);
+          void get().syncTabGraph(tabId);
         }
       ),
 
@@ -144,7 +144,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
             }));
             return newState;
           });
-          affectedTabs.forEach((tabId) => get().syncTabGraph(tabId));
+          affectedTabs.forEach((tabId) => { void get().syncTabGraph(tabId); });
         }
       );
     },
@@ -166,7 +166,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
               n.id === id ? { ...n, data: { ...n.data, widget } } : n
             ),
           }));
-          if (tabId) get().syncTabGraph(tabId);
+          if (tabId) void get().syncTabGraph(tabId);
         },
         // 滑块拖拽等高频连续更新 — 同控件短窗内合并为一条
         { coalesceKey: `widget.params.${id}` }

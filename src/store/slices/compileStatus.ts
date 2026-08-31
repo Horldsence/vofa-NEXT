@@ -131,10 +131,10 @@ export const createCompileStatusSlice: AppSlice<CompileStatusSlice> = (set, _get
           anyCompiling: pending.length > 0,
           // 若当前 fly-to 请求指向已删 tab, 同步清掉避免孤儿
           flyToRequest:
-            s.flyToRequest && s.flyToRequest.tabId === tabId ? null : s.flyToRequest,
+            s.flyToRequest?.tabId === tabId ? null : s.flyToRequest,
           // 持久高亮: tab 整体删除时同步清掉
           canvasHighlight:
-            s.canvasHighlight && s.canvasHighlight.tabId === tabId ? null : s.canvasHighlight,
+            s.canvasHighlight?.tabId === tabId ? null : s.canvasHighlight,
         };
       }),
 

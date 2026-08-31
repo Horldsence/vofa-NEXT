@@ -14,8 +14,10 @@ function mockInvokeReturn(value: unknown): void {
 function mockInvokeReject(error: unknown): void {
   (tauriMock.invoke as unknown as { mockRejectedValue: (v: unknown) => void }).mockRejectedValue(error);
 }
-function mockInvokeImpl(impl: (cmd: string) => Promise<unknown>): void {
-  tauriMock.invoke.mockImplementation(impl as unknown as () => Promise<undefined>);
+function mockInvokeImpl(impl: (cmd: string) => unknown): void {
+  tauriMock.invoke.mockImplementation(
+    ((cmd: string) => Promise.resolve().then(() => impl(cmd))) as unknown as () => Promise<undefined>,
+  );
 }
 
 function lastInvokeCall(cmd: string): Record<string, unknown> {
@@ -52,7 +54,7 @@ describe('aiChatStore 多会话 (后端持有)', () => {
   });
 
   it('refreshSessions 拉取摘要并水合当前会话条目', async () => {
-    mockInvokeImpl(async (cmd: string) => {
+    mockInvokeImpl((cmd: string) => {
       if (cmd === 'chat_list_sessions') {
         return [{ id: 's1', title: '调试', created_at: 1, updated_at: 2, item_count: 1 }];
       }
@@ -94,7 +96,7 @@ describe('aiChatStore 多会话 (后端持有)', () => {
 
   it('done 事件后从后端拉取权威视图 (含工具卡片)', async () => {
     useAiChatStore.setState({ ...RESET, activeSessionId: 's1' });
-    mockInvokeImpl(async (cmd: string) => {
+    mockInvokeImpl((cmd: string) => {
       if (cmd === 'ai_chat_send') return 'task-1';
       if (cmd === 'chat_get_session') {
         return {

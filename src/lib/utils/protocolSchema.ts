@@ -123,7 +123,7 @@ export function schemaPortNames(decode: DecoderBlock[]): string[] {
 /// RawData 引擎不产数值帧: 收到字节后 out(Bytes) 透传 + UTF-8 lossy 文本进 str 字符串口
 export function isRawDataPreset(nodeData: { config: ProtocolConfig; schema?: ProtocolSchema | null }): boolean {
   const schema = nodeData.schema;
-  if (schema && schema.preset === 'custom') return false;
+  if (schema?.preset === 'custom') return false;
   return schema?.preset === 'rawData' || nodeData.config.kind === 'RawData';
 }
 
@@ -136,7 +136,7 @@ export function protocolPortNames(
   detectedChannels: number | null
 ): string[] {
   const schema = nodeData.schema;
-  if (schema && schema.preset === 'custom') return schemaPortNames(schema.decode);
+  if (schema?.preset === 'custom') return schemaPortNames(schema.decode);
   if (isRawDataPreset(nodeData)) return ['str'];
   const n = nodeData.channels > 0
     ? nodeData.channels

@@ -20,7 +20,6 @@ vi.hoisted(() => {
 import { QUICK_START_TEMPLATES, getTemplate } from '../quickstart/templates';
 import { applyTemplate } from '../quickstart/applyTemplate';
 import { useAppStore } from '../../store/appStore';
-import type { WidgetConfig } from '../../types';
 
 describe('快速开始模板', () => {
   it('包含数学 / 滤波器 / 频谱分析 / CAN / 串口 / 演示', () => {

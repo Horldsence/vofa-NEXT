@@ -102,7 +102,8 @@ export function lrc(data: Uint8Array): number[] {
 /// 沙箱限制: 仅能访问 bytes 参数, 不能访问 window/document/eval
 export function customChecksum(data: Uint8Array, script: string): number[] {
   try {
-     
+    // Custom checksum snippets are an explicit user-configurable extension point.
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fn = new Function('bytes', script) as (bytes: number[]) => number[];
     const result = fn(Array.from(data));
     if (!Array.isArray(result)) {
@@ -114,7 +115,9 @@ export function customChecksum(data: Uint8Array, script: string): number[] {
       return num & 0xff;
     });
   } catch (e) {
-    throw new Error(`Custom checksum script error: ${(e as Error).message}`);
+    const wrapped = new Error(`Custom checksum script error: ${(e as Error).message}`);
+    Object.defineProperty(wrapped, 'cause', { value: e, configurable: true });
+    throw wrapped;
   }
 }
 

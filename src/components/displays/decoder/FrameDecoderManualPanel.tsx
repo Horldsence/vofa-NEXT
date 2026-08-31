@@ -1,6 +1,7 @@
 import { BookOpen, ChevronDown, History, Play, AlertTriangle } from 'lucide-react';
 import type { InputFormat, FrameDecoderManualResult } from '../../../types';
 import { t } from '../../../i18n';
+import type { Lang } from '../../../i18n';
 import { FRAME_EXAMPLES } from './frameDecoderShared';
 import type { HistoryEntry, ExampleEntry } from './frameDecoderShared';
 
@@ -23,7 +24,7 @@ export interface ManualModePanelProps {
   onSelectExample: (ex: ExampleEntry) => void;
   onSelectHistory: (h: HistoryEntry) => void;
   onClearHistory: () => void;
-  lang: ReturnType<typeof import('../../../store/appStore').useAppStore.getState>['lang'];
+  lang: Lang;
 }
 
 export function ManualModePanel({

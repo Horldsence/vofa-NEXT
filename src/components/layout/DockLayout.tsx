@@ -50,7 +50,7 @@ function findCardPreview(
   const edge = target.edge;
   if (node.type === 'card') {
     if (node.cardId !== target.cardId) return null;
-    if (parent && parent.dir === edgeDir(edge)) {
+    if (parent?.dir === edgeDir(edge)) {
       // 同级条带: 跨父 split 全宽/高
       switch (edge) {
         case 'top':

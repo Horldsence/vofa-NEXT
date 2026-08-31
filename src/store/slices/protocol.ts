@@ -72,7 +72,7 @@ export const createProtocolSlice: AppSlice<ProtocolSlice> = (set, get) => {
         notify.error(t(lang, 'notifSetProtocolFailed'), nodeError(lang, e), { source: 'setProtocol' });
       }
       // 3. 全 tab 图同步
-      get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
+      get().controlTabs.forEach((tab) => { void get().syncTabGraph(tab.id); });
     },
 
     setProtocolNodeConvertTo: (nodeId, convertTo) =>
@@ -90,7 +90,7 @@ export const createProtocolSlice: AppSlice<ProtocolSlice> = (set, get) => {
                 : n
             ),
           }));
-          get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
+          get().controlTabs.forEach((tab) => { void get().syncTabGraph(tab.id); });
         }
       ),
 
@@ -107,7 +107,7 @@ export const createProtocolSlice: AppSlice<ProtocolSlice> = (set, get) => {
           }),
         }));
         // 图同步为权威 (NodeKind::Protocol.schema 随图下发, 引擎按 schema 重建)
-        get().controlTabs.forEach((tab) => get().syncTabGraph(tab.id));
+        get().controlTabs.forEach((tab) => { void get().syncTabGraph(tab.id); });
       }),
   };
 }

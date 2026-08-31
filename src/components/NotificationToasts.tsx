@@ -3,6 +3,7 @@ import { notify, type AppNotification } from '../lib/tauri/notifications';
 import { useAppStore } from '../store/appStore';
 import { t } from '../i18n';
 import { XCircle, AlertTriangle, Info, X, ChevronDown } from 'lucide-react';
+import { activateOnKeyboard } from '../lib/utils/a11y';
 
 const MAX_VISIBLE = 5;
 
@@ -128,6 +129,9 @@ function ToastItem({ notif, lang, onDismiss }: ToastItemProps) {
       <div
         className={`prompt-card-body font-mono cursor-pointer overflow-hidden break-all whitespace-pre-wrap transition-[max-height] duration-200 ease-in-out ml-6 ${expanded ? 'max-h-[200px]' : 'max-h-[4.5em]'}`}
         onClick={() => setExpanded((v) => !v)}
+        onKeyDown={activateOnKeyboard}
+        role="button"
+        tabIndex={0}
       >
         {notif.message}
       </div>

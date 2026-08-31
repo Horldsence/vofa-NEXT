@@ -189,7 +189,7 @@ export function CanLoadView() {
 
         <button
           className="flex items-center gap-1 px-2 py-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors disabled:opacity-50"
-          onClick={handleExport}
+          onClick={() => { void handleExport(); }}
           disabled={exporting || !snapshot}
           title={t(lang, 'canLoadExport')}
         >
@@ -233,7 +233,7 @@ export function CanLoadView() {
           selectedId={selectedId}
           onSelectId={(id, extended) => {
             setSelectedId((cur) =>
-              cur && cur.id === id && cur.extended === extended ? null : { id, extended }
+              cur?.id === id && cur.extended === extended ? null : { id, extended }
             );
           }}
         />

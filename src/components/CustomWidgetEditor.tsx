@@ -6,6 +6,7 @@ import { CustomWidgetHelpModal } from './CustomWidgetHelpModal';
 import type { WidgetConfig } from '../types';
 import { useAppStore } from '../store/appStore';
 import { t } from '../i18n';
+import { activateOnKeyboard } from '../lib/utils/a11y';
 
 interface CustomWidgetEditorProps {
   widget: Extract<WidgetConfig, { kind: 'Custom' }>;
@@ -175,10 +176,16 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]" onClick={onClose}>
+    <div
+      className="fixed inset-0 bg-bg-overlay flex items-center justify-center z-modal animate-[settings-fade-in_0.15s_ease-out]"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
+      onKeyDown={activateOnKeyboard}
+      role="button"
+      tabIndex={0}
+      aria-label={t(lang, 'close')}
+    >
       <div
         className="bg-bg-sidebar border border-border rounded-lg flex flex-col overflow-hidden shadow-modal animate-[settings-slide-in_0.2s_ease-out]"
-        onClick={(e) => e.stopPropagation()}
         style={{ width: '90vw', height: '85vh', maxWidth: 1200, maxHeight: 800 }}
       >
         <div className="flex items-center gap-3 px-4 py-3 bg-bg-panel-header border-b border-border text-text-bright font-semibold flex-shrink-0">
@@ -275,15 +282,15 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
               <div className="px-2.5 py-1.5 bg-bg-panel-header border-t border-border text-xs text-text-secondary">
                 <div className="flex gap-1.5 items-baseline py-0.5">
                   <span className="text-blue min-w-[80px]">{t(lang, 'customInputs')}:</span>
-                  <span>{validation.def.inputs?.map((i) => i.label).join(', ') || '-'}</span>
+                  <span>{validation.def.inputs?.map((i) => i.label).join(', ') ?? '-'}</span>
                 </div>
                 <div className="flex gap-1.5 items-baseline py-0.5">
                   <span className="text-blue min-w-[80px]">{t(lang, 'customOutputs')}:</span>
-                  <span>{validation.def.outputs?.map((o) => o.label).join(', ') || '-'}</span>
+                  <span>{validation.def.outputs?.map((o) => o.label).join(', ') ?? '-'}</span>
                 </div>
                 <div className="flex gap-1.5 items-baseline py-0.5">
                   <span className="text-blue min-w-[80px]">{t(lang, 'customSettings')}:</span>
-                  <span>{validation.def.settings?.map((s) => s.id).join(', ') || '-'}</span>
+                  <span>{validation.def.settings?.map((s) => s.id).join(', ') ?? '-'}</span>
                 </div>
               </div>
             )}

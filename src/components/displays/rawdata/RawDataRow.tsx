@@ -81,6 +81,7 @@ export const Row = memo(function Row({
       style={{ height: ROW_HEIGHT }}
       onMouseDown={(e) => onMouseDown(e, filteredIndex)}
       onMouseLeave={() => setHovered(null)}
+      role="presentation"
     >
       <span
         className={`text-xs font-mono min-w-[14px] text-center ${directionColorClass(line.direction)}`}

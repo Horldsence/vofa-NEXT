@@ -5,6 +5,7 @@ import type { WidgetCategory } from '../../../types';
 import { dockDrag } from '../../../lib/dockDrag';
 import type { PaletteEntry } from './paletteModel';
 import { HEADER_SIZE, ROW_SIZE } from './paletteModel';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 
 /// 各类别的图标底色 (静态类名, 保证 Tailwind 可扫描)
 const categoryTileClass: Record<WidgetCategory, string> = {
@@ -73,6 +74,9 @@ export const PaletteRow = memo(function PaletteRow({ entry, category, entering, 
         if (dockDrag.consumeClick()) return;
         onActivate(entry);
       }}
+      onKeyDown={activateOnKeyboard}
+      role="button"
+      tabIndex={0}
       title={entry.title}
     >
       <div className={tileClass(category)}>{entry.icon}</div>

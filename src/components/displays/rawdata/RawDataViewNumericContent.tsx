@@ -59,9 +59,7 @@ export function RawDataViewNumericContent({
           evicted: 'History evicted',
           dropped: 'Ingress dropped',
         };
-  const emptyLabel = error
-    ? error
-    : status === 'channel_out_of_range'
+  const emptyLabel = error ?? (status === 'channel_out_of_range'
       ? labels.channel
       : status === 'disconnected'
         ? labels.disconnected
@@ -69,7 +67,7 @@ export function RawDataViewNumericContent({
           ? labels.overrun
           : status === 'waiting'
             ? labels.waiting
-            : t(lang, 'rawDataEmpty');
+            : t(lang, 'rawDataEmpty'));
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden font-mono animate-rawdata-enter select-text">
       {(previewSkipped > 0 || retentionEvicted > 0 || ingressDropped > 0) && (

@@ -471,7 +471,7 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
       if (existing) {
         const cur = existing.data?.widget as WidgetConfig | undefined;
         const configChanged =
-          !cur || cur.kind !== widget.kind || !jsonDeepEqual(cur.params, widget.params);
+          cur?.kind !== widget.kind || !jsonDeepEqual(cur.params, widget.params);
         const posChanged =
           pos != null && (existing.position.x !== pos.x || existing.position.y !== pos.y);
         if (configChanged || posChanged) {
@@ -740,7 +740,7 @@ export function traceTransportSource(nodeId: string, edges: Edge[], nodes: Node[
 /// 覆盖 (控件 tab / 数据面板 / widget 配置 / 画布 / 边 / 版本基线),
 /// 后端启动时已完成逐 tab 重编译, 不再初始同步。
 export async function hydrateWorkspaceFromBackend(): Promise<boolean> {
-  let snap: WorkspaceSnapshotPayload | null = null;
+  let snap: WorkspaceSnapshotPayload | null;
   try {
     snap = await api.workspaceGet();
   } catch {

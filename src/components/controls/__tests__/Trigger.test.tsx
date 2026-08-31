@@ -27,8 +27,13 @@ vi.mock('../../../store/appStore', () => ({
   },
 }));
 
-vi.mock('../../../lib/hooks/useGraphInput', () => ({
-  useGraphInput: () => mockState.graphInputValue,
+vi.mock('../../../lib/hooks/useNumericPort', () => ({
+  useNumericOutput: (widgetId: string, handle: string) => {
+    const output = (mockState.graphOutputs as Record<string, Record<string, number>>)[widgetId];
+    const value = output?.[handle];
+    return { latest: value === undefined ? null : { value } };
+  },
+  useNumericInput: () => ({ latest: { value: mockState.graphInputValue } }),
 }));
 
 import { Trigger } from '../Trigger';

@@ -54,7 +54,7 @@ export const createDerivedSlice: AppSlice<DerivedSlice> = (set, _get) => {
           next[n.node_id] = {
             ports: n.ports,
             effective_channels:
-              n.effective_channels == null ? undefined : n.effective_channels,
+              n.effective_channels ?? undefined,
           };
         }
         return { derivedPorts: next };

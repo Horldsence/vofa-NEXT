@@ -222,7 +222,7 @@ export function ProtocolConfigForm({ value, onChange, lang, detectedChannels, na
             <div className="mb-2.5 px-2 py-1.5 bg-bg-input rounded text-xs text-text-secondary flex justify-between items-center">
               <span>{t(lang, 'detectedChannels')}:</span>
               <span className="text-blue font-mono">
-                {detectedChannels != null ? detectedChannels : '--'}
+                {detectedChannels ?? '--'}
               </span>
             </div>
           )}

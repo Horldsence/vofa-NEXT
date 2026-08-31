@@ -5,8 +5,6 @@
 //!   不支持该特性的 WebView 下退化为瞬间跳位, 不影响正确性
 //! - 整层 pointer-events: none — 高亮区完全可交互 (侧栏拖控件到画布建卡可行)
 
-import type { CSSProperties } from 'react';
-
 export interface TourRect {
   x: number;
   y: number;

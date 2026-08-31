@@ -23,13 +23,13 @@ export const createControlTabSlice: AppSlice<ControlTabSlice> = (set, get) => {
       withHistoryOp({ opKey: 'opAddControlTab', target: tabTarget() }, () => {
         const id = nanoid(8);
         set((s) => {
-          const tabName = name || `Tab ${s.controlTabs.length + 1}`;
+          const tabName = name ?? `Tab ${s.controlTabs.length + 1}`;
           return {
             controlTabs: [...s.controlTabs, { id, name: tabName, widgets: [] }],
             activeControlTabId: id,
           };
         });
-        get().syncTabGraph(id);
+        void get().syncTabGraph(id);
       }),
 
     removeControlTab: (tabId) =>

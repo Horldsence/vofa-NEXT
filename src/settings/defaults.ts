@@ -228,7 +228,7 @@ export function deepMergeSettings(
   base: AppSettings,
   patch: Partial<AppSettings>
 ): AppSettings {
-  const result: AppSettings = JSON.parse(JSON.stringify(base));
+  const result = structuredClone(base);
   for (const k of Object.keys(patch) as (keyof AppSettings)[]) {
     const v = patch[k];
     if (v && typeof v === 'object') {

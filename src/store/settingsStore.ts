@@ -31,7 +31,7 @@ const STORE_KEY = 'app';
 /// 单例 LazyStore — 多次调用共享底层连接
 let storeInstance: LazyStore | null = null;
 function getStore(): LazyStore {
-  if (!storeInstance) storeInstance = new LazyStore(STORE_FILE);
+  storeInstance ??= new LazyStore(STORE_FILE);
   return storeInstance;
 }
 
@@ -416,7 +416,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set((s) => ({
       settings: {
         ...s.settings,
-        [category]: JSON.parse(JSON.stringify(DEFAULT_SETTINGS[category])),
+        [category]: structuredClone(DEFAULT_SETTINGS[category]),
       },
     }));
     const { settings } = get();

@@ -15,10 +15,10 @@ export const CompileErrorsView = memo(function CompileErrorsView() {
   // 只展示当前处于 error 状态的 tab 错误
   const activeErrors = errorTabs.filter((id) => tabStates[id] === 'error' && tabErrors[id]);
 
-  const handleRefresh = async () => {
+  const handleRefresh = () => {
     setIsRefreshing(true);
     try {
-      await useAppStore.getState().syncAllTabGraphs();
+      void useAppStore.getState().syncAllTabGraphs();
     } finally {
       // Small timeout to give visual feedback to the click
       setTimeout(() => {

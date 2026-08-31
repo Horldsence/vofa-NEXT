@@ -1,4 +1,5 @@
 import type { RawDataBuffer } from './dataBuffer';
+import type { RawDataBatch } from '../../types';
 import {
   subscribeRawData,
   subscribeRawDataFiltered,
@@ -33,7 +34,7 @@ function subscribeBuffer(
   buffer: RawDataBuffer,
   filter?: RawDataFilterOptions
 ): () => void {
-  const handler = (batch: import('../../types').RawDataBatch) => buffer.pushBatch(batch);
+  const handler = (batch: RawDataBatch) => buffer.pushBatch(batch);
   const { cancel } = filter
     ? subscribeRawDataFiltered(transportId, filter, handler, SUBSCRIBE_OPTIONS)
     : subscribeRawData(transportId, handler, SUBSCRIBE_OPTIONS);

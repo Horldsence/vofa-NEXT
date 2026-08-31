@@ -1,5 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import type { Edge, Node } from '@xyflow/react';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../../store/appStore';
 import {
   getPortSampleStore,
@@ -91,26 +92,21 @@ function storeFor(ref: NumericPortRef | null): PortSampleStore {
 }
 
 function useResolvedPort(resolved: ResolvedNumericPort): NumericPortState {
-  const store = useMemo(
-    () => storeFor(resolved.ref),
-    [resolved.ref?.nodeId, resolved.ref?.handle],
-  );
+  const store = storeFor(resolved.ref);
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
     store.getSnapshot,
   );
-  return useMemo(
-    () => stateFromSnapshot(resolved, snapshot),
-    [resolved, snapshot],
-  );
+  return stateFromSnapshot(resolved, snapshot);
 }
 
 export function useNumericPort(ref: NumericPortRef | null): NumericPortState {
-  const resolved = useMemo<ResolvedNumericPort>(
-    () => ({ ref, connected: ref !== null, legacyBinding: false }),
-    [ref?.nodeId, ref?.handle],
-  );
+  const resolved: ResolvedNumericPort = {
+    ref,
+    connected: ref !== null,
+    legacyBinding: false,
+  };
   return useResolvedPort(resolved);
 }
 
@@ -119,8 +115,24 @@ export function useNumericInput(
   inputHandle = 'value',
   legacyChannel: number | null = null,
 ): NumericPortState {
-  const edges = useAppStore((state) => state.rfEdges);
-  const nodes = useAppStore((state) => state.rfNodes);
+  // 仅订阅本输入端口和旧版通道回退所需的 Protocol 节点；无关连线变化
+  // 不应促使显示控件重渲染。
+  const edges = useAppStore(
+    useShallow((state) =>
+      (state.rfEdges ?? []).filter(
+        (edge) => edge.target === widgetId && edge.targetHandle === inputHandle,
+      ),
+    ),
+  );
+  const nodes = useAppStore(
+    useShallow((state) =>
+      legacyChannel === null
+        ? []
+        : (state.rfNodes ?? []).filter(
+            (node) => node.type === 'protocol' && node.data?.global === true,
+          ),
+    ),
+  );
   const resolved = useMemo(
     () => resolveNumericInputRef(edges, nodes, widgetId, inputHandle, legacyChannel),
     [edges, nodes, widgetId, inputHandle, legacyChannel],
@@ -173,38 +185,54 @@ export function useNumericInputs<const T extends readonly string[]>(
   inputHandles: T,
   legacyChannels?: readonly (number | null)[],
 ): Readonly<Record<T[number], NumericPortState>> {
-  const edges = useAppStore((state) => state.rfEdges);
-  const nodes = useAppStore((state) => state.rfNodes);
-  const handlesKey = inputHandles.join('\u0000');
-  const legacyKey = legacyChannels?.join('\u0000') ?? '';
-  const resolved = useMemo(
-    () => inputHandles.map((handle, index) =>
-      resolveNumericInputRef(edges, nodes, widgetId, handle, legacyChannels?.[index] ?? null)
+  // 窄订阅：仅本 widget 输入端口的边，以及旧版通道回退所需的 Protocol 节点。
+  // useShallow 令替换无关边数组时保持引用稳定。
+  const edges = useAppStore(
+    useShallow((state) =>
+      (state.rfEdges ?? []).filter(
+        (edge) =>
+          edge.target === widgetId && inputHandles.includes(edge.targetHandle ?? ''),
+      ),
     ),
-    [edges, nodes, widgetId, handlesKey, legacyKey],
+  );
+  const nodes = useAppStore(
+    useShallow((state) =>
+      legacyChannels?.some((channel) => channel !== null)
+        ? (state.rfNodes ?? []).filter(
+            (node) => node.type === 'protocol' && node.data?.global === true,
+          )
+        : [],
+    ),
+  );
+  const resolved = inputHandles.map((handle, index) =>
+    resolveNumericInputRef(edges, nodes, widgetId, handle, legacyChannels?.[index] ?? null)
   );
   const refsKey = resolved
     .map(({ ref }) => (ref ? `${ref.nodeId}\u0001${ref.handle}` : ''))
     .join('\u0000');
-  const aggregate = useMemo(
-    () => aggregateStore(resolved.map(({ ref }) => ref)),
-    [refsKey],
-  );
+  const aggregate = useMemo(() => {
+    const refs = refsKey === ''
+      ? []
+      : refsKey.split('\u0000').map((key) => {
+          if (key === '') return null;
+          const separator = key.indexOf('\u0001');
+          return numericPortRef(key.slice(0, separator), key.slice(separator + 1));
+        });
+    return aggregateStore(refs);
+  }, [refsKey]);
   const snapshot = useSyncExternalStore(
-    aggregate.subscribe,
-    aggregate.getSnapshot,
-    aggregate.getSnapshot,
+    (listener) => aggregate.subscribe(listener),
+    () => aggregate.getSnapshot(),
+    () => aggregate.getSnapshot(),
   );
-  return useMemo(() => {
-    const result: Record<string, NumericPortState> = {};
-    for (let index = 0; index < inputHandles.length; index++) {
-      result[inputHandles[index]] = stateFromSnapshot(
-        resolved[index],
-        snapshot.snapshots[index] ?? EMPTY_SNAPSHOT,
-      );
-    }
-    return result as Readonly<Record<T[number], NumericPortState>>;
-  }, [handlesKey, resolved, snapshot]);
+  const result: Record<string, NumericPortState> = {};
+  for (let index = 0; index < inputHandles.length; index++) {
+    result[inputHandles[index]] = stateFromSnapshot(
+      resolved[index],
+      snapshot.snapshots[index] ?? EMPTY_SNAPSHOT,
+    );
+  }
+  return result as Readonly<Record<T[number], NumericPortState>>;
 }
 
 export const useNumericHistory = useNumericInputs;

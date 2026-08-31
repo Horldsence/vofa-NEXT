@@ -144,9 +144,10 @@ export function loadHistory(): HistoryEntry[] {
   try {
     const raw = localStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
-    const arr = JSON.parse(raw);
+    const arr: unknown = JSON.parse(raw);
     if (!Array.isArray(arr)) return [];
-    return arr.filter(
+    const entries = arr as unknown[];
+    return entries.filter(
       (entry): entry is HistoryEntry =>
         typeof entry === 'object' &&
         entry !== null &&

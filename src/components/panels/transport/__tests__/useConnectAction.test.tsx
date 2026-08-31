@@ -58,7 +58,7 @@ describe('useConnectAction (transport node connect submit)', () => {
   });
 
   it('surfaces the connect error message when the store connect fails', async () => {
-    mockConnectNode.mockImplementation(async () => {
+    mockConnectNode.mockImplementation(() => {
       useAppStore.setState((s) => ({
         connectionStates: { ...s.connectionStates, 'transport-1': 'Error' },
       }));

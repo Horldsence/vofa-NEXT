@@ -47,7 +47,7 @@ describe('DockDragGhost 渲染', () => {
       dockDrag.begin({ clientX: 10, clientY: 10, button: 0 }, { kind: 'sidebar', label: 'Sidebar' });
       moveTo(100, 100);
     });
-    const ghost = container.querySelector('[aria-hidden]');
+    const ghost = container.querySelector<HTMLElement>('[aria-hidden]');
     expect(ghost).not.toBeNull();
     expect(ghost!.style.left).toBe('100px');
     expect(ghost!.style.top).toBe('100px');

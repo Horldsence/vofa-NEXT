@@ -193,7 +193,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
   const emptyByteBufferRef = useRef<RawDataBuffer | null>(null);
   // 惰性取空 buffer (占位: 无 transportId / 无连线时保持订阅链类型完整)
   const getEmptyByteBuffer = useCallback((): RawDataBuffer => {
-    if (!emptyByteBufferRef.current) emptyByteBufferRef.current = new RawDataBuffer();
+    emptyByteBufferRef.current ??= new RawDataBuffer();
     return emptyByteBufferRef.current;
   }, []);
   const byteSourceBuffer = !isByteSrc
@@ -207,8 +207,8 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
     if (typeof PerformanceObserver === 'undefined') return;
     try {
       const obs = new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) {
-          console.debug(`[perf] longtask ${e.duration.toFixed(0)}ms`);
+        if (list.getEntries().length > 0) {
+          console.info('[raw-data] long task detected');
         }
       });
       obs.observe({ entryTypes: ['longtask'] });
@@ -300,7 +300,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       sampleStore.clear();
       return;
     }
-    clearData();
+    void clearData();
     buffer.clear();
     clearSelection();
     userScrolledRef.current = false;
@@ -315,7 +315,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       case 'nl_tab': suffix = '\n\t'; break;
       case 'none': suffix = ''; break;
     }
-    sendText(sendTargetId, sendContent + suffix);
+    void sendText(sendTargetId, sendContent + suffix);
     setSendContent('');
   };
 
@@ -341,7 +341,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 1200);
     }
-  }, [selection.selectedSorted, grouping, repr, buffer]);
+  }, [selection.selected.size, selection.selectedSorted, grouping, buffer, repr]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

@@ -84,7 +84,8 @@ export function evalCustomWidgetDef(code: string): {
   error: string | null;
 } {
   try {
-     
+    // User-authored widgets intentionally execute JavaScript in the isolated desktop webview.
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     const fn = new Function(`'use strict'; return (${code});`) as () => unknown;
     const def = fn();
     if (!isRecord(def)) {
@@ -213,7 +214,7 @@ export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height 
     () => Object.fromEntries(
       inputPorts.map((port) => [port, inputStates[port]?.latest?.value ?? 0]),
     ),
-    [inputPorts.join('\u0000'), inputStates],
+    [inputPorts, inputStates],
   );
   const submitCustomOutput = useAppStore((s) => s.submitCustomOutput);
 
@@ -327,7 +328,7 @@ export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height 
       )}
       {!embedded && (
         <div className="text-xs text-text-secondary uppercase tracking-[0.3px]">
-          {def?.name || widget.params.label || 'Custom'}
+          {(def?.name ?? widget.params.label) || 'Custom'}
         </div>
       )}
       <iframe

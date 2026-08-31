@@ -323,7 +323,7 @@ describe('dockDrag 指针拖拽控制器', () => {
     dockDrag.subscribeCanvasHover(hoverSpy);
 
     const handler = vi.fn();
-    dockDrag.registerCanvasHandler(zone, (x, y, spec) => handler(x, y, spec));
+    dockDrag.registerCanvasHandler(zone, (x, y, spec) => { handler(x, y, spec); });
 
     const spec: WidgetDragSpec = { kind: 'Math', op: 'add' };
     dockDrag.begin({ clientX: 10, clientY: 10, button: 0 }, { kind: 'widget', widget: spec, label: 'Math add' });
@@ -348,8 +348,8 @@ describe('dockDrag 指针拖拽控制器', () => {
 
     const handlerA = vi.fn();
     const handlerB = vi.fn();
-    dockDrag.registerCanvasHandler(zoneA, (x, y, spec) => handlerA(x, y, spec));
-    dockDrag.registerCanvasHandler(zoneB, (x, y, spec) => handlerB(x, y, spec));
+    dockDrag.registerCanvasHandler(zoneA, (x, y, spec) => { handlerA(x, y, spec); });
+    dockDrag.registerCanvasHandler(zoneB, (x, y, spec) => { handlerB(x, y, spec); });
 
     const spec: WidgetDragSpec = { kind: 'Knob' };
     dockDrag.begin({ clientX: 10, clientY: 10, button: 0 }, { kind: 'widget', widget: spec, label: 'Knob' });

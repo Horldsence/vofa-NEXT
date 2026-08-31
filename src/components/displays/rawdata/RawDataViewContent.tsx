@@ -4,6 +4,7 @@ import type { Lang } from '../../../i18n';
 import type { RawDataGrouping, RawDataRepr, HexColorMode } from './rawDataViewHelpers';
 import { ROW_HEIGHT, HeaderBytes } from './rawDataViewHelpers';
 import { Row } from './RawDataRow';
+import type { useSelection } from '../../../lib/hooks/useSelection';
 
 interface Props {
   modeCount: number;
@@ -16,7 +17,7 @@ interface Props {
   version: number;
   lang: Lang;
   // selection
-  selection: Pick<ReturnType<typeof import('../../../lib/hooks/useSelection').useSelection>, 'isSelected'>;
+  selection: Pick<ReturnType<typeof useSelection>, 'isSelected'>;
   onRowMouseDown: (e: React.MouseEvent, index: number) => void;
   // scroll
   parentRef: React.RefObject<HTMLDivElement | null>;
@@ -102,6 +103,7 @@ export function RawDataViewContent({
         onScroll={onScroll}
         onKeyDown={onKeyDown}
         tabIndex={0}
+        role="listbox"
       >
         {modeCount === 0 ? (
           <div className="flex items-center justify-center h-32 text-text-secondary text-sm">

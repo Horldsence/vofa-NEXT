@@ -4,7 +4,6 @@ import { tauriMock } from '../../test/setup';
 import { useAppStore } from '../appStore';
 import type { SpectrumBatch } from '../../lib/buffers/graphSubscription';
 import type { CanFrameBatch } from '../../types';
-import type { GraphStateSlice } from '../slices/graphState';
 import { canFrameBuffer } from '../../lib/buffers/canBuffer';
 
 /// 手工 rAF ticker — 覆盖全局 requestAnimationFrame, 让 events.ts 的帧级节流确定

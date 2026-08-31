@@ -7,8 +7,6 @@ import {
   MiniMap,
   useReactFlow,
   type NodeTypes,
-  type Edge,
-  type Node,
   Panel,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -19,7 +17,7 @@ import { notify } from '../../lib/tauri/notifications';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
 import { dockDrag, type WidgetDragSpec } from '../../lib/dockDrag';
-import type { WidgetConfig, MathOp, StrOp, FilterPresetKind } from '../../types';
+import type { MathOp, StrOp } from '../../types';
 import { isUnaryMathOp } from '../../types';
 import { WidgetNode } from '../nodes/WidgetNode';
 import { TransportNode } from '../nodes/TransportNode';
@@ -73,7 +71,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     if (flyToRequest.tabId !== tabId) return;
     const node = rfNodes.find((n) => n.id === flyToRequest.nodeId);
     if (node) {
-      reactFlow.setCenter(node.position.x, node.position.y, {
+      void reactFlow.setCenter(node.position.x, node.position.y, {
         duration: 400,
         zoom: 1.5,
       });
@@ -90,13 +88,13 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       id: 'fit-view',
       label: t(lang, 'fitView'),
       icon: <Maximize />,
-      onClick: () => reactFlow.fitView({ padding: 0.2 }),
+      onClick: () => { void reactFlow.fitView({ padding: 0.2 }); },
     },
     {
       id: 'reset-zoom',
       label: t(lang, 'resetZoom'),
       icon: <Maximize />,
-      onClick: () => reactFlow.zoomTo(1),
+      onClick: () => { void reactFlow.zoomTo(1); },
     },
     { kind: 'separator' },
     {

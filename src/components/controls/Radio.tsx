@@ -17,7 +17,7 @@ export function Radio({ widget, onRemove }: RadioProps) {
   const { label, options, binding, id } = widget.params;
   const current = useAppStore((s) => {
     const w = s.widgets.find((w) => w.params.id === widget.params.id);
-    if (w && w.kind === 'Radio') return w.params.default;
+    if (w?.kind === 'Radio') return w.params.default;
     return widget.params.default;
   });
   const updateWidget = useAppStore((s) => s.updateWidget);

@@ -33,7 +33,7 @@ export function interpYAtX(
   if (!dataX || !dataY || dataX.length === 0) return NaN;
   const n = dataX.length;
   // null/undefined 视为 NaN (uPlot data 可能含空值)
-  const num = (v: number | null | undefined): number => (v == null ? NaN : v);
+  const num = (v: number | null | undefined): number => (v ?? NaN);
   if (n === 1) return num(dataY[0]);
   if (xVal <= num(dataX[0])) return num(dataY[0]);
   if (xVal >= num(dataX[n - 1])) return num(dataY[n - 1]);
@@ -404,7 +404,7 @@ export function useWheelZoom(
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
-  }, [onConfigChange]);
+  }, [axisConfigRef, containerRef, onConfigChange]);
 }
 
 // ---- 右键 / Shift+左键 / 中键 拖拽平移 ----
@@ -511,7 +511,7 @@ export function usePanDrag(
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [onConfigChange, setSelectedRange]);
+  }, [axisConfigRef, containerRef, onConfigChange, plotRef, setSelectedRange]);
 }
 
 // ---- Ctrl/Cmd 隐藏游标 ----

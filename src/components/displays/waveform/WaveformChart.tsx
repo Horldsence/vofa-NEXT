@@ -184,7 +184,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
       return coupled.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
     });
     return [tsSec, ...seriesDivs];
-  }, [widget.params.channels, widget.params.id, buffer]);
+  }, [widget.params.id, buffer]);
 
   // 配置变化 → 更新通道可见性 + 重新归一化数据
   // 关键: V/div 或 position 变化时, 必须重新 setData, 否则波形不会按新档位重绘
@@ -293,7 +293,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
     a.download = `waveform-${selectedRange.startSec.toFixed(3)}-${selectedRange.endSec.toFixed(3)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [selectedRange, widget.params.id]);
+  }, [buffer, selectedRange, widget.params.id]);
 
   const copySelection = useCallback(async () => {
     if (!selectedRange) return;
@@ -311,7 +311,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
       setCopyFeedback(true);
       setTimeout(() => setCopyFeedback(false), 1200);
     }
-  }, [selectedRange, widget.params.id]);
+  }, [buffer, selectedRange, widget.params.id]);
 
   const clearSelection = useCallback(() => {
     setSelectedRange(null);
@@ -355,7 +355,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
             <button
               className="p-1 text-text-secondary hover:text-text-primary hover:bg-bg-hover rounded transition-colors"
               title={t(lang, 'copySelection')}
-              onClick={copySelection}
+              onClick={() => { void copySelection(); }}
             >
               {copyFeedback ? <Check size={12} className="text-green" /> : <Copy size={12} />}
             </button>
@@ -422,4 +422,3 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
     </div>
   );
 }
-

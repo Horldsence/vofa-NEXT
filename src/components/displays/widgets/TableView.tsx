@@ -56,7 +56,7 @@ export const TableView = memo(function TableView({ widget, loopbackHistory }: Ta
       }
       return [...previous, { ts, values }].slice(-params.maxRows);
     });
-  }, [sampleSignature, params.maxRows]);
+  }, [sampleSignature, params.maxRows, portNames, graphInputs]);
 
   // 自动滚动到底部
   useEffect(() => {

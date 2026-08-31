@@ -84,7 +84,7 @@ export function getWidgetPorts(widget: WidgetConfig): {
           { id: 'x', label: 'x', domain: 'time' },
           { id: 'y', label: 'y', domain: 'time' },
           { id: 'z', label: 'z', domain: 'time' },
-          ...model3dAttitudePortIds(widget.params.attitudeInputMode ?? 'radians').map((id) => ({
+          ...model3dAttitudePortIds(widget.params.attitudeInputMode ?? 'radians').map((id): WidgetPort => ({
             id,
             label: id,
             domain: 'time',
@@ -93,8 +93,8 @@ export function getWidgetPorts(widget: WidgetConfig): {
         outputs: [],
       };
     case 'Command': {
-      const inputs = commandInputPortNames(widget.params)
-        .map((name: string) => ({ id: name, label: name, domain: 'time' }));
+      const inputs: WidgetPort[] = commandInputPortNames(widget.params)
+        .map((name: string): WidgetPort => ({ id: name, label: name, domain: 'time' }));
       const outputs = [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'bytes' as DomainType }];
       return { inputs, outputs };
     }
@@ -123,12 +123,12 @@ export function getWidgetPorts(widget: WidgetConfig): {
     case 'Custom': {
       const { def } = evalCustomWidgetDef(widget.params.code);
       return {
-        inputs: (def?.inputs ?? [{ id: 'value', label: 'value' }]).map((p: { id: string; label: string }) => ({
+        inputs: (def?.inputs ?? [{ id: 'value', label: 'value' }]).map((p: { id: string; label: string }): WidgetPort => ({
           id: p.id,
           label: p.label,
           domain: 'time',
         })),
-        outputs: (def?.outputs ?? []).map((p: { id: string; label: string }) => ({
+        outputs: (def?.outputs ?? []).map((p: { id: string; label: string }): WidgetPort => ({
           id: p.id,
           label: p.label,
           domain: 'time',

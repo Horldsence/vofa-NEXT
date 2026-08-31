@@ -148,7 +148,7 @@ export function resolveInputArray(
   } else {
     arr = derivedMap?.[widgetId]?.[input.sourceId];
   }
-  if (!arr) return Array(tsLen).fill(NaN);
+  if (!arr) return new Array<number>(tsLen).fill(NaN);
   if (arr.length === tsLen) return arr;
   // 对齐: 截断或补 NaN
   const padded = arr.slice(0, tsLen);

@@ -139,8 +139,8 @@ describe('settingsStore API key 钥匙串集成', () => {
 
   it('load 时从钥匙串水合当前适配器的 API key', async () => {
     tauriMock.seedFile(STORE_FILE, STORE_KEY, {});
-    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => Promise<unknown>) => void })
-      .mockImplementation(async (cmd: string) => (cmd === 'ai_keychain_get' ? 'sk-stored' : undefined));
+    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => unknown) => void })
+      .mockImplementation((cmd: string) => Promise.resolve(cmd === 'ai_keychain_get' ? 'sk-stored' : undefined));
 
     await useSettingsStore.getState().load();
 
@@ -149,8 +149,8 @@ describe('settingsStore API key 钥匙串集成', () => {
 
   it('旧版明文 key 自动迁入钥匙串 (仅当钥匙串为空)', async () => {
     tauriMock.seedFile(STORE_FILE, STORE_KEY, { ai: { apiKey: 'sk-legacy' } });
-    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => Promise<unknown>) => void })
-      .mockImplementation(async (cmd: string) => (cmd === 'ai_keychain_get' ? null : undefined));
+    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => unknown) => void })
+      .mockImplementation((cmd: string) => Promise.resolve(cmd === 'ai_keychain_get' ? null : undefined));
 
     await useSettingsStore.getState().load();
 
@@ -178,8 +178,8 @@ describe('settingsStore API key 钥匙串集成', () => {
     useSettingsStore.getState().update('ai', 'apiKey', 'sk-new');
     expect(keychainCalls('ai_keychain_set')).toContainEqual(['orcarouter', 'sk-new']);
 
-    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => Promise<unknown>) => void })
-      .mockImplementation(async (cmd: string) => (cmd === 'ai_keychain_get' ? 'sk-deepseek' : undefined));
+    (tauriMock.invoke as unknown as { mockImplementation: (f: (cmd: string) => unknown) => void })
+      .mockImplementation((cmd: string) => Promise.resolve(cmd === 'ai_keychain_get' ? 'sk-deepseek' : undefined));
     useSettingsStore.getState().update('ai', 'adapter', 'deepseek');
     return vi.waitFor(() => {
       expect(useSettingsStore.getState().settings.ai.apiKey).toBe('sk-deepseek');
@@ -188,12 +188,12 @@ describe('settingsStore API key 钥匙串集成', () => {
 
   it('启动读取被拒绝时打开授权提醒', async () => {
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) => {
+      mockImplementation: (f: (cmd: string) => unknown) => void;
+    }).mockImplementation((cmd: string) => {
       if (cmd === 'ai_keychain_get') {
-        throw { kind: 'AiKeyringAccessDenied', message: 'cancelled', data: {} };
+        return Promise.reject(Object.assign(new Error('cancelled'), { kind: 'AiKeyringAccessDenied', data: {} }));
       }
-      return undefined;
+      return Promise.resolve(undefined);
     });
 
     await useSettingsStore.getState().load();
@@ -204,12 +204,12 @@ describe('settingsStore API key 钥匙串集成', () => {
 
   it('普通钥匙串故障不打开授权提醒', async () => {
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) => {
+      mockImplementation: (f: (cmd: string) => unknown) => void;
+    }).mockImplementation((cmd: string) => {
       if (cmd === 'ai_keychain_get') {
-        throw { kind: 'AiKeyring', message: 'locked', data: {} };
+        return Promise.reject(Object.assign(new Error('locked'), { kind: 'AiKeyring', data: {} }));
       }
-      return undefined;
+      return Promise.resolve(undefined);
     });
 
     await useSettingsStore.getState().load();
@@ -222,12 +222,12 @@ describe('settingsStore API key 钥匙串集成', () => {
       general: { suppressKeychainPermissionReminder: true },
     });
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) => {
+      mockImplementation: (f: (cmd: string) => unknown) => void;
+    }).mockImplementation((cmd: string) => {
       if (cmd === 'ai_keychain_get') {
-        throw { kind: 'AiKeyringAccessDenied', message: 'cancelled', data: {} };
+        return Promise.reject(Object.assign(new Error('cancelled'), { kind: 'AiKeyringAccessDenied', data: {} }));
       }
-      return undefined;
+      return Promise.resolve(undefined);
     });
 
     await useSettingsStore.getState().load();
@@ -238,9 +238,9 @@ describe('settingsStore API key 钥匙串集成', () => {
   it('再次请求成功后水合密钥并关闭提醒', async () => {
     useSettingsStore.setState({ keychainPermissionPromptOpen: true });
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) =>
-      cmd === 'ai_keychain_get' ? 'sk-restored' : undefined
+      mockImplementation: (f: (cmd: string) => unknown) => void;
+    }).mockImplementation((cmd: string) =>
+      Promise.resolve(cmd === 'ai_keychain_get' ? 'sk-restored' : undefined)
     );
 
     await useSettingsStore.getState().retryKeychainPermission();
@@ -253,12 +253,12 @@ describe('settingsStore API key 钥匙串集成', () => {
   it('再次拒绝时保留提醒并记录可本地化状态', async () => {
     useSettingsStore.setState({ keychainPermissionPromptOpen: true });
     (tauriMock.invoke as unknown as {
-      mockImplementation: (f: (cmd: string) => Promise<unknown>) => void;
-    }).mockImplementation(async (cmd: string) => {
+      mockImplementation: (f: (cmd: string) => unknown) => void;
+    }).mockImplementation((cmd: string) => {
       if (cmd === 'ai_keychain_get') {
-        throw { kind: 'AiKeyringAccessDenied', message: 'cancelled', data: {} };
+        return Promise.reject(Object.assign(new Error('cancelled'), { kind: 'AiKeyringAccessDenied', data: {} }));
       }
-      return undefined;
+      return Promise.resolve(undefined);
     });
 
     await useSettingsStore.getState().retryKeychainPermission();

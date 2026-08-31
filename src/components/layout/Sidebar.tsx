@@ -36,7 +36,7 @@ export const Sidebar = memo(function Sidebar({ view }: SidebarProps) {
       id: 'refresh-ports',
       label: t(lang, 'refresh'),
       icon: <RefreshCw />,
-      onClick: () => refreshPorts(),
+      onClick: () => { void refreshPorts(); },
     },
   ]);
 

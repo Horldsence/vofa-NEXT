@@ -48,7 +48,7 @@ export const ActivityBar = memo(function ActivityBar({ activeView, onSelect }: A
       id: 'refresh-ports',
       label: t(lang, 'refresh'),
       icon: <Cable />,
-      onClick: () => refreshPorts(),
+      onClick: () => { void refreshPorts(); },
     },
     {
       id: 'settings',

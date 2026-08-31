@@ -13,6 +13,7 @@ import { DataTabContent, DataTabIcon } from './DataTabContent';
 import { CompileDot } from './CompileStatusIndicator';
 import { useContextMenu, showContextMenu } from '../../lib/hooks/useContextMenu';
 import { transitionStore } from '../../lib/utils/transitionStore';
+import { activateOnKeyboard } from '../../lib/utils/a11y';
 import { dockDrag } from '../../lib/dockDrag';
 import { t } from '../../i18n';
 
@@ -166,6 +167,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
     <div
       className="module-card dock-card-acrylic relative flex flex-col h-full w-full"
       onMouseDown={() => setFocusedCard(cardId)}
+      role="presentation"
       data-dock-zone="card-edge"
       data-dock-card={cardId}
       data-dock-kind={kind}
@@ -183,6 +185,7 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
         }`}
         onContextMenu={tabBarContextMenu}
         onPointerDown={handleTitleBarPointerDown}
+        role="presentation"
         data-dock-zone="merge"
         data-dock-card={cardId}
         data-dock-kind={kind}
@@ -203,6 +206,9 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
               if (dockDrag.consumeClick()) return;
               transitionStore(() => setActiveTab(cardId, tab.id));
             }}
+            onKeyDown={activateOnKeyboard}
+            role="tab"
+            tabIndex={0}
             onDoubleClick={() => kind === 'control' && handleStartRename(tab.id, tab.name)}
             onContextMenu={(e) => {
               e.preventDefault();
@@ -222,7 +228,6 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
                   if (e.key === 'Enter') handleFinishRename();
                   if (e.key === 'Escape') setEditingTabId(null);
                 }}
-                autoFocus
                 className="w-[60px] bg-bg-input border border-accent text-text-primary text-xs px-1 py-px rounded-sm"
                 onClick={(e) => e.stopPropagation()}
               />

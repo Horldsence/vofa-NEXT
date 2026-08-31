@@ -2,7 +2,7 @@
 
 import { nanoid } from 'nanoid';
 import type { CommandConfig, CommandFrame, LegacyCommandConfig } from '../../types';
-import { computeChecksum, type ChecksumKind } from './checksum';
+import { computeChecksum } from './checksum';
 import { parseHex, packField } from './commandParser';
 import { concatChunks } from './commandParser';
 

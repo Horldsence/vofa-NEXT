@@ -32,11 +32,11 @@ export function sendBindingValue(binding: WidgetBinding, value: number) {
       const protocolNode = state.rfNodes.find((n) => n.id === protocolId);
       const config = protocolNode?.data?.config as { kind?: string } | undefined;
       if (config?.kind === 'RawData') return;
-      state.sendWidgetValue(transportId, protocolId, binding, value);
+      void state.sendWidgetValue(transportId, protocolId, binding, value);
       return;
     }
     case 'Manual':
-      state.sendText(transportId, binding.params.template.replace(/\{value\}/g, String(value)));
+      void state.sendText(transportId, binding.params.template.replace(/\{value\}/g, String(value)));
       return;
   }
 }

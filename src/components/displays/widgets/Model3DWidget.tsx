@@ -182,7 +182,11 @@ function CustomModel({
   }, [path]);
 
   // 读文件失败 → 渲染期抛出才能被 ErrorBoundary 捕获
-  if (error) throw error;
+  if (error) {
+    throw error instanceof Error
+      ? error
+      : new Error(typeof error === 'string' ? error : 'Failed to load model');
+  }
   if (!url) return null;
   return <GltfScene url={url} rotation={rotation} />;
 }
@@ -231,8 +235,8 @@ class CustomModelBoundary extends Component<
 ///
 /// [TEMP-DISABLED] 自定义模型导入功能 — 此组件暂时未使用, 恢复时取消注释
  
-// @ts-ignore TS6133: unused function — re-enable when custom model import is restored
-function RenderedModel({
+// @ts-expect-error TS6133: unused function — re-enable when custom model import is restored
+function _RenderedModel({
   source,
   rotation,
   color,
@@ -310,7 +314,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
   //     - fs:allow-read-file capability + model3dModel* i18n 文案
   // [TEMP-DISABLED] 恢复时删除本行 + 改回: loadError && modelSource.kind === 'custom' ? ...
   // @ts-expect-error — effectiveSource temporarily forced to builtin-cube; remove this line when re-enabling
-  const effectiveSource: Model3DSource = { kind: 'builtin-cube' };
+  const _effectiveSource: Model3DSource = { kind: 'builtin-cube' };
 
   // 维护拖尾点队列 (Float32Array, 直接喂给 BufferGeometry) — 仅 trajectory / trajectory-attitude 模式累积
   const pointsRef = useRef<number[]>([]);

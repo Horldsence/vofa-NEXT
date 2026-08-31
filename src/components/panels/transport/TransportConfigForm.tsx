@@ -127,7 +127,7 @@ export function TransportConfigForm({ value, onChange, lang, protocolLabel }: Tr
           lang={lang}
           candleDevices={candleDevices}
           candleLoading={candleLoading}
-          refreshCandleDevices={refreshCandleDevices}
+          refreshCandleDevices={() => { void refreshCandleDevices(); }}
         />
       )}
     </div>

@@ -8,6 +8,7 @@ import { t, type Lang } from '../../../i18n';
 import type { DecoderBlock } from '../../../types';
 import { BLOCK_TYPE_CONFIG, blockSummary } from '../../displays/decoder/frameDecoderShared';
 import { BlockEditor } from '../../displays/decoder/FrameDecoderBlockEditor';
+import { activateOnKeyboard } from '../../../lib/utils/a11y';
 
 /// 协议 schema 编辑器可添加的块类型
 const PROTOCOL_BLOCK_TYPES = [
@@ -85,6 +86,9 @@ export function ProtocolBlocksEditor({ blocks, onChange, lang }: ProtocolBlocksE
             <div
               className="flex items-center gap-1 px-1 py-1 cursor-pointer select-none"
               onClick={() => toggleExpand(idx)}
+              onKeyDown={activateOnKeyboard}
+              role="button"
+              tabIndex={0}
             >
               <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-sm text-[9px] font-semibold uppercase tracking-wide flex-shrink-0 border ${cfg.badgeClass}`}>
                 {cfg.icon}

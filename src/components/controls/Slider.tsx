@@ -15,7 +15,7 @@ export function Slider({ widget, onRemove }: SliderProps) {
   const { label, min, max, step, binding } = widget.params;
   const value = useAppStore((s) => {
     const w = s.widgets.find((w) => w.params.id === widget.params.id);
-    if (w && w.kind === 'Slider') return w.params.default;
+    if (w?.kind === 'Slider') return w.params.default;
     return widget.params.default;
   });
   const updateWidget = useAppStore((s) => s.updateWidget);

@@ -5,7 +5,6 @@ import {
   type ScopeAxisConfig,
   type ScopeMeasurements,
   type ChannelAxisConfig,
-  type Coupling,
 } from '../../../types';
 import { AllTabContent } from '../widgets/AllTabContent';
 import { ChannelTabContent } from '../widgets/ChannelTabContent';

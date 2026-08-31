@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as ReactModule from 'react';
 
 // 捕获 startTransition 回调, 验证 store 动作确实经由 startTransition 延迟执行
 vi.mock('react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('react')>();
+  const actual = await importOriginal<typeof ReactModule>();
   return { ...actual, startTransition: vi.fn() };
 });
 
@@ -35,7 +36,7 @@ describe('transitionStore', () => {
     expect(useAppStore.getState().activeDataTabId).toBe('waveform-fixed');
 
     // 作用域执行后状态生效
-    transitionScope();
+    void transitionScope();
     expect(useAppStore.getState().activeDataTabId).toBe('can-tab');
   });
 
@@ -47,7 +48,7 @@ describe('transitionStore', () => {
     expect(startTransition).toHaveBeenCalledTimes(2);
 
     // 执行被捕获的 transition 作用域, 确认侧边栏动作仍正常生效
-    vi.mocked(startTransition).mock.calls[1][0]();
+    void vi.mocked(startTransition).mock.calls[1][0]();
     expect(useAppStore.getState().sidebarView).toBe('widgets');
     expect(useAppStore.getState().sidebarVisible).toBe(true);
   });

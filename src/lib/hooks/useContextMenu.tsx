@@ -56,15 +56,7 @@ export function useContextMenu(items: ContextMenuEntry[] | (() => ContextMenuEnt
 
       if (debug) {
         // 输出调试数据到控制台
-        console.log('[context-menu] debug', {
-          clientX: e.clientX,
-          clientY: e.clientY,
-          targetTag: tag,
-          targetClass: target.className,
-          targetId: target.id,
-          itemCount: resolved.length,
-          items: resolved,
-        });
+        console.info('[context-menu]', resolved);
       }
 
       const finalItems = withInspectElementIfDebug(resolved, lang);

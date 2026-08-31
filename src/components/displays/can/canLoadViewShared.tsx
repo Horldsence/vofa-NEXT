@@ -76,7 +76,7 @@ export function IdLoadDistribution({
   onSelectId: (id: number, extended: boolean) => void;
 }) {
   const lang = useAppStore.getState().lang;
-  const perId = snapshot?.per_id ?? [];
+  const perId = useMemo(() => snapshot?.per_id ?? [], [snapshot?.per_id]);
   const maxBits = perId.length > 0 ? perId[0].total_bits : 1;
 
   const totalBits = useMemo(() => perId.reduce((sum, s) => sum + s.total_bits, 0), [perId]);
