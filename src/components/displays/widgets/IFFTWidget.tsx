@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
+import { useNumericOutput } from '../../../lib/hooks/useNumericPort';
 import { useAppStore } from '../../../store/appStore';
 import { t } from '../../../i18n';
 
@@ -22,7 +23,7 @@ interface IFFTWidgetProps {
 export const IFFTWidget = memo(function IFFTWidget({ widget, onEdit }: IFFTWidgetProps) {
   const { id } = widget.params;
   // 输出端口值 (时域) — 由后端图编译逐帧播放
-  const out = useAppStore((s) => s.graphOutputs[id]?.out0 ?? 0);
+  const out = useNumericOutput(id, 'out0').latest?.value ?? 0;
   // 上游频域源 (spectrum 输入边指向的 FFT widget id)
   const edges = useAppStore((s) => s.rfEdges);
   const widgets = useAppStore((s) => s.widgets);

@@ -183,7 +183,7 @@ function SharedYControls({
 }) {
   const unit = yUnit ?? '';
   // 共用 Y: 所有通道共享 channels[0] 的 vPerDiv/position
-  const shared = channels[0] ?? { vPerDiv: 1, position: 0, show: true, coupling: 'DC' as Coupling };
+  const shared = channels[0] ?? { vPerDiv: 1, position: 0, show: true, coupling: 'DC' };
   return (
     <>
       {/* 共用 V/div 旋钮 + 下拉 (操作 channels[0], 影响所有通道) */}

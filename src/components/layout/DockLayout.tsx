@@ -47,7 +47,7 @@ function findCardPreview(
   target: DropTarget,
   parent: { dir: 'row' | 'col'; rect: PctRect } | null
 ): PctRect | null {
-  const edge = target.edge as SnapEdge;
+  const edge = target.edge;
   if (node.type === 'card') {
     if (node.cardId !== target.cardId) return null;
     if (parent && parent.dir === edgeDir(edge)) {

@@ -22,7 +22,7 @@ import { t } from '../../../i18n';
 import type { Edge } from '@xyflow/react';
 
 /// Add / Modify Edge 模态框状态
-type EdgeModalState = {
+interface EdgeModalState {
   open: boolean;
   mode: 'add' | 'modify';
   edge?: HirEdgeView;
@@ -31,7 +31,7 @@ type EdgeModalState = {
   sourceHandle: string;
   targetNode: string;
   targetHandle: string;
-};
+}
 
 const EMPTY_MODAL: EdgeModalState = {
   open: false,

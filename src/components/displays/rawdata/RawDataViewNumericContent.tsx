@@ -5,7 +5,7 @@ import type { PortSampleStatus } from '../../../lib/data/sampleProtocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 interface Props {
-  numRows: Array<{ seq: number; ts: number; value: number }>;
+  numRows: { seq: number; ts: number; value: number }[];
   showTimestamp: boolean;
   lang: Lang;
   grouping: string;

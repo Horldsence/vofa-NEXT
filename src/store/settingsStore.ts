@@ -5,8 +5,9 @@
 
 import { create } from 'zustand';
 import { LazyStore } from '@tauri-apps/plugin-store';
+import type {
+  AppSettings} from '../settings/defaults';
 import {
-  AppSettings,
   DEFAULT_SETTINGS,
   deepMergeSettings,
 } from '../settings/defaults';
@@ -192,7 +193,7 @@ export function migrateCustomTheme(theme: ThemeDefinition): ThemeDefinition {
       tokens[token] = DARK_THEME.tokens[token];
     }
   }
-  return { ...theme, tokens: tokens as Record<ThemeToken, string> };
+  return { ...theme, tokens: tokens };
 }
 
 function migrateSettings(settings: AppSettings): AppSettings {

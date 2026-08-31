@@ -41,7 +41,7 @@ export function useCanvasNodeError(nodeId: string, tabId: string | undefined): s
     if (tabId !== undefined) {
       if (tabStates[tabId] !== 'error') return null;
       const nodes = tabErrorNodes[tabId];
-      if (!nodes || !nodes.includes(nodeId)) return null;
+      if (!nodes?.includes(nodeId)) return null;
       const report = tabErrors[tabId];
       if (!report) return null;
       return compileErrorMessage(report.error, nodeId);

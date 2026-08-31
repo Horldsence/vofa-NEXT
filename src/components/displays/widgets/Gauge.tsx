@@ -1,7 +1,8 @@
 import { memo, useEffect, useRef } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
-import { useGraphInput } from '../../../lib/hooks/useGraphInput';
+import { useNumericInput } from '../../../lib/hooks/useNumericPort';
+import { NumericPortStatus } from '../common/NumericPortStatus';
 
 interface GaugeProps {
   widget: Extract<WidgetConfig, { kind: 'Gauge' }>;
@@ -13,7 +14,8 @@ interface GaugeProps {
 /// 数据源: edge 连线 (后端图输出) 优先, 否则回退到 channel 参数
 export const Gauge = memo(function Gauge({ widget, onEdit }: GaugeProps) {
   const { min, max, unit, channel } = widget.params;
-  const value = useGraphInput(widget.params.id, 'value', channel, min);
+  const input = useNumericInput(widget.params.id, 'value', channel);
+  const value = input.latest?.value ?? min;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // 绘制半圆仪表盘
@@ -108,9 +110,10 @@ export const Gauge = memo(function Gauge({ widget, onEdit }: GaugeProps) {
       <div className="flex flex-col items-center gap-1">
         <canvas ref={canvasRef} style={{ width: '100%', height: 90 }} />
         <div className="font-mono text-lg font-semibold text-text-bright text-center">
-          {value.toFixed(2)}
+          {input.latest ? value.toFixed(2) : '—'}
           {unit && <span className="ml-1 text-[10px] text-text-secondary font-normal">{unit}</span>}
         </div>
+        <NumericPortStatus state={input} />
       </div>
     </WidgetCard>
   );

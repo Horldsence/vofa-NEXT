@@ -1,5 +1,5 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
-import uPlot from 'uplot';
+import type uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useAppStore } from '../../../store/appStore';
 import { useSettingsStore } from '../../../store/settingsStore';

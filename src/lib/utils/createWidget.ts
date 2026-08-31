@@ -151,8 +151,8 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           id,
           label: 'FFT',
           windowSize: 512,
-          windowType: 'Hann' as WindowType,
-          output: 'Magnitude' as SpectrumOutput,
+          windowType: 'Hann',
+          output: 'Magnitude',
           sampleRate: 1000,
         },
       };

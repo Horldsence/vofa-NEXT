@@ -89,11 +89,11 @@ describe('MenuBar (Windows 自定义菜单栏)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Zoom In/ }));
     expect(windowApiMock.setZoom).toHaveBeenCalledTimes(1);
-    const first = windowApiMock.setZoom.mock.calls[0][0] as number;
+    const first = windowApiMock.setZoom.mock.calls[0][0];
     // 再次放大 — 基于上一次结果步进
     fireEvent.click(screen.getByRole('button', { name: 'View' }));
     fireEvent.click(screen.getByRole('menuitem', { name: /Zoom In/ }));
-    const second = windowApiMock.setZoom.mock.calls[1][0] as number;
+    const second = windowApiMock.setZoom.mock.calls[1][0];
     expect(second).toBeCloseTo(first + 0.2, 5);
   });
 

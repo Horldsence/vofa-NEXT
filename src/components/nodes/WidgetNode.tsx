@@ -185,31 +185,31 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const renderContent = () => {
     switch (widget.kind) {
       case 'Knob':
-        return <Knob widget={widget as Extract<WidgetConfig, { kind: 'Knob' }>} onRemove={onRemove} />;
+        return <Knob widget={widget} onRemove={onRemove} />;
       case 'Slider':
-        return <Slider widget={widget as Extract<WidgetConfig, { kind: 'Slider' }>} onRemove={onRemove} />;
+        return <Slider widget={widget} onRemove={onRemove} />;
       case 'Button':
-        return <ButtonWidget widget={widget as Extract<WidgetConfig, { kind: 'Button' }>} onRemove={onRemove} />;
+        return <ButtonWidget widget={widget} onRemove={onRemove} />;
       case 'Radio':
-        return <Radio widget={widget as Extract<WidgetConfig, { kind: 'Radio' }>} onRemove={onRemove} />;
+        return <Radio widget={widget} onRemove={onRemove} />;
       case 'Checkbox':
-        return <Checkbox widget={widget as Extract<WidgetConfig, { kind: 'Checkbox' }>} onRemove={onRemove} />;
+        return <Checkbox widget={widget} onRemove={onRemove} />;
       case 'Label':
-        return <Label widget={widget as Extract<WidgetConfig, { kind: 'Label' }>} onRemove={onRemove} />;
+        return <Label widget={widget} onRemove={onRemove} />;
       case 'PieChart':
-        return <PieChart widget={widget as Extract<WidgetConfig, { kind: 'PieChart' }>} onRemove={onRemove} />;
+        return <PieChart widget={widget} onRemove={onRemove} />;
       case 'Image':
-        return <ImageViewer widget={widget as Extract<WidgetConfig, { kind: 'Image' }>} onRemove={onRemove} />;
+        return <ImageViewer widget={widget} onRemove={onRemove} />;
       case 'Gauge':
-        return <Gauge widget={widget as Extract<WidgetConfig, { kind: 'Gauge' }>} onRemove={onRemove} onEdit={handleEditCustom} />;
+        return <Gauge widget={widget} onRemove={onRemove} onEdit={handleEditCustom} />;
       case 'LED':
-        return <LED widget={widget as Extract<WidgetConfig, { kind: 'LED' }>} onRemove={onRemove} onEdit={handleEditCustom} />;
+        return <LED widget={widget} onRemove={onRemove} onEdit={handleEditCustom} />;
       case 'NumberDisplay':
-        return <NumberDisplay widget={widget as Extract<WidgetConfig, { kind: 'NumberDisplay' }>} onRemove={onRemove} onEdit={handleEditCustom} />;
+        return <NumberDisplay widget={widget} onRemove={onRemove} onEdit={handleEditCustom} />;
       case 'Custom':
         return (
           <CustomWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'Custom' }>}
+            widget={widget}
             onRemove={onRemove}
             onEdit={handleEditCustom}
             height={140}
@@ -218,7 +218,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       case 'Math':
         return (
           <MathWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'Math' }>}
+            widget={widget}
             onRemove={onRemove}
             onEdit={handleEditCustom}
           />
@@ -226,7 +226,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       case 'Filter':
         return (
           <FilterWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'Filter' }>}
+            widget={widget}
             onRemove={onRemove}
             onEdit={handleEditCustom}
           />
@@ -234,7 +234,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       case 'FFT':
         return (
           <FFTWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'FFT' }>}
+            widget={widget}
             onRemove={onRemove}
             onEdit={handleEditCustom}
           />
@@ -242,7 +242,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       case 'IFFT':
         return (
           <IFFTWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'IFFT' }>}
+            widget={widget}
             onRemove={onRemove}
             onEdit={handleEditCustom}
           />
@@ -250,28 +250,28 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
       case 'TextDisplay':
         return (
           <TextDisplay
-            widget={widget as Extract<WidgetConfig, { kind: 'TextDisplay' }>}
+            widget={widget}
             onRemove={onRemove}
           />
         );
       case 'TextInput':
         return (
           <TextInput
-            widget={widget as Extract<WidgetConfig, { kind: 'TextInput' }>}
+            widget={widget}
             onRemove={onRemove}
           />
         );
       case 'Str':
         return (
           <StrWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'Str' }>}
+            widget={widget}
             onRemove={onRemove}
           />
         );
       case 'TextOut':
         return (
           <TextOutWidget
-            widget={widget as Extract<WidgetConfig, { kind: 'TextOut' }>}
+            widget={widget}
             onRemove={onRemove}
           />
         );

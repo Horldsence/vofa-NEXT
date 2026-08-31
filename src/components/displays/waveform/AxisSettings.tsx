@@ -41,7 +41,7 @@ export function AxisSettings({
 
   // channels 数组与 channelCount 对齐
   const channels: ChannelAxisConfig[] = Array.from({ length: channelCount }, (_, i) =>
-    config.channels[i] ?? { vPerDiv: 1, position: 0, show: true, coupling: 'DC' as Coupling }
+    config.channels[i] ?? { vPerDiv: 1, position: 0, show: true, coupling: 'DC' }
   );
 
   const patch = (p: Partial<ScopeAxisConfig>) => onChange({ ...config, ...p });

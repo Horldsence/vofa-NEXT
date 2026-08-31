@@ -51,7 +51,7 @@ export const ProtocolNode = memo(function ProtocolNode({ id, data }: NodeProps) 
   // 端口数/命名变化 → 通知 React Flow 重测 handle 位置
   useEffect(() => {
     updateNodeInternals(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [updateNodeInternals, id, portsKey]);
 
   const connectedHandles = new Set<string>();

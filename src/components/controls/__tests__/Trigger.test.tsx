@@ -3,10 +3,10 @@ import { render, fireEvent, screen } from '@testing-library/react';
 
 // 共享 mock 状态
 const mockState = vi.hoisted(() => ({
-  updateWidgetCalls: [] as Array<{ id: string; widget: unknown }>,
+  updateWidgetCalls: [] as { id: string; widget: unknown }[],
   graphInputValue: 0,
   // 后端图输出快照 (value/matched 走数值平面)
-  graphOutputs: {} as Record<string, Record<string, number>>,
+  graphOutputs: {},
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -76,7 +76,7 @@ describe('Trigger widget', () => {
     render(<Trigger widget={makeWidget()} onRemove={NOOP} />);
     fireEvent.click(screen.getByText('自动'));
     expect(mockState.updateWidgetCalls.length).toBeGreaterThan(0);
-    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as Array<{ params: { mode: string } }>;
+    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as { params: { mode: string } }[];
     expect(calls.some((c) => c.params.mode === 'auto')).toBe(true);
   });
 
@@ -85,7 +85,7 @@ describe('Trigger widget', () => {
     const addButtons = screen.getAllByRole('button', { name: /正则/ });
     fireEvent.click(addButtons[0]);
     expect(mockState.updateWidgetCalls.length).toBeGreaterThan(0);
-    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as Array<{ params: { rules: Array<{ matchType: string }> } }>;
+    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as { params: { rules: { matchType: string }[] } }[];
     expect(calls.some((c) => c.params.rules.some((r) => r.matchType === 'regex'))).toBe(true);
   });
 
@@ -99,7 +99,7 @@ describe('Trigger widget', () => {
     const removeButtons = screen.getAllByTitle('删除');
     expect(removeButtons.length).toBe(2);
     fireEvent.click(removeButtons[0]);
-    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as Array<{ params: { rules: Array<{ id: string }> } }>;
+    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as { params: { rules: { id: string }[] } }[];
     // 删除后某次 updateWidget 调用里 rules 数组只剩 1 个
     expect(calls.some((c) => c.params.rules.length === 1 && c.params.rules[0]?.id === 'r2')).toBe(true);
   });
@@ -108,7 +108,7 @@ describe('Trigger widget', () => {
     render(<Trigger widget={makeWidget({ command: 'HELLO' })} onRemove={NOOP} />);
     const textarea = screen.getByPlaceholderText(/GET_TEMP/i);
     fireEvent.change(textarea, { target: { value: 'PING' } });
-    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as Array<{ params: { command: string } }>;
+    const calls = mockState.updateWidgetCalls.map((c) => c.widget) as { params: { command: string } }[];
     expect(calls.some((c) => c.params.command === 'PING')).toBe(true);
   });
 

@@ -87,7 +87,7 @@ describe('appExport 拆分备份', () => {
       rfEdges: [],
       rawDataViewPrefs: {},
     };
-    const parsed = parseSnapshot(serializeSnapshot(v1 as never));
+    const parsed = parseSnapshot(serializeSnapshot(v1));
     expect(parsed.version).toBe(3);
     expect(parsed.dockRoot).toBeUndefined();
     // 单例配置迁移为一对全局节点 + rx→in 字节边

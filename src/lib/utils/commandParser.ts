@@ -209,7 +209,7 @@ export function concatChunks(chunks: Uint8Array[]): Uint8Array {
 }
 
 /// 字节数组转 HEX 字符串 (用于预览显示)
-export function bytesToHex(bytes: Uint8Array, separator: string = ' '): string {
+export function bytesToHex(bytes: Uint8Array, separator = ' '): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, '0').toUpperCase())
     .join(separator);

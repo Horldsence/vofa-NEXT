@@ -21,11 +21,11 @@ export interface NodeDerived {
 
 /// 与后端 `cmd_graph::GraphDerived` 同形 (前端不消费 nodeId, 仅按 nodeId 索引)
 export interface GraphDerivedPayload {
-  nodes: Array<{
+  nodes: {
     node_id: string;
     ports: NodeDerivedPort[];
     effective_channels?: number | null;
-  }>;
+  }[];
   /// 提交成功后的全局图版本号 (前端下次提交作为 base_version 冲突检测基线)
   version?: number;
 }

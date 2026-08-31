@@ -4,7 +4,8 @@ import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
 import { STR_OP_PORTS } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
-import { useGraphInputs, useStringInputs } from '../../../lib/hooks/useGraphInput';
+import { useStringInputs } from '../../../lib/hooks/useGraphInput';
+import { useNumericInputs, useNumericOutput } from '../../../lib/hooks/useNumericPort';
 import { isPortConnected } from '../../../lib/utils/stringPorts';
 import { t } from '../../../i18n';
 
@@ -48,14 +49,15 @@ export const StrWidget = memo(function StrWidget({ widget }: StrWidgetProps) {
   const isStringOut = meta.outputDomain === 'string';
   // 结果预览: string 域读字符串平面, time 域读数值平面 (窄订阅, 只取本节点 result 口)
   const strResult = useAppStore((s) => (isStringOut ? s.customTextOutputs[id]?.result ?? '' : ''));
-  const numResult = useAppStore((s) => (isStringOut ? 0 : s.graphOutputs[id]?.result ?? 0));
+  const numOutput = useNumericOutput(id, 'result');
+  const numResult = isStringOut ? 0 : (numOutput.latest?.value ?? 0);
 
   const strPorts = meta.inputs.filter((p) => p.domain === 'string');
   const numPorts = meta.inputs.filter((p) => p.domain === 'time');
 
   // 字符串端口当前值 (边解析读上游); 数值端口上游实时值 (内联框禁用时展示)
   const strInputs = useStringInputs(id, strPorts.map((p) => p.id));
-  const numInputs = useGraphInputs(id, numPorts.map((p) => p.id), 0);
+  const numInputs = useNumericInputs(id, numPorts.map((p) => p.id));
 
   // 数值端口已连接集合 — 内联框启用/禁用判定
   const numConnected = new Map(numPorts.map((p) => [p.id, isPortConnected(edges, id, p.id)]));
@@ -134,13 +136,13 @@ export const StrWidget = memo(function StrWidget({ widget }: StrWidgetProps) {
                     min={0}
                     step={1}
                     disabled={connected}
-                    value={connected ? numInputs[p.id] : widget.params[p.id as 'pos' | 'len' | 'size']}
+                    value={connected ? (numInputs[p.id]?.latest?.value ?? 0) : widget.params[p.id as 'pos' | 'len' | 'size']}
                     onChange={(e) => handleInlineChange(p.id, e.target.value)}
                     title={connected ? t(lang, labelKey) : undefined}
                     className="w-16 px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono text-right focus:outline-none focus:border-accent disabled:opacity-60 disabled:cursor-default"
                   />
                 ) : (
-                  <span className="text-text-secondary font-mono">{numInputs[p.id]}</span>
+                  <span className="text-text-secondary font-mono">{numInputs[p.id]?.latest?.value ?? '—'}</span>
                 )}
               </div>
             );

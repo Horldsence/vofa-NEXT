@@ -58,7 +58,7 @@ function squarePointsBuilder(): uPlot.Series.Points.PathBuilder {
       fill.rect(x - half, y - half, half * 2, half * 2);
     };
     if (filtIdxs) {
-      (filtIdxs as number[]).forEach(draw);
+      (filtIdxs).forEach(draw);
     } else {
       for (let pi = idx0; pi <= idx1; pi++) draw(pi);
     }

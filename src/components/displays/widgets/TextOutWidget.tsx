@@ -12,7 +12,7 @@ interface TextOutWidgetProps {
   onRemove: () => void;
 }
 
-const NEWLINE_OPTIONS: Array<{ value: 'none' | 'lf' | 'crlf' | 'cr'; key: string }> = [
+const NEWLINE_OPTIONS: { value: 'none' | 'lf' | 'crlf' | 'cr'; key: string }[] = [
   { value: 'none', key: 'textOutNlNone' },
   { value: 'lf', key: 'textOutNlLf' },
   { value: 'crlf', key: 'textOutNlCrlf' },

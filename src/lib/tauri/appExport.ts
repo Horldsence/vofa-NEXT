@@ -294,7 +294,7 @@ export function migrateSnapshotToV3(snap: AppSnapshot): AppSnapshot {
       position: { x: 40, y: 40 },
       data: { global: true, config: snap.transport ?? DEFAULT_SERIAL, label: 'Transport' },
       selected: false,
-    } as Node);
+    });
   }
   if (!protocolId) {
     protocolId = MIGRATED_PROTOCOL_ID;

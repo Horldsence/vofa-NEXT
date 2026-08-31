@@ -1,4 +1,5 @@
-import { invoke, Channel } from '@tauri-apps/api/core';
+import type { Channel } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import type {
   AiAdapterInfo,
   AiChatEvent,
@@ -85,12 +86,12 @@ export interface WorkspaceSnapshotPayload {
   version: number;
   tabs: TabMetaPayload[];
   data_tabs: DataTabMetaPayload[];
-  graphs: Array<{
+  graphs: {
     tab_id: string;
     nodes: NodeDef[];
     edges: GraphEdge[];
     widgets: WidgetRecordPayload[];
-  }>;
+  }[];
   positions: Record<string, PositionPayload>;
 }
 

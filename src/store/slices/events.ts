@@ -1,7 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
-  subscribeGraphOutputs,
-  subscribeCustomInputs,
   subscribeSpectrum,
   subscribeStringOutputs,
 } from '../../lib/buffers/graphSubscription';
@@ -21,9 +19,7 @@ import type { ConnectionState, TransportStats } from '../../types';
 import { EMPTY_NODE_STATS } from './connection';
 
 let unlistenFns: UnlistenFn[] = [];
-let graphOutputSub: { cancel: () => void } | null = null;
 let textOutputSub: { cancel: () => void } | null = null;
-let customInputSub: { cancel: () => void } | null = null;
 let spectrumSub: { cancel: () => void } | null = null;
 let canFramesSub: { cancel: () => void } | null = null;
 let logicSamplesSub: { cancel: () => void } | null = null;
@@ -33,7 +29,7 @@ let metaStoreUnsub: (() => void) | null = null;
 
 /// RAF 合批器: Channel 高频推送先写入模块级缓存,
 /// 只在 RAF 回调中更新一次 zustand store (约 16ms 一次, 而非每条消息一次)。
-/// 用于 graphOutputs / customInputs / spectrumResults 三条高频路径。
+/// 用于字符串/频谱等仍采用 latest-value JSON 快照的路径。
 interface RafCoalescer<T> {
   push: (value: T) => void;
   cancel: () => void;
@@ -107,7 +103,7 @@ function parseGraphDerivedEvent(payload: unknown): import('./derived').GraphDeri
     payload &&
     typeof payload === 'object' &&
     'nodes' in payload &&
-    Array.isArray((payload as { nodes: unknown }).nodes)
+    Array.isArray((payload).nodes)
   ) {
     return payload as import('./derived').GraphDerivedPayload;
   }
@@ -268,28 +264,12 @@ export function createEventSlice(set: any, get: any): EventSlice {
         unlistenSource,
       ];
 
-      const graphCoalescer = makeRafCoalescer<{ values: Record<string, Record<string, number>>; tick: number }>(
-        (v) => set({ graphOutputs: v.values, graphOutputsTick: v.tick })
-      );
-      const customCoalescer = makeRafCoalescer<Record<string, Record<string, number>>>(
-        (v) => set({ customInputs: v })
-      );
       const spectrumCoalescer = makeRafCoalescer<Record<string, unknown>>(
         (v) => set({ spectrumResults: v })
       );
       const textOutputCoalescer = makeRafCoalescer<Record<string, unknown>>(
         (v) => set({ customTextOutputs: v })
       );
-
-      if (graphOutputSub) graphOutputSub.cancel();
-      graphOutputSub = subscribeGraphOutputs((snapshot) => {
-        graphCoalescer.push({ values: snapshot.values, tick: snapshot.tick });
-      });
-
-      if (customInputSub) customInputSub.cancel();
-      customInputSub = subscribeCustomInputs((batch) => {
-        customCoalescer.push(batch.inputs);
-      });
 
       if (textOutputSub) textOutputSub.cancel();
       textOutputSub = subscribeStringOutputs((snapshot) => {
@@ -356,8 +336,6 @@ export function createEventSlice(set: any, get: any): EventSlice {
       return () => {
         unlistenFns.forEach((fn) => fn());
         unlistenFns = [];
-        graphCoalescer.cancel();
-        customCoalescer.cancel();
         spectrumCoalescer.cancel();
         cleanupSourceManagers();
         if (storeUnsub) {
@@ -367,14 +345,6 @@ export function createEventSlice(set: any, get: any): EventSlice {
         if (metaStoreUnsub) {
           metaStoreUnsub();
           metaStoreUnsub = null;
-        }
-        if (graphOutputSub) {
-          graphOutputSub.cancel();
-          graphOutputSub = null;
-        }
-        if (customInputSub) {
-          customInputSub.cancel();
-          customInputSub = null;
         }
         if (textOutputSub) {
           textOutputSub.cancel();

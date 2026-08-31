@@ -1,6 +1,6 @@
-import { memo, useMemo, useRef, useEffect } from 'react';
+import { memo, useMemo, useRef, useEffect, useState } from 'react';
 import { useAppStore } from '../../../store/appStore';
-import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
+import { useNumericHistory } from '../../../lib/hooks/useNumericPort';
 import { t } from '../../../i18n';
 import type { WidgetConfig, LoopbackResult } from '../../../types';
 
@@ -32,35 +32,42 @@ export const TableView = memo(function TableView({ widget, loopbackHistory }: Ta
     () => params.columns.map((c) => c.portName),
     [params.columns]
   );
-  const graphInputs = useGraphInputs(params.id, portNames, 0);
+  const graphInputs = useNumericHistory(params.id, portNames);
 
   // 表格行历史 (graphInputs 变化时追加)
-  const rowsRef = useRef<Array<{ ts: number; values: number[] }>>([]);
+  const [rows, setRows] = useState<{ ts: number; values: number[] }[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // 监听 graphInputs 变化, 追加新行
-  const prevInputsRef = useRef<string>('');
-  const currentInputs = portNames.map((p) => graphInputs[p] ?? 0).join(',');
-  if (currentInputs !== prevInputsRef.current) {
-    prevInputsRef.current = currentInputs;
-    const values = portNames.map((p) => graphInputs[p] ?? 0);
-    rowsRef.current.push({ ts: Date.now(), values });
-    // 裁剪
-    if (rowsRef.current.length > params.maxRows) {
-      rowsRef.current = rowsRef.current.slice(-params.maxRows);
-    }
-  }
+  // 以真实样本序号/时间戳驱动追加；状态更新不伪造表格行，且不在 render 中修改 ref。
+  const sampleSignature = portNames
+    .map((port) => `${port}:${graphInputs[port]?.latest?.seq ?? ''}`)
+    .join('|');
+  useEffect(() => {
+    const latest = portNames
+      .map((port) => graphInputs[port]?.latest)
+      .filter((sample) => sample !== null && sample !== undefined);
+    if (latest.length === 0) return;
+    const ts = Math.max(...latest.map((sample) => sample.ts));
+    const values = portNames.map((port) => graphInputs[port]?.latest?.value ?? 0);
+    setRows((previous) => {
+      const last = previous[previous.length - 1];
+      if (last?.ts === ts && last.values.every((value, index) => value === values[index])) {
+        return previous;
+      }
+      return [...previous, { ts, values }].slice(-params.maxRows);
+    });
+  }, [sampleSignature, params.maxRows]);
 
   // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [rowsRef.current.length]);
+  }, [rows.length]);
 
   // 合并 graph 行和回环历史行
   const allRows = useMemo(() => {
-    const graphRows = rowsRef.current.map((r) => ({
+    const graphRows = rows.map((r) => ({
       ts: r.ts,
       values: r.values,
       isLoopback: false,
@@ -76,7 +83,7 @@ export const TableView = memo(function TableView({ widget, loopbackHistory }: Ta
     }));
     // graphRows 先, loopbackRows 后
     return [...graphRows, ...loopRows].slice(-params.maxRows);
-  }, [rowsRef.current.length, loopbackHistory]);
+  }, [rows, loopbackHistory, params.maxRows]);
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);

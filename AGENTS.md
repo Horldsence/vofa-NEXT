@@ -12,11 +12,18 @@ The Rust Cargo workspace is rooted at `src-tauri/`. Startup code is in `src-taur
 - `pnpm dev` starts the Vite frontend only.
 - `pnpm tauri dev` runs the complete desktop application locally.
 - `pnpm typecheck` performs strict TypeScript checking.
+- `pnpm lint` runs ESLint over the workspace (flat config, see `eslint.config.js`).
+- `pnpm lint:fix` runs ESLint with `--fix` to auto-apply safe fixes.
+- `pnpm lint:ci` runs ESLint with `--max-warnings 0`; reserved for the day the lint baseline hits zero.
 - `pnpm test` runs the Vitest suite once; `pnpm test:watch` supports iteration.
 - `pnpm build` type-checks and produces the frontend bundle.
 - `cd src-tauri && cargo test --workspace` runs all Rust tests.
 - `cd src-tauri && cargo clippy --workspace --all-targets` enforces backend lint policy.
 - `cd src-tauri && cargo fmt --check` verifies Rust formatting.
+
+## Lint Baseline
+
+ESLint was introduced with the strict `recommended-type-checked` + `stylistic-type-checked` presets from `typescript-eslint`, plus the React / React Hooks / React Refresh / JSX a11y plugin stacks. The current **baseline** (informational only, does not block PRs) is **1459 lint issues + 17 typecheck errors**, mostly from pre-existing `any` usage that fans out into `no-unsafe-*` warnings, plus a handful of test stubs and a few `@ts-ignore` / `@ts-expect-error` cases. The `.github/workflows/lint.yml` job runs `pnpm lint` and `pnpm typecheck` with `continue-on-error: true`; once the baseline is cleared, remove the `continue-on-error` flags and switch to `pnpm lint:ci` so CI becomes a real gate.
 
 ## Coding Style & Naming Conventions
 

@@ -231,7 +231,7 @@ export function CanFrameList() {
   const copySelected = useCallback(async () => {
     const indices = selection.selectedSorted;
     if (indices.length === 0) return;
-    const selected = indices.map((i) => frames[i]).filter(Boolean) as CanFrame[];
+    const selected = indices.map((i) => frames[i]).filter(Boolean);
     const text = framesToCsv(selected);
     const ok = await writeTextToClipboard(text);
     if (ok) {

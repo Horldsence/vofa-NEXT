@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach } from 'vitest';
 import { tauriMock } from '../../test/setup';
 import { subscribeDisplay } from '../buffers/shardedSubscription';
 
-type Batch = { seq: number; tag: string };
+interface Batch { seq: number; tag: string }
 
 beforeEach(() => {
   tauriMock.invoke.mockReset();

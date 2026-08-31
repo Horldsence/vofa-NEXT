@@ -125,7 +125,7 @@ export function computeFrameBytes(
           const prev = concatChunks(chunks);
           chunk = new Uint8Array(computeChecksum(
             prev,
-            (block.checksum ?? 'sum8') as ChecksumKind,
+            (block.checksum ?? 'sum8'),
             block.checksum === 'custom' ? block.customScript : undefined
           ));
           break;

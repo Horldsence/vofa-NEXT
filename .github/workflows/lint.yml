@@ -1,0 +1,47 @@
+name: Lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: 22
+
+jobs:
+  lint:
+    name: ESLint + TypeScript
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 现存 1459 条 lint + 17 条 typecheck 违规作为基线展示,先不挡合入。
+      # 等基线归零(后续 PR 增量收)后,把 continue-on-error 摘掉,让 CI 真正成为门禁。
+      - name: Lint (informational, baseline)
+        continue-on-error: true
+        run: pnpm lint
+
+      - name: Type check (informational, baseline)
+        continue-on-error: true
+        run: pnpm typecheck

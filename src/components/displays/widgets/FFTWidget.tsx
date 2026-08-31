@@ -4,7 +4,7 @@ import { WidgetCard } from '../../ui/WidgetCard';
 import { chipClass } from '../../ui/chip';
 import type { WidgetConfig, WindowType, SpectrumOutput } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
-import { useGraphInput } from '../../../lib/hooks/useGraphInput';
+import { useNumericInput } from '../../../lib/hooks/useNumericPort';
 import { t } from '../../../i18n';
 
 interface FFTWidgetProps {
@@ -47,7 +47,7 @@ export const FFTWidget = memo(function FFTWidget({ widget, onEdit }: FFTWidgetPr
   const [showSettings, setShowSettings] = useState(false);
 
   // 输入端口值 (时域) — 用于显示
-  const inputValue = useGraphInput(id, 'in0', null, 0);
+  const inputValue = useNumericInput(id, 'in0').latest?.value ?? 0;
 
   const handleChange = <K extends 'windowSize' | 'windowType' | 'output' | 'sampleRate'>(
     field: K,

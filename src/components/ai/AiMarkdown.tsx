@@ -52,10 +52,10 @@ function CodeBlock({ lang, raw, children }: { lang: string; raw: string; childre
 const components: Components = {
   pre: ({ children, node }) => {
     // hast 结构: <pre><code class="language-x hljs">…</code></pre>
-    const codeEl = (node as { children?: Array<{ properties?: { className?: unknown } }> } | undefined)
+    const codeEl = (node as { children?: { properties?: { className?: unknown } }[] } | undefined)
       ?.children?.[0];
     const classes = Array.isArray(codeEl?.properties?.className)
-      ? (codeEl!.properties!.className as string[]).join(' ')
+      ? (codeEl.properties.className as string[]).join(' ')
       : '';
     const lang = /language-([\w-]+)/.exec(classes)?.[1] ?? '';
     return (

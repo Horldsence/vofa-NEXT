@@ -152,7 +152,7 @@ export function createDefaultScopeConfig(channelCount = 4): ScopeAxisConfig {
       vPerDiv: 1,        // 1V/div
       position: 0,
       show: true,
-      coupling: 'DC' as Coupling,
+      coupling: 'DC',
       render: { ...DEFAULT_RENDER },
     })),
     grid: true,
@@ -179,7 +179,7 @@ export function getEffectiveChannel(
     vPerDiv: 1,
     position: 0,
     show: true,
-    coupling: 'DC' as Coupling,
+    coupling: 'DC',
     render: { ...DEFAULT_RENDER },
   };
   const own = cfg.channels[idx] ?? fallback;

@@ -11,7 +11,7 @@ const MAX_PREVIEW_ROWS = 500;
 export interface PortSampleSnapshot {
   version: number;
   status: PortSampleStatus;
-  rows: Array<{ seq: number; ts: number; value: number }>;
+  rows: { seq: number; ts: number; value: number }[];
   previewSkipped: number;
   retentionEvicted: number;
   ingressDropped: number;
@@ -105,10 +105,11 @@ function updateEntry(
 ) {
   const start = performance.now();
   if (batch) {
-    const rows =
-      batch.status === 'live'
-        ? [...entry.snapshot.rows, ...batch.rows]
-        : [...batch.rows];
+    // 状态事件与数值正交：disconnect/out-of-range 等空批次保留最后有效样本，
+    // 避免 UI 把断流误显示为 0。显式 clear/reset 仍会清空历史。
+    const rows = batch.rows.length > 0
+      ? [...entry.snapshot.rows, ...batch.rows]
+      : entry.snapshot.rows;
     entry.snapshot = {
       version: entry.snapshot.version + 1,
       status: batch.status,
@@ -142,7 +143,7 @@ function normalizeBuffer(value: ArrayBuffer | Uint8Array): ArrayBuffer {
   return value.buffer.slice(
     value.byteOffset,
     value.byteOffset + value.byteLength,
-  ) as ArrayBuffer;
+  );
 }
 
 function dispatchPendingDecode(entry: Entry) {
@@ -201,7 +202,7 @@ function start(entry: Entry) {
   entry.channel = channel;
   channel.onmessage = (message) => {
     if (entry.generation !== generation || entry.channel !== channel) return;
-    const buffer = normalizeBuffer(message as ArrayBuffer | Uint8Array);
+    const buffer = normalizeBuffer(message);
     enqueueDecode(entry, { buffer, generation, receivedAt: performance.now() });
   };
   void invoke('subscribe_data', {

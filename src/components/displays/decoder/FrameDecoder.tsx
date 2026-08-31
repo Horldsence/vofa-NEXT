@@ -19,12 +19,13 @@ import { useAppStore } from '../../../store/appStore';
 import { api } from '../../../lib/tauri/tauri';
 import { t } from '../../../i18n';
 import { nanoid } from 'nanoid';
+import type {
+  HistoryEntry,
+  ExampleEntry} from './frameDecoderShared';
 import {
   BLOCK_TYPE_CONFIG,
   FRAME_DECODER_ADDABLE_TYPES,
   HISTORY_MAX,
-  HistoryEntry,
-  ExampleEntry,
   loadHistory,
   saveHistory,
   getOutputPortNames,
@@ -33,6 +34,7 @@ import {
 import { BlockEditor } from './FrameDecoderBlockEditor';
 import { LiveModePanel } from './FrameDecoderLivePanel';
 import { ManualModePanel } from './FrameDecoderManualPanel';
+import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
 
 interface FrameDecoderProps {
   widget: Extract<WidgetConfig, { kind: 'FrameDecoder' }>;
@@ -53,11 +55,19 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
   const { id, blocks, mode } = params;
   const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
-  const graphOutputs = useAppStore((s) => s.graphOutputs);
 
   // live 模式: 读取本 widget 的输出端口值
   const portNames = useMemo(() => getOutputPortNames(blocks), [blocks]);
-  const liveOutputs = graphOutputs[id] ?? {};
+  const liveStates = useNumericInputs(id, portNames);
+  const liveOutputs = useMemo(
+    () => Object.fromEntries(
+      portNames.flatMap((port) => {
+        const value = liveStates[port]?.latest?.value;
+        return value === undefined ? [] : [[port, value]];
+      }),
+    ),
+    [portNames, liveStates],
+  );
 
   // manual 模式状态
   const [format, setFormat] = useState<InputFormat>('hex');
@@ -143,7 +153,7 @@ export function FrameDecoder({ widget }: FrameDecoderProps) {
   const handleDragStart = (blockId: string) => (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', blockId);
-    const blockEl = (e.currentTarget as HTMLElement).closest('[data-block-id]') as HTMLElement | null;
+    const blockEl = (e.currentTarget as HTMLElement).closest('[data-block-id]');
     if (blockEl) {
       e.dataTransfer.setDragImage(blockEl, 12, 12);
     }

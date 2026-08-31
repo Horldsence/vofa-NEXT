@@ -207,7 +207,7 @@ function extractDraggedNode(state: Pick<DockState, 'root' | 'cards' | 'draggingT
   const { root, cards, draggingTab: d, draggingCardId } = state;
   if (d) {
     const origin = cards[d.fromCardId];
-    if (!origin || !origin.tabIds.includes(d.tabId)) return null;
+    if (!origin?.tabIds.includes(d.tabId)) return null;
     const originTabs = origin.tabIds.filter((id) => id !== d.tabId);
     const newCardId = nextId('card');
     const nextCards: Record<string, DockCard> = {
@@ -258,7 +258,7 @@ export const useDockStore = create<DockState>()(
       setActiveTab: (cardId, tabId) =>
         set((state) => {
           const card = state.cards[cardId];
-          if (!card || !card.tabIds.includes(tabId)) return state;
+          if (!card?.tabIds.includes(tabId)) return state;
           mirrorActiveTab(card.kind, tabId);
           return {
             cards: { ...state.cards, [cardId]: { ...card, activeTabId: tabId } },
@@ -333,7 +333,7 @@ export const useDockStore = create<DockState>()(
             if (!origin || origin.tabIds.length <= 1) return { draggingTab: null, dropTarget: null };
           }
           const extracted = extractDraggedNode(state);
-          if (!extracted || !extracted.root) return { draggingTab: null, draggingCardId: null, dropTarget: null };
+          if (!extracted?.root) return { draggingTab: null, draggingCardId: null, dropTarget: null };
           const root = insertAtEdge(extracted.root, targetCardId, edge, extracted.node);
           return {
             root,

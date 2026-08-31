@@ -13,7 +13,7 @@
 import { useCallback, useState } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Play, Radio } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
-import { useGraphInput } from '../../lib/hooks/useGraphInput';
+import { useNumericInput, useNumericOutput } from '../../lib/hooks/useNumericPort';
 import { t } from '../../i18n';
 import { nanoid } from 'nanoid';
 import type { TriggerConfig, TriggerMatchType, TriggerRule } from '../../types';
@@ -293,15 +293,15 @@ export function Trigger({ widget }: TriggerProps) {
 
   // 结果展示: 读后端图输出快照 (后端每帧求值, manual/auto 都由后端驱动)
   // value/matched 走数值平面; 后端尚未产出 (节点未进图) 时不显示结果区
-  const resultValue = useAppStore((s) => s.graphOutputs[id]?.value);
-  const resultMatched = useAppStore((s) => s.graphOutputs[id]?.matched);
+  const resultValue = useNumericOutput(id, 'value').latest?.value;
+  const resultMatched = useNumericOutput(id, 'matched').latest?.value;
   const lastResult: TriggerResultSnapshot | null =
     resultValue === undefined && resultMatched === undefined
       ? null
       : { value: resultValue ?? 0, matched: (resultMatched ?? 0) !== 0 };
 
   // 自动模式: 读取上游 trigger 端口 (仅展示; 边沿检测与匹配在后端)
-  const triggerValue = useGraphInput(id, 'trigger', null, 0);
+  const triggerValue = useNumericInput(id, 'trigger').latest?.value ?? 0;
 
   // 通用: 更新 widget params (注意保留其它字段)
   const updateParams = useCallback(

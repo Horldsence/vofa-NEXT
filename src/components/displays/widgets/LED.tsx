@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
-import { useGraphInput } from '../../../lib/hooks/useGraphInput';
+import { useNumericInput } from '../../../lib/hooks/useNumericPort';
+import { NumericPortStatus } from '../common/NumericPortStatus';
 
 interface LEDProps {
   widget: Extract<WidgetConfig, { kind: 'LED' }>;
@@ -13,7 +14,8 @@ interface LEDProps {
 /// 数据源: edge 连线 (后端图输出) 优先, 否则回退到 channel 参数
 export const LED = memo(function LED({ widget, onEdit }: LEDProps) {
   const { threshold, on_color, off_color, channel } = widget.params;
-  const value = useGraphInput(widget.params.id, 'value', channel, 0);
+  const input = useNumericInput(widget.params.id, 'value', channel);
+  const value = input.latest?.value ?? 0;
 
   const isOn = value >= threshold;
   const color = isOn ? on_color : off_color;
@@ -30,6 +32,7 @@ export const LED = memo(function LED({ widget, onEdit }: LEDProps) {
         />
         <div className="text-[10px] font-bold text-text-secondary tracking-[0.5px]">{isOn ? 'ON' : 'OFF'}</div>
         <div className="font-mono text-[10px] text-text-secondary">{value.toFixed(3)}</div>
+        <NumericPortStatus state={input} />
       </div>
     </WidgetCard>
   );

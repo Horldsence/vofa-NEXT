@@ -22,12 +22,13 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../store/appStore';
 import { t } from '../i18n';
+import type {
+  TOKEN_GROUPS} from '../settings/theme';
 import {
   BUILT_IN_THEMES,
   BUILT_IN_CSS_THEMES,
   DARK_THEME,
   LIGHT_THEME,
-  TOKEN_GROUPS,
   TOKEN_LABELS,
   THEME_TOKENS,
   applyTheme,
@@ -68,7 +69,7 @@ function toColorInputValue(value: string): string | null {
   const trimmed = value.trim();
   if (/^#[0-9a-fA-F]{6}$/.test(trimmed)) return trimmed;
   // 简单解析 rgb/rgba
-  const rgbMatch = trimmed.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+  const rgbMatch = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(trimmed);
   if (rgbMatch) {
     const r = Number(rgbMatch[1]).toString(16).padStart(2, '0');
     const g = Number(rgbMatch[2]).toString(16).padStart(2, '0');

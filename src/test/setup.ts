@@ -82,7 +82,7 @@ vi.stubGlobal(
       addEventListener: () => {},
       removeEventListener: () => {},
       dispatchEvent: () => false,
-    }) as unknown as MediaQueryList
+    })
 );
 
 /// jsdom 未实现 ResizeObserver — StatusBar 分级收缩 / 多个图表组件依赖。

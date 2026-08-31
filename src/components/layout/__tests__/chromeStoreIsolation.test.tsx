@@ -36,9 +36,9 @@ const CardTabsProbe = memo(function CardTabsProbe({ cardId }: { cardId: string }
   const card = useDockStore((s) => s.cards[cardId]);
   const kind = card?.kind ?? 'data';
   const cardTabIds = card?.tabIds ?? [];
-  const tabs: Array<{ id: string; name: string; type?: string; closable?: boolean }> = useAppStore(
+  const tabs: { id: string; name: string; type?: string; closable?: boolean }[] = useAppStore(
     useShallow(
-      ((s: AppStore): Array<{ id: string; name: string; type?: string; closable?: boolean }> =>
+      ((s: AppStore): { id: string; name: string; type?: string; closable?: boolean }[] =>
         kind === 'control'
           ? s.controlTabs.filter((tab) => cardTabIds.includes(tab.id))
           : s.dataTabs.filter((tab) => cardTabIds.includes(tab.id)))

@@ -4,7 +4,7 @@ export type PortSampleStatus =
 export interface DecodedSampleBatch {
   sequence: number;
   status: PortSampleStatus;
-  rows: Array<{ seq: number; ts: number; value: number }>;
+  rows: { seq: number; ts: number; value: number }[];
   previewSkipped: number;
   retentionEvicted: number;
   ingressDropped: number;
@@ -57,7 +57,7 @@ export function decodeSampleEnvelope(buffer: ArrayBuffer): DecodedSampleBatch {
     throw new Error('VNDP sample envelope has invalid lengths');
   }
 
-  const rows: Array<{ seq: number; ts: number; value: number }> = [];
+  const rows: { seq: number; ts: number; value: number }[] = [];
   const valuesOffset = headerLength + count * 8;
   const validityOffset = valuesOffset + count * 8;
   for (let i = 0; i < count; i++) {

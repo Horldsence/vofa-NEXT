@@ -1,11 +1,8 @@
 import type { SpectrumResult } from '../../types';
 
-/// 后端图评估状态 — 由 subscribeGraphOutputs / subscribeCustomInputs / subscribeSpectrum 推送
+/// 前端专用快照状态；连续数值端口由 useNumeric* Hooks 直接订阅 DataBus。
 export interface GraphStateSlice {
-  graphOutputs: Record<string, Record<string, number>>;
-  graphOutputsTick: number;
-  customInputs: Record<string, Record<string, number>>;
-  /// 字符串输出平面 (与 graphOutputs 平行) — 由 subscribeStringOutputs 推送
+  /// 字符串输出平面 — 由 subscribeStringOutputs 推送
   /// key: widgetId, value: portId -> string
   customTextOutputs: Record<string, Record<string, string>>;
   customTextOutputsTick: number;
@@ -18,9 +15,6 @@ export interface GraphStateSlice {
 
 export function createGraphStateSlice(): GraphStateSlice {
   return {
-    graphOutputs: {},
-    graphOutputsTick: 0,
-    customInputs: {},
     customTextOutputs: {},
     customTextOutputsTick: 0,
     spectrumResults: {},

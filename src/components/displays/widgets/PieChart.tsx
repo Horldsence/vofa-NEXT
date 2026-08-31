@@ -1,7 +1,7 @@
 import { memo, useState, useEffect, useRef } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
-import { waveformWindow } from '../../../lib/buffers/dataBuffer';
+import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
 
 interface PieChartProps {
   widget: Extract<WidgetConfig, { kind: 'PieChart' }>;
@@ -20,22 +20,12 @@ const COLORS = [
 /// 紧凑模式: 固定 120x120 Canvas + 下方图例 (节点编辑器内)
 export const PieChart = memo(function PieChart({ widget, full = false }: PieChartProps) {
   const { segments, channels } = widget.params;
-  const [values, setValues] = useState<number[]>(channels.map(() => 0));
+  const portNames = segments.map((_, index) => `seg${index}`);
+  const inputs = useNumericInputs(widget.params.id, portNames, channels);
+  const values = portNames.map((port) => inputs[port]?.latest?.value ?? 0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // full 模式下跟踪容器尺寸以触发重绘
   const [size, setSize] = useState({ w: 0, h: 0 });
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const win = waveformWindow.get();
-      const next = channels.map((ch) => {
-        const chData = win.channels[ch];
-        return chData && chData.length > 0 ? chData[chData.length - 1] : 0;
-      });
-      setValues(next);
-    }, 100);
-    return () => clearInterval(interval);
-  }, [channels]);
 
   // full 模式: ResizeObserver 监听容器尺寸
   useEffect(() => {

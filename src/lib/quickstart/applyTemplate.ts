@@ -20,7 +20,7 @@ export type TemplateApplyMode = 'replace' | 'merge';
 
 /// 重映射 RawData 动态端口 id (`src:<sourceId>:<handle>`) 中的 sourceId
 function remapRawDataHandle(handle: string | undefined | null, idMap: Map<string, string>): string | undefined | null {
-  if (!handle || !handle.startsWith('src:')) return handle;
+  if (!handle?.startsWith('src:')) return handle;
   const m = /^src:([^:]+):(.*)$/.exec(handle);
   if (!m) return handle;
   const newSource = idMap.get(m[1]) ?? m[1];

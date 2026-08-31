@@ -42,7 +42,7 @@ function stubRect(el: HTMLElement, rect: Partial<DOMRect>) {
       y: 0,
       toJSON: () => ({}),
       ...rect,
-    }) as DOMRect;
+    });
 }
 
 function moveTo(x: number, y: number) {

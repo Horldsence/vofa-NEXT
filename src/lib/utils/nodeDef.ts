@@ -67,7 +67,7 @@ export type NodeKind =
         default_miss: number;
         default_miss_text: string;
         command: string;
-        rules: Array<{
+        rules: {
           id: string;
           pattern: string;
           match_type: 'exact' | 'prefix' | 'contains' | 'regex' | 'range' | 'glob';
@@ -76,7 +76,7 @@ export type NodeKind =
           output_value: number;
           output_text: string;
           enabled: boolean;
-        }>;
+        }[];
       };
     }
   | { kind: 'Sink' };

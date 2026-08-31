@@ -38,7 +38,7 @@ pub fn inject_protocol_sources(nodes: &[NodeDef], edges: &[Edge]) -> Vec<NodeDef
         if !emitted.insert(proto.id.clone()) {
             continue;
         }
-        let (channels, port_names) = protocol_output_spec(proto);
+        let (channels, port_names) = protocol_output_spec(proto, edges);
         sources.push(NodeDef {
             id: proto.id.clone(),
             tab_id: proto.tab_id.clone(),
@@ -56,7 +56,7 @@ pub fn inject_protocol_sources(nodes: &[NodeDef], edges: &[Edge]) -> Vec<NodeDef
 ///
 /// - custom schema: 端口名 = `ProtocolSchema::port_names()`, 通道数 = 端口数
 /// - preset: 端口名 = `protocol_source_port_names(None, channels)` (ch0..chN, RawData → 单 `str`)
-fn protocol_output_spec(node: &NodeDef) -> (usize, Vec<String>) {
+fn protocol_output_spec(node: &NodeDef, edges: &[Edge]) -> (usize, Vec<String>) {
     let kind = &node.kind;
     let NodeKind::Protocol { config, schema, .. } = kind else {
         return (0, Vec::new());
@@ -71,7 +71,18 @@ fn protocol_output_spec(node: &NodeDef) -> (usize, Vec<String>) {
             if matches!(config, ProtocolConfig::RawData) {
                 return (1, vec!["str".to_string()]);
             }
-            let n = channels_from_config(config);
+            let configured = channels_from_config(config);
+            // 自动通道协议不能在编译期固定成默认 4 路。画布已经通过 source
+            // handle 明确表达了实际引用的 chN，因此至少为最高被引用通道分配
+            // 槽位；运行期仍由真实帧宽度决定是否产生样本/越界状态。
+            let referenced = edges
+                .iter()
+                .filter(|edge| edge.source == node.id)
+                .filter_map(|edge| edge.source_handle.strip_prefix("ch"))
+                .filter_map(|index| index.parse::<usize>().ok())
+                .max()
+                .map_or(0, |index| index.saturating_add(1));
+            let n = configured.max(referenced);
             let names = protocol_source_port_names(None, n);
             (n, names)
         }
@@ -299,5 +310,27 @@ mod tests {
                 "ch3".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn preset_auto_channels_expand_to_highest_referenced_handle() {
+        let proto = protocol_node("p1", ProtocolConfig::JustFloat { channels: None }, None);
+        let widget = NodeDef {
+            id: "w1".into(),
+            tab_id: "tab1".into(),
+            kind: NodeKind::Sink,
+        };
+        let edges = vec![edge("p1", "ch7", "w1", "value")];
+        let sources = inject_protocol_sources(&[proto, widget], &edges);
+        let NodeKind::ProtocolSource {
+            channels,
+            port_names,
+            ..
+        } = &sources[0].kind
+        else {
+            panic!("expected ProtocolSource");
+        };
+        assert_eq!(*channels, 8);
+        assert_eq!(port_names.as_ref().unwrap().last().unwrap(), "ch7");
     }
 }

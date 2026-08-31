@@ -3,6 +3,7 @@ import { Settings2, AlertCircle } from 'lucide-react';
 import type { WidgetConfig } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { WidgetEmbeddedContext } from '../../ui/WidgetCard';
+import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
 
 /// 自定义 JS 控件渲染器
 ///
@@ -75,7 +76,7 @@ export function evalCustomWidgetDef(code: string): {
   error: string | null;
 } {
   try {
-    // eslint-disable-next-line no-new-func
+     
     const fn = new Function(`'use strict'; return (${code});`);
     const def = fn();
     if (!def || typeof def !== 'object') {
@@ -186,9 +187,6 @@ function buildSrcDoc(code: string, def: CustomWidgetDef): string {
 </html>`;
 }
 
-// 模块级空对象, 作为 customInputs 缺省 fallback — 保持引用稳定
-const EMPTY_INPUTS: Record<string, number> = {};
-
 export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height = 120 }: CustomWidgetProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -200,13 +198,15 @@ export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height 
   // 解析 def (用于 schema 展示)
   const { def, error: defError } = useMemo(() => evalCustomWidgetDef(widget.params.code), [widget.params.code]);
 
-  // 后端图评估桥接:
-  //   - customInputs[widgetId] 由后端 30 FPS 推送 (后端已解析 rfEdges, 收集本 widget 的输入)
-  //   - submitCustomOutput 用于将 iframe 的 ctx.send 回传到后端图
-  // 只订阅本 widget 的输入, 避免全局 customInputs 更新时所有 CustomWidget 重渲染
-  // 注意: fallback 必须用模块级常量 — 每次返回新 {} 会让 useSyncExternalStore
-  // 认为快照一直在变, 导致 "getSnapshot should be cached" 无限循环
-  const inputs = useAppStore((s) => s.customInputs[widget.params.id] ?? EMPTY_INPUTS);
+  // 自定义控件与内置控件共用按端口样本订阅；相同上游端口由 registry 共享 Channel。
+  const inputPorts = (def?.inputs ?? [{ id: 'value', label: 'value' }]).map((port) => port.id);
+  const inputStates = useNumericInputs(widget.params.id, inputPorts);
+  const inputs = useMemo(
+    () => Object.fromEntries(
+      inputPorts.map((port) => [port, inputStates[port]?.latest?.value ?? 0]),
+    ),
+    [inputPorts.join('\u0000'), inputStates],
+  );
   const submitCustomOutput = useAppStore((s) => s.submitCustomOutput);
 
   // 缓存最新 inputs / settings 到 ref, 供 sendUpdate 读取, 避免 callback 依赖频繁变化
@@ -249,7 +249,7 @@ export const CustomWidget = memo(function CustomWidget({ widget, onEdit, height 
   // 发送更新到 iframe — 输入值由后端推送 (无需前端解析 edges)
   const sendUpdate = useCallback(() => {
     const iframe = iframeRef.current;
-    if (!iframe || !iframe.contentWindow || !readyRef.current) return;
+    if (!iframe?.contentWindow || !readyRef.current) return;
     iframe.contentWindow.postMessage({
       source: 'custom-widget-parent',
       type: 'update',

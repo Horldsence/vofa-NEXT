@@ -45,9 +45,9 @@ export const DockCardFrame = memo(function DockCardFrame({ cardId }: { cardId: s
 
   // 本卡片承载的 Tab 列表 — 按 cardId 窄化订阅 (useShallow 顶层数组逐元素比较):
   // 其他卡片 Tab 的名称/列表变化时, 本卡片的重渲染被抑制
-  const tabs: Array<{ id: string; name: string; type?: string; closable?: boolean }> = useAppStore(
+  const tabs: { id: string; name: string; type?: string; closable?: boolean }[] = useAppStore(
     useShallow(
-      ((s: AppStore): Array<{ id: string; name: string; type?: string; closable?: boolean }> =>
+      ((s: AppStore): { id: string; name: string; type?: string; closable?: boolean }[] =>
         kind === 'control'
           ? s.controlTabs.filter((tab) => cardTabIds.includes(tab.id))
           : s.dataTabs.filter((tab) => cardTabIds.includes(tab.id)))

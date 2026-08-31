@@ -133,6 +133,32 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
         snap.values.clone_from(&combined);
     }
 
+    // Input / Custom / FrameDecoder 等事件驱动求值不经过 process_source_batch，
+    // 过去只刷新 latest-value 快照，导致已迁移到 DataBus 的显示节点永远等不到
+    // 派生样本。只发布非 ProtocolSource 输出，避免把缓存的协议末值伪造成新采样。
+    let event_timestamp = vofa_core::now_us();
+    for (node_id, ports) in &combined {
+        let is_protocol_source = graphs.values().any(|graph| {
+            matches!(
+                graph.value_def(node_id).map(|node| &node.kind),
+                Some(NodeKind::ProtocolSource { .. })
+            )
+        });
+        if is_protocol_source {
+            continue;
+        }
+        for (port, value) in ports {
+            let key = TopicKey::new(node_id, port);
+            if eval_state.data_bus.is_active(&key) {
+                eval_state.data_bus.publish_samples(
+                    key,
+                    Arc::from([event_timestamp]),
+                    Arc::from([f64::from(*value)]),
+                );
+            }
+        }
+    }
+
     // 更新后端字符串输出 (供 text_output_ticker 合并发布) —
     // 全量覆盖写: combined_str 覆盖所有图, 先物化到本地 map 再整体 swap,
     // 过期节点条目随 swap 清理 (同 snap.values 语义)

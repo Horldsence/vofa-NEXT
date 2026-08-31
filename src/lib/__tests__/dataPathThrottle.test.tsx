@@ -18,10 +18,10 @@ function installManualRaf() {
     const id = nextId++;
     queued.push({ id, cb });
     return id;
-  }) as typeof requestAnimationFrame;
+  });
   globalThis.cancelAnimationFrame = ((id: number) => {
     queued = queued.filter((q) => q.id !== id);
-  }) as typeof cancelAnimationFrame;
+  });
   const flush = () => {
     const items = queued.splice(0);
     for (const { cb } of items) cb(0);

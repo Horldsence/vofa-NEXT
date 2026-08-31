@@ -290,7 +290,7 @@ function isVersionConflictError(err: unknown): boolean {
     err !== null && typeof err === 'object'
       ? ((err as Record<string, unknown>).data as { current?: unknown } | null)
       : null;
-  if (data && data.current != null) return true;
+  if (data?.current != null) return true;
   return parseNodeError(err).message.includes('版本冲突');
 }
 
@@ -375,12 +375,12 @@ function jsonDeepEqual(a: unknown, b: unknown): boolean {
 /// 调用方以记录原样构造占位节点, 画布仍可见、边端点仍存在)
 export function widgetFromRecord(rec: WidgetRecordPayload): WidgetConfig | null {
   if (!(rec.kind in KNOWN_WIDGET_KINDS)) return null;
-  const params = (rec.params ?? {}) as Record<string, unknown>;
+  const params = (rec.params ?? {});
   if (rec.kind === 'Command') {
     return { kind: 'Command', params: normalizeCommandConfig(params as never) };
   }
   if (rec.kind === 'Model3D') {
-    return { kind: 'Model3D', params: normalizeModel3DConfig(params as never) };
+    return { kind: 'Model3D', params: normalizeModel3DConfig(params) };
   }
   return { kind: rec.kind, params } as unknown as WidgetConfig;
 }
@@ -392,7 +392,7 @@ export function widgetOrPlaceholder(rec: WidgetRecordPayload): WidgetConfig {
     widgetFromRecord(rec) ??
     ({
       kind: rec.kind,
-      params: (rec.params ?? {}) as Record<string, unknown>,
+      params: (rec.params ?? {}),
     } as unknown as WidgetConfig)
   );
 }

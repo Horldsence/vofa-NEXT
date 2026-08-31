@@ -13,7 +13,7 @@ import type {
   WidgetConfig,
 } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
-import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
+import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
 import {
   model3dAttitudePortIds,
   resolveModel3DRotation,
@@ -124,7 +124,7 @@ function AttitudeBox({
   }, [color]);
   // 颜色变化时更新材质
   useEffect(() => {
-    (edgesLine.material as THREE.LineBasicMaterial).color.set(color);
+    (edgesLine.material).color.set(color);
   }, [edgesLine, color]);
 
   return (
@@ -214,7 +214,7 @@ class CustomModelBoundary extends Component<
   }
 
   componentDidCatch(error: unknown) {
-    // eslint-disable-next-line no-console
+     
     console.warn('[Model3D] custom model load failed:', error);
     this.props.onError?.(error);
   }
@@ -230,7 +230,7 @@ class CustomModelBoundary extends Component<
 /// must be inside <Canvas>: RenderedModel consumes useGLTF (R3F hook)
 ///
 /// [TEMP-DISABLED] 自定义模型导入功能 — 此组件暂时未使用, 恢复时取消注释
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+ 
 // @ts-ignore TS6133: unused function — re-enable when custom model import is restored
 function RenderedModel({
   source,
@@ -285,7 +285,10 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
   const lang = useAppStore((s) => s.lang);
 
   const attitudePorts = model3dAttitudePortIds(attitudeInputMode);
-  const inputs = useGraphInputs(id, ['x', 'y', 'z', ...attitudePorts], 0);
+  const inputStates = useNumericInputs(id, ['x', 'y', 'z', ...attitudePorts]);
+  const inputs = Object.fromEntries(
+    Object.entries(inputStates).map(([port, state]) => [port, state.latest?.value ?? 0]),
+  );
   const x = inputs.x ?? 0;
   const y = inputs.y ?? 0;
   const z = inputs.z ?? 0;
@@ -560,7 +563,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
                   ['degrees', 'model3dAttitudeDegrees'],
                   ['radians', 'model3dAttitudeRadians'],
                   ['quaternion', 'model3dAttitudeQuaternion'],
-                ] as const satisfies ReadonlyArray<[Model3DAttitudeInputMode, string]>).map(([value, labelKey]) => (
+                ] as const satisfies readonly [Model3DAttitudeInputMode, string][]).map(([value, labelKey]) => (
                   <option key={value} value={value}>
                     {t(lang, labelKey)}
                   </option>

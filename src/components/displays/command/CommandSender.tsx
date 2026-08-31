@@ -2,7 +2,7 @@ import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import type { WidgetConfig, BlockType, CommandBlock, CommandConfig, CommandFrame } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { api } from '../../../lib/tauri/tauri';
-import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
+import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
 import { downstreamProtocolOf } from '../../../store/appStoreHelpers';
 import { bytesToHex } from '../../../lib/utils/commandParser';
 import {
@@ -198,7 +198,13 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
   // 输入端口 = 所有帧 var_ref 块并集 (与节点 Handle 派生一致)
   const portNames = useMemo(() => commandInputPortNames(params), [params]);
-  const graphInputs = useGraphInputs(id, portNames, 0);
+  const inputStates = useNumericInputs(id, portNames);
+  const graphInputs = useMemo(
+    () => Object.fromEntries(
+      portNames.map((port) => [port, inputStates[port]?.latest?.value ?? 0]),
+    ),
+    [portNames, inputStates],
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [lastSent, setLastSent] = useState<string | null>(null);
@@ -325,7 +331,7 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const handleDragStart = (blockId: string) => (e: React.DragEvent) => {
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', blockId);
-    const blockEl = (e.currentTarget as HTMLElement).closest('[data-block-id]') as HTMLElement | null;
+    const blockEl = (e.currentTarget as HTMLElement).closest('[data-block-id]');
     if (blockEl) {
       e.dataTransfer.setDragImage(blockEl, 12, 12);
     }

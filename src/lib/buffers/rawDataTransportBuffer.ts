@@ -1,4 +1,4 @@
-import { RawDataBuffer } from './dataBuffer';
+import type { RawDataBuffer } from './dataBuffer';
 import {
   subscribeRawData,
   subscribeRawDataFiltered,

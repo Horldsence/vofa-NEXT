@@ -53,6 +53,7 @@ export interface SliderConfig {
 export interface LabelConfig {
   id: string;
   text: string;
+  /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
   channel: number | null;
 }
 
@@ -70,6 +71,7 @@ export interface PieChartConfig {
   id: string;
   label: string;
   segments: string[];
+  /** @deprecated 旧工作区兼容；新节点通过 segN 输入边绑定。 */
   channels: number[];
 }
 
@@ -88,6 +90,7 @@ export interface GaugeConfig {
   min: number;
   max: number;
   unit: string;          // 单位后缀, 如 'V' / 'A' / ''
+  /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
   channel: number | null; // 绑定的输入通道 (null = 不绑定)
 }
 
@@ -98,6 +101,7 @@ export interface LEDConfig {
   threshold: number;     // 输入 >= threshold 视为 ON
   on_color: string;      // HEX, 如 '#89d185'
   off_color: string;     // HEX, 如 '#3c3c3c'
+  /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
   channel: number | null;
 }
 
@@ -107,6 +111,7 @@ export interface NumberDisplayConfig {
   label: string;
   unit: string;
   precision: number;     // 小数位数
+  /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
   channel: number | null;
 }
 

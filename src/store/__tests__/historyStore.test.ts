@@ -65,7 +65,7 @@ describe('historyStore 撤销/重做核心', () => {
     // Waveform 有数据窗口 Tab — addWidget 自动追加
     expect(app().dataTabs.length).toBe(tabsBefore + 1);
 
-    let hs = useHistoryStore.getState();
+    const hs = useHistoryStore.getState();
     expect(hs.entries).toHaveLength(2);
     expect(hs.index).toBe(1);
     expect(hs.canUndo).toBe(true);

@@ -106,7 +106,7 @@ function buildProtocolConfig(kind: string, config: unknown): ProtocolConfig {
       : {};
   if (kind === 'JustFloat' || kind === 'FireWater') {
     const channels = typeof c.channels === 'number' ? c.channels : null;
-    return { kind, channels } as ProtocolConfig;
+    return { kind, channels };
   }
   // RawData/Slcan/CandleLight/LogicDecode — 字段透传 (如 LogicDecode.decoder)
   return { kind, ...c } as unknown as ProtocolConfig;

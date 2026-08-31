@@ -102,7 +102,7 @@ export function lrc(data: Uint8Array): number[] {
 /// 沙箱限制: 仅能访问 bytes 参数, 不能访问 window/document/eval
 export function customChecksum(data: Uint8Array, script: string): number[] {
   try {
-    // eslint-disable-next-line no-new-func
+     
     const fn = new Function('bytes', script) as (bytes: number[]) => number[];
     const result = fn(Array.from(data));
     if (!Array.isArray(result)) {

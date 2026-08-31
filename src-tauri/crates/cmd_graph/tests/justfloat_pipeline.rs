@@ -9,7 +9,8 @@ use std::collections::HashMap;
 use app_state::AppState;
 use buffer_graph::Edge;
 use cmd_graph::apply_tab_graph;
-use node_kind::{NodeDef, NodeKind};
+use node_kind::{MathOp, NodeDef, NodeKind};
+use pipeline_bus::TopicKey;
 use pipeline_data_plane::data_plane::byte_router;
 use pipeline_data_plane::decoder_feed::DecoderFeedCache;
 use schema_types::ProtocolConfig;
@@ -46,7 +47,7 @@ fn sink_node(id: &str) -> NodeDef {
 }
 
 /// JustFloat 帧: 4 × f32 LE + 帧尾 [0x00, 0x00, 0x80, 0x7f]
-fn justfloat_frame(values: [f32; 4]) -> Vec<u8> {
+fn justfloat_frame(values: &[f32]) -> Vec<u8> {
     let mut data = Vec::new();
     for v in values {
         data.extend_from_slice(&v.to_le_bytes());
@@ -108,7 +109,7 @@ async fn justfloat_chain_decodes_frames_into_value_plane() {
     // 喂入 3 帧 JustFloat 数据
     let mut cache = DecoderFeedCache::new();
     for i in 0..3u32 {
-        let frame = justfloat_frame([i as f32 + 1.0, 2.0, 3.0, 4.0]);
+        let frame = justfloat_frame(&[i as f32 + 1.0, 2.0, 3.0, 4.0]);
         let summary = byte_router::route_bytes(
             &state.data_plane,
             None,
@@ -131,4 +132,88 @@ async fn justfloat_chain_decodes_frames_into_value_plane() {
         assert!(ports.contains_key(ch), "输出快照应含 {ch}, 实际: {ports:?}");
     }
     assert_eq!(ports["ch0"], 3.0, "ch0 应为最后一帧的第一个通道值");
+}
+
+#[tokio::test]
+async fn auto_channels_above_four_flow_through_math_topic() {
+    let state = AppState::new();
+    apply_tab_graph(
+        &state,
+        None,
+        "default".into(),
+        vec![
+            transport_node("transport-tp"),
+            protocol_node("protocol-jf"),
+            NodeDef {
+                id: "math-high".into(),
+                tab_id: "default".into(),
+                kind: NodeKind::Math {
+                    op: MathOp::Add,
+                    input_count: 1,
+                },
+            },
+            sink_node("number-high"),
+        ],
+        vec![
+            Edge {
+                id: "e-byte".into(),
+                source: "transport-tp".into(),
+                source_handle: "rx".into(),
+                target: "protocol-jf".into(),
+                target_handle: "in".into(),
+            },
+            Edge {
+                id: "e-high".into(),
+                source: "protocol-jf".into(),
+                source_handle: "ch7".into(),
+                target: "math-high".into(),
+                target_handle: "in0".into(),
+            },
+            Edge {
+                id: "e-display".into(),
+                source: "math-high".into(),
+                source_handle: "result".into(),
+                target: "number-high".into(),
+                target_handle: "value".into(),
+            },
+        ],
+        HashMap::new(),
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("自动通道图应编译");
+
+    let mut channel_rx = state
+        .data_plane
+        .eval
+        .data_bus
+        .subscribe(TopicKey::new("protocol-jf", "ch7"), 16)
+        .await
+        .expect("ch7 topic");
+    let mut math_rx = state
+        .data_plane
+        .eval
+        .data_bus
+        .subscribe(TopicKey::new("math-high", "result"), 16)
+        .await
+        .expect("math topic");
+
+    let mut cache = DecoderFeedCache::new();
+    let frame = justfloat_frame(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
+    byte_router::route_bytes(
+        &state.data_plane,
+        None,
+        "transport-tp",
+        &frame,
+        0,
+        &mut cache,
+    )
+    .await;
+
+    let channel_batch = channel_rx.recv().await.expect("ch7 sample");
+    let math_batch = math_rx.recv().await.expect("math sample");
+    assert_eq!(channel_batch.samples.last().map(|sample| sample.value), Some(8.0));
+    assert_eq!(math_batch.samples.last().map(|sample| sample.value), Some(8.0));
 }

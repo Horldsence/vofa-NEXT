@@ -362,7 +362,7 @@ describe('syncTabGraphToBackend (端口提示 / 版本冲突重试)', () => {
     );
     expect(calls[1][1].baseVersion).toBe(5);
     // 远端新增边已采纳进重试载荷
-    const edges = calls[1][1].edges as Array<{ id: string }>;
+    const edges = calls[1][1].edges as { id: string }[];
     expect(edges.some((e) => e.id === 'e-remote')).toBe(true);
     expect(useAppStore.getState().graphVersion).toBe(6);
   });

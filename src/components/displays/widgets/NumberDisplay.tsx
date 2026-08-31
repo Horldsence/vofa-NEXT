@@ -1,7 +1,8 @@
 import { memo } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
-import { useGraphInput } from '../../../lib/hooks/useGraphInput';
+import { useNumericInput } from '../../../lib/hooks/useNumericPort';
+import { formatNumericValue, NumericPortStatus } from '../common/NumericPortStatus';
 
 interface NumberDisplayProps {
   widget: Extract<WidgetConfig, { kind: 'NumberDisplay' }>;
@@ -13,10 +14,10 @@ interface NumberDisplayProps {
 /// 数据源: edge 连线 (后端图输出) 优先, 否则回退到 channel 参数
 export const NumberDisplay = memo(function NumberDisplay({ widget, onEdit }: NumberDisplayProps) {
   const { unit, precision, channel } = widget.params;
-  const value = useGraphInput(widget.params.id, 'value', channel, 0);
+  const input = useNumericInput(widget.params.id, 'value', channel);
 
   // 自适应字号: 值越长字号越小
-  const text = value.toFixed(precision);
+  const text = formatNumericValue(input, precision);
   const fontSize = text.length > 10 ? 18 : text.length > 7 ? 24 : 32;
 
   return (
@@ -27,6 +28,7 @@ export const NumberDisplay = memo(function NumberDisplay({ widget, onEdit }: Num
         </span>
         {unit && <span className="text-sm text-text-secondary font-normal">{unit}</span>}
       </div>
+      <div className="text-center"><NumericPortStatus state={input} /></div>
       {channel === null && (
         <div className="text-[10px] text-text-secondary text-center opacity-60">未绑定通道</div>
       )}

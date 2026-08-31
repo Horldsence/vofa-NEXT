@@ -113,7 +113,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   // 按当前 tab 过滤节点: 本 tab 的 widget 节点 + 全部全局节点 (Transport/Protocol)
   const tabNodes = useMemo(
     () =>
-      rfNodes.filter((n) => n.data.tabId === tabId || n.data.global === true) as Node[],
+      rfNodes.filter((n) => n.data.tabId === tabId || n.data.global === true),
     [rfNodes, tabId]
   );
 
@@ -138,7 +138,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           animated: true,
           className: 'compile-error-edge',
         };
-      }) as Edge[];
+      });
   }, [rfEdges, tabNodeIds, tabErrorEdges, tabState]);
 
   // 选中的全局节点 → 右侧属性面板
@@ -167,7 +167,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       const widget = createWidget(spec.kind);
       // 算术控件: 应用拖拽时携带的 op
       if (widget.kind === 'Math' && spec.op) {
-        const mathWidget = widget as Extract<WidgetConfig, { kind: 'Math' }>;
+        const mathWidget = widget;
         mathWidget.params.op = spec.op as MathOp;
         if (isUnaryMathOp(spec.op as MathOp)) {
           mathWidget.params.inputCount = 1;
@@ -176,14 +176,14 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       }
       // 字符串控件: 应用拖拽时携带的 op
       if (widget.kind === 'Str' && spec.op) {
-        const strWidget = widget as Extract<WidgetConfig, { kind: 'Str' }>;
+        const strWidget = widget;
         strWidget.params.op = spec.op as StrOp;
         strWidget.params.label = `Str ${spec.op}`;
       }
       // 滤波器控件: 应用拖拽时携带的 preset
       if (widget.kind === 'Filter' && spec.preset) {
-        const filterWidget = widget as Extract<WidgetConfig, { kind: 'Filter' }>;
-        filterWidget.params.preset = spec.preset as FilterPresetKind;
+        const filterWidget = widget;
+        filterWidget.params.preset = spec.preset;
         filterWidget.params.label = `Filter ${spec.preset}`;
       }
       addWidget(widget, tabId, position);

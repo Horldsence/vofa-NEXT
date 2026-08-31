@@ -118,8 +118,8 @@ describe('快速开始模板', () => {
     const { migrateSnapshotToV3 } = await import('../tauri/appExport');
     for (const tpl of QUICK_START_TEMPLATES) {
       const snap = tpl.build();
-      const once = migrateSnapshotToV3(snap as never);
-      const twice = migrateSnapshotToV3(once as never);
+      const once = migrateSnapshotToV3(snap);
+      const twice = migrateSnapshotToV3(once);
       expect(JSON.stringify(twice)).toBe(JSON.stringify(once));
     }
   });
@@ -167,7 +167,7 @@ describe('applyTemplate 合并模式', () => {
 
     const after = useAppStore.getState();
     expect(after.controlTabs.length).toBe(1);
-    const widgets = after.widgets as WidgetConfig[];
+    const widgets = after.widgets;
     expect(widgets.length).toBe((snap.widgets ?? []).length);
     // 替换后 rfNodes 与快照一致 (含全局 Transport/Protocol 节点)
     expect(after.rfNodes.length).toBe((snap.rfNodes ?? []).length);

@@ -136,7 +136,7 @@ const ProtocolProperties = memo(function ProtocolProperties({ node }: { node: No
     if (kind === 'JustFloat' || kind === 'FireWater') {
       const channels =
         prev && (prev.kind === 'JustFloat' || prev.kind === 'FireWater') ? prev.channels : null;
-      setProtocolNodeConvertTo(node.id, { kind, channels } as ProtocolConfig);
+      setProtocolNodeConvertTo(node.id, { kind, channels });
     } else {
       setProtocolNodeConvertTo(node.id, { kind: 'RawData' });
     }

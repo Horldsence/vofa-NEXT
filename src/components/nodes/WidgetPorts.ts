@@ -34,17 +34,18 @@ export function getWidgetPorts(widget: WidgetConfig): {
       return { inputs: [{ id: 'value', label: 'value', domain: 'time' }], outputs: [] };
     case 'PieChart':
       return {
-        inputs: widget.params.segments.map((seg, i) => ({ id: `seg${i}`, label: seg, domain: 'time' as DomainType })),
+        inputs: widget.params.segments.map((seg, i) => ({ id: `seg${i}`, label: seg, domain: 'time' })),
         outputs: [],
       };
     case 'Image':
-      return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
+      // 图像帧尚无明确的字节/像素协议；不把单个 f32 伪装成图像输入。
+      return { inputs: [], outputs: [] };
     case 'Waveform':
       return {
         inputs: Array.from({ length: widget.params.channels }, (_, i) => ({
           id: `CH${i}`,
           label: `CH${i}`,
-          domain: 'time' as DomainType,
+          domain: 'time',
         })),
         outputs: [],
       };
@@ -55,7 +56,7 @@ export function getWidgetPorts(widget: WidgetConfig): {
         inputs: Array.from({ length: inputCount }, (_, i) => ({
           id: `in${i}`,
           label: `in${i}`,
-          domain: 'time' as DomainType,
+          domain: 'time',
         })),
         outputs: [{ id: 'result', label: 'result', domain: 'time' }],
       };
@@ -86,14 +87,14 @@ export function getWidgetPorts(widget: WidgetConfig): {
           ...model3dAttitudePortIds(widget.params.attitudeInputMode ?? 'radians').map((id) => ({
             id,
             label: id,
-            domain: 'time' as DomainType,
+            domain: 'time',
           })),
         ],
         outputs: [],
       };
     case 'Command': {
       const inputs = commandInputPortNames(widget.params)
-        .map((name: string) => ({ id: name, label: name, domain: 'time' as DomainType }));
+        .map((name: string) => ({ id: name, label: name, domain: 'time' }));
       const outputs = [{ id: 'loopbackOut', label: 'loopbackOut', domain: 'bytes' as DomainType }];
       return { inputs, outputs };
     }
@@ -125,12 +126,12 @@ export function getWidgetPorts(widget: WidgetConfig): {
         inputs: (def?.inputs ?? [{ id: 'value', label: 'value' }]).map((p: { id: string; label: string }) => ({
           id: p.id,
           label: p.label,
-          domain: 'time' as DomainType,
+          domain: 'time',
         })),
         outputs: (def?.outputs ?? []).map((p: { id: string; label: string }) => ({
           id: p.id,
           label: p.label,
-          domain: 'time' as DomainType,
+          domain: 'time',
         })),
       };
     }

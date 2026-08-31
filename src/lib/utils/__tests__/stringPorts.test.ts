@@ -3,7 +3,7 @@ import type { Edge } from '@xyflow/react';
 import { findInputEdge, isPortConnected, resolveStringSource } from '../stringPorts';
 
 function edge(source: string, sourceHandle: string | null, target: string, targetHandle: string): Edge {
-  return { id: `${source}->${target}`, source, sourceHandle, target, targetHandle } as Edge;
+  return { id: `${source}->${target}`, source, sourceHandle, target, targetHandle };
 }
 
 describe('stringPorts 边解析', () => {

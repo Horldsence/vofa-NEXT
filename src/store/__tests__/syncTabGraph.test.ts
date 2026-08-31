@@ -223,7 +223,7 @@ describe('syncTabGraphToBackend (图节点 + 字节边)', () => {
     expect(call).toBeDefined();
     const args = call![1];
     // widget 记录 = {id, kind, params} 透传
-    const widgets = args.widgets as Array<{ id: string; kind: string; params: Record<string, unknown> }>;
+    const widgets = args.widgets as { id: string; kind: string; params: Record<string, unknown> }[];
     expect(widgets).toEqual([
       expect.objectContaining({ id: 'w-gauge', kind: 'Gauge' }),
     ]);

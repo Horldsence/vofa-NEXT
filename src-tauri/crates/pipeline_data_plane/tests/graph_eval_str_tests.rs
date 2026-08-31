@@ -6,8 +6,10 @@
 use std::sync::atomic::Ordering;
 
 use app_state::AppState;
+use buffer_graph::Edge;
 use node_engine::CompiledGraph;
-use node_kind::{NodeDef, NodeKind, StrNumParams, StrOp};
+use node_kind::{MathOp, NodeDef, NodeKind, StrNumParams, StrOp};
+use pipeline_bus::TopicKey;
 use pipeline_data_plane::{evaluate_snapshot_now, frame_dispatch, DataPlaneState};
 use vofa_core::DataFrame;
 
@@ -38,6 +40,49 @@ fn test_plane() -> (AppState, DataPlaneState) {
         .lock()
         .insert("t1".into(), str_node_graph("t1"));
     (state, plane)
+}
+
+#[tokio::test]
+async fn event_driven_evaluation_publishes_active_numeric_topics() {
+    let state = AppState::new();
+    let plane = state.data_plane.clone();
+    let graph = CompiledGraph::compile(
+        "numeric-event".into(),
+        vec![
+            NodeDef {
+                id: "input".into(),
+                tab_id: "numeric-event".into(),
+                kind: NodeKind::Input,
+            },
+            NodeDef {
+                id: "math".into(),
+                tab_id: "numeric-event".into(),
+                kind: NodeKind::Math {
+                    op: MathOp::Add,
+                    input_count: 1,
+                },
+            },
+        ],
+        vec![Edge {
+            id: "edge".into(),
+            source: "input".into(),
+            source_handle: "value".into(),
+            target: "math".into(),
+            target_handle: "in0".into(),
+        }],
+    )
+    .unwrap();
+    plane.eval.graphs.lock().insert("numeric-event".into(), graph);
+    let mut receiver = plane
+        .eval
+        .data_bus
+        .subscribe(TopicKey::new("math", "result"), 4)
+        .await
+        .unwrap();
+    plane.eval.input_values.lock().insert("input".into(), 12.5);
+    frame_dispatch::refresh_snapshot(&plane);
+    let batch = receiver.recv().await.unwrap();
+    assert_eq!(batch.samples.last().map(|sample| sample.value), Some(12.5));
 }
 
 /// 热路径: on_frames 批尾发布点应把 Str 节点字符串输出物化进 graph_string_outputs

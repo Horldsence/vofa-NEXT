@@ -4,7 +4,7 @@ import type { WidgetConfig } from '../../types';
 
 describe('widgetTab 控件 ↔ 窗口映射', () => {
   it('窗口型控件映射到对应 Tab 类型, Tab id 与控件 id 相同', () => {
-    const cases: Array<[WidgetConfig['kind'], string]> = [
+    const cases: [WidgetConfig['kind'], string][] = [
       ['Waveform', 'waveform-extra'],
       ['PieChart', 'pie'],
       ['Image', 'image'],

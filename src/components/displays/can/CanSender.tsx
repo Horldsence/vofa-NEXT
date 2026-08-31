@@ -62,7 +62,7 @@ export function CanSender() {
         rtr,
         dlc: data.length,
         data,
-        direction: 'Tx' as CanDirection,
+        direction: 'Tx',
       };
 
       await sendCanFrame(targetId, frame);

@@ -39,7 +39,7 @@ export function createDataTabSlice(set: any, get: any): DataTabSlice {
     removeDataTab: (tabId) =>
       set((s: any) => {
         const tab = s.dataTabs.find((t: DataTab) => t.id === tabId);
-        if (!tab || !tab.closable) return s;
+        if (!tab?.closable) return s;
         const remaining = s.dataTabs.filter((t: DataTab) => t.id !== tabId);
         return {
           dataTabs: remaining,
@@ -244,11 +244,11 @@ export function getAvailableDataPanelEntries(
     },
   ];
 
-  const derivedDefs: Array<{
+  const derivedDefs: {
     type: DataTab['type'];
     labelKey: string;
     kind: WidgetConfig['kind'];
-  }> = [
+  }[] = [
     { type: 'waveform-extra', labelKey: 'dataTabWaveform', kind: 'Waveform' },
     { type: 'spectrum', labelKey: 'dataTabSpectrum', kind: 'Spectrum' },
     { type: 'raw', labelKey: 'dataTabRawData', kind: 'RawData' },

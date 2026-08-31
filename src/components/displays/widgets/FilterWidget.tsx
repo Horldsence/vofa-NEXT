@@ -3,7 +3,8 @@ import { ChevronDown, ChevronUp } from 'lucide-react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig, FilterPresetKind } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
-import { useGraphInput } from '../../../lib/hooks/useGraphInput';
+import { useNumericInput, useNumericOutput } from '../../../lib/hooks/useNumericPort';
+import { NumericPortStatus } from '../common/NumericPortStatus';
 import { t } from '../../../i18n';
 
 interface FilterWidgetProps {
@@ -33,15 +34,16 @@ const PRESET_OPTIONS: { value: FilterPresetKind; labelKey: string }[] = [
 /// → 后端重建 DigitalFilter (kind 变化触发状态重置, 符合滤波器语义)
 export const FilterWidget = memo(function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
   const { preset, cutoff, low, high, sampleRate, precision, id } = widget.params;
-  const graphOutputs = useAppStore((s) => s.graphOutputs);
   const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
   const [showSettings, setShowSettings] = useState(false);
 
   // 读取输入端口值 (用于显示)
-  const inputValue = useGraphInput(id, 'in0', null, 0);
+  const input = useNumericInput(id, 'in0');
+  const inputValue = input.latest?.value ?? 0;
   // 后端滤波后的结果
-  const result = graphOutputs[id]?.result ?? 0;
+  const output = useNumericOutput(id, 'result');
+  const result = output.latest?.value ?? 0;
 
   const handlePresetChange = (newPreset: FilterPresetKind) => {
     updateWidget(id, {
@@ -66,13 +68,14 @@ export const FilterWidget = memo(function FilterWidget({ widget, onEdit }: Filte
       <div className="flex flex-col gap-1 px-1.5 py-1">
         <div className="flex items-baseline justify-center gap-1 py-1">
           <span className="text-[22px] font-semibold text-[#ff8c42] font-mono">
-            {result.toFixed(precision)}
+            {output.latest ? result.toFixed(precision) : '—'}
           </span>
         </div>
         <div className="flex justify-between items-center text-xs px-1 py-0.5 bg-bg-subtle rounded-sm">
           <span className="text-text-secondary">in</span>
           <span className="text-text-primary font-mono">{inputValue.toFixed(precision)}</span>
         </div>
+        <div className="text-center"><NumericPortStatus state={output} /></div>
         <button
           className="flex items-center justify-center gap-1 bg-transparent border border-border text-text-secondary px-1.5 py-0.5 rounded-sm text-[10px] cursor-pointer mt-0.5 hover:bg-bg-hover hover:text-text-primary transition-colors"
           onClick={() => setShowSettings((v) => !v)}

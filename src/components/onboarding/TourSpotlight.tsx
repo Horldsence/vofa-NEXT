@@ -37,7 +37,7 @@ export function TourSpotlight({ rect }: { rect: TourRect | null }) {
                     width: rect.w,
                     height: rect.h,
                     transition: GEOMETRY_TRANSITION,
-                  } as CSSProperties
+                  }
                 }
               />
             )}
