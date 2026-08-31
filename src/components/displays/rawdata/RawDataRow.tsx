@@ -62,6 +62,7 @@ export const Row = memo(function Row({
         className={`
           inline-flex items-center justify-center font-mono text-xs rounded-sm cursor-default
           transition-colors
+          ${type === 'ascii' ? 'whitespace-pre' : ''}
           ${color}
           ${present && hovered === i ? 'bg-bg-active text-text-bright' : ''}
           ${!isCompact && isGroupEnd ? 'mr-2' : ''}
