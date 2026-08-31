@@ -40,7 +40,7 @@ export interface CandleDeviceInfo {
 }
 
 /// CAN 波特率预设
-export type CanBitrate = 'bps100k' | 'bps125k' | 'bps250k' | 'bps500k' | 'bps1m';
+export type CanBitrate = 'Bps100k' | 'Bps125k' | 'Bps250k' | 'Bps500k' | 'Bps1m';
 
 /// 单个 ID 的 CAN 负载统计 — 与 Rust CanIdLoadStats 对应
 export interface CanIdLoadStats {

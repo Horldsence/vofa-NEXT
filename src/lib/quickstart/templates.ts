@@ -264,7 +264,7 @@ function canTemplate(): AppSnapshot {
     protocol: { kind: 'Slcan' },
     transport: {
       kind: 'Slcan',
-      params: { port_name: '', baud_rate: 115200, can_bitrate: 'bps500k' },
+      params: { port_name: '', baud_rate: 115200, can_bitrate: 'Bps500k' },
     },
     widgetNodes: [],
     edges: [],

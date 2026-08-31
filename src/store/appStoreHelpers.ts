@@ -98,9 +98,9 @@ export function defaultTransportConfig(kind: TransportConfig['kind']): Transport
     case 'TestData':
       return { kind: 'TestData', params: { channels: 4, sample_rate: 100, signal: 'Sine' } };
     case 'Slcan':
-      return { kind: 'Slcan', params: { port_name: '', baud_rate: 115200, can_bitrate: 'bps500k' } };
+      return { kind: 'Slcan', params: { port_name: '', baud_rate: 115200, can_bitrate: 'Bps500k' } };
     case 'CandleLight':
-      return { kind: 'CandleLight', params: { bus: 1, address: 0, can_bitrate: 'bps500k', channel: 0 } };
+      return { kind: 'CandleLight', params: { bus: 1, address: 0, can_bitrate: 'Bps500k', channel: 0 } };
   }
 }
 

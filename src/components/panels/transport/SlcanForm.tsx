@@ -13,11 +13,11 @@ interface SlcanFormProps {
 const selectClass = 'form-select';
 const slcanBaudOptions = [9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600];
 const canBitrateOptions: { value: CanBitrate; label: string }[] = [
-  { value: 'bps100k', label: '100k' },
-  { value: 'bps125k', label: '125k' },
-  { value: 'bps250k', label: '250k' },
-  { value: 'bps500k', label: '500k' },
-  { value: 'bps1m', label: '1M' },
+  { value: 'Bps100k', label: '100k' },
+  { value: 'Bps125k', label: '125k' },
+  { value: 'Bps250k', label: '250k' },
+  { value: 'Bps500k', label: '500k' },
+  { value: 'Bps1m', label: '1M' },
 ];
 
 export function SlcanForm({ params, onChange, lang }: SlcanFormProps) {

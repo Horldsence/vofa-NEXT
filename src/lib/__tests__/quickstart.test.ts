@@ -68,7 +68,7 @@ describe('快速开始模板', () => {
     const protocol = snap.rfNodes?.find((n) => n.type === 'protocol');
     expect((transport?.data as { config: unknown }).config).toEqual({
       kind: 'Slcan',
-      params: { port_name: '', baud_rate: 115200, can_bitrate: 'bps500k' },
+      params: { port_name: '', baud_rate: 115200, can_bitrate: 'Bps500k' },
     });
     expect((protocol?.data as { config: unknown }).config).toEqual({ kind: 'Slcan' });
     expect(snap.dataTabs?.some((t) => t.type === 'can')).toBe(true);

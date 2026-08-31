@@ -78,6 +78,23 @@ fn bitrate_bps_returns_expected_values() {
 }
 
 #[test]
+fn bitrate_serde_uses_frontend_contract_names() {
+    for (bitrate, expected) in [
+        (CanBitrate::Bps100k, "\"Bps100k\""),
+        (CanBitrate::Bps125k, "\"Bps125k\""),
+        (CanBitrate::Bps250k, "\"Bps250k\""),
+        (CanBitrate::Bps500k, "\"Bps500k\""),
+        (CanBitrate::Bps1m, "\"Bps1m\""),
+    ] {
+        assert_eq!(serde_json::to_string(&bitrate).unwrap(), expected);
+        assert_eq!(
+            serde_json::from_str::<CanBitrate>(expected).unwrap(),
+            bitrate
+        );
+    }
+}
+
+#[test]
 fn bitrate_slcan_cmd_mapping() {
     assert_eq!(CanBitrate::Bps100k.slcan_cmd(), "S3");
     assert_eq!(CanBitrate::Bps125k.slcan_cmd(), "S4");
