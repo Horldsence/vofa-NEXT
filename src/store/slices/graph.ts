@@ -24,6 +24,7 @@ import { withHistoryOp } from '../historyStore';
 import type { HistoryTarget, NodeOpRef } from '../historyStore';
 import { nodeLabelOf, nodeRefOf } from '../../lib/utils/nodeKindVisuals';
 import type { ProtocolConfig, TransportConfig, WidgetConfig } from '../../types';
+import type { AppSlice } from './types';
 
 export interface GraphSlice {
   rfNodes: Node[];
@@ -57,7 +58,7 @@ export interface GraphSlice {
   seedInitialGraph: (rawDataWidgetId: string) => void;
 }
 
-export function createGraphSlice(set: any, get: any): GraphSlice {
+export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
   /** 节点 id → 视觉引用 (传输/协议/控件), 找不到返回 null */
   const nodeById = (id: string | null | undefined): Node | undefined =>
     get().rfNodes.find((n: Node) => n.id === id);

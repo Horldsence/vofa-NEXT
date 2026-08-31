@@ -3,6 +3,7 @@ import { notify } from '../../lib/tauri/notifications';
 import { nodeError } from '../../lib/tauri/errorGuidance';
 import { t } from '../../i18n';
 import type { ProtocolConfig, ProtocolSchema } from '../../types';
+import type { AppSlice } from './types';
 import { getEffectiveChannels, type ProtocolNodeData } from '../appStoreHelpers';
 import { schemaFromProtocolConfig, schemaPortNames } from '../../lib/utils/protocolSchema';
 import {
@@ -33,7 +34,7 @@ export interface ProtocolSlice {
   setProtocolNodeSchema: (nodeId: string, schema: ProtocolSchema) => void;
 }
 
-export function createProtocolSlice(set: any, get: any): ProtocolSlice {
+export const createProtocolSlice: AppSlice<ProtocolSlice> = (set, get) => {
   return {
     detectedChannels: {},
 

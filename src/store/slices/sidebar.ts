@@ -1,4 +1,5 @@
 import type { Lang } from '../../i18n';
+import type { AppSlice } from './types';
 
 export type SidebarView = 'widgets' | 'quickstart' | 'panels';
 
@@ -11,7 +12,7 @@ export interface SidebarSlice {
   toggleSidebar: (view: SidebarView) => void;
 }
 
-export function createSidebarSlice(set: any, get: any): SidebarSlice {
+export const createSidebarSlice: AppSlice<SidebarSlice> = (set, get) => {
   return {
     lang: 'zh',
     setLang: (lang) => set({ lang }),

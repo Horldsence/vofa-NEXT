@@ -9,6 +9,7 @@ import { downstreamProtocolOf, type TransportNodeData, type ProtocolNodeData } f
 import { schemaFromProtocolConfig } from '../../lib/utils/protocolSchema';
 import { useSettingsStore } from '../settingsStore';
 import type { ConnectionState, PortInfo, ProtocolConfig, TransportConfig, TransportStats, WidgetBinding } from '../../types';
+import type { AppSlice } from './types';
 
 export const DEFAULT_SERIAL: TransportConfig = {
   kind: 'Serial',
@@ -57,7 +58,7 @@ export interface ConnectionSlice {
   sendWidgetValue: (nodeId: string, protocolNode: string | null, binding: WidgetBinding, value: number) => Promise<void>;
 }
 
-export function createConnectionSlice(set: any, get: any): ConnectionSlice {
+export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
   return {
     connectionStates: {},
     nodeStats: {},

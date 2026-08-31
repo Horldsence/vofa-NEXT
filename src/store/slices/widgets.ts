@@ -1,5 +1,6 @@
 import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
+import type { AppSlice } from './types';
 import { createWidget, normalizeModel3DConfig } from '../../lib/utils/createWidget';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { normalizeCommandConfig } from '../../lib/utils/commandFrames';
@@ -36,7 +37,7 @@ export interface WidgetSlice {
   updateWidget: (id: string, widget: WidgetConfig) => void;
 }
 
-export function createWidgetSlice(set: any, get: any): WidgetSlice {
+export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
   return {
     widgets: [],
     customEditorState: { open: false, widgetId: null },

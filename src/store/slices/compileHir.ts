@@ -48,6 +48,8 @@ export interface GraphHir {
 
 // ============ Zustand slice (与现有 slices 同模式) ============
 
+import type { AppSlice } from './types';
+
 export interface CompileHirSlice {
   /// 按 tabId 缓存 HIR 视图; 缺失视为未编译
   hirByTab: Record<string, GraphHir | null>;
@@ -56,7 +58,7 @@ export interface CompileHirSlice {
   fetchHir: (tabId: string) => Promise<void>;
 }
 
-export function createCompileHirSlice(set: any, _get: any): CompileHirSlice {
+export const createCompileHirSlice: AppSlice<CompileHirSlice> = (set, _get) => {
   return {
     hirByTab: {},
     hirLoading: false,

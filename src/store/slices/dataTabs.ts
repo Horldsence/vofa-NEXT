@@ -2,6 +2,7 @@ import { t } from '../../i18n';
 import type { DataTab, WidgetConfig } from '../../types';
 import { useAppStore } from '../appStore';
 import { widgetToTab } from '../../lib/utils/widgetTab';
+import type { AppSlice } from './types';
 
 export interface DataTabSlice {
   dataTabs: DataTab[];
@@ -22,7 +23,7 @@ export interface DataTabSlice {
   addWidgetTab: (widget: WidgetConfig) => void;
 }
 
-export function createDataTabSlice(set: any, get: any): DataTabSlice {
+export const createDataTabSlice: AppSlice<DataTabSlice> = (set, get) => {
   return {
     dataTabs: [
       { id: 'compile-errors-fixed', type: 'compile-errors', name: 'Compile Errors', closable: false },

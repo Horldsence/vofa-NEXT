@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { withHistoryOp, type HistoryTarget } from '../historyStore';
+import type { AppSlice } from './types';
 
 /// 页签级操作的目标语义 (中性徽章)
 const tabTarget = (): HistoryTarget => ({ kind: 'tab' });
@@ -13,7 +14,7 @@ export interface ControlTabSlice {
   renameControlTab: (tabId: string, name: string) => void;
 }
 
-export function createControlTabSlice(set: any, get: any): ControlTabSlice {
+export const createControlTabSlice: AppSlice<ControlTabSlice> = (set, get) => {
   return {
     controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
     activeControlTabId: 'default',

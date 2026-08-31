@@ -17,6 +17,8 @@ import { useAppStore } from '../appStore';
 import type { GraphSourceEventPayload } from '../../lib/tauri/tauri';
 import type { ConnectionState, TransportStats } from '../../types';
 import { EMPTY_NODE_STATS } from './connection';
+import type { AppSlice } from './types';
+import type { GraphStateSlice } from './graphState';
 
 let unlistenFns: UnlistenFn[] = [];
 let textOutputSub: { cancel: () => void } | null = null;
@@ -151,7 +153,7 @@ export interface EventSlice {
   initEventListeners: () => Promise<() => void>;
 }
 
-export function createEventSlice(set: any, get: any): EventSlice {
+export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
   /// 数据源对账: 主波形源 = 第一个 Protocol 节点。RawData 由可见视图自行订阅。
   const reconcileSources = () => {
     const nodes: any[] = get().rfNodes;
@@ -264,10 +266,10 @@ export function createEventSlice(set: any, get: any): EventSlice {
         unlistenSource,
       ];
 
-      const spectrumCoalescer = makeRafCoalescer<Record<string, unknown>>(
+      const spectrumCoalescer = makeRafCoalescer<GraphStateSlice['spectrumResults']>(
         (v) => set({ spectrumResults: v })
       );
-      const textOutputCoalescer = makeRafCoalescer<Record<string, unknown>>(
+      const textOutputCoalescer = makeRafCoalescer<GraphStateSlice['customTextOutputs']>(
         (v) => set({ customTextOutputs: v })
       );
 

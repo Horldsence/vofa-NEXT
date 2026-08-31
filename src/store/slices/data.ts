@@ -4,13 +4,14 @@ import { clearAllRawDataPreviewBuffers } from '../../lib/buffers/rawDataPreviewR
 import { isGlobalNode } from '../appStoreHelpers';
 import { notify, formatError } from '../../lib/tauri/notifications';
 import { t } from '../../i18n';
+import type { AppSlice } from './types';
 
 export interface DataSlice {
   rawDataVersion: number;
   clearData: () => Promise<void>;
 }
 
-export function createDataSlice(set: any, get: any): DataSlice {
+export const createDataSlice: AppSlice<DataSlice> = (set, get) => {
   return {
     rawDataVersion: 0,
 

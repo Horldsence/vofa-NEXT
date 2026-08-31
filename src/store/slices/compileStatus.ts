@@ -10,6 +10,7 @@
 /// - `pendingTabs` / `errorTabs`: 按状态分组的 tab id 集合 (供 tab 角标批量读取)
 
 import type { CompileReport } from './compileError';
+import type { AppSlice } from './types';
 
 export type TabCompileState = 'ok' | 'pending' | 'compiling' | 'error';
 
@@ -42,7 +43,7 @@ export interface CompileStatusSlice {
   clearCanvasHighlight: () => void;
 }
 
-export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlice {
+export const createCompileStatusSlice: AppSlice<CompileStatusSlice> = (set, _get) => {
   return {
     tabStates: {},
     tabErrors: {},
@@ -76,7 +77,7 @@ export function createCompileStatusSlice(set: any, _get: any): CompileStatusSlic
           .filter(([, v]) => v === 'pending' || v === 'compiling')
           .map(([k]) => k);
         // errorTabs: 累积式 — 一旦进入 error 的 tabId 永不退出, 除非 resetStatus
-        const errorSet = new Set(s.errorTabs);
+        const errorSet = new Set<string>(s.errorTabs);
         if (e.state === 'error') errorSet.add(tabId);
         const errors = Array.from(errorSet);
         return {
