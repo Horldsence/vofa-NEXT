@@ -3,6 +3,7 @@
 /// 端口表按 WidgetConfig.kind 分发; StrOp / Command 等动态端口表来自各 crate 已 export 的 helper
 
 import type { WidgetConfig, DomainType } from '../../types';
+import { model3dAttitudePortIds } from '../../lib/utils/model3dAttitude';
 import { isUnaryMathOp, STR_OP_PORTS } from '../../types';
 import { commandInputPortNames } from '../../lib/utils/commandFrames';
 import { evalCustomWidgetDef } from '../displays/widgets/CustomWidget';
@@ -82,9 +83,11 @@ export function getWidgetPorts(widget: WidgetConfig): {
           { id: 'x', label: 'x', domain: 'time' },
           { id: 'y', label: 'y', domain: 'time' },
           { id: 'z', label: 'z', domain: 'time' },
-          { id: 'roll', label: 'roll', domain: 'time' },
-          { id: 'pitch', label: 'pitch', domain: 'time' },
-          { id: 'yaw', label: 'yaw', domain: 'time' },
+          ...model3dAttitudePortIds(widget.params.attitudeInputMode ?? 'radians').map((id) => ({
+            id,
+            label: id,
+            domain: 'time' as DomainType,
+          })),
         ],
         outputs: [],
       };

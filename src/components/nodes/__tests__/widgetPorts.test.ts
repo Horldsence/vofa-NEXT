@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getWidgetPorts } from '../WidgetPorts';
 import type { StrOp, WidgetConfig } from '../../../types';
 import { STR_OP_PORTS } from '../../../types';
+import { createWidget } from '../../../lib/utils/createWidget';
 
 /// Command 控件 (两帧, var_ref 端口有重复)
 const CMD_WIDGET: WidgetConfig = {
@@ -129,6 +130,24 @@ describe('getWidgetPorts - TextInput 文本输入', () => {
     expect(inputs).toEqual([]);
     expect(outputs.map((p) => ({ id: p.id, domain: p.domain }))).toEqual([
       { id: 'str', domain: 'string' },
+    ]);
+  });
+});
+
+describe('getWidgetPorts - Model3D 姿态输入格式', () => {
+  it('欧拉角模式暴露 roll/pitch/yaw 端口', () => {
+    const widget = createWidget('Model3D');
+    expect(getWidgetPorts(widget).inputs.map((p) => p.id)).toEqual([
+      'x', 'y', 'z', 'roll', 'pitch', 'yaw',
+    ]);
+  });
+
+  it('四元数模式切换为 q0/q1/q2/q3 端口', () => {
+    const widget = createWidget('Model3D');
+    if (widget.kind !== 'Model3D') throw new Error('expected Model3D widget');
+    widget.params.attitudeInputMode = 'quaternion';
+    expect(getWidgetPorts(widget).inputs.map((p) => p.id)).toEqual([
+      'x', 'y', 'z', 'q0', 'q1', 'q2', 'q3',
     ]);
   });
 });

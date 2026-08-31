@@ -809,6 +809,10 @@ connectionRejectedTitle: Cannot connect
 model3d: 3D Model
 model3dSettings: 3D Settings
 model3dMode: Mode
+model3dAttitudeInput: Attitude Input
+model3dAttitudeDegrees: Degrees (°)
+model3dAttitudeRadians: Radians (rad)
+model3dAttitudeQuaternion: Quaternion
 model3dTrajectory: Trajectory
 model3dAttitude: Attitude
 model3dTrajectoryAttitude: Trajectory + Attitude

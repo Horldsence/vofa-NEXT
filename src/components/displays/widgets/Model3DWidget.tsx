@@ -6,9 +6,18 @@ import { Grid, OrbitControls, useGLTF } from '@react-three/drei';
 import { readFile } from '@tauri-apps/plugin-fs';
 import * as THREE from 'three';
 import { Settings2 } from 'lucide-react';
-import type { Model3DMode, Model3DSource, WidgetConfig } from '../../../types';
+import type {
+  Model3DAttitudeInputMode,
+  Model3DMode,
+  Model3DSource,
+  WidgetConfig,
+} from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { useGraphInputs } from '../../../lib/hooks/useGraphInput';
+import {
+  model3dAttitudePortIds,
+  resolveModel3DRotation,
+} from '../../../lib/utils/model3dAttitude';
 import { t } from '../../../i18n';
 import { chipClass } from '../../ui/chip';
 
@@ -254,27 +263,33 @@ function RenderedModel({
 ///
 /// 数据流 (前端纯渲染, 后端仅作为 Sink 透传输入):
 ///   1. 后端 CompiledGraph 把 Model3D 节点当作 Sink (不在 eval_order)
-///   2. 前端 useGraphInputs 读取 6 通道 (x/y/z + roll/pitch/yaw, 60 FPS, 缺失补 0)
+///   2. 前端 useGraphInputs 读取位置与当前姿态格式对应的通道 (缺失补 0)
 ///   3. trajectory 模式:          xyz 累积历史点 → 渲染拖尾
-///   4. attitude 模式:            roll/pitch/yaw 作为欧拉角 → 旋转模型 (原点)
-///   5. trajectory-attitude 模式: 同时渲染拖尾 + 跟随 xyz/roll/pitch/yaw 的模型
+///   4. attitude 模式:            角度/弧度/四元数统一换算为欧拉角 → 旋转模型 (原点)
+///   5. trajectory-attitude 模式: 同时渲染拖尾 + 跟随 xyz/姿态的模型
 ///
-/// 输入端口: x / y / z / roll / pitch / yaw (缺失补 0)
+/// 输入端口: x / y / z + roll/pitch/yaw 或 q0/q1/q2/q3 (缺失补 0)
 export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
-  const { id, mode, trailLength, color, axisLength, modelSource } = widget.params;
+  const {
+    id,
+    mode,
+    trailLength,
+    color,
+    axisLength,
+    modelSource,
+    attitudeInputMode = 'radians',
+  } = widget.params;
   // [TEMP-DISABLED] modelSource 解构保留 (用于将来恢复), 显式 void 抑制 noUnusedLocals
   void modelSource;
   const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
 
-  // 读取 6 通道 (缺失补 0, useGraphInputs 已处理)
-  const inputs = useGraphInputs(id, ['x', 'y', 'z', 'roll', 'pitch', 'yaw'], 0);
+  const attitudePorts = model3dAttitudePortIds(attitudeInputMode);
+  const inputs = useGraphInputs(id, ['x', 'y', 'z', ...attitudePorts], 0);
   const x = inputs.x ?? 0;
   const y = inputs.y ?? 0;
   const z = inputs.z ?? 0;
-  const roll = inputs.roll ?? 0;
-  const pitch = inputs.pitch ?? 0;
-  const yaw = inputs.yaw ?? 0;
+  const rotation = resolveModel3DRotation(attitudeInputMode, inputs);
 
   // [TEMP-DISABLED] 自定义 3D 模型导入功能暂时关闭 — 始终渲染内置立方体
   //   恢复方式 (按编号顺序):
@@ -362,6 +377,14 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
     });
   };
 
+  const handleAttitudeInputModeChange = (value: string) => {
+    if (value !== 'degrees' && value !== 'radians' && value !== 'quaternion') return;
+    updateWidget(id, {
+      kind: 'Model3D',
+      params: { ...widget.params, attitudeInputMode: value },
+    });
+  };
+
   // [TEMP-DISABLED] 以下三个 handler 暂时禁用, 恢复自定义模型导入时取消注释
   //
   //   // 通过 Tauri 原生对话框选择 .glb / .gltf 文件 — 路径持久化到 widget 配置
@@ -446,7 +469,7 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
                   ? [x, y, z]
                   : [0, 0, 0]
               }
-              rotation={[roll, pitch, yaw]}
+              rotation={rotation}
             >
               {/* [TEMP-DISABLED] 自定义模型导入已禁用 — 直接渲染内置立方体, 恢复时改回:
                   <CustomModelBoundary onError={handleLoadError} fallback={<AttitudeBox .../>}>
@@ -493,11 +516,15 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-3 gap-1">
-          {(['roll', 'pitch', 'yaw'] as const).map((k, i) => (
-            <div key={k} className="flex flex-col items-center bg-bg-input border border-border rounded-sm py-1">
-              <span className="text-text-secondary text-[9px] font-semibold uppercase">{k}</span>
-              <span className="text-text-bright text-[11px] font-mono">{[roll, pitch, yaw][i].toFixed(3)}</span>
+        <div
+          className={`grid ${attitudeInputMode === 'quaternion' ? 'grid-cols-4' : 'grid-cols-3'} gap-1`}
+        >
+          {attitudePorts.map((port) => (
+            <div key={port} className="flex flex-col items-center bg-bg-input border border-border rounded-sm py-1">
+              <span className="text-text-secondary text-[9px] font-semibold uppercase">{port}</span>
+              <span className="text-text-bright text-[11px] font-mono">
+                {(inputs[port] ?? 0).toFixed(attitudeInputMode === 'degrees' ? 3 : 4)}
+              </span>
             </div>
           ))}
         </div>
@@ -521,6 +548,26 @@ export function Model3DWidget({ widget, onEdit }: Model3DWidgetProps) {
               })}
             </div>
           </div>
+          {(mode === 'attitude' || mode === 'trajectory-attitude') && (
+            <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
+              <label className="text-[10px] text-text-secondary">{t(lang, 'model3dAttitudeInput')}</label>
+              <select
+                value={attitudeInputMode}
+                onChange={(e) => handleAttitudeInputModeChange(e.target.value)}
+                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs focus:outline-none focus:border-accent"
+              >
+                {([
+                  ['degrees', 'model3dAttitudeDegrees'],
+                  ['radians', 'model3dAttitudeRadians'],
+                  ['quaternion', 'model3dAttitudeQuaternion'],
+                ] as const satisfies ReadonlyArray<[Model3DAttitudeInputMode, string]>).map(([value, labelKey]) => (
+                  <option key={value} value={value}>
+                    {t(lang, labelKey)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {(mode === 'trajectory' || mode === 'trajectory-attitude') && (
             <div className="grid grid-cols-[80px_1fr] gap-1.5 items-center">
               <label className="text-[10px] text-text-secondary">{t(lang, 'model3dTrailLength')}</label>

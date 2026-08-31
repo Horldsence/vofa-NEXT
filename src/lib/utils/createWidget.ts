@@ -180,6 +180,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
           id,
           label: 'Model3D',
           mode: 'trajectory',
+          attitudeInputMode: 'radians',
           trailLength: 200,
           color: '#75beff',
           axisLength: 1.0,
@@ -322,7 +323,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
   }
 }
 
-/// Model3D 配置归一化 — 旧保存数据缺 modelSource 字段时回退到 builtin-cube
+/// Model3D 配置归一化 — 为旧保存数据补齐姿态格式与模型来源等字段
 ///
 /// 该函数是幂等的; 已包含合法 modelSource 时原样返回
 export function normalizeModel3DConfig(raw: Partial<Model3DConfig>): Model3DConfig {
@@ -332,6 +333,12 @@ export function normalizeModel3DConfig(raw: Partial<Model3DConfig>): Model3DConf
     raw.mode === 'trajectory'
       ? raw.mode
       : 'trajectory';
+  const attitudeInputMode =
+    raw.attitudeInputMode === 'degrees' ||
+    raw.attitudeInputMode === 'radians' ||
+    raw.attitudeInputMode === 'quaternion'
+      ? raw.attitudeInputMode
+      : 'radians';
   const color = typeof raw.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.color) ? raw.color : '#75beff';
   const trailLength =
     typeof raw.trailLength === 'number' && raw.trailLength > 0 ? raw.trailLength : 200;
@@ -346,6 +353,7 @@ export function normalizeModel3DConfig(raw: Partial<Model3DConfig>): Model3DConf
     id: raw.id ?? '',
     label: raw.label ?? 'Model3D',
     mode,
+    attitudeInputMode,
     trailLength,
     color,
     axisLength,

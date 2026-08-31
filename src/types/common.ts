@@ -312,6 +312,12 @@ export const STR_OP_PORTS: Record<StrOp, StrOpMeta> = {
 /// - trajectory-attitude:  同时显示拖尾轨迹 + 跟随位置/姿态旋转的模型
 export type Model3DMode = 'trajectory' | 'attitude' | 'trajectory-attitude';
 
+/// 姿态输入格式
+/// - degrees:    roll / pitch / yaw，单位为度
+/// - radians:    roll / pitch / yaw，单位为弧度（旧配置兼容默认值）
+/// - quaternion: q0 / q1 / q2 / q3，其中 q0 = w
+export type Model3DAttitudeInputMode = 'degrees' | 'radians' | 'quaternion';
+
 /// 3D 模型源
 /// - builtin-cube: 默认半透明立方体 (向后兼容旧 widget)
 /// - custom:       用户通过 Tauri 对话框导入的 GLB/GLTF, path 持久化到 widget 配置
@@ -330,6 +336,8 @@ export interface Model3DConfig {
   label: string;
   /// 显示模式
   mode: Model3DMode;
+  /// 姿态输入格式（旧配置缺失时按 radians 解释）
+  attitudeInputMode: Model3DAttitudeInputMode;
   /// 拖尾长度 (trajectory / trajectory-attitude 模式, 默认 200)
   trailLength: number;
   /// 拖尾/立方体颜色 (HEX, 如 '#75beff')

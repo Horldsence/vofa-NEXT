@@ -809,6 +809,10 @@ connectionRejectedTitle: 无法连接
 model3d: 3D 模型
 model3dSettings: 3D 设置
 model3dMode: 模式
+model3dAttitudeInput: 姿态输入
+model3dAttitudeDegrees: 角度 (°)
+model3dAttitudeRadians: 弧度 (rad)
+model3dAttitudeQuaternion: 四元数
 model3dTrajectory: 轨迹
 model3dAttitude: 姿态
 model3dTrajectoryAttitude: 轨迹 + 姿态
