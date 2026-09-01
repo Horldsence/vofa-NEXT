@@ -96,6 +96,22 @@ async fn reopen_same_id_replaces_connection() {
 }
 
 #[tokio::test]
+async fn test_data_running_state_distinguishes_non_testdata_nodes() {
+    let mut mgr = TransportManager::new();
+    open_node(&mut mgr, "a").await;
+
+    // TestData 节点: Some(false) → Some(true) → Some(false)
+    assert_eq!(mgr.test_data_running_state("a"), Some(false));
+    mgr.set_test_data_running("a", true);
+    assert_eq!(mgr.test_data_running_state("a"), Some(true));
+    mgr.set_test_data_running("a", false);
+    assert_eq!(mgr.test_data_running_state("a"), Some(false));
+
+    // 未打开节点: None
+    assert_eq!(mgr.test_data_running_state("nope"), None);
+}
+
+#[tokio::test]
 async fn unknown_node_id_errors() {
     let mut mgr = TransportManager::new();
     let err = mgr.send("nope", &[1]).unwrap_err();
@@ -221,11 +237,18 @@ async fn test_data_generator_config_hot_update() {
         TestDataLink::new(ProtocolConfig::RawData),
         Some(TestDataConfig {
             channels: 5,
-            sample_rate: 1000.0,
+            sample_rate: 700_000.0,
             signal: TestSignal::Square,
         }),
     )
     .unwrap();
+
+    let Some(TransportConfig::TestData(runtime_config)) = mgr.config("a") else {
+        panic!("TestData 连接应保留运行时配置");
+    };
+    assert_eq!(runtime_config.channels, 5);
+    assert!((runtime_config.sample_rate - 700_000.0).abs() < f32::EPSILON);
+    assert_eq!(runtime_config.signal, TestSignal::Square);
 
     let mut saw_updated = false;
     for _ in 0..50 {
@@ -233,7 +256,7 @@ async fn test_data_generator_config_hot_update() {
             .await
             .expect("热更新后数据")
             .unwrap();
-        if batch.len() == 9 {
+        if batch.len() >= 9 && batch.len().is_multiple_of(9) {
             saw_updated = true;
             break;
         }

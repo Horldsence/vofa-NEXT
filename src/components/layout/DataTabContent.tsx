@@ -34,12 +34,12 @@ import { AxisSettings } from '../displays/waveform/AxisSettings';
 import { SuspenseFallback } from '../ui/SuspenseFallback';
 import { lazy, Suspense, memo, useCallback, useEffect, useMemo } from 'react';
 import type { WidgetConfig, ScopeMeasurements, ScopeAxisConfig, ProtocolConfig, LoopbackResult } from '../../types';
-import { getEffectiveChannel } from '../../types';
 import { waveformWindow, type WaveformWindowCache } from '../../lib/buffers/dataBuffer';
-import { computeMeasurements, computeAutoSetConfig, applyCoupling } from '../../lib/utils/scopeUtils';
+import { computeAutoSetConfig } from '../../lib/utils/scopeUtils';
 import { computeConnectedInputs, type ConnectedInput } from '../displays/waveform/waveformSeries';
 import { useWaveformScopeStore, createPerWidgetState } from '../../store/waveformScopeStore';
 import { useWaveformSourceBuffer } from '../../lib/hooks/useWaveformSourceBuffer';
+import { setWaveformOverviewActive } from '../../lib/buffers/sourceManagers';
 import { traceProtocolSource } from '../../store/appStoreHelpers';
 
 // 重型 3D 控件 (Three.js) — 懒加载, 首次切到 model3d Tab 时才拉取
@@ -60,8 +60,10 @@ interface WaveformTabViewProps {
   measurements: ScopeMeasurements | null;
   channelCount: number;
   buffer: WaveformWindowCache;
+  sourceId: string | null;
   onConfigChange: (next: ScopeAxisConfig) => void;
   onAutoSet: () => void;
+  onMeasurements: (key: string, measurements: ScopeMeasurements | null) => void;
 }
 
 /// 波形分支 — 主图 + AxisSettings 侧栏
@@ -71,13 +73,22 @@ const WaveformTabView = memo(function WaveformTabView({
   measurements,
   channelCount,
   buffer,
+  sourceId,
   onConfigChange,
   onAutoSet,
+  onMeasurements,
 }: WaveformTabViewProps) {
   return (
     <div className="flex h-full w-full">
       <div className="flex-1 min-w-0 relative">
-        <WaveformChart widget={widget} axisConfig={axisConfig} onConfigChange={onConfigChange} buffer={buffer} />
+        <WaveformChart
+          widget={widget}
+          axisConfig={axisConfig}
+          onConfigChange={onConfigChange}
+          buffer={buffer}
+          sourceId={sourceId}
+          onMeasurements={onMeasurements}
+        />
       </div>
       <div className="w-[256px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
         <AxisSettings
@@ -313,6 +324,12 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
   // 波形 state 兜底 — memo 保持引用稳定, 避免每次渲染新建对象击穿 WaveformTabView memo
   const fallbackState = useMemo(() => createPerWidgetState(channelCount), [channelCount]);
 
+  // 波形停止时暂停概览推送 (后端不再空转全缓冲 min-max), 恢复运行时重订阅
+  const waveRunning = (widgetState ?? fallbackState).config.running;
+  useEffect(() => {
+    if (waveSourceId) setWaveformOverviewActive(waveSourceId, waveRunning);
+  }, [waveSourceId, waveRunning]);
+
   // 懒初始化 + 通道数扩展
   useEffect(() => {
     if (isWaveformTab) ensureWidget(wid, channelCount);
@@ -323,39 +340,16 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
     pruneWidgets(widgets.map((w) => w.params.id));
   }, [widgets, pruneWidgets]);
 
-  // 测量值计算 — rAF 循环, 波形数据版本变化时更新 (基于第一可见通道, 与主图显示一致)
-  const running = isWaveformTab && (widgetState?.config.running ?? true);
-  useEffect(() => {
-    if (!running) return;
-    let raf = 0;
-    const loop = () => {
-      const version = waveBuffer.version;
-      const cur = useWaveformScopeStore.getState().states[wid];
-      if (cur && version !== cur.lastMeasureVersion) {
-        const win = waveBuffer.get();
-        let m: ScopeMeasurements | null = null;
-        if (win.timestamps.length >= 2) {
-          const chIdx = cur.config.channels.findIndex((c) => c.show);
-          const targetIdx = chIdx >= 0 ? chIdx : 0;
-          const ch = win.channels[targetIdx];
-          if (ch && ch.length > 0) {
-            const eff = getEffectiveChannel(cur.config, targetIdx);
-            const coupled = applyCoupling(ch, eff.coupling);
-            m = computeMeasurements(coupled, win.timestamps);
-          }
-        }
-        setMeasurements(wid, channelCount, version, m);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-  }, [running, wid, channelCount, setMeasurements, waveBuffer]);
-
   /// 稳定回调 — 仅在 widget 身份 / 连线变化时重建, 保证 memo 分支在无关重渲染时跳过
   const handleConfigChange = useCallback(
     (next: ScopeAxisConfig) => setConfig(wid, channelCount, next),
     [wid, channelCount, setConfig]
+  );
+
+  const handleMeasurements = useCallback(
+    (key: string, measurements: ScopeMeasurements | null) =>
+      setMeasurements(wid, channelCount, key, measurements),
+    [wid, channelCount, setMeasurements],
   );
 
   const handleAutoSet = useCallback(() => {
@@ -392,8 +386,10 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
           measurements={st.measurements}
           channelCount={channelCount}
           buffer={waveBuffer}
+          sourceId={waveSourceId}
           onConfigChange={handleConfigChange}
           onAutoSet={handleAutoSet}
+          onMeasurements={handleMeasurements}
         />
       );
     }

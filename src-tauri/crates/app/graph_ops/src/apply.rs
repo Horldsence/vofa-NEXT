@@ -83,7 +83,7 @@ pub async fn apply_tab_graph(
     positions: Option<HashMap<String, Position>>,
     base_version: Option<u64>,
 ) -> Result<GraphDerived> {
-    apply_tab_graph_parts(
+    let derived = apply_tab_graph_parts(
         &state.graphs,
         &state.graphs_version,
         &state.data_plane,
@@ -98,7 +98,9 @@ pub async fn apply_tab_graph(
         positions,
         base_version,
     )
-    .await
+    .await?;
+    state.prune_waveform_snapshots();
+    Ok(derived)
 }
 
 /// [`apply_tab_graph`] 的部件版 — 只依赖图状态五件套
@@ -305,6 +307,7 @@ pub async fn apply_remove_tab_graph(
 
     state.data_plane.sync_protocol_states();
     state.data_plane.reconcile().await;
+    state.prune_waveform_snapshots();
     sync_decoders_now(&state.eval_state());
 
     // 立即快照评估一次 (同 update_tab_graph): 被删 tab 节点的输出键

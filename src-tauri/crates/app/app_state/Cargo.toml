@@ -41,3 +41,4 @@ tauri = { version = "2", features = [] }
 [dev-dependencies]
 vofa_core = { workspace = true }
 protocol_engine = { workspace = true }
+schema_types = { workspace = true }

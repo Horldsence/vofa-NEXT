@@ -126,6 +126,9 @@ export function useUplotInit(
           label: `${slot.label} ${formatVPerDiv(vPerDiv, yUnit)}`,
           stroke: color,
           width: 1.5,
+          // 峰谷包络会在同一 CSS 像素内保留多个真实时间点；整像素吸附会把
+          // 它们压到相同 X/Y 坐标，连续斜线因此看起来像阶梯。
+          pxAlign: 0,
           paths: buildLinePath(render),
           points: buildSeriesPoints(render, color),
           value: (_u, v) => {

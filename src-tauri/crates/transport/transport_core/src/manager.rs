@@ -142,7 +142,7 @@ impl TransportManager {
 
     /// 获取指定节点的配置 (未知 id 返回 None) — 供外部查询 CAN 波特率等
     pub fn config(&self, node_id: &str) -> Option<TransportConfig> {
-        self.handles.get(node_id).map(|h| h.config().clone())
+        self.handles.get(node_id).map(TransportHandle::config)
     }
 
     /// 指定节点是否有打开的连接
@@ -174,6 +174,13 @@ impl TransportManager {
         self.handles
             .get(node_id)
             .is_some_and(super::handle::TransportHandle::is_test_data_running)
+    }
+
+    /// 指定节点的测试数据运行状态 (None = 非 TestData 节点或未打开)
+    pub fn test_data_running_state(&self, node_id: &str) -> Option<bool> {
+        self.handles
+            .get(node_id)
+            .and_then(super::handle::TransportHandle::test_data_running_state)
     }
 
     /// 运行时热更新指定节点的链路配置 (图/协议变化后调用)

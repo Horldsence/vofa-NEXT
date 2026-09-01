@@ -1,6 +1,10 @@
 #![allow(clippy::float_cmp, clippy::cast_precision_loss)] // 测试数值断言: 精确比较 + 小整数转 f32 无精度问题
-use buffer_databuffer::DataBuffer;
+use buffer_databuffer::{DataBuffer, WaveformWindow};
 use vofa_core::DataFrame;
+
+fn derived_values<'a>(window: &'a WaveformWindow, sink: &str, source: &str) -> &'a Vec<f32> {
+    &window.derived[sink][source][""]
+}
 
 #[test]
 fn push_derived_aligned_with_timestamps() {
@@ -14,7 +18,7 @@ fn push_derived_aligned_with_timestamps() {
 
     let w = buf.get_recent(3);
     assert_eq!(w.channels[0], vec![1.0, 3.0, 5.0]);
-    let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+    let derived = derived_values(&w, "wave1", "math1");
     assert_eq!(derived, &vec![10.0, 30.0, 50.0]);
 }
 
@@ -30,7 +34,7 @@ fn derived_created_later_pads_nan() {
 
     let w = buf.get_recent(4);
     assert_eq!(w.channels[0], vec![1.0, 2.0, 3.0, 4.0]);
-    let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+    let derived = derived_values(&w, "wave1", "math1");
     assert_eq!(derived.len(), 4);
     assert!(derived[0].is_nan());
     assert!(derived[1].is_nan());
@@ -49,9 +53,31 @@ fn multiple_derived_sources() {
     buf.push_derived("wave1", "math2", 40.0);
 
     let w = buf.get_recent(2);
-    let sink_derived = w.derived.get("wave1").unwrap();
-    assert_eq!(sink_derived.get("math1").unwrap(), &vec![10.0, 30.0]);
-    assert_eq!(sink_derived.get("math2").unwrap(), &vec![20.0, 40.0]);
+    assert_eq!(derived_values(&w, "wave1", "math1"), &vec![10.0, 30.0]);
+    assert_eq!(derived_values(&w, "wave1", "math2"), &vec![20.0, 40.0]);
+}
+
+#[test]
+fn multiple_outputs_from_one_source_remain_distinct_and_aligned() {
+    let mut buf = DataBuffer::new(100, 1);
+    for index in 0..3 {
+        buf.push_frame(&DataFrame::new(vec![index as f32]));
+        buf.push_derived_port("wave", "custom", "out-a", 10.0 + index as f32);
+        buf.push_derived_port("wave", "custom", "out-b", 20.0 + index as f32);
+    }
+
+    let window = buf.get_recent(3);
+    assert_eq!(
+        window.derived["wave"]["custom"]["out-a"],
+        vec![10.0, 11.0, 12.0]
+    );
+    assert_eq!(
+        window.derived["wave"]["custom"]["out-b"],
+        vec![20.0, 21.0, 22.0]
+    );
+    assert!(window.derived["wave"]["custom"]
+        .values()
+        .all(|values| values.len() == window.timestamps.len()));
 }
 
 #[test]
@@ -62,14 +88,8 @@ fn multiple_derived_sinks() {
     buf.push_derived("wave2", "math2", 20.0);
 
     let w = buf.get_recent(1);
-    assert_eq!(
-        w.derived.get("wave1").unwrap().get("math1").unwrap(),
-        &vec![10.0]
-    );
-    assert_eq!(
-        w.derived.get("wave2").unwrap().get("math2").unwrap(),
-        &vec![20.0]
-    );
+    assert_eq!(derived_values(&w, "wave1", "math1"), &vec![10.0]);
+    assert_eq!(derived_values(&w, "wave2", "math2"), &vec![20.0]);
 }
 
 #[test]
@@ -107,7 +127,7 @@ fn derived_ringbuffer_overflow() {
     }
     let w = buf.get_recent(3);
     assert_eq!(w.channels[0], vec![2.0, 3.0, 4.0]);
-    let derived = w.derived.get("wave1").unwrap().get("math1").unwrap();
+    let derived = derived_values(&w, "wave1", "math1");
     assert_eq!(derived, &vec![20.0, 30.0, 40.0]);
 }
 
@@ -143,11 +163,9 @@ fn remove_derived_sink_rebuilds_index() {
     buf.remove_derived_sink("waveA");
     let new_i_b = buf.derived_index_of("waveB", "math1");
     assert_eq!(new_i_b, 0);
+    buf.push_frame(&DataFrame::new(vec![1.0]));
     buf.push_derived_idx(new_i_b, 99.0);
     let w = buf.get_recent(1);
     assert!(!w.derived.contains_key("waveA"));
-    assert_eq!(
-        w.derived.get("waveB").unwrap().get("math1").unwrap(),
-        &vec![99.0]
-    );
+    assert_eq!(derived_values(&w, "waveB", "math1"), &vec![99.0]);
 }

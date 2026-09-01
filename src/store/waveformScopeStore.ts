@@ -7,7 +7,7 @@ import { createDefaultScopeConfig } from '../types';
 export interface PerWidgetState {
   config: ScopeAxisConfig;
   measurements: ScopeMeasurements | null;
-  lastMeasureVersion: number;
+  lastMeasureKey: string;
 }
 
 /// 创建 per-widget state (懒初始化)
@@ -15,7 +15,7 @@ export function createPerWidgetState(channelCount: number): PerWidgetState {
   return {
     config: createDefaultScopeConfig(channelCount),
     measurements: null,
-    lastMeasureVersion: -1,
+    lastMeasureKey: '',
   };
 }
 
@@ -27,7 +27,7 @@ interface WaveformScopeStore {
   setMeasurements: (
     widgetId: string,
     channelCount: number,
-    version: number,
+    key: string,
     m: ScopeMeasurements | null
   ) => void;
   /// 清理已移除 widget 的配置 (保留 default-waveform)
@@ -62,17 +62,16 @@ export const useWaveformScopeStore = create<WaveformScopeStore>()((set) => ({
       return { states: { ...prev.states, [widgetId]: { ...cur, config: next } } };
     }),
 
-  setMeasurements: (widgetId, channelCount, version, m) =>
+  setMeasurements: (widgetId, channelCount, key, m) =>
     set((prev) => {
       const cur = prev.states[widgetId];
-      // 同版本重复写入跳过: 测量循环每帧读取版本, 版本未变时数据也未变,
-      // 避免无谓地创建新 states 对象触发订阅组件重渲染
-      if (version === cur?.lastMeasureVersion) return prev;
+      // 数据版本、可见序列和耦合方式都未变化时跳过重复写入。
+      if (key === cur?.lastMeasureKey) return prev;
       const next = cur ?? createPerWidgetState(channelCount);
       return {
         states: {
           ...prev.states,
-          [widgetId]: { ...next, lastMeasureVersion: version, measurements: m },
+          [widgetId]: { ...next, lastMeasureKey: key, measurements: m },
         },
       };
     }),

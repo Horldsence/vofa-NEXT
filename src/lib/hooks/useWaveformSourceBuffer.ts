@@ -15,25 +15,30 @@ import {
 const EMPTY_BUFFER = new WaveformWindowCache();
 
 export function useWaveformSourceBuffer(sourceId: string | null): WaveformWindowCache {
-  const [buffer, setBuffer] = useState<WaveformWindowCache>(() => {
-    if (sourceId === null) return EMPTY_BUFFER;
-    if (sourceId === getPrimaryWaveformSource()) return waveformWindow;
-    return acquireWaveformBuffer(sourceId);
-  });
+  const [resolved, setResolved] = useState<{
+    sourceId: string | null;
+    buffer: WaveformWindowCache;
+  }>(() => ({
+    sourceId,
+    buffer: sourceId !== null && sourceId === getPrimaryWaveformSource()
+      ? waveformWindow
+      : EMPTY_BUFFER,
+  }));
 
   useEffect(() => {
     if (sourceId === null) {
-      setBuffer(EMPTY_BUFFER);
+      setResolved({ sourceId, buffer: EMPTY_BUFFER });
       return;
     }
     if (sourceId === getPrimaryWaveformSource()) {
-      setBuffer(waveformWindow);
+      setResolved({ sourceId, buffer: waveformWindow });
       return;
     }
     const b = acquireWaveformBuffer(sourceId);
-    setBuffer(b);
+    setResolved({ sourceId, buffer: b });
     return () => releaseWaveformBuffer(sourceId);
   }, [sourceId]);
 
-  return buffer;
+  // effect 运行前先返回空缓存，避免换源后的首帧继续显示上一来源概览。
+  return resolved.sourceId === sourceId ? resolved.buffer : EMPTY_BUFFER;
 }

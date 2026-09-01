@@ -8,7 +8,7 @@ use schema_types::{encode_by_blocks, ProtocolConfig, SchemaPreset, TestDataLink}
 use std::fmt::Write as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, watch, Notify};
 use vofa_core::{TestDataConfig, TestSignal};
 
@@ -57,8 +57,10 @@ pub fn spawn(
     let running_gen = running.clone();
     let notify_gen = notify.clone();
     tokio::spawn(async move {
-        let start = Instant::now();
         let mut sample_idx: u64 = 0;
+        // 采样时钟只由已生成样本数推进，批次调度抖动和热更新不会重置相位。
+        let mut sample_time_sec = 0.0_f64;
+        let mut previous_sample_dt = None;
         loop {
             if running_gen.load(Ordering::Relaxed) {
                 let runtime = runtime_rx.borrow().clone();
@@ -70,17 +72,27 @@ pub fn spawn(
                 let samples_per_msg = (f64::from(sample_rate) * 0.0005).ceil().max(1.0) as u64;
                 let msg_interval =
                     Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
-                let sample_dt = 1.0 / sample_rate;
+                let sample_dt = 1.0_f64 / f64::from(sample_rate);
+                if let Some(previous_dt) = previous_sample_dt.replace(sample_dt) {
+                    if (previous_dt - sample_dt).abs() > f64::EPSILON {
+                        // sample_time_sec 指向下一个样本；热更新后把该间隔替换为新间隔，
+                        // 但不改变已经生成的相位历史。
+                        sample_time_sec += sample_dt - previous_dt;
+                    }
+                }
                 tokio::select! {
                     () = tokio::time::sleep(msg_interval) => {
-                        // 相位以真实流逝时间为基准, 批内按采样间隔递增 (亚毫秒偏移,
-                        // 不会产生 MissedTickBehavior::Skip 那样的永久累积漂移)
-                        let base_t = start.elapsed().as_secs_f32();
                         let mut data = Vec::new();
-                        for i in 0..samples_per_msg {
-                            let t = (i as f32).mul_add(sample_dt, base_t);
-                            data.extend_from_slice(&generate_link_bytes(channels, signal, t, &runtime.link, sample_idx));
+                        for _ in 0..samples_per_msg {
+                            data.extend_from_slice(&generate_link_bytes(
+                                channels,
+                                signal,
+                                sample_time_sec,
+                                &runtime.link,
+                                sample_idx,
+                            ));
                             sample_idx += 1;
+                            sample_time_sec += sample_dt;
                         }
 
                         let _ = data_tx_gen.send(data);
@@ -125,7 +137,7 @@ pub fn spawn(
 fn generate_link_bytes(
     channels: usize,
     signal: TestSignal,
-    t: f32,
+    t: f64,
     link: &TestDataLink,
     sample_idx: u64,
 ) -> Vec<u8> {
@@ -147,7 +159,7 @@ fn generate_link_bytes(
 pub fn generate_bytes(
     channels: usize,
     signal: TestSignal,
-    t: f32,
+    t: f64,
     protocol: &ProtocolConfig,
     sample_idx: u64,
 ) -> Vec<u8> {
@@ -241,74 +253,78 @@ pub fn generate_bytes(
 ///
 /// `pub` 用于 `tests/` 集成测试验证信号形状; 协议层不应直接调用。
 #[doc(hidden)]
-pub fn generate_frame(channels: usize, signal: TestSignal, t: f32) -> Vec<f32> {
+pub fn generate_frame(channels: usize, signal: TestSignal, t: f64) -> Vec<f32> {
     (0..channels)
         .map(|i| {
-            let freq = 1.0 + i as f32;
-            let p = t * freq * 2.0 * std::f32::consts::PI;
+            let channel = i as f64;
+            let freq = 1.0 + channel;
+            let p = t * freq * 2.0 * std::f64::consts::PI;
             match signal {
-                TestSignal::Sine => (p.sin() * (i as f32).mul_add(0.5, 1.0)).mul_add(50.0, 128.0),
+                TestSignal::Sine => {
+                    (p.sin() * channel.mul_add(0.5, 1.0)).mul_add(50.0, 128.0) as f32
+                }
                 TestSignal::Square => {
                     if p.sin() > 0.0 {
-                        (i as f32).mul_add(10.0, 200.0)
+                        channel.mul_add(10.0, 200.0) as f32
                     } else {
-                        (i as f32).mul_add(10.0, 50.0)
+                        channel.mul_add(10.0, 50.0) as f32
                     }
                 }
                 TestSignal::Triangle => {
-                    let normalized = (p / std::f32::consts::PI) % 2.0;
+                    let normalized = (p / std::f64::consts::PI) % 2.0;
                     let tri = if normalized < 1.0 {
                         normalized
                     } else {
                         2.0 - normalized
                     };
-                    (i as f32).mul_add(20.0, tri * 100.0)
+                    channel.mul_add(20.0, tri * 100.0) as f32
                 }
                 TestSignal::Sawtooth => {
                     let normalized = t * freq % 1.0;
-                    (i as f32).mul_add(10.0, normalized * 200.0)
+                    channel.mul_add(10.0, normalized * 200.0) as f32
                 }
                 TestSignal::Random => {
                     // 简单的伪随机: 基于时间的 hash
-                    let seed = t.mul_add(1000.0, i as f32);
+                    let seed = t.mul_add(1000.0, channel);
                     let r = (seed.sin() * 43_758.547).fract();
-                    r * 255.0
+                    (r * 255.0) as f32
                 }
                 TestSignal::Dc => {
                     // 直流: 每通道一个固定值
-                    (i as f32).mul_add(20.0, 128.0)
+                    channel.mul_add(20.0, 128.0) as f32
                 }
                 TestSignal::Chirp => {
                     // 扫频: 频率随时间线性增加
                     let f = t.mul_add(2.0, 0.5);
-                    (i as f32).mul_add(
+                    channel.mul_add(
                         10.0,
-                        (t * f * freq * 2.0 * std::f32::consts::PI)
+                        (t * f * freq * 2.0 * std::f64::consts::PI)
                             .sin()
                             .mul_add(80.0, 128.0),
-                    )
+                    ) as f32
                 }
                 TestSignal::Steps => {
                     // 阶梯: 每 10 个采样点上升一级
-                    let step = ((t * freq * 5.0) as i32) as f32;
-                    (i as f32).mul_add(10.0, step.rem_euclid(8.0).mul_add(30.0, 20.0))
+                    let step = (t * freq * 5.0) as i32;
+                    channel.mul_add(10.0, f64::from(step).rem_euclid(8.0).mul_add(30.0, 20.0))
+                        as f32
                 }
                 TestSignal::Noise => {
                     // 高斯噪声近似 (Box-Muller 简化版)
-                    let seed1 = (i as f32).mul_add(7.0, t * 1000.0);
-                    let seed2 = (i as f32).mul_add(13.0, t * 999.0);
+                    let seed1 = channel.mul_add(7.0, t * 1000.0);
+                    let seed2 = channel.mul_add(13.0, t * 999.0);
                     let u1 = (seed1.sin() * 43_758.547).fract().max(0.0001);
                     let u2 = (seed2.sin() * 12_345.679).fract();
-                    let n = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f32::consts::PI * u2).cos();
+                    let n = (-2.0 * u1.ln()).sqrt() * (2.0 * std::f64::consts::PI * u2).cos();
                     // 标准正态 → 缩放到 0..255
-                    (n * 40.0 + 128.0).clamp(0.0, 255.0)
+                    (n * 40.0 + 128.0).clamp(0.0, 255.0) as f32
                 }
                 TestSignal::MultiTone => {
                     // 多频叠加: 基频 + 3次谐波 + 5次谐波
                     let base = p.sin();
                     let h3 = (p * 3.0).sin() * 0.33;
                     let h5 = (p * 5.0).sin() * 0.2;
-                    (i as f32).mul_add(10.0, (base + h3 + h5).mul_add(60.0, 128.0))
+                    channel.mul_add(10.0, (base + h3 + h5).mul_add(60.0, 128.0)) as f32
                 }
             }
         })

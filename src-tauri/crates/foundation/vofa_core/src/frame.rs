@@ -39,7 +39,9 @@ impl DataFrame {
 
     /// 指定时间戳构造 — 高码率协议引擎在每次 feed 只读一次时钟,
     /// 批内所有帧共享同一时间戳 (批间隔 ≤500µs, 远小于显示精度),
-    /// 避免每帧一次 `SystemTime::now()` 系统调用
+    /// 避免每帧一次 `SystemTime::now()` 系统调用。
+    /// 注: 帧进入波形缓冲前, 管线 (process_source_batch) 会把批内共享的
+    /// 时间戳按帧线性摊开, 避免高码率合批后波形呈阶梯。
     pub const fn with_timestamp(timestamp: u64, channels: Vec<f32>) -> Self {
         Self {
             timestamp,

@@ -11,6 +11,12 @@ function makeWindow(channels: number[][], durMs = 1000): WaveformWindow {
     timestamps: Array.from({ length: n }, (_, i) => -durMs + i * step),
     channels,
     channel_count: channels.length,
+    derived: {},
+    buffer_points: n,
+    buffer_capacity: Math.max(1, n),
+    latest_timestamp_us: 0,
+    raw_window_points: n,
+    sampling: 'raw',
   };
 }
 

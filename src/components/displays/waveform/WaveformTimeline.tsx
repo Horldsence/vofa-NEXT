@@ -5,7 +5,7 @@ import { timeBaseToWindowSec, HORIZONTAL_DIVS, VERTICAL_DIVS, applyCoupling } fr
 import { TIMELINE_PAD } from './waveformConstants';
 import { useSettingsStore } from '../../../store/settingsStore';
 import {
-  resolveInputArray, type FrozenWaveformData, type TimelineSeriesSpec,
+  resolveInputArray, type TimelineSeriesSpec,
 } from './waveformSeries';
 
 /// 读取当前主题 CSS 变量
@@ -40,11 +40,8 @@ interface WaveformTimelineProps {
   timeWindowSec: number;
   /// 当前应显示的 series — 由主图按 slots + show 过滤后传入 (单一数据源, 与主图一致)
   series: TimelineSeriesSpec[];
-  /// 波形图 widgetId — 用于解析派生 series 数据 (win.derived[widgetId][sourceId])
+  /// 波形图 widgetId — 用于按 sink/source/handle 解析派生 series。
   widgetId: string;
-  /// Stop 模式下的冻结数据快照 — running=false 时使用它绘制缩略图 (而非实时波形缓冲)
-  /// 这样示波器暂停时缩略图也同步冻结, 不会继续显示新到达的数据
-  frozenData: FrozenWaveformData | null;
   /// 数据源缓冲 (按 Protocol 源节点溯源); 缺省 = 主波形源单例
   buffer?: WaveformWindowCache;
   onConfigChange?: (next: ScopeAxisConfig) => void;
@@ -88,7 +85,6 @@ export function WaveformTimeline({
   timeWindowSec,
   series,
   widgetId,
-  frozenData,
   buffer = waveformWindow,
   onConfigChange,
 }: WaveformTimelineProps) {
@@ -101,20 +97,12 @@ export function WaveformTimeline({
   const axisConfigRef = useRef(axisConfig);
   useEffect(() => { axisConfigRef.current = axisConfig; }, [axisConfig]);
 
-  // frozenData 用 ref, 避免 draw/hitTest/handleMove 因依赖变化而频繁重建
-  const frozenDataRef = useRef(frozenData);
-  useEffect(() => { frozenDataRef.current = frozenData; }, [frozenData]);
-
   // series 用 ref, draw 在 rAF 循环中读取最新值
   const seriesRef = useRef(series);
   useEffect(() => { seriesRef.current = series; }, [series]);
 
-  /// 获取当前应使用的数据源 — Stop 时用冻结快照, Run 时用实时波形缓冲
+  /// Run/Stop 都读取调用方传入的统一缓存；停止态缓存由快照生命周期负责。
   const getActiveWindow = useCallback(() => {
-    const fd = frozenDataRef.current;
-    if (fd && fd.ts.length > 0) {
-      return { timestamps: fd.ts, channelArrays: fd.chs, derivedMap: fd.derived };
-    }
     const win = buffer.get();
     return { timestamps: win.timestamps, channelArrays: win.channels, derivedMap: win.derived };
   }, [buffer]);
@@ -168,7 +156,6 @@ export function WaveformTimeline({
       // 取数共用 resolveInputArray (原始通道 + 派生 series),
       // Y 映射用 getEffectiveChannel 逐通道归一化 (vPerDiv/position/sharedY 与主图相同)
       const cfg = axisConfigRef.current;
-      const step = Math.max(1, Math.floor(totalPoints / plotW));
       for (const spec of seriesRef.current) {
         const arr = resolveInputArray(spec.input, widgetId, totalPoints, win.channelArrays, win.derivedMap);
         const eff = getEffectiveChannel(cfg, spec.cfgIdx);
@@ -183,8 +170,10 @@ export function WaveformTimeline({
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
         let started = false;
-        for (let i = 0; i < totalPoints; i += step) {
-          const x = pad + (i / (totalPoints - 1)) * plotW;
+        // 数据已经由后端按 Min-Max/LTTB 生成显示预算；这里不能再按固定步长抽稀，
+        // 否则恰好落在被跳过索引上的毛刺会再次丢失。
+        for (let i = 0; i < totalPoints; i++) {
+          const x = pad + ((win.timestamps[i] - firstTs) / totalDurMs) * plotW;
           const v = coupled[i];
           if (isNaN(v)) { started = false; continue; }
           const y = pad + plotH - ((v - yMin) / yRange) * plotH;

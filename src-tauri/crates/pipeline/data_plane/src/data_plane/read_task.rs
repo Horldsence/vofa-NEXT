@@ -57,6 +57,13 @@ pub(super) async fn read_task(
     let mut acc_frames: u64 = 0;
     let mut last_report = Instant::now();
     let mut controller = AdaptiveController::default();
+    // TestData 生成停止边沿检测 (None = 非 TestData 节点, 永不触发)
+    let mut was_generating = plane
+        .transport
+        .lock()
+        .await
+        .test_data_running_state(&node_id)
+        .unwrap_or(false);
 
     loop {
         let first = match rx.recv().await {
@@ -89,6 +96,30 @@ pub(super) async fn read_task(
             .metrics
             .rx_bytes
             .fetch_add(data.len() as u64, Ordering::Relaxed);
+
+        // TestData 停止生成边沿: 排空广播积压 (已解析的当前批次正常处理,
+        // 其后的排队消息全部丢弃), 波形立即冻结在停止时刻, 不再拖尾滚动
+        let generating = plane
+            .transport
+            .lock()
+            .await
+            .test_data_running_state(&node_id);
+        if was_generating && generating == Some(false) {
+            let mut dropped = 0_u64;
+            loop {
+                match rx.try_recv() {
+                    Ok(_) => dropped += 1,
+                    Err(TryRecvError::Lagged(n)) => {
+                        plane.metrics.lagged.fetch_add(n, Ordering::Relaxed);
+                    }
+                    Err(_) => break,
+                }
+            }
+            if dropped > 0 {
+                log::debug!("测试数据停止生成, 丢弃排队积压 {dropped} 条: {node_id}");
+            }
+        }
+        was_generating = generating.unwrap_or(false);
 
         // 按源原始字节收集 (不随解析积压丢失 — 收集在路由之前完成)
         plane.raw_collector_for(&node_id).lock().push_chunk(

@@ -25,7 +25,10 @@ import type {
   TriggerRule,
   WidgetBinding,
   WaveformWindow,
+  WaveformWindowPayload,
+  WaveformSeriesSelection,
 } from '../../types';
+import { normalizeWaveformWindow } from '../buffers/dataBuffer';
 import type { NodeDef, GraphEdge } from '../utils/nodeDef';
 import type { GraphDerivedPayload } from '../../store/slices/derived';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
@@ -274,27 +277,85 @@ export const api = {
   subscribeWaveform: (
     source: string,
     onEvent: (window: WaveformWindow) => void,
-    options?: { intervalMs?: number; maxPoints?: number },
+    options?: {
+      intervalMs?: number;
+      maxPoints?: number;
+      startMs?: number;
+      endMs?: number;
+      selection?: WaveformSeriesSelection;
+    },
   ) => {
-    return subscribeDisplay<WaveformWindow>(
-      { kind: 'waveform', source },
+    return subscribeDisplay<WaveformWindowPayload>(
+      {
+        kind: 'waveform',
+        source,
+        start_ms: options?.startMs,
+        end_ms: options?.endMs,
+        selection: options?.selection,
+      },
       'waveform',
-      onEvent,
+      (payload) => onEvent(normalizeWaveformWindow(payload)),
       { intervalMs: options?.intervalMs, maxItems: options?.maxPoints },
     );
   },
 
-  /// 同步查询: 获取最近 N 个点
-  getRecentWaveform: (source: string, count: number) =>
-    invoke<WaveformWindow>('get_recent_waveform', { source, count }),
+  createWaveformSnapshot: (source: string) =>
+    invoke<{ snapshot_id: string; overview: WaveformWindowPayload }>(
+      'create_waveform_snapshot',
+      { source },
+    ).then((created) => ({
+      snapshot_id: created.snapshot_id,
+      overview: normalizeWaveformWindow(created.overview),
+    })),
 
-  /// 同步查询: 获取时间窗口内的数据 (相对最新时间的偏移, 毫秒)
-  getWaveformWindow: (source: string, startMs: number, endMs: number) =>
-    invoke<WaveformWindow>('get_waveform_window', {
-      source,
-      startMs,
-      endMs,
-    }),
+  queryWaveformSnapshot: (
+    snapshotId: string,
+    startMs: number,
+    endMs: number,
+    maxPoints: number,
+    selection: WaveformSeriesSelection,
+  ) => invoke<WaveformWindowPayload>('query_waveform_snapshot', {
+    snapshotId,
+    startMs,
+    endMs,
+    maxPoints,
+    selection,
+  }).then(normalizeWaveformWindow),
+
+  releaseWaveformSnapshot: (snapshotId: string) =>
+    invoke<void>('release_waveform_snapshot', { snapshotId }),
+
+  getWaveformRawRange: (
+    source: string,
+    snapshotId: string | null,
+    startTimestampUs: number,
+    endTimestampUs: number,
+    maxRows: number,
+    selection: WaveformSeriesSelection,
+  ) => invoke<WaveformWindowPayload>('get_waveform_raw_range', {
+    source,
+    snapshotId,
+    startTimestampUs,
+    endTimestampUs,
+    maxRows,
+    selection,
+  }).then(normalizeWaveformWindow),
+
+  exportWaveformCsv: (
+    source: string,
+    snapshotId: string | null,
+    startTimestampUs: number,
+    endTimestampUs: number,
+    selection: WaveformSeriesSelection,
+    path: string,
+  ) => invoke<number>('export_waveform_csv', {
+    source,
+    snapshotId,
+    startTimestampUs,
+    endTimestampUs,
+    selection,
+    path,
+  }),
 
   clearBuffer: (source: string) => invoke<void>('clear_buffer', { source }),
 

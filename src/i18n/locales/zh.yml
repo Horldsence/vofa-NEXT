@@ -314,6 +314,9 @@ cursorHideHint: 隐藏光标
 cursorHiddenHint: 光标已隐藏 (松开按键恢复)
 waveformInteractHintTitle: 波形图交互
 waveformInteractHintMessage: 左键拖动可框选数据范围，用于复制或导出 CSV；按住 Shift 左键或用右键拖动可平移视图。
+waveformSnapshotUnavailable: 当前冻结画面已保留；原始快照重采样不可用
+waveformCsvExported: 已导出 {{count}} 行原始波形数据
+waveformCopyTitle: 波形复制
 dynamicSeriesToggle: 切换动态 series 模式 (固定通道槽 ↔ 按连接数动态显示)
 dynamicSeriesOff: 固定
 dynamicSeriesOn: 动态
@@ -560,7 +563,7 @@ settingPauseOnInteractDesc: 缩放或拖动波形时自动暂停实时刷新; �
 
 # 设置项 - Data Cache
 settingWaveformBufferPoints: 波形缓存点数
-settingWaveformBufferPointsDesc: 每个通道可保留的最大波形点数
+settingWaveformBufferPointsDesc: 每个通道可保留的最大波形点数；历史时长约为点数 ÷ 采样率，高采样率下可适当调大
 settingRawDataBufferBytes: 原始数据缓存字节数
 settingRawDataBufferBytesDesc: 原始数据视图可保留的最大字节数
 settingCanBufferFrames: CAN 帧缓存帧数

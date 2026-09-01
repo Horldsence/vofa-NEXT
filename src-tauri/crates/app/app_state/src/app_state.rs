@@ -1,6 +1,7 @@
 //! 应用全局状态 — AppState (Tauri-managed) + GraphEvalState 由
 //! [`data_plane`] 提供 (本文件 re-use 即可)。
 
+use buffer_databuffer::DataBuffer;
 use buffer_raw::RawDataCollector;
 use can_types::{CanBuffer, CanLoadStats};
 use data_bus::DataBus;
@@ -10,12 +11,20 @@ use data_plane::{
 };
 use engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use logic_types::{DecodedBuffer, LogicBuffer};
+use node_kind::NodeKind;
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use transport_core::TransportManager;
 use vofa_core::PipelineConfig;
+
+/// Stop 模式下冻结的原始波形缓存。
+pub struct WaveformSnapshot {
+    pub source: String,
+    pub buffer: Arc<DataBuffer>,
+    pub estimated_bytes: usize,
+}
 
 /// 应用全局状态
 pub struct AppState {
@@ -71,6 +80,10 @@ pub struct AppState {
     /// 流水线参数 (合批/并行解析/流分片/通道容量) — 由 set_pipeline_config 更新,
     /// 数据平面读任务 / 流订阅命令读取
     pub pipeline_config: Arc<RwLock<PipelineConfig>>,
+    /// Stop 波形快照注册表；快照拥有独立的原始环形缓存副本。
+    pub waveform_snapshots: Arc<Mutex<HashMap<String, WaveformSnapshot>>>,
+    /// 快照 id 单调序号。
+    pub next_waveform_snapshot_id: AtomicU64,
 }
 
 impl AppState {
@@ -159,6 +172,8 @@ impl AppState {
             logic_buffer,
             decoded_buffer,
             pipeline_config,
+            waveform_snapshots: Arc::new(Mutex::new(HashMap::new())),
+            next_waveform_snapshot_id: AtomicU64::new(1),
         }
     }
 
@@ -166,10 +181,69 @@ impl AppState {
     pub fn eval_state(&self) -> GraphEvalState {
         self.data_plane.eval.clone()
     }
+
+    /// 图提交后清理已不存在 Protocol 源的停止快照。
+    ///
+    /// 正常前端卸载会显式 release；此处覆盖崩溃、HMR 或 IPC 清理失败等异常路径。
+    pub fn prune_waveform_snapshots(&self) {
+        let live_sources = self
+            .data_plane
+            .global_nodes
+            .lock()
+            .values()
+            .filter_map(|node| matches!(&node.kind, NodeKind::Protocol { .. }).then_some(&node.id))
+            .cloned()
+            .collect::<std::collections::HashSet<_>>();
+        self.waveform_snapshots
+            .lock()
+            .retain(|_, snapshot| live_sources.contains(&snapshot.source));
+    }
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppState, WaveformSnapshot};
+    use buffer_databuffer::DataBuffer;
+    use node_kind::{NodeDef, NodeKind};
+    use schema_types::ProtocolConfig;
+    use std::sync::Arc;
+
+    #[test]
+    fn prune_waveform_snapshots_releases_orphaned_sources() {
+        let state = AppState::new();
+        state.data_plane.global_nodes.lock().insert(
+            "live".into(),
+            NodeDef {
+                id: "live".into(),
+                tab_id: "tab".into(),
+                kind: NodeKind::Protocol {
+                    config: ProtocolConfig::FireWater { channels: Some(1) },
+                    convert_to: None,
+                    schema: None,
+                },
+            },
+        );
+        for (id, source) in [("keep", "live"), ("release", "gone")] {
+            state.waveform_snapshots.lock().insert(
+                id.into(),
+                WaveformSnapshot {
+                    source: source.into(),
+                    buffer: Arc::new(DataBuffer::new(4, 1)),
+                    estimated_bytes: 48,
+                },
+            );
+        }
+
+        state.prune_waveform_snapshots();
+
+        let snapshots = state.waveform_snapshots.lock();
+        assert!(snapshots.contains_key("keep"));
+        assert!(!snapshots.contains_key("release"));
     }
 }

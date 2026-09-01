@@ -278,7 +278,14 @@ fn spawn_stream<S, F>(
                 _ = &mut cancel => break,
                 () = tokio::time::sleep(rate.current()) => {
                     let backlog = source.backlog();
-                    let Some(mut batch) = source.drain(backlog.clamp(min_batch, S::MAX_DRAIN)) else {
+                    // 显示点数预算由调用方传入；即使未来某个源给出超过自身硬上限的
+                    // 预算，也不能让 usize::clamp(min > max) 使订阅任务 panic。
+                    let drain_size = pipeline_stream::bounded_drain_size(
+                        backlog,
+                        min_batch,
+                        S::MAX_DRAIN,
+                    );
+                    let Some(mut batch) = source.drain(drain_size) else {
                         rate.on_idle();
                         continue;
                     };
@@ -438,15 +445,34 @@ pub async fn subscribe_data(
                 interval,
             );
         }
-        DisplayRequest::Waveform { source } => spawn_stream(
-            &state,
-            WaveformSource::new(state.data_plane.buffer_for(&source)),
-            on_event,
-            interval,
-            max_items,
-            "波形",
-            DisplayEvent::Waveform,
-        ),
+        DisplayRequest::Waveform {
+            source,
+            start_ms,
+            end_ms,
+            selection,
+        } => {
+            let buffer = state.data_plane.buffer_for(&source);
+            let waveform_source = match (start_ms, end_ms) {
+                (Some(start_ms), Some(end_ms)) => WaveformSource::with_view(
+                    buffer,
+                    pipeline_stream::WaveformViewSpec {
+                        start_ms,
+                        end_ms,
+                        selection,
+                    },
+                ),
+                _ => WaveformSource::new(buffer),
+            };
+            spawn_stream(
+                &state,
+                waveform_source,
+                on_event,
+                interval,
+                max_items,
+                "波形",
+                DisplayEvent::Waveform,
+            );
+        }
         DisplayRequest::RawData {
             origin,
             direction: filter_direction,
@@ -600,6 +626,24 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use vofa_core::DataFrame;
+
+    #[test]
+    fn detail_budget_above_source_limit_is_safely_capped() {
+        assert_eq!(pipeline_stream::bounded_drain_size(1, 8_000, 5_000), 5_000);
+        assert_eq!(
+            pipeline_stream::bounded_drain_size(9_000, 1_000, 5_000),
+            5_000
+        );
+        assert_eq!(
+            pipeline_stream::bounded_drain_size(2_500, 1_000, 5_000),
+            2_500
+        );
+    }
+
+    #[test]
+    fn waveform_source_accepts_full_detail_budget() {
+        assert_eq!(<WaveformSource as StreamSource>::MAX_DRAIN, 12_000);
+    }
 
     #[test]
     fn binary_sample_contract_has_stable_header_and_zero_value() {

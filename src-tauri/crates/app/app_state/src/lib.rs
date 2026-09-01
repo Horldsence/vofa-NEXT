@@ -13,7 +13,7 @@ mod source_graph;
 mod tickers;
 mod workspace;
 
-pub use app_state::AppState;
+pub use app_state::{AppState, WaveformSnapshot};
 pub use runtime::{flush_workspace_on_exit, spawn_background_tasks};
 pub use source_graph::{SourceGraphs, SourceNodeHint, TabSourceGraph};
 pub use tickers::{spectrum_ticker, text_output_ticker, textout_sender_ticker};

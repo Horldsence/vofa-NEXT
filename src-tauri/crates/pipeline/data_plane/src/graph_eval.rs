@@ -254,6 +254,37 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     }
 }
 
+/// 批内帧时间戳线性摊开 — 协议引擎每次 feed 只读一次时钟
+/// (`DataFrame::with_timestamp`), 批内所有帧共享同一时间戳; 高码率合批后数千帧
+/// 落在同一时刻, 波形渲染成阶梯。这里把非严格递增的批时间戳均匀摊到
+/// (缓冲最新时间戳, 批尾时间戳] 区间; 已严格递增的批次 (逐帧真实时间戳) 原样保留。
+fn spread_batch_timestamps(frames: &[DataFrame], buffer: &DataBuffer) -> Option<Vec<u64>> {
+    let n = frames.len();
+    if n < 2 {
+        return None;
+    }
+    let quantized = frames
+        .windows(2)
+        .any(|pair| pair[1].timestamp <= pair[0].timestamp);
+    if !quantized {
+        return None;
+    }
+    let end = frames[n - 1].timestamp;
+    let prev = buffer
+        .time_bounds_us()
+        .map_or(frames[0].timestamp, |(_, latest)| latest);
+    if end <= prev {
+        return None;
+    }
+    let span = u128::from(end - prev);
+    let count = n as u128;
+    Some(
+        (0..n)
+            .map(|i| prev + u64::try_from(span * (i as u128 + 1) / count).unwrap_or(u64::MAX))
+            .collect(),
+    )
+}
+
 /// 单源帧批处理 (热路径) — 一个源的一批帧一次性完成
 /// source_frames 更新 + push_frame + 图评估 + 派生值收集
 ///
@@ -355,7 +386,11 @@ pub fn process_source_batch(
     for (gi, g) in graph_list.iter().enumerate() {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                derived_edges.push((gi, slot, buffer.derived_index_of(&e.target, &e.source)));
+                derived_edges.push((
+                    gi,
+                    slot,
+                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                ));
             }
         }
     }
@@ -410,27 +445,32 @@ pub fn process_source_batch(
     let publish_interval = std::time::Duration::from_millis(8);
     let mut last_publish = std::time::Instant::now();
 
+    let interp_ts = spread_batch_timestamps(frames, buffer);
+
     for (i, frame) in frames.iter().enumerate() {
         let timing_sampled = u64::try_from(i).unwrap_or(0) % TIMING_SAMPLE_PERIOD == 0;
+        let frame_ts = interp_ts.as_ref().map_or(frame.timestamp, |ts| ts[i]);
         // 0. 该源最新帧入缓存 (其他源保持缓存值 — latest-value 融合)
         //    clone_from 复用 channels 分配, 稳态零分配
         match source_frames.get_mut(source_id) {
             Some(slot) => {
-                slot.timestamp = frame.timestamp;
+                slot.timestamp = frame_ts;
                 slot.channels.clone_from(&frame.channels);
             }
             None => {
-                source_frames.insert(source_id.to_string(), frame.clone());
+                let mut owned = frame.clone();
+                owned.timestamp = frame_ts;
+                source_frames.insert(source_id.to_string(), owned);
             }
         }
 
-        // 1. push 原始帧到该源自己的 buffer
+        // 1. push 原始帧到该源自己的 buffer (逐样本插值时间戳, 见 spread_batch_timestamps)
         let t = if timing_sampled {
             Some(std::time::Instant::now())
         } else {
             None
         };
-        buffer.push_frame(frame);
+        buffer.push_frame_at(frame_ts, &frame.channels);
         if let Some(t) = t {
             breakdown.push_frame_ns +=
                 u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
@@ -473,7 +513,7 @@ pub fn process_source_batch(
         for batch in &mut port_batches {
             let (slots, written, ..) = &slot_bufs[batch.graph_index];
             if written[batch.slot] {
-                batch.timestamps.push(frame.timestamp);
+                batch.timestamps.push(frame_ts);
                 batch.values.push(f64::from(slots[batch.slot]));
             }
         }

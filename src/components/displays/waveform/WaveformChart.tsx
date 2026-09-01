@@ -1,25 +1,39 @@
 import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import type uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { useAppStore } from '../../../store/appStore';
 import { useSettingsStore } from '../../../store/settingsStore';
+import { api } from '../../../lib/tauri/tauri';
+import { notify, formatError } from '../../../lib/tauri/notifications';
+import { useWaveformDetailBuffer } from '../../../lib/hooks/useWaveformDetailBuffer';
 import { waveformWindow, type WaveformWindowCache } from '../../../lib/buffers/dataBuffer';
 import { writeTextToClipboard } from '../../../lib/utils/clipboard';
+import { save } from '@tauri-apps/plugin-dialog';
 import { t } from '../../../i18n';
-import type { WidgetConfig } from '../../../types';
+import type {
+  ScopeMeasurements,
+  WaveformSeriesSelection,
+  WaveformWindow,
+  WidgetConfig,
+} from '../../../types';
 import { getEffectiveChannel, type ScopeAxisConfig } from '../../../types';
-import { timeBaseToWindowSec, applyCoupling } from '../../../lib/utils/scopeUtils';
+import {
+  timeBaseToWindowSec,
+  applyCoupling,
+  computeMeasurements,
+} from '../../../lib/utils/scopeUtils';
 import { WaveformTimeline } from './WaveformTimeline';
 import { WaveformEnvelopeChart } from './WaveformEnvelopeChart';
 import { waveformSourceIdOf } from '../../../lib/buffers/sourceManagers';
 import {
   computeConnectedInputs, buildSeriesSlots, slotColor, resolveInputArray,
-  type ConnectedInput, type SeriesSlot, type FrozenWaveformData, type TimelineSeriesSpec,
+  type ConnectedInput, type SeriesSlot, type TimelineSeriesSpec,
 } from './waveformSeries';
 import { CursorOverlay } from './WaveformChartCursorOverlay';
 import { WaveformCursorReadout } from './WaveformCursorReadout';
-import { getExportData, buildCsvForRange } from './waveformChartExport';
 import { formatTimeMs } from './wavechartFormatters';
+import { absoluteTimeRangeUs } from './waveformChartExport';
 import {
   useUplotInit, useWheelZoom, usePanDrag, useCursorHide, useTooltipPos,
   type CursorDisplayOpts,
@@ -32,6 +46,42 @@ interface WaveformChartProps {
   onConfigChange?: (next: ScopeAxisConfig) => void;
   /// 数据源缓冲 (按 Protocol 源节点溯源); 缺省 = 主波形源单例
   buffer?: WaveformWindowCache;
+  /// 当前视图溯源到的 Protocol 节点；detail 订阅以视图为粒度建立。
+  sourceId?: string | null;
+  onMeasurements?: (key: string, measurements: ScopeMeasurements | null) => void;
+}
+
+function buildRawClipboardCsv(
+  windowData: WaveformWindow,
+  selection: WaveformSeriesSelection,
+  widgetId: string,
+): string {
+  const csvCell = (value: number | undefined) =>
+    value !== undefined && Number.isFinite(value) ? String(value) : '';
+  const channels = selection.channels;
+  const derived = selection.derived;
+  const headers = [
+    'timestamp_us',
+    ...channels.map((channel) => `CH${channel}`),
+    ...derived.map((series) =>
+      `${series.sink_id}:${series.source_id}:${series.source_handle}`,
+    ),
+  ];
+  const rows = [headers.join(',')];
+  const latestUs = windowData.latest_timestamp_us;
+  for (let index = 0; index < windowData.timestamps.length; index++) {
+    const timestampUs = Math.round(latestUs + windowData.timestamps[index] * 1000);
+    rows.push([
+      String(timestampUs),
+      ...channels.map((channel) => csvCell(windowData.channels[channel]?.[index])),
+      ...derived.map((series) => csvCell(
+        windowData.derived[series.sink_id]?.[series.source_id]?.[series.source_handle]?.[index]
+          ?? windowData.derived[widgetId]?.[series.source_id]?.[series.source_handle]?.[index]
+          ?? NaN,
+      )),
+    ].join(','));
+  }
+  return rows.join('\n');
 }
 
 /// 示波器风格波形图 — 每通道独立 V/div 与 position
@@ -40,7 +90,14 @@ interface WaveformChartProps {
 /// - Run/Stop: 停止时冻结数据
 /// - 游标: SVG 叠加
 /// - 时基与下方缩略图双向同步 (由 WaveformTimeline 实现)
-export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = waveformWindow }: WaveformChartProps) {
+export function WaveformChart({
+  widget,
+  axisConfig,
+  onConfigChange,
+  buffer = waveformWindow,
+  sourceId = null,
+  onMeasurements,
+}: WaveformChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
   const themeId = useSettingsStore((s) => s.settings.appearance.theme);
@@ -49,12 +106,10 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
   const crosshairVisible = useSettingsStore((s) => s.settings.editor.crosshairVisible);
   const hoverPointsVisible = useSettingsStore((s) => s.settings.editor.hoverPointsVisible);
   const cursorReadoutVisible = useSettingsStore((s) => s.settings.editor.cursorReadoutVisible);
+  const waveformFps = useSettingsStore((s) => s.settings.editor.waveformFps);
   const axisConfigRef = useRef(axisConfig);
   const lastVersionRef = useRef(-1);
-  const frozenDataRef = useRef<FrozenWaveformData | null>(null);
-  /// 冻结快照 state — 与 frozenDataRef 同步更新, 供渲染期 (缩略图 prop) 使用
-  /// 避免渲染期读 ref 时 Stop 后第一帧尚未赋值的问题
-  const [frozenData, setFrozenData] = useState<FrozenWaveformData | null>(null);
+  const [plotWidth, setPlotWidth] = useState(1000);
 
   const [cursorReadout, setCursorReadout] = useState<{
     leftPx: number;
@@ -67,6 +122,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
   } | null>(null);
 
   const [selectedRange, setSelectedRange] = useState<{ startSec: number; endSec: number } | null>(null);
+  const selectionAnchorUsRef = useRef(0);
   const [copyFeedback, setCopyFeedback] = useState(false);
 
   /// 包络模式 (原型): 后端逐列 min/max 降采样, 前端仅绘制缎带 — 默认关
@@ -125,6 +181,90 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
     [seriesSlots, axisConfig.channels]
   );
 
+  const detailSelection = useMemo<WaveformSeriesSelection>(() => {
+    const visible = seriesSlots.filter(
+      (slot) => axisConfig.channels[slot.cfgIdx]?.show ?? true,
+    );
+    const channels = new Set<number>();
+    const derived = new Map<string, {
+      sink_id: string;
+      source_id: string;
+      source_handle: string;
+    }>();
+    for (const slot of visible) {
+      if (slot.input.kind === 'channel') {
+        channels.add(slot.input.idx);
+      } else {
+        const item = {
+          sink_id: widget.params.id,
+          source_id: slot.input.sourceId,
+          source_handle: slot.input.sourceHandle,
+        };
+        derived.set(
+          `${item.sink_id}\u0000${item.source_id}\u0000${item.source_handle}`,
+          item,
+        );
+      }
+    }
+    return {
+      channels: [...channels],
+      derived: [...derived.values()],
+    };
+  }, [axisConfig.channels, seriesSlots, widget.params.id]);
+
+  const visibleSeriesCount = Math.max(
+    1,
+    detailSelection.channels.length + detailSelection.derived.length,
+  );
+  const detailPointLimit = Math.min(widget.params.max_points, 12_000);
+  const detailPointBudget = Math.max(
+    2,
+    Math.min(
+      detailPointLimit,
+      Math.max(1000, Math.round(2 * plotWidth * visibleSeriesCount)),
+    ),
+  );
+  const {
+    detailBuffer,
+    overviewBuffer,
+    snapshotId,
+    snapshotError,
+  } = useWaveformDetailBuffer({
+    sourceId,
+    running: axisConfig.running,
+    viewEndMs: viewEndSec * 1000,
+    viewSpanMs: timeWindowSec * 1000,
+    pointBudget: detailPointBudget,
+    intervalMs: Math.max(1, Math.round(1000 / Math.max(1, waveformFps))),
+    selection: detailSelection,
+    overviewBuffer: buffer,
+  });
+  const detailBufferRef = useRef(detailBuffer);
+  detailBufferRef.current = detailBuffer;
+  const setSelectedRangeAnchored = useCallback<Dispatch<SetStateAction<{
+    startSec: number;
+    endSec: number;
+  } | null>>>((next) => {
+    setSelectedRange((previous) => {
+      const resolved = typeof next === 'function' ? next(previous) : next;
+      selectionAnchorUsRef.current = resolved
+        ? detailBufferRef.current.get().latest_timestamp_us
+        : 0;
+      return resolved;
+    });
+  }, []);
+
+  useEffect(() => {
+    const element = containerRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => {
+      const width = Math.max(1, Math.round(entries[0]?.contentRect.width ?? 1));
+      setPlotWidth((current) => current === width ? current : width);
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const { cursorHidden, isMac } = useCursorHide();
 
   // 光标吸附运行时配置: snap 来自设置, hidden 来自 Ctrl/Cmd 隐藏 (隐藏时不吸附但保留十字线)
@@ -142,33 +282,19 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
   const tooltipPos = useTooltipPos(cursorReadout, containerRef, tooltipRef);
 
   /// 取数据 — 返回 [timestamps, ...seriesSlots.length 个等长数组]
-  /// 通道输入: 从 win.channels[idx] 取; 派生输入: 从 win.derived[widgetId]?.[sourceId] 取
+  /// 通道与派生输入统一按 SeriesSlot 的完整身份解析。
   /// 未连接的占位槽填 NaN
   const getDisplayData = useCallback((): number[][] => {
     const cfg = axisConfigRef.current;
     const slots = seriesSlotsRef.current;
     const totalSlots = slots.length;
-    let timestamps: number[];
-    let channelArrays: number[][];
-    let derivedMap: Record<string, Record<string, number[]>> | undefined;
-
-    if (cfg.running) {
-      const win = buffer.get();
-      if (win.timestamps.length === 0) {
-        return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
-      }
-      timestamps = win.timestamps;
-      channelArrays = win.channels;
-      derivedMap = win.derived;
-    } else {
-      const frozen = frozenDataRef.current;
-      if (!frozen || frozen.ts.length === 0) {
-        return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
-      }
-      timestamps = frozen.ts;
-      channelArrays = frozen.chs;
-      derivedMap = frozen.derived;
+    const win = detailBuffer.get();
+    if (win.timestamps.length === 0) {
+      return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
     }
+    const timestamps = win.timestamps;
+    const channelArrays = win.channels;
+    const derivedMap = win.derived;
 
     const tsLen = timestamps.length;
     // 为每个 slot 构建 data array (与缩略图共用 resolveInputArray, 取数逻辑一致)
@@ -190,7 +316,34 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
       return coupled.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
     });
     return [tsSec, ...seriesDivs];
-  }, [widget.params.id, buffer]);
+  }, [widget.params.id, detailBuffer]);
+
+  const updateMeasurements = useCallback(() => {
+    if (!onMeasurements) return;
+    const win = detailBuffer.get();
+    const slot = seriesSlotsRef.current.find(
+      (candidate) => axisConfigRef.current.channels[candidate.cfgIdx]?.show ?? true,
+    );
+    const slotKey = slot?.input.kind === 'channel'
+      ? `channel:${slot.input.idx}`
+      : `derived:${slot?.input.sourceId ?? ''}:${slot?.input.sourceHandle ?? ''}`;
+    if (!slot || win.timestamps.length < 2) {
+      onMeasurements(`${detailBuffer.version}:${slotKey}:none`, null);
+      return;
+    }
+    const values = resolveInputArray(
+      slot.input,
+      widget.params.id,
+      win.timestamps.length,
+      win.channels,
+      win.derived,
+    );
+    const effective = getEffectiveChannel(axisConfigRef.current, slot.cfgIdx);
+    onMeasurements(
+      `${detailBuffer.version}:${slotKey}:${effective.coupling}`,
+      computeMeasurements(applyCoupling(values, effective.coupling), win.timestamps),
+    );
+  }, [detailBuffer, onMeasurements, widget.params.id]);
 
   // 配置变化 → 更新通道可见性 + 重新归一化数据
   // 关键: V/div 或 position 变化时, 必须重新 setData, 否则波形不会按新档位重绘
@@ -206,56 +359,37 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
     // 重新归一化数据 (用新的 vPerDiv / position / sharedY / yUnit 重新计算)
     plot.setData(getDisplayData() as unknown as uPlot.AlignedData);
     plot.redraw();
-  }, [channelConfig, axisConfig.sharedY, axisConfig.yUnit, seriesSlots, getDisplayData]);
-
-  useEffect(() => {
-    if (!axisConfig.running) {
-      const win = buffer.get();
-      if (win.timestamps.length > 0 && !frozenDataRef.current) {
-        // 停止时保持引用而非深拷贝: waveformWindow.clear() 创建新空窗口,
-        // 不会 mutate 此引用, 因此引用安全
-        const snapshot: FrozenWaveformData = {
-          ts: win.timestamps,
-          chs: win.channels,
-          derived: win.derived,
-        };
-        frozenDataRef.current = snapshot;
-        // 同步 setState, 保证缩略图在 Stop 的同一帧拿到冻结快照
-        setFrozenData(snapshot);
-        // 拍快照后立即用冻结数据重绘
-        const plot = plotRef.current;
-        if (plot) {
-          plot.setData(getDisplayData() as unknown as uPlot.AlignedData);
-          plot.redraw();
-        }
-      }
-    } else {
-      frozenDataRef.current = null;
-      setFrozenData(null);
-    }
-  }, [axisConfig.running, getDisplayData, buffer]);
+    updateMeasurements();
+  }, [
+    channelConfig,
+    axisConfig.sharedY,
+    axisConfig.yUnit,
+    seriesSlots,
+    getDisplayData,
+    updateMeasurements,
+  ]);
 
   useUplotInit(
     containerRef, plotRef, axisConfigRef, seriesSlotsRef,
-    getDisplayData, setCursorReadout, setSelectedRange,
+    getDisplayData, setCursorReadout, setSelectedRangeAnchored,
     seriesSignature, themeId, cursorOptsRef, renderSignature,
   );
 
-  // 数据更新 (运行模式) — 事件驱动 + rAF 节流
+  // detail 更新（Run 推送 / Stop 快照查询）— 事件驱动 + rAF 节流
   // waveformWindow.subscribe 在数据到达时触发, 用 rAF 合并多次更新避免超过渲染帧率
   useEffect(() => {
-    if (!axisConfig.running) return;
     let rafId: number | null = null;
-    const unsub = buffer.subscribe(() => {
+    const unsub = detailBuffer.subscribe(() => {
       // 数据到达, 如果已有待渲染帧则跳过 (节流)
       if (rafId !== null) return;
       rafId = requestAnimationFrame(() => {
         rafId = null;
         if (plotRef.current) {
-          const v = buffer.version;
+          const v = detailBuffer.version;
           if (v !== lastVersionRef.current) {
             lastVersionRef.current = v;
             plotRef.current.setData(getDisplayData() as unknown as uPlot.AlignedData);
+            updateMeasurements();
           }
         }
       });
@@ -264,60 +398,72 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
       unsub();
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, [getDisplayData, axisConfig.running, buffer]);
+  }, [getDisplayData, detailBuffer, updateMeasurements]);
 
   // 视图同步: timeBase/hPosition 变化时强制 setScale
   useEffect(() => {
     const plot = plotRef.current;
     if (!plot) return;
-    if (axisConfig.running) {
-      plot.setScale('x', { min: -timeWindowSec, max: 0 });
-    } else {
-      plot.setScale('x', { min: viewEndSec - timeWindowSec, max: viewEndSec });
-    }
+    plot.setScale('x', { min: viewEndSec - timeWindowSec, max: viewEndSec });
   }, [axisConfig.timeBase, axisConfig.hPosition, axisConfig.running, timeWindowSec, viewEndSec]);
 
   useWheelZoom(containerRef, axisConfigRef, onConfigChange);
 
-  usePanDrag(containerRef, plotRef, axisConfigRef, onConfigChange, setSelectedRange);
+  usePanDrag(containerRef, plotRef, axisConfigRef, onConfigChange, setSelectedRangeAnchored);
+
+  const getAbsoluteSelection = useCallback(() => {
+    if (!selectedRange) return null;
+    const latestUs = selectionAnchorUsRef.current;
+    if (!latestUs) return null;
+    return absoluteTimeRangeUs(selectedRange, latestUs);
+  }, [selectedRange]);
 
   const exportSelection = useCallback(() => {
-    if (!selectedRange) return;
-    const data = getExportData(
-      axisConfigRef.current,
-      seriesSlotsRef.current,
-      widget.params.id,
-      frozenDataRef.current,
-      buffer,
-    );
-    const csv = buildCsvForRange(selectedRange, data);
-    if (!csv) return;
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `waveform-${selectedRange.startSec.toFixed(3)}-${selectedRange.endSec.toFixed(3)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [buffer, selectedRange, widget.params.id]);
+    const absolute = getAbsoluteSelection();
+    if (!absolute || !sourceId) return;
+    void save({
+      defaultPath: 'waveform.csv',
+      filters: [{ name: 'CSV', extensions: ['csv'] }],
+    }).then(async (path) => {
+      if (!path) return;
+      try {
+        const rows = await api.exportWaveformCsv(
+          sourceId,
+          snapshotId,
+          absolute.startUs,
+          absolute.endUs,
+          detailSelection,
+          path,
+        );
+        notify.info('CSV', t(lang, 'waveformCsvExported').replace('{{count}}', String(rows)));
+      } catch (error) {
+        notify.error('CSV', formatError(error));
+      }
+    });
+  }, [detailSelection, getAbsoluteSelection, lang, snapshotId, sourceId]);
 
   const copySelection = useCallback(async () => {
-    if (!selectedRange) return;
-    const data = getExportData(
-      axisConfigRef.current,
-      seriesSlotsRef.current,
-      widget.params.id,
-      frozenDataRef.current,
-      buffer,
-    );
-    const csv = buildCsvForRange(selectedRange, data);
-    if (!csv) return;
-    const ok = await writeTextToClipboard(csv);
-    if (ok) {
-      setCopyFeedback(true);
-      setTimeout(() => setCopyFeedback(false), 1200);
+    const absolute = getAbsoluteSelection();
+    if (!absolute || !sourceId) return;
+    try {
+      const raw = await api.getWaveformRawRange(
+        sourceId,
+        snapshotId,
+        absolute.startUs,
+        absolute.endUs,
+        100_000,
+        detailSelection,
+      );
+      const csv = buildRawClipboardCsv(raw, detailSelection, widget.params.id);
+      const ok = await writeTextToClipboard(csv);
+      if (ok) {
+        setCopyFeedback(true);
+        setTimeout(() => setCopyFeedback(false), 1200);
+      }
+    } catch (error) {
+      notify.warn(t(lang, 'waveformCopyTitle'), formatError(error));
     }
-  }, [buffer, selectedRange, widget.params.id]);
+  }, [detailSelection, getAbsoluteSelection, lang, snapshotId, sourceId, widget.params.id]);
 
   const clearSelection = useCallback(() => {
     setSelectedRange(null);
@@ -438,6 +584,11 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
           tooltipPos={tooltipPos}
           tooltipRef={tooltipRef}
         />
+        {snapshotError && !axisConfig.running && (
+          <div className="absolute bottom-2 left-2 z-[100] max-w-[70%] rounded border border-orange/50 bg-bg-editor/95 px-2 py-1 text-[10px] text-orange shadow">
+            {t(lang, 'waveformSnapshotUnavailable')}: {snapshotError}
+          </div>
+        )}
       </div>
       {!isConnected && (
         <div className="absolute inset-0 flex items-center justify-center text-text-secondary text-sm pointer-events-none">
@@ -450,8 +601,7 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
         timeWindowSec={timeWindowSec}
         series={timelineSeries}
         widgetId={widget.params.id}
-        frozenData={!axisConfig.running ? frozenData : null}
-        buffer={buffer}
+        buffer={overviewBuffer}
         onConfigChange={onConfigChange}
       />
     </div>

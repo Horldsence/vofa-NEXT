@@ -6,7 +6,7 @@
 
 use logic_types::LogicDecoderConfig;
 use schema_types::ProtocolConfig;
-use transport_core::test_data::generate_bytes;
+use transport_core::test_data::{generate_bytes, generate_frame};
 use vofa_core::{Parity, StopBits, TestSignal};
 
 #[test]
@@ -73,4 +73,16 @@ fn logic_decode_format() {
     assert_eq!(data.len(), 8);
     // 通道 0 应有方波翻转
     assert_ne!(data[0] & 0x01, 0);
+}
+
+#[test]
+fn high_rate_phase_keeps_f64_resolution_after_long_runtime() {
+    let sample_rate = 700_000.0_f64;
+    let first = generate_frame(1, TestSignal::Sine, 3_600.0)[0];
+    let second = generate_frame(1, TestSignal::Sine, 3_600.0 + 1.0 / sample_rate)[0];
+
+    assert!(
+        (second - first).abs() > f32::EPSILON,
+        "长时间运行后 700 kHz 相邻样本仍必须推进相位"
+    );
 }

@@ -87,6 +87,22 @@ pub struct ProtocolNodeState {
     pub detection_notified: bool,
     /// 上次已推送前端的自动通道检测值 (变化即推 `protocol:channels-detected`; None = 尚未推送)
     pub last_detected_pushed: Option<usize>,
+    /// 来源采样时钟。线缆协议按读取批次解析时，同批样本原本共享到达时间；
+    /// 这里按来源提供的精确采样率或线速估算恢复逐样本时间戳。
+    sample_clock: Option<SampleClock>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SampleClockBasis {
+    ExactRate,
+    SerialWireRate,
+}
+
+struct SampleClock {
+    source_id: String,
+    basis: SampleClockBasis,
+    sample_rate: f64,
+    next_timestamp_us: f64,
 }
 
 impl ProtocolNodeState {
@@ -112,6 +128,68 @@ impl ProtocolNodeState {
             parallel_supported: None,
             detection_notified: false,
             last_detected_pushed: None,
+            sample_clock: None,
+        }
+    }
+
+    /// 按来源提供的采样率为一批帧恢复连续时间戳。
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
+    pub(crate) fn restamp_frames_at_rate(
+        &mut self,
+        source_id: &str,
+        basis: SampleClockBasis,
+        sample_rate: f64,
+        frames: &mut [vofa_core::DataFrame],
+    ) {
+        if frames.is_empty() || !sample_rate.is_finite() || sample_rate <= 0.0 {
+            return;
+        }
+        let step_us = 1_000_000.0 / sample_rate;
+        let reset = self
+            .sample_clock
+            .as_ref()
+            .is_none_or(|clock| clock.source_id != source_id || clock.basis != basis);
+        if reset {
+            let anchor_us = if basis == SampleClockBasis::SerialWireRate {
+                frames
+                    .last()
+                    .map_or_else(vofa_core::now_us, |frame| frame.timestamp)
+            } else {
+                vofa_core::now_us()
+            } as f64;
+            self.sample_clock = Some(SampleClock {
+                source_id: source_id.to_string(),
+                basis,
+                sample_rate,
+                next_timestamp_us: (frames.len().saturating_sub(1) as f64)
+                    .mul_add(-step_us, anchor_us),
+            });
+        }
+        let Some(clock) = &mut self.sample_clock else {
+            return;
+        };
+        // TestData 的明确采样率连续推进；串口线速是估算值，每批允许用真实到达
+        // 时刻补回线路空闲间隔，但绝不倒退或覆盖上一批时间戳。
+        if basis == SampleClockBasis::SerialWireRate {
+            let arrival_us = frames
+                .last()
+                .map_or_else(vofa_core::now_us, |frame| frame.timestamp)
+                as f64;
+            let arrival_start =
+                (frames.len().saturating_sub(1) as f64).mul_add(-step_us, arrival_us);
+            clock.next_timestamp_us = clock.next_timestamp_us.max(arrival_start);
+        } else if (clock.sample_rate - sample_rate).abs() > f64::EPSILON {
+            let previous_step_us = 1_000_000.0 / clock.sample_rate;
+            clock.next_timestamp_us += step_us - previous_step_us;
+        }
+        clock.sample_rate = sample_rate;
+        for frame in frames {
+            frame.timestamp = clock.next_timestamp_us.max(0.0).round() as u64;
+            clock.next_timestamp_us += step_us;
         }
     }
 

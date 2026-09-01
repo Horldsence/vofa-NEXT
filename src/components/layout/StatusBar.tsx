@@ -4,7 +4,6 @@ import { t } from '../../i18n';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';
 import { RefreshCw, Settings, Info, Sparkles } from 'lucide-react';
 import clsx from 'clsx';
-import { BufferUsageStats } from './BufferUsageStats';
 import { CanLoadAlarm } from './CanLoadAlarm';
 import { PipelineDropAlarm } from './PipelineDropAlarm';
 import { UpdateIndicator } from './UpdateIndicator';
@@ -40,8 +39,8 @@ function AiPanelToggle() {
 /// 告警出现/消失都能自适应, 永远不会裁切内容:
 /// - tier 0: 全量
 /// - tier 1: 隐藏 rx/tx frames
-/// - tier 2: 再隐藏 transport/protocol 文本标签, 缓存指示收缩为纯文字百分比 (Wave 12%)
-/// - tier 3: rx/tx bytes 紧凑格式 (↓ 1.2MB / ↑ 0B), 缓存指示全部隐藏
+/// - tier 2: 再隐藏 transport/protocol 文本标签
+/// - tier 3: rx/tx bytes 紧凑格式 (↓ 1.2MB / ↑ 0B)
 /// 任何 tier 保留: 连接状态、两个告警、刷新按钮
 const TIER_MAX = 3;
 
@@ -226,7 +225,6 @@ export const StatusBar = memo(function StatusBar() {
       <CanLoadAlarm />
       <PipelineDropAlarm />
       <UpdateIndicator />
-      {tier < 3 && <BufferUsageStats compact={tier >= 2} />}
       <div className="w-px h-3 bg-border-subtle mx-1 shrink-0" />
       <button
         className="w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary active:bg-accent-active transition-colors duration-150 shrink-0"

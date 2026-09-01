@@ -23,8 +23,9 @@ pub struct TransportHandle {
     test_data_notify: Option<Arc<Notify>>,
     /// 测试数据链路配置热更新通道 (仅 TestData 有效)
     test_data_runtime: Option<watch::Sender<TestDataRuntime>>,
-    /// 本连接的配置 — 供外部查询 (如 CAN 波特率)
-    config: TransportConfig,
+    /// 本连接当前实际使用的配置。TestData 热更新采样率时同步更新，供数据平面
+    /// 恢复逐样本时间戳，不能只保留打开连接时的旧值。
+    config: parking_lot::RwLock<TransportConfig>,
 }
 
 impl TransportHandle {
@@ -46,7 +47,7 @@ impl TransportHandle {
             test_data_running,
             test_data_notify,
             test_data_runtime,
-            config,
+            config: parking_lot::RwLock::new(config),
         }
     }
 
@@ -91,8 +92,8 @@ impl TransportHandle {
     }
 
     /// 本连接的配置 — 供外部查询 CAN 波特率等
-    pub const fn config(&self) -> &TransportConfig {
-        &self.config
+    pub fn config(&self) -> TransportConfig {
+        self.config.read().clone()
     }
 
     /// 设置测试数据生成器运行状态 (仅 TestData 有效)
@@ -114,6 +115,16 @@ impl TransportHandle {
             .is_some_and(|r| r.load(Ordering::Relaxed))
     }
 
+    /// 测试数据生成器运行状态 (三分: None = 非 TestData 节点)
+    ///
+    /// 数据平面读任务据此在"生成停止"边沿排空广播积压,
+    /// 避免停止后波形继续滚动。
+    pub fn test_data_running_state(&self) -> Option<bool> {
+        self.test_data_running
+            .as_ref()
+            .map(|r| r.load(Ordering::Relaxed))
+    }
+
     /// 运行时热更新链路配置 (图/协议变化后调用, 无需重连)
     ///
     /// 当前仅 TestData 生成器消费链路配置; 其他传输类型的字节收发与协议无关,
@@ -121,8 +132,12 @@ impl TransportHandle {
     pub fn update_link(&self, link: TestDataLink, config: Option<TestDataConfig>) -> Result<bool> {
         if let Some(tx) = &self.test_data_runtime {
             let config = config.unwrap_or_else(|| tx.borrow().config.clone());
-            tx.send(TestDataRuntime { config, link })
-                .map_err(|_| TransportError::LinkUpdate(std::io::Error::other("channel closed")))?;
+            tx.send(TestDataRuntime {
+                config: config.clone(),
+                link,
+            })
+            .map_err(|_| TransportError::LinkUpdate(std::io::Error::other("channel closed")))?;
+            *self.config.write() = TransportConfig::TestData(config);
             return Ok(true);
         }
         Ok(false)

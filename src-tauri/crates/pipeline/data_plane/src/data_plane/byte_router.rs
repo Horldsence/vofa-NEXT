@@ -102,6 +102,7 @@ async fn route_inner(
                 feed_protocol(
                     plane,
                     app,
+                    source_id,
                     &route.target,
                     data,
                     depth_hint,
@@ -158,6 +159,7 @@ async fn route_inner(
 async fn feed_protocol(
     plane: &DataPlaneState,
     app: Option<&AppHandle>,
+    source_id: &str,
     proto_id: &str,
     data: &[u8],
     depth_hint: usize,
@@ -219,6 +221,49 @@ async fn feed_protocol(
             o
         }
     };
+
+    // 已连接 Transport 的运行时配置是采样时钟权威；图配置可能正处于防抖同步
+    // 或编译错误状态。TestData 使用明确采样率；串口按波特率、字符格式和本批
+    // 实际字节/帧数估算线速。网络等无时钟信息的来源仍保留到达时间语义。
+    let live_transport_config = plane.transport.lock().await.config(source_id);
+    let graph_transport_config = || {
+        plane.global_nodes.lock().get(source_id).and_then(|node| {
+            if let NodeKind::Transport { config } = &node.kind {
+                Some(config.clone())
+            } else {
+                None
+            }
+        })
+    };
+    let clock_config = live_transport_config.or_else(graph_transport_config);
+    let clock_hint = clock_config.and_then(|config| match config {
+        vofa_core::TransportConfig::TestData(config) => Some((
+            super::SampleClockBasis::ExactRate,
+            f64::from(config.sample_rate),
+        )),
+        vofa_core::TransportConfig::Serial(config)
+            if !out.frames.is_empty() && !data.is_empty() =>
+        {
+            let parity_bits = u32::from(config.parity != vofa_core::Parity::None);
+            let stop_bits = match config.stop_bits {
+                vofa_core::StopBits::One => 1,
+                vofa_core::StopBits::Two => 2,
+            };
+            let bits_per_byte = 1 + u32::from(config.data_bits) + parity_bits + stop_bits;
+            let byte_count = u32::try_from(data.len()).unwrap_or(u32::MAX);
+            let frame_count = u32::try_from(out.frames.len()).unwrap_or(u32::MAX);
+            Some((
+                super::SampleClockBasis::SerialWireRate,
+                f64::from(config.baud_rate) * f64::from(frame_count)
+                    / (f64::from(byte_count) * f64::from(bits_per_byte)),
+            ))
+        }
+        _ => None,
+    });
+    if let Some((basis, sample_rate)) = clock_hint {
+        st.lock()
+            .restamp_frames_at_rate(source_id, basis, sample_rate, &mut out.frames);
+    }
     // 通道检测处理 (单次锁内取齐决策):
     // - 系统通知保持一次性语义 (detection_notified 闸)
     // - 前端事件 protocol:channels-detected 按变化推送 (last_detected_pushed 记录上次已推送值),

@@ -6,11 +6,13 @@
 //! - 派生通道: 与主时间戳轴对齐, 索引直写零哈希 (批内高通量)
 //! - [`WaveformWindow`]: 查询 API (get_recent / get_window), 派生通道 NaN 对齐
 //!
-//! 多数据源场景由 app 侧每源一个实例实现 (派生键 (sink, source) 随实例天然隔离)。
+//! 多数据源场景由 app 侧每源一个实例实现，派生序列按完整 edge 源端身份隔离。
 
 mod data_buffer;
 mod derived;
 mod window;
 
 pub use data_buffer::DataBuffer;
-pub use window::WaveformWindow;
+pub use window::{
+    DerivedSeriesSelector, WaveformSampling, WaveformSeriesSelection, WaveformWindow,
+};

@@ -138,6 +138,79 @@ fn cache_source_text_feeds_str_port() {
     );
 }
 
+/// 批内共享时间戳 (协议引擎每次 feed 只读一次时钟) 入缓冲前被线性摊开,
+/// 高码率合批下波形不再呈阶梯; 区间 = (缓冲最新时间戳, 批尾时间戳]
+#[test]
+fn on_frames_spreads_shared_batch_timestamps() {
+    let state = AppState::new();
+    let plane = state.data_plane;
+
+    // 第一批: 单帧, 建立缓冲最新时间戳 1_000_000us
+    frame_dispatch::on_frames(
+        &plane,
+        "pt",
+        &[DataFrame::with_timestamp(1_000_000, vec![0.0])],
+    );
+    // 第二批: 100 帧共享同一时间戳 (模拟 64KB 合批), 批尾 = 1_010_000us
+    let batch: Vec<DataFrame> = (0..100_u16)
+        .map(|i| DataFrame::with_timestamp(1_010_000, vec![f32::from(i)]))
+        .collect();
+    frame_dispatch::on_frames(&plane, "pt", &batch);
+
+    let buf = plane.buffer_for("pt");
+    let b = buf.lock();
+    let window = b.get_recent(101);
+    assert_eq!(window.timestamps.len(), 101);
+    // 摊开后严格递增
+    assert!(
+        window.timestamps.windows(2).all(|w| w[1] > w[0]),
+        "批内共享时间戳应被摊开为严格递增: {:?}",
+        &window.timestamps[..5]
+    );
+    // 均匀分布: 10ms 跨 100 帧 → 每帧 0.1ms; 摊开段首帧 = -9.9ms, 批尾 = 0
+    assert!((window.timestamps[1] - -9.9).abs() < 1e-9);
+    assert!(window.timestamps[100].abs() < f64::EPSILON);
+    // 数值顺序不变
+    assert_eq!(b.get_channel(0, 3), vec![97.0, 98.0, 99.0]);
+}
+
+/// 已严格递增的批次 (逐帧真实时间戳) 原样保留, 不被摊开
+#[test]
+fn on_frames_preserves_distinct_batch_timestamps() {
+    let state = AppState::new();
+    let plane = state.data_plane;
+
+    let frames = vec![
+        DataFrame::with_timestamp(1_000, vec![1.0]),
+        DataFrame::with_timestamp(2_000, vec![2.0]),
+        DataFrame::with_timestamp(3_000, vec![3.0]),
+    ];
+    frame_dispatch::on_frames(&plane, "pt", &frames);
+
+    let buf = plane.buffer_for("pt");
+    let b = buf.lock();
+    let window = b.get_recent(3);
+    assert_eq!(window.timestamps, vec![-2.0, -1.0, 0.0]);
+}
+
+/// 时钟异常 (批尾不晚于缓冲最新时间戳) 时跳过摊开, 不产出回退时间戳
+#[test]
+fn on_frames_skips_spread_when_batch_not_newer() {
+    let state = AppState::new();
+    let plane = state.data_plane;
+
+    frame_dispatch::on_frames(&plane, "pt", &[DataFrame::with_timestamp(5_000, vec![0.0])]);
+    let stale_batch: Vec<DataFrame> = (0..4_u16)
+        .map(|i| DataFrame::with_timestamp(5_000, vec![f32::from(i)]))
+        .collect();
+    frame_dispatch::on_frames(&plane, "pt", &stale_batch);
+
+    let buf = plane.buffer_for("pt");
+    let b = buf.lock();
+    let window = b.get_recent(5);
+    assert_eq!(window.timestamps, vec![0.0, 0.0, 0.0, 0.0, 0.0]);
+}
+
 /// 非 UTF-8 字节 lossy 解码为 U+FFFD 替换符; 空数据覆盖写空文本 (latest-value 语义)
 #[test]
 fn cache_source_text_lossy_and_overwrite() {

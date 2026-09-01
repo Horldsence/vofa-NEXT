@@ -8,11 +8,11 @@
 //! - **自动并发**: shard 0 常活; shard i 仅在积压 ≥ i × [`StreamSource::ACTIVATION_UNIT`]
 //!   时激活, 积压消退自动休眠 — 单 channel 够用不浪费, 不够自动多通道并行。
 //! - **自适应**: [`AdaptiveRate`] 速率 (有数据提速到 16ms, 空闲退避) +
-//!   `clamp(backlog, min_batch, MAX_DRAIN)` 批量。
+//!   `bounded_drain_size(backlog, min_batch, MAX_DRAIN)` 批量。
 //! - **顺序**: 增量流前端按 seq 严格重组; 快照流 (波形) 按 "最新 seq 胜出"。
 
 use crate::dispatcher::{adaptive_channel_loop, AdaptiveRate};
-use buffer_databuffer::{DataBuffer, WaveformWindow};
+use buffer_databuffer::{DataBuffer, WaveformSeriesSelection, WaveformWindow};
 use buffer_raw::{RawDataBatch, RawDataCollector, RawDrain};
 use can_types::{CanBuffer, CanFrameBatch};
 use data_plane::StreamGroupState;
@@ -31,6 +31,15 @@ use vofa_core::{Error, Result};
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步)
 #[allow(dead_code)]
 pub const MAX_STREAM_SHARDS: usize = 4;
+
+/// 将调用方期望的最小批量限制在流源硬上限内。
+///
+/// `usize::clamp` 在 `min > max` 时会 panic；显示层的动态点数预算可能高于某些
+/// 流源的单次 drain 上限，因此需要先收紧最小值。
+#[must_use]
+pub fn bounded_drain_size(backlog: usize, min_batch: usize, max_drain: usize) -> usize {
+    backlog.clamp(min_batch.min(max_drain), max_drain)
+}
 
 /// 统一流源 — 每种数据流实现一次, 即获得分片并发 + 自适应推送能力
 pub trait StreamSource: Send + 'static {
@@ -97,7 +106,7 @@ pub async fn sharded_stream_loop<S: StreamSource>(
             if !active {
                 return None;
             }
-            let mut batch = src.drain(backlog.clamp(min_batch, S::MAX_DRAIN))?;
+            let mut batch = src.drain(bounded_drain_size(backlog, min_batch, S::MAX_DRAIN))?;
             // seq 在源锁内分配, 保证全局单调且与 drain 顺序一致
             S::set_seq(&mut batch, seq.fetch_add(1, Ordering::Relaxed));
             Some(batch)
@@ -156,7 +165,7 @@ pub async fn sharded_stream_loop_map<S, E, F>(
             if !active {
                 return None;
             }
-            let mut batch = src.drain(backlog.clamp(min_batch, S::MAX_DRAIN))?;
+            let mut batch = src.drain(bounded_drain_size(backlog, min_batch, S::MAX_DRAIN))?;
             S::set_seq(&mut batch, seq.fetch_add(1, Ordering::Relaxed));
             Some(map(batch))
         },
@@ -429,6 +438,14 @@ impl StreamSource for DecodedStreamSource {
 pub struct WaveformSource {
     buffer: Arc<Mutex<DataBuffer>>,
     last_version: u64,
+    view: Option<WaveformViewSpec>,
+}
+
+#[derive(Debug, Clone)]
+pub struct WaveformViewSpec {
+    pub start_ms: f64,
+    pub end_ms: f64,
+    pub selection: WaveformSeriesSelection,
 }
 
 impl WaveformSource {
@@ -436,6 +453,16 @@ impl WaveformSource {
         Self {
             buffer,
             last_version: 0,
+            view: None,
+        }
+    }
+
+    #[must_use]
+    pub const fn with_view(buffer: Arc<Mutex<DataBuffer>>, view: WaveformViewSpec) -> Self {
+        Self {
+            buffer,
+            last_version: 0,
+            view: Some(view),
         }
     }
 }
@@ -454,8 +481,10 @@ impl StreamSource for WaveformSource {
         if version == self.last_version {
             return None;
         }
-        let pts = buf.point_count().min(max);
-        let window = buf.get_recent(pts);
+        let window = self.view.as_ref().map_or_else(
+            || buf.get_min_max(max),
+            |view| buf.get_window_min_max(view.start_ms, view.end_ms, max, &view.selection),
+        );
         self.last_version = version;
         Some(window)
     }
@@ -465,6 +494,7 @@ impl StreamSource for WaveformSource {
     }
 
     const ACTIVATION_UNIT: usize = 200;
-    const MAX_DRAIN: usize = 5000;
+    // 波形 detail 的前端预算上限为 12000；流层必须允许完整传递该预算。
+    const MAX_DRAIN: usize = 12_000;
     const SNAPSHOT: bool = true;
 }

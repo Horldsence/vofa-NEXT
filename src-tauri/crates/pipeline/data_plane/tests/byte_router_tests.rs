@@ -5,18 +5,18 @@
 //!
 //! 注: 这些测试不能作为 `data_plane` 的内联测试 — 内联测试需通过
 //! dev-dep 反向依赖 `app_state`, cargo 在 dev-dep 循环下不统一
-//! `data_plane::DataPlaneState` 与 `data_plane::DataPlaneState`
+//! `data_plane::DataPlaneState` 与 `app_state` 经由 `data_plane` re-export 的 `DataPlaneState`
 //! 两个同源码类型, 测试编译失败 (E0308), 故以 tests/ 集成测试形式存在。
 
 use app_state::AppState;
 use buffer_graph::Edge;
+use engine::BytePlan;
+use kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 use data_plane::byte_router::route_bytes;
 use data_plane::decoder_feed::DecoderFeedCache;
 use data_plane::DataPlaneState;
-use engine::BytePlan;
-use kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
-use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset};
-use vofa_core::{TestDataConfig, TransportConfig};
+use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset, TestDataLink};
+use vofa_core::TransportConfig;
 
 fn node(id: &str, kind: NodeKind) -> NodeDef {
     NodeDef {
@@ -92,7 +92,7 @@ fn setup_plane(nodes: Vec<NodeDef>, edges: Vec<Edge>) -> DataPlaneState {
 fn firewater_bytes(channels: &[f32]) -> Vec<u8> {
     let s = channels
         .iter()
-        .map(std::string::ToString::to_string)
+        .map(|v| format!("{v}"))
         .collect::<Vec<_>>()
         .join(",");
     format!("{s}\n").into_bytes()
@@ -106,7 +106,7 @@ async fn transport_to_protocol_feeds_source_frames() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(Some(3))),
@@ -132,6 +132,142 @@ async fn transport_to_protocol_feeds_source_frames() {
 }
 
 #[tokio::test]
+async fn test_data_frames_use_configured_sample_clock() {
+    let test_config = vofa_core::TestDataConfig {
+        channels: 1,
+        sample_rate: 700_000.0,
+        ..vofa_core::TestDataConfig::default()
+    };
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(test_config),
+                },
+            ),
+            node("pt", firewater(Some(1))),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+    let mut cache = DecoderFeedCache::new();
+    route_bytes(&plane, None, "tp", b"1\n2\n3\n4\n", 0, &mut cache).await;
+
+    let timestamps = plane.buffer_for("pt").lock().get_recent(4).timestamps;
+    assert_eq!(timestamps.len(), 4);
+    assert!(timestamps.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!((0.004..=0.005).contains(&-timestamps[0]));
+    assert!(timestamps[3].abs() < f64::EPSILON);
+
+    // 热更新只替换后续采样间隔，不把采样时钟重新锚定到墙钟。
+    {
+        let mut nodes = plane.global_nodes.lock();
+        let transport = nodes.get_mut("tp").unwrap();
+        let NodeKind::Transport {
+            config: TransportConfig::TestData(config),
+        } = &mut transport.kind
+        else {
+            panic!("tp should remain TestData");
+        };
+        config.sample_rate = 350_000.0;
+    }
+    route_bytes(&plane, None, "tp", b"5\n6\n7\n", 0, &mut cache).await;
+    let absolute = plane.buffer_for("pt").lock().get_window_raw(-1_000.0, 0.0);
+    let timestamps = absolute
+        .timestamps
+        .iter()
+        .map(|offset_ms| offset_ms * 1_000.0)
+        .collect::<Vec<_>>();
+    assert_eq!(timestamps.len(), 7);
+    let hot_update_step = timestamps[4] - timestamps[3];
+    assert!(
+        (2.0..=4.0).contains(&hot_update_step),
+        "热更新边界应立即使用约 2.86µs 的新间隔，实际 {hot_update_step}µs"
+    );
+    assert!(timestamps[4..]
+        .windows(2)
+        .all(|pair| (2.0..=4.0).contains(&(pair[1] - pair[0]))));
+}
+
+#[tokio::test]
+async fn connected_test_data_runtime_clock_overrides_stale_graph_config() {
+    let stale_config = vofa_core::TestDataConfig {
+        channels: 1,
+        sample_rate: 1_000.0,
+        ..vofa_core::TestDataConfig::default()
+    };
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(stale_config),
+                },
+            ),
+            node("pt", firewater(Some(1))),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+    let runtime_config = vofa_core::TestDataConfig {
+        channels: 1,
+        sample_rate: 700_000.0,
+        ..vofa_core::TestDataConfig::default()
+    };
+    plane
+        .transport
+        .lock()
+        .await
+        .open(
+            "tp",
+            TransportConfig::TestData(runtime_config),
+            TestDataLink::new(ProtocolConfig::FireWater { channels: Some(1) }),
+        )
+        .await
+        .unwrap();
+
+    let mut cache = DecoderFeedCache::new();
+    route_bytes(&plane, None, "tp", b"1\n2\n3\n4\n", 0, &mut cache).await;
+
+    let timestamps = plane.buffer_for("pt").lock().get_recent(4).timestamps;
+    assert_eq!(timestamps.len(), 4);
+    assert!(
+        (0.004..=0.005).contains(&-timestamps[0]),
+        "必须使用连接运行时的 700 kHz，而不是图中的旧 1 kHz: {timestamps:?}"
+    );
+    plane.transport.lock().await.close("tp");
+}
+
+#[tokio::test]
+async fn serial_frames_are_spaced_by_wire_bitrate_instead_of_batch_arrival() {
+    let plane = setup_plane(
+        vec![
+            node(
+                "serial",
+                NodeKind::Transport {
+                    config: TransportConfig::Serial(vofa_core::SerialConfig {
+                        baud_rate: 115_200,
+                        ..vofa_core::SerialConfig::default()
+                    }),
+                },
+            ),
+            node("pt", firewater(Some(1))),
+        ],
+        vec![edge("serial", "rx", "pt", "in")],
+    );
+    let mut cache = DecoderFeedCache::new();
+    // 8N1 下每帧 "N\n" 占 20 bit，115200 baud 对应 5760 frame/s。
+    route_bytes(&plane, None, "serial", b"1\n2\n3\n4\n", 0, &mut cache).await;
+
+    let timestamps = plane.buffer_for("pt").lock().get_recent(4).timestamps;
+    assert_eq!(timestamps.len(), 4);
+    assert!(timestamps.windows(2).all(|pair| pair[0] < pair[1]));
+    assert!(
+        (0.520..=0.522).contains(&-timestamps[0]),
+        "串口批内四帧应按线速铺开，实际 {timestamps:?}"
+    );
+}
+
+#[tokio::test]
 async fn convert_to_chain_reencodes_downstream() {
     // tp.rx → pa.in (FireWater), pa.out → pb.in (JustFloat)
     // pa 配置 convert_to = JustFloat: pa 解析出的帧按 JustFloat 重编码喂给 pb
@@ -140,7 +276,7 @@ async fn convert_to_chain_reencodes_downstream() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node(
@@ -233,7 +369,7 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node(
@@ -335,7 +471,7 @@ async fn rawdata_custom_schema_no_text_cache_no_passthrough() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node(
@@ -392,7 +528,7 @@ async fn auto_detection_applies_buffer_channels_on_change_only() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(None)),
@@ -448,7 +584,7 @@ async fn auto_detection_applies_buffer_channels_in_parallel_feed() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(None)),
@@ -515,7 +651,7 @@ async fn manual_mode_does_not_emit_channels_detected_event() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(TestDataConfig::default()),
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(Some(2))),
@@ -571,4 +707,216 @@ async fn manual_to_auto_switch_resets_detection_state() {
         .insert("pt".into(), node("pt", firewater(Some(5))));
     plane.sync_protocol_states();
     assert_eq!(plane.buffer_for("pt").lock().channel_count(), 5);
+}
+
+/// 端到端复现: 真实 TestData 生成器 (700k sps) + read_task 式 64KB 合批 +
+/// route_bytes 全链路。缓冲最近 200ms 窗口的相邻时间戳间隔应 ≈1.43µs;
+/// 若出现 ~ms 级间隔, 说明采样时钟恢复在真实管线路径上失效 (波形阶梯的根因)
+#[tokio::test]
+async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+
+    let test_config = vofa_core::TestDataConfig {
+        channels: 4,
+        sample_rate: 700_000.0,
+        signal: vofa_core::TestSignal::Sine,
+    };
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(test_config.clone()),
+                },
+            ),
+            node("pt", firewater(Some(4))),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+
+    let (_write_tx, data_tx, _cancel, running, _notify, _runtime_tx) =
+        transport_core::test_data::spawn(
+            test_config,
+            TestDataLink {
+                protocol: ProtocolConfig::FireWater { channels: Some(4) },
+                schema: None,
+            },
+        )
+        .unwrap();
+    running.store(true, Ordering::Relaxed);
+    let mut rx = data_tx.subscribe();
+
+    // 与 read_task 相同的合批策略 (目标 64KB)
+    let mut cache = DecoderFeedCache::new();
+    let deadline = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < deadline {
+        let Ok(first) = rx.recv().await else { break };
+        let mut data = first;
+        while data.len() < 64 * 1024 {
+            match rx.try_recv() {
+                Ok(mut next) => data.append(&mut next),
+                Err(_) => break,
+            }
+        }
+        route_bytes(&plane, None, "tp", &data, 0, &mut cache).await;
+    }
+    running.store(false, Ordering::Relaxed);
+
+    let buf = plane.buffer_for("pt");
+    let b = buf.lock();
+    let window = b.get_window_raw(-200.0, 0.0);
+    assert!(
+        window.raw_window_points > 10_000,
+        "200ms 窗口应有数万点, 实际 {}",
+        window.raw_window_points
+    );
+    let max_gap_ms = window
+        .timestamps
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .fold(0.0_f64, f64::max);
+    assert!(
+        max_gap_ms < 0.05,
+        "采样时钟恢复失效: 相邻时间戳最大间隔 {max_gap_ms}ms (期望 ≈0.0014ms)"
+    );
+
+    // 诊断: min-max 实时窗口的实际输出形态 (700k, 100ms 窗口, 预算 10000, 4 通道)
+    let selection = buffer_databuffer::WaveformSeriesSelection {
+        channels: vec![0, 1, 2, 3],
+        derived: vec![],
+    };
+    let mm = b.get_window_min_max(-100.0, 0.0, 10_000, &selection);
+    eprintln!(
+        "min-max 输出: 列数 {}, 原始点 {}, CH3 点数 {}",
+        mm.timestamps.len(),
+        mm.raw_window_points,
+        mm.channels[3].len()
+    );
+    let ch3 = &mm.channels[3];
+    eprintln!("CH3 前 40 点: {:?}", &ch3[..ch3.len().min(40)]);
+    // 平台检测: 最长连续近恒定 (|Δ| < 0.5) 段长度
+    let mut longest = 1usize;
+    let mut run = 1usize;
+    for pair in ch3.windows(2) {
+        if (pair[1] - pair[0]).abs() < 0.5 {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 1;
+        }
+    }
+    eprintln!("CH3 最长平台段: {longest} 列");
+    // 原始数据对照: 同窗口 CH3 的原始最大/最小间隔
+    let raw = b.get_window_raw(-100.0, 0.0);
+    let raw3 = &raw.channels[3];
+    eprintln!("原始 CH3 前 20 点: {:?}", &raw3[..raw3.len().min(20)]);
+}
+
+/// 完整复现真实运行条件: 700k 摄入 + 并发 min-max 流 (16ms detail + 100ms
+/// 概览, 与前端订阅一致) 抢缓冲锁, 持续 3 秒后检查输出是否出现块状跳变
+#[tokio::test]
+async fn test_data_700k_under_stream_pressure_stays_smooth() {
+    use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
+
+    let test_config = vofa_core::TestDataConfig {
+        channels: 4,
+        sample_rate: 700_000.0,
+        signal: vofa_core::TestSignal::Sine,
+    };
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(test_config.clone()),
+                },
+            ),
+            node("pt", firewater(Some(4))),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+
+    let (_write_tx, data_tx, _cancel, running, _notify, _runtime_tx) =
+        transport_core::test_data::spawn(
+            test_config,
+            TestDataLink {
+                protocol: ProtocolConfig::FireWater { channels: Some(4) },
+                schema: None,
+            },
+        )
+        .unwrap();
+    running.store(true, Ordering::Relaxed);
+    let mut rx = data_tx.subscribe();
+
+    // 模拟前端流: detail 每 16ms 全窗口 min-max + 概览每 100ms 全缓冲 min-max
+    let stop_streams = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stream_handle = {
+        let plane = plane.clone();
+        let stop = stop_streams.clone();
+        tokio::task::spawn_blocking(move || {
+            let selection = buffer_databuffer::WaveformSeriesSelection {
+                channels: vec![0, 1, 2, 3],
+                derived: vec![],
+            };
+            let mut tick = 0_u32;
+            while !stop.load(Ordering::Relaxed) {
+                {
+                    let b = plane.buffer_for("pt");
+                    let b = b.lock();
+                    let _ = b.get_window_min_max(-100.0, 0.0, 10_000, &selection);
+                    if tick % 6 == 0 {
+                        let _ = b.get_min_max(2_000);
+                    }
+                }
+                tick += 1;
+                std::thread::sleep(Duration::from_millis(16));
+            }
+        })
+    };
+
+    let mut cache = DecoderFeedCache::new();
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline {
+        let Ok(first) = rx.recv().await else { break };
+        let mut data = first;
+        while data.len() < 64 * 1024 {
+            match rx.try_recv() {
+                Ok(mut next) => data.append(&mut next),
+                Err(_) => break,
+            }
+        }
+        route_bytes(&plane, None, "tp", &data, 0, &mut cache).await;
+    }
+    running.store(false, Ordering::Relaxed);
+    stop_streams.store(true, Ordering::Relaxed);
+    let _ = stream_handle.await;
+
+    let buf = plane.buffer_for("pt");
+    let b = buf.lock();
+    let selection = buffer_databuffer::WaveformSeriesSelection {
+        channels: vec![0, 1, 2, 3],
+        derived: vec![],
+    };
+    let mm = b.get_window_min_max(-100.0, 0.0, 10_000, &selection);
+    let ch3 = &mm.channels[3];
+    // 干净正弦 (4Hz, 幅度 125): 相邻列最大 |Δ| ≈ 3.1/ms × 列间距 (~0.04ms) ≈ 0.13
+    let max_step = ch3
+        .windows(2)
+        .map(|pair| (pair[1] - pair[0]).abs())
+        .fold(0.0_f32, f32::max);
+    let jump_count = ch3
+        .windows(2)
+        .filter(|pair| (pair[1] - pair[0]).abs() > 5.0)
+        .count();
+    eprintln!(
+        "压力下 min-max: 列数 {}, CH3 最大相邻步进 {max_step}, 跳变(>5)次数 {jump_count}",
+        mm.timestamps.len()
+    );
+    eprintln!("CH3 前 40 点: {:?}", &ch3[..ch3.len().min(40)]);
+    assert!(
+        jump_count == 0,
+        "出现 {jump_count} 次相邻跳变 (最大 {max_step}), 正弦应平滑"
+    );
 }

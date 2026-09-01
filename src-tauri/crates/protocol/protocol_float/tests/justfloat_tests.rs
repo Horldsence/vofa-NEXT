@@ -125,6 +125,41 @@ fn test_encode_frame_auto_init() {
 }
 
 #[test]
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+fn high_rate_test_data_batches_round_trip_without_channel_reframing() {
+    const CHANNELS: usize = 4;
+    const SAMPLE_RATE: f64 = 700_000.0;
+    const SAMPLES_PER_BATCH: usize = 350;
+    const BATCHES: usize = 200;
+
+    let mut encoder = JustFloatEngine::new(Some(CHANNELS));
+    let mut parser = JustFloatEngine::new(Some(CHANNELS));
+    for batch in 0..BATCHES {
+        let mut bytes = Vec::with_capacity(SAMPLES_PER_BATCH * (CHANNELS * 4 + TAIL.len()));
+        let mut expected = Vec::with_capacity(SAMPLES_PER_BATCH);
+        for offset in 0..SAMPLES_PER_BATCH {
+            let sample = batch * SAMPLES_PER_BATCH + offset;
+            let time = sample as f64 / SAMPLE_RATE;
+            let channels = (0..CHANNELS)
+                .map(|channel| {
+                    let channel = channel as f64;
+                    let phase = time * (channel + 1.0) * 2.0 * std::f64::consts::PI;
+                    (phase.sin() * channel.mul_add(0.5, 1.0)).mul_add(50.0, 128.0) as f32
+                })
+                .collect::<Vec<_>>();
+            bytes.extend_from_slice(&encoder.encode_frame(&DataFrame::new(channels.clone())));
+            expected.push(channels);
+        }
+
+        let frames = parser.feed(&bytes).frames;
+        assert_eq!(frames.len(), expected.len(), "batch {batch}");
+        for (index, (actual, expected)) in frames.iter().zip(expected).enumerate() {
+            assert_eq!(actual.channels, expected, "batch {batch}, sample {index}");
+        }
+    }
+}
+
+#[test]
 fn test_split_aligned_equivalence() {
     // 顺序/并行等价性: 多帧 + 垃圾前缀 + 半帧尾
     let mut data = Vec::new();

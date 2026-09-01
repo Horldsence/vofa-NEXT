@@ -41,7 +41,8 @@ fn auto_expand_channels() {
     assert_eq!(buf.channel_count(), 4);
     let w = buf.get_recent(2);
     assert_eq!(w.channels[0], vec![1.0, 1.0]);
-    assert_eq!(w.channels[3], vec![4.0]);
+    assert!(w.channels[3][0].is_nan());
+    assert_eq!(w.channels[3][1], 4.0);
 }
 
 #[test]

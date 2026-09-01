@@ -1,27 +1,41 @@
-// ============ 波形数据 ============
-
-export interface WaveformData {
-  timestamps: number[];
-  channels: number[][];
+interface WaveformWindowMeta {
+  /// 组级单调序号 — 快照流按最新 seq 胜出。
+  seq: number;
+  channel_count: number;
+  buffer_points: number;
+  buffer_capacity: number;
+  latest_timestamp_us: number;
+  raw_window_points: number;
+  sampling: 'raw' | 'min_max' | 'lttb';
 }
 
-/// 后端 WaveformWindow — 与 serial-buffer 中 WaveformWindow 结构对应
-export interface WaveformWindow {
-  /// 组级单调序号 — 分片并发推送时按 "最新 seq 胜出" 丢弃旧快照
-  seq: number;
-  /// 相对最新时间戳的偏移 (毫秒, 负数=过去)
+/// serde_json 会把 Rust 非有限浮点数编码为 null；仅允许在 IPC 边界出现。
+export interface WaveformWindowPayload extends WaveformWindowMeta {
+  timestamps: number[];
+  channels: (number | null)[][];
+  derived: Record<string, Record<string, Record<string, (number | null)[]>>>;
+}
+
+/// IPC 归一化后的前端波形窗口；缺失样本一律为 NaN，不允许 null 泄漏到渲染层。
+export interface WaveformWindow extends WaveformWindowMeta {
+  /// 相对最新时间戳的偏移 (毫秒, 负数=过去；保留微秒级小数)
   timestamps: number[];
   /// 每通道的数据数组
   channels: number[][];
-  /// 当前通道数
-  channel_count: number;
   /// 派生通道数据 (Math/Filter 等节点的输出, 作为 Waveform sink 的输入)
-  /// key1 = sink_widget_id, key2 = source_widget_id, value = 与 timestamps 对齐的数据
-  derived?: Record<string, Record<string, number[]>>;
-  /// 后端波形缓冲区当前点数
-  buffer_points?: number;
-  /// 后端波形缓冲区最大容量 (点)
-  buffer_capacity?: number;
+  /// key1 = sink_widget_id, key2 = source_widget_id, key3 = source_handle
+  derived: Record<string, Record<string, Record<string, number[]>>>;
+}
+
+export interface DerivedSeriesSelector {
+  sink_id: string;
+  source_id: string;
+  source_handle: string;
+}
+
+export interface WaveformSeriesSelection {
+  channels: number[];
+  derived: DerivedSeriesSelector[];
 }
 
 // ============ 示波器风格轴配置 ============

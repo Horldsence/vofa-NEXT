@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use buffer_databuffer::WaveformWindow;
+use buffer_databuffer::{WaveformSeriesSelection, WaveformWindow};
 use buffer_raw::RawDataBatch;
 use can_types::{CanFrameBatch, CanFrameFilter, CanLoadSnapshot};
 use data_plane::{CustomInputBatch, GraphOutputSnapshot, StringOutputSnapshot};
@@ -30,6 +30,12 @@ pub enum DisplayRequest {
     },
     Waveform {
         source: String,
+        #[serde(default)]
+        start_ms: Option<f64>,
+        #[serde(default)]
+        end_ms: Option<f64>,
+        #[serde(default)]
+        selection: WaveformSeriesSelection,
     },
     /// 波形包络 (wgpu/CPU 逐列 min/max 降采样) — 二进制推送, 前端缎带绘制
     WaveformEnvelope {

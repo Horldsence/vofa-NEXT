@@ -1,4 +1,10 @@
-import type { DataFrame, RawDataBatch, RawDataDirection, WaveformWindow } from '../../types';
+import type {
+  DataFrame,
+  RawDataBatch,
+  RawDataDirection,
+  WaveformWindow,
+  WaveformWindowPayload,
+} from '../../types';
 import { createFrameBatcher } from '../utils/frameBatcher';
 
 export const RAWDATA_BYTES_PER_ROW = 16;
@@ -27,10 +33,37 @@ export interface RawDataSnapshot {
   totalBytes: number;
 }
 
+let nextWaveformCacheVersion = 1;
+
+function normalizeSamples(values: (number | null)[]): number[] {
+  return values.map((value) => value ?? NaN);
+}
+
+/** 把 JSON 中的 null 缺口统一恢复为渲染层使用的 NaN。 */
+export function normalizeWaveformWindow(payload: WaveformWindowPayload): WaveformWindow {
+  const derived: WaveformWindow['derived'] = {};
+  for (const [sinkId, sources] of Object.entries(payload.derived)) {
+    const normalizedSources: Record<string, Record<string, number[]>> = {};
+    for (const [sourceId, handles] of Object.entries(sources)) {
+      const normalizedHandles: Record<string, number[]> = {};
+      for (const [sourceHandle, values] of Object.entries(handles)) {
+        normalizedHandles[sourceHandle] = normalizeSamples(values);
+      }
+      normalizedSources[sourceId] = normalizedHandles;
+    }
+    derived[sinkId] = normalizedSources;
+  }
+  return {
+    ...payload,
+    channels: payload.channels.map(normalizeSamples),
+    derived,
+  };
+}
+
 /// 波形窗口缓存 — 接收来自后端 Tauri Channel 的推送, 由订阅者维护
 /// 不同于旧的 WaveformBuffer (前端持有完整数据), 此处仅缓存最新窗口快照
 export class WaveformWindowCache {
-  private latest: WaveformWindow = { seq: 0, timestamps: [], channels: [], channel_count: 0 };
+  private latest: WaveformWindow = emptyWaveformWindow();
   private _version = 0;
   private listeners = new Set<() => void>();
   private statsListeners = new Set<(usage: number, length: number, capacity: number) => void>();
@@ -41,7 +74,7 @@ export class WaveformWindowCache {
 
   set(window: WaveformWindow) {
     this.latest = window;
-    this._version++;
+    this._version = nextWaveformCacheVersion++;
     this.notify();
     this.statsBatcher.push(this.currentStats());
   }
@@ -55,8 +88,8 @@ export class WaveformWindowCache {
   }
 
   clear() {
-    this.latest = { seq: 0, timestamps: [], channels: [], channel_count: 0 };
-    this._version++;
+    this.latest = emptyWaveformWindow();
+    this._version = nextWaveformCacheVersion++;
     this.notify();
     this.statsBatcher.push(this.currentStats());
   }
@@ -79,14 +112,29 @@ export class WaveformWindowCache {
   }
 
   private currentStats() {
-    const capacity = Math.max(1, this.latest.buffer_capacity ?? 1);
-    const length = this.latest.buffer_points ?? 0;
+    const capacity = Math.max(1, this.latest.buffer_capacity);
+    const length = this.latest.buffer_points;
     return { usage: length / capacity, length, capacity };
   }
 
   private flushStats(usage: number, length: number, capacity: number) {
     this.statsListeners.forEach((fn) => fn(usage, length, capacity));
   }
+}
+
+function emptyWaveformWindow(): WaveformWindow {
+  return {
+    seq: 0,
+    timestamps: [],
+    channels: [],
+    channel_count: 0,
+    derived: {},
+    buffer_points: 0,
+    buffer_capacity: 1,
+    latest_timestamp_us: 0,
+    raw_window_points: 0,
+    sampling: 'raw',
+  };
 }
 
 /// 全局波形窗口缓存

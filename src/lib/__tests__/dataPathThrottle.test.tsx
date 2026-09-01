@@ -227,6 +227,10 @@ describe('buffer burst render-guard (RAF-throttled notify)', () => {
       channel_count: 1,
       buffer_points: points,
       buffer_capacity: 2000,
+      derived: {},
+      latest_timestamp_us: points,
+      raw_window_points: points,
+      sampling: 'raw',
     });
     act(() => {
       for (let i = 0; i < 50; i++) waveformWindow.set(makeWindow(i + 1));

@@ -24,13 +24,6 @@ export interface SeriesSlot {
   cfgIdx: number;
 }
 
-/// 冻结数据快照 — Stop 时由主图拍快照, 缩略图与导出共用
-export interface FrozenWaveformData {
-  ts: number[];
-  chs: number[][];
-  derived?: Record<string, Record<string, number[]>>;
-}
-
 /// 缩略图 series 描述 — 主图已按 show 过滤, 缩略图照单绘制
 export interface TimelineSeriesSpec {
   input: ConnectedInput;
@@ -134,19 +127,19 @@ export function slotColor(slot: SeriesSlot): string {
 }
 
 /// 为单个输入从数据源解析原始数据数组 (与 timestamps 对齐, 缺失/长度不符补 NaN)
-/// 通道输入: 从 channelArrays[idx] 取; 派生输入: 从 derivedMap[widgetId]?.[sourceId] 取
+/// 通道输入从 channelArrays[idx] 取；派生输入按完整 edge 源端三元组取。
 export function resolveInputArray(
   input: ConnectedInput,
   widgetId: string,
   tsLen: number,
   channelArrays: number[][],
-  derivedMap: Record<string, Record<string, number[]>> | undefined
+  derivedMap: Record<string, Record<string, Record<string, number[]>>> | undefined
 ): number[] {
   let arr: number[] | undefined;
   if (input.kind === 'channel') {
     arr = channelArrays[input.idx];
   } else {
-    arr = derivedMap?.[widgetId]?.[input.sourceId];
+    arr = derivedMap?.[widgetId]?.[input.sourceId]?.[input.sourceHandle];
   }
   if (!arr) return new Array<number>(tsLen).fill(NaN);
   if (arr.length === tsLen) return arr;

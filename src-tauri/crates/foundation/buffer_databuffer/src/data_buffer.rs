@@ -10,7 +10,8 @@ use crate::derived::DerivedEntry;
 /// 多通道时间序列数据缓冲区
 ///
 /// 多数据源场景由 app 侧每源一个实例实现 (本类型语义不变);
-/// 派生键 (sink, source) 随实例天然隔离。
+/// 派生键 (sink, source, source_handle) 随实例天然隔离。
+#[derive(Clone)]
 pub struct DataBuffer {
     /// 每通道一个环形缓冲区
     pub(crate) channels: Vec<RingBuffer<f32>>,
@@ -23,8 +24,8 @@ pub struct DataBuffer {
     /// 派生数据缓冲 (稳定索引直写): 批首注册拿索引, 逐帧零哈希写入。
     /// 与 timestamps 同步 push, 保证时间戳完全对齐
     pub(crate) derived_list: Vec<DerivedEntry>,
-    /// (sink, source) → derived_list 下标
-    pub(crate) derived_index: HashMap<(String, String), usize>,
+    /// (sink, source, source_handle) → derived_list 下标
+    pub(crate) derived_index: HashMap<(String, String, String), usize>,
     /// 单调递增版本号 — push_frame/push_derived 时变化, 供订阅循环做变化检测
     pub(crate) version: u64,
 }
@@ -50,15 +51,23 @@ impl DataBuffer {
 
     /// 推入一帧数据
     pub fn push_frame(&mut self, frame: &DataFrame) {
+        self.push_frame_at(frame.timestamp, &frame.channels);
+    }
+
+    /// 以显式时间戳推入一帧数据
+    ///
+    /// 协议引擎批内所有帧共享同一时间戳 (见 `DataFrame::with_timestamp`),
+    /// 管线在入缓冲前会把批内时间戳线性摊开 (process_source_batch), 经本方法写入。
+    pub fn push_frame_at(&mut self, timestamp: u64, channels: &[f32]) {
         // 动态调整通道数
-        let frame_ch = frame.channels.len();
+        let frame_ch = channels.len();
         if frame_ch > self.num_channels {
             self.resize_channels(frame_ch);
         }
-        self.timestamps.push(frame.timestamp);
+        self.timestamps.push(timestamp);
         for i in 0..self.num_channels {
             // 通道缺失使用 NaN 保持时间轴对齐，但绝不能伪装成真实零值。
-            let val = frame.channels.get(i).copied().unwrap_or(f32::NAN);
+            let val = channels.get(i).copied().unwrap_or(f32::NAN);
             self.channels[i].push(val);
         }
         self.version = self.version.wrapping_add(1);
@@ -93,6 +102,15 @@ impl DataBuffer {
     /// 最大容量 (点)
     pub const fn max_points(&self) -> usize {
         self.max_points
+    }
+
+    /// 当前缓冲区实际分配的主要时序数据字节数估算，供冻结快照预算使用。
+    pub fn estimated_bytes(&self) -> usize {
+        let series = 1usize
+            .saturating_add(self.num_channels)
+            .saturating_add(self.derived_list.len());
+        self.max_points
+            .saturating_mul(8usize.saturating_add(series.saturating_sub(1).saturating_mul(4)))
     }
 
     /// 设置最大容量 (保留最近数据)

@@ -314,6 +314,9 @@ cursorHideHint: hide cursor
 cursorHiddenHint: Cursor hidden (release key to restore)
 waveformInteractHintTitle: Waveform interaction
 waveformInteractHintMessage: Left-drag to select a range for copying or CSV export. Right-drag or Shift+left-drag to pan the view.
+waveformSnapshotUnavailable: Frozen display retained; raw snapshot resampling is unavailable
+waveformCsvExported: Exported {{count}} rows of raw waveform data
+waveformCopyTitle: Waveform copy
 dynamicSeriesToggle: Toggle dynamic series mode (fixed channel slots ↔ dynamic by connections)
 dynamicSeriesOff: FIXED
 dynamicSeriesOn: DYNAMIC
@@ -560,7 +563,7 @@ settingPauseOnInteractDesc: Pause live refresh when zooming or dragging the wave
 
 # Setting items - Data Cache
 settingWaveformBufferPoints: Waveform Buffer Points
-settingWaveformBufferPointsDesc: Maximum waveform points retained per channel
+settingWaveformBufferPointsDesc: Maximum points retained per channel; history duration is approximately points ÷ sample rate
 settingRawDataBufferBytes: Raw Data Buffer Bytes
 settingRawDataBufferBytesDesc: Maximum bytes retained by raw data view
 settingCanBufferFrames: CAN Buffer Frames
