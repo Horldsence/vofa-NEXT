@@ -817,11 +817,21 @@ async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
 /// 概览, 与前端订阅一致) 抢缓冲锁, 持续 3 秒后检查输出是否出现块状跳变
 #[tokio::test]
 async fn test_data_700k_under_stream_pressure_stays_smooth() {
+    run_stream_pressure_case(ProtocolConfig::FireWater { channels: Some(4) }, 4).await;
+}
+
+/// JustFloat 路径同样复现 (用户实际配置): 700k 4 通道正弦 + 并发流压力
+#[tokio::test]
+async fn test_data_700k_justfloat_under_stream_pressure_stays_smooth() {
+    run_stream_pressure_case(ProtocolConfig::JustFloat { channels: Some(4) }, 4).await;
+}
+
+async fn run_stream_pressure_case(protocol: ProtocolConfig, channels: usize) {
     use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
 
     let test_config = vofa_core::TestDataConfig {
-        channels: 4,
+        channels,
         sample_rate: 700_000.0,
         signal: vofa_core::TestSignal::Sine,
     };
@@ -833,7 +843,14 @@ async fn test_data_700k_under_stream_pressure_stays_smooth() {
                     config: TransportConfig::TestData(test_config.clone()),
                 },
             ),
-            node("pt", firewater(Some(4))),
+            node(
+                "pt",
+                NodeKind::Protocol {
+                    config: protocol.clone(),
+                    convert_to: None,
+                    schema: None,
+                },
+            ),
         ],
         vec![edge("tp", "rx", "pt", "in")],
     );
@@ -842,7 +859,7 @@ async fn test_data_700k_under_stream_pressure_stays_smooth() {
         transport_core::test_data::spawn(
             test_config,
             TestDataLink {
-                protocol: ProtocolConfig::FireWater { channels: Some(4) },
+                protocol,
                 schema: None,
             },
         )
@@ -850,48 +867,72 @@ async fn test_data_700k_under_stream_pressure_stays_smooth() {
     running.store(true, Ordering::Relaxed);
     let mut rx = data_tx.subscribe();
 
-    // 模拟前端流: detail 每 16ms 全窗口 min-max + 概览每 100ms 全缓冲 min-max
+    // 模拟应用真实流负载: 3 个订阅 (detail + 概览 + 主源), 16ms 节奏。
+    // 修复前每次 drain 持锁计算 (debug 下 20ms+), 3 流锁占空比 >150% → 摄入饿死;
+    // 修复后锁内只剩快照拷贝, 摄入应保持
     let stop_streams = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let stream_handle = {
+    let mut stream_handles = Vec::new();
+    for _ in 0..3 {
         let plane = plane.clone();
         let stop = stop_streams.clone();
-        tokio::task::spawn_blocking(move || {
+        stream_handles.push(tokio::task::spawn_blocking(move || {
             let selection = buffer_databuffer::WaveformSeriesSelection {
                 channels: vec![0, 1, 2, 3],
                 derived: vec![],
             };
-            let mut tick = 0_u32;
             while !stop.load(Ordering::Relaxed) {
-                {
+                // 与修复后的流路径一致: 锁内仅快照拷贝, 计算在锁外
+                let snapshot = {
                     let b = plane.buffer_for("pt");
                     let b = b.lock();
-                    let _ = b.get_window_min_max(-100.0, 0.0, 10_000, &selection);
-                    if tick % 6 == 0 {
-                        let _ = b.get_min_max(2_000);
-                    }
-                }
-                tick += 1;
+                    b.snapshot_window(-100.0, 0.0, &selection)
+                };
+                let _ = snapshot.into_min_max(10_000);
                 std::thread::sleep(Duration::from_millis(16));
             }
-        })
-    };
+        }));
+    }
 
     let mut cache = DecoderFeedCache::new();
+    let mut total_frames = 0_u64;
+    let mut lagged = 0_u64;
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
-        let Ok(first) = rx.recv().await else { break };
+        // 与 read_task 一致: Lagged 计数后继续 (不中断摄入)
+        let first = match rx.recv().await {
+            Ok(data) => data,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                lagged += n;
+                continue;
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        };
         let mut data = first;
         while data.len() < 64 * 1024 {
             match rx.try_recv() {
                 Ok(mut next) => data.append(&mut next),
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
+                    lagged += n;
+                }
                 Err(_) => break,
             }
         }
-        route_bytes(&plane, None, "tp", &data, 0, &mut cache).await;
+        total_frames += route_bytes(&plane, None, "tp", &data, 0, &mut cache)
+            .await
+            .frames;
     }
     running.store(false, Ordering::Relaxed);
     stop_streams.store(true, Ordering::Relaxed);
-    let _ = stream_handle.await;
+    for handle in stream_handles {
+        let _ = handle.await;
+    }
+
+    // 摄入完整性: 流压力不应造成广播溢出丢帧
+    eprintln!("摄入 {total_frames} 帧, 丢弃 {lagged} 条消息");
+    assert!(
+        lagged == 0,
+        "流压力下广播溢出丢弃 {lagged} 条消息 (摄入被锁竞争/计算拖垮)"
+    );
 
     let buf = plane.buffer_for("pt");
     let b = buf.lock();

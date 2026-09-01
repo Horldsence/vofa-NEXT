@@ -38,10 +38,41 @@ pub enum WaveformSampling {
     Lttb,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum SeriesRef {
+#[derive(Debug, Clone)]
+enum SeriesTarget {
     Channel(usize),
-    Derived(usize),
+    Derived {
+        sink: String,
+        source: String,
+        handle: String,
+    },
+}
+
+/// 显示序列的纯数据快照 (值数组与窗口时间戳等长, 已 NaN 对齐)
+#[derive(Debug, Clone)]
+struct SnapshotSeries {
+    target: SeriesTarget,
+    values: Vec<f32>,
+}
+
+/// 窗口快照 — 锁内一次性拷贝的纯数据视图
+///
+/// min-max / LTTB 等显示降采样在快照上锁外计算: debug 构建下 70k 点 × 4 通道的
+/// 包络计算可达 20ms+, 若持锁计算会把摄入热路径 (push_frame) 饿死在锁竞争上
+/// (广播积压溢出 → 大量丢帧 → 波形块状失真)。
+#[derive(Debug, Clone)]
+pub struct WindowSnapshot {
+    /// 快照锚定的绝对最新时间戳 (微秒)
+    latest_us: u64,
+    /// 窗口内绝对时间戳 (微秒), 下标即局部序号; 其长度即降采样前的原始点数
+    timestamps: Vec<u64>,
+    /// 选中序列 (通道/派生)
+    series: Vec<SnapshotSeries>,
+    /// 通道槽总数 (WaveformWindow.channels 保持完整槽形状)
+    num_channels: usize,
+    /// 后端波形缓冲区当前点数/容量 (状态栏缓存使用率)
+    buffer_points: usize,
+    buffer_capacity: usize,
 }
 
 /// 波形数据窗口 — 供前端查询
@@ -326,28 +357,79 @@ impl DataBuffer {
         }
     }
 
-    fn selected_series(&self, selection: &WaveformSeriesSelection) -> Vec<SeriesRef> {
+    /// 锁内一次性拷贝 [start, end) 窗口的纯数据快照 (拷贝量级 = 窗口点数,
+    /// 微秒级 memcpy), 供锁外降采样计算
+    fn snapshot_range(
+        &self,
+        start: usize,
+        end: usize,
+        latest_us: u64,
+        selection: &WaveformSeriesSelection,
+    ) -> WindowSnapshot {
+        let total = self.timestamps.len();
+        let timestamps: Vec<u64> = (start..end)
+            .filter_map(|index| self.timestamps.get(index).copied())
+            .collect();
+        let mut series = Vec::new();
         let mut seen_channels = HashSet::new();
-        let channels = selection.channels.iter().copied().filter_map(|channel| {
-            (channel < self.num_channels && seen_channels.insert(channel))
-                .then_some(SeriesRef::Channel(channel))
-        });
-        let derived = self
-            .selected_derived_indices(selection)
-            .into_iter()
-            .map(SeriesRef::Derived);
-        channels.chain(derived).collect()
-    }
-
-    fn series_value(&self, series: SeriesRef, index: usize) -> f32 {
-        match series {
-            SeriesRef::Channel(channel) => {
-                self.channel_value(channel, index, self.timestamps.len())
-            }
-            SeriesRef::Derived(derived) => {
-                self.derived_value(derived, index, self.timestamps.len())
+        for &channel in &selection.channels {
+            if channel < self.num_channels && seen_channels.insert(channel) {
+                let values = (start..end)
+                    .map(|index| self.channel_value(channel, index, total))
+                    .collect();
+                series.push(SnapshotSeries {
+                    target: SeriesTarget::Channel(channel),
+                    values,
+                });
             }
         }
+        for derived_index in self.selected_derived_indices(selection) {
+            let entry = &self.derived_list[derived_index];
+            if entry.rb.is_empty() {
+                continue;
+            }
+            let values = (start..end)
+                .map(|index| self.derived_value(derived_index, index, total))
+                .collect();
+            series.push(SnapshotSeries {
+                target: SeriesTarget::Derived {
+                    sink: entry.sink.clone(),
+                    source: entry.source.clone(),
+                    handle: entry.source_handle.clone(),
+                },
+                values,
+            });
+        }
+        WindowSnapshot {
+            latest_us,
+            timestamps,
+            series,
+            num_channels: self.num_channels,
+            buffer_points: total,
+            buffer_capacity: self.max_points,
+        }
+    }
+
+    /// 按相对最新时间的浮点毫秒范围拷贝窗口快照 (锁内短临界区)
+    pub fn snapshot_window(
+        &self,
+        start_ms: f64,
+        end_ms: f64,
+        selection: &WaveformSeriesSelection,
+    ) -> WindowSnapshot {
+        let (start, end, latest) = self.range_indices(start_ms, end_ms);
+        self.snapshot_range(start, end, latest, selection)
+    }
+
+    /// 全缓冲快照 (概览流用, 覆盖所有序列)
+    pub fn snapshot_all(&self) -> WindowSnapshot {
+        let total = self.timestamps.len();
+        let latest = self
+            .timestamps
+            .get(total.saturating_sub(1))
+            .copied()
+            .unwrap_or(0);
+        self.snapshot_range(0, total, latest, &self.all_series_selection())
     }
 
     fn uniform_indices(start: usize, end: usize, limit: usize) -> Vec<usize> {
@@ -361,234 +443,9 @@ impl DataBuffer {
             .collect()
     }
 
-    /// 实时逐像素峰谷包络。多序列共享 X 轴，因此每个桶会合并所有可见序列的
-    /// min/max 原始索引。若调用方预算小到连一个桶的全部峰谷都容纳不下，峰值
-    /// 完整性优先，返回点数可超过该软预算。
-    fn get_min_max_range(
-        &self,
-        start: usize,
-        end: usize,
-        latest_us: u64,
-        max_points: usize,
-        selection: &WaveformSeriesSelection,
-    ) -> WaveformWindow {
-        let raw_points = end.saturating_sub(start);
-        if raw_points == 0 {
-            return self.build_window(&[], latest_us, 0, selection, WaveformSampling::MinMax);
-        }
-        let limit = max_points.max(2);
-        let series = self.selected_series(selection);
-        if series.is_empty() {
-            let selected = Self::uniform_indices(start, end, limit);
-            return self.build_window(
-                &selected,
-                latest_us,
-                raw_points,
-                selection,
-                WaveformSampling::MinMax,
-            );
-        }
-        let minimum_extrema_budget = 2usize.saturating_add(series.len().saturating_mul(2));
-        let effective_limit = limit.max(minimum_extrema_budget);
-        if raw_points <= effective_limit {
-            return self.build_window(
-                &(start..end).collect::<Vec<_>>(),
-                latest_us,
-                raw_points,
-                selection,
-                WaveformSampling::MinMax,
-            );
-        }
-        let bucket_count = ((effective_limit - 2) / (series.len() * 2))
-            .max(1)
-            .min(raw_points);
-        let mut selected = Vec::with_capacity(effective_limit);
-        selected.push(start);
-
-        for bucket in 0..bucket_count {
-            let bucket_start = start + bucket * raw_points / bucket_count;
-            let bucket_end = start + ((bucket + 1) * raw_points / bucket_count).min(raw_points);
-            for &series in &series {
-                let mut min: Option<(usize, f32)> = None;
-                let mut max: Option<(usize, f32)> = None;
-                for index in bucket_start..bucket_end {
-                    let value = self.series_value(series, index);
-                    if !value.is_finite() {
-                        continue;
-                    }
-                    if min.is_none_or(|(_, current)| value < current) {
-                        min = Some((index, value));
-                    }
-                    if max.is_none_or(|(_, current)| value > current) {
-                        max = Some((index, value));
-                    }
-                }
-                if let Some((index, _)) = min {
-                    selected.push(index);
-                }
-                if let Some((index, _)) = max {
-                    selected.push(index);
-                }
-            }
-        }
-        selected.push(end - 1);
-        selected.sort_unstable();
-        selected.dedup();
-        self.build_window(
-            &selected,
-            latest_us,
-            raw_points,
-            selection,
-            WaveformSampling::MinMax,
-        )
-    }
-
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
-    fn lttb_series_indices(
-        &self,
-        start: usize,
-        end: usize,
-        threshold: usize,
-        series: SeriesRef,
-    ) -> Vec<usize> {
-        let points = end.saturating_sub(start);
-        if points <= threshold || threshold < 3 {
-            return (start..end).collect();
-        }
-
-        let every = (points - 2) as f64 / (threshold - 2) as f64;
-        let origin = self.timestamps.get(start).copied().unwrap_or(0);
-        let x = |index: usize| {
-            self.timestamps
-                .get(index)
-                .copied()
-                .unwrap_or(origin)
-                .saturating_sub(origin) as f64
-        };
-        let mut selected = Vec::with_capacity(threshold);
-        selected.push(start);
-        let mut anchor = start;
-
-        for bucket in 0..threshold - 2 {
-            let average_start =
-                (start + (((bucket + 1) as f64 * every).floor() as usize) + 1).min(end);
-            let average_end =
-                (start + (((bucket + 2) as f64 * every).floor() as usize) + 1).min(end);
-            let mut average_x = 0.0;
-            let mut average_y = 0.0;
-            let mut average_count = 0usize;
-            for index in average_start..average_end {
-                let value = self.series_value(series, index);
-                if value.is_finite() {
-                    average_x += x(index);
-                    average_y += f64::from(value);
-                    average_count += 1;
-                }
-            }
-            if average_count > 0 {
-                average_x /= average_count as f64;
-                average_y /= average_count as f64;
-            } else {
-                average_x = x(average_start.min(end - 1));
-                average_y = f64::from(self.series_value(series, anchor));
-                if !average_y.is_finite() {
-                    average_y = 0.0;
-                }
-            }
-
-            let range_start = (start + ((bucket as f64 * every).floor() as usize) + 1).min(end - 1);
-            let range_end = (start + (((bucket + 1) as f64 * every).floor() as usize) + 1)
-                .min(end - 1)
-                .max(range_start + 1);
-            let anchor_x = x(anchor);
-            let mut anchor_y = f64::from(self.series_value(series, anchor));
-            if !anchor_y.is_finite() {
-                anchor_y = 0.0;
-            }
-            let mut best: Option<(usize, f64)> = None;
-            for index in range_start..range_end.min(end - 1) {
-                let value = self.series_value(series, index);
-                if !value.is_finite() {
-                    continue;
-                }
-                let candidate_x = x(index);
-                let candidate_y = f64::from(value);
-                let area = ((anchor_x - average_x) * (candidate_y - anchor_y)
-                    - (anchor_x - candidate_x) * (average_y - anchor_y))
-                    .abs();
-                if best.is_none_or(|(_, current)| area > current) {
-                    best = Some((index, area));
-                }
-            }
-            if let Some((index, _)) = best {
-                selected.push(index);
-                anchor = index;
-            }
-        }
-        selected.push(end - 1);
-        selected
-    }
-
-    fn get_lttb_range(
-        &self,
-        start: usize,
-        end: usize,
-        latest_us: u64,
-        max_points: usize,
-        selection: &WaveformSeriesSelection,
-    ) -> WaveformWindow {
-        let raw_points = end.saturating_sub(start);
-        if raw_points == 0 {
-            return self.build_window(&[], latest_us, 0, selection, WaveformSampling::Lttb);
-        }
-        let limit = max_points.max(3);
-        let series = self.selected_series(selection);
-        if series.is_empty() {
-            let selected = Self::uniform_indices(start, end, limit);
-            return self.build_window(
-                &selected,
-                latest_us,
-                raw_points,
-                selection,
-                WaveformSampling::Lttb,
-            );
-        }
-        let effective_limit = limit.max(2usize.saturating_add(series.len()));
-        if raw_points <= effective_limit {
-            return self.build_window(
-                &(start..end).collect::<Vec<_>>(),
-                latest_us,
-                raw_points,
-                selection,
-                WaveformSampling::Lttb,
-            );
-        }
-        let per_series_interior = ((effective_limit - 2) / series.len()).max(1);
-        let threshold = per_series_interior.saturating_add(2).min(raw_points);
-        let mut selected = Vec::with_capacity(effective_limit);
-        for series in series {
-            selected.extend(self.lttb_series_indices(start, end, threshold, series));
-        }
-        selected.sort_unstable();
-        selected.dedup();
-        self.build_window(
-            &selected,
-            latest_us,
-            raw_points,
-            selection,
-            WaveformSampling::Lttb,
-        )
-    }
-
     /// 获取覆盖整个历史的实时峰谷概览。
     pub fn get_min_max(&self, max_points: usize) -> WaveformWindow {
-        let total = self.timestamps.len();
-        let latest = self
-            .timestamps
-            .get(total.saturating_sub(1))
-            .copied()
-            .unwrap_or(0);
-        self.get_min_max_range(0, total, latest, max_points, &self.all_series_selection())
+        self.snapshot_all().into_min_max(max_points)
     }
 
     /// 按相对最新时间的浮点毫秒范围生成实时峰谷包络。
@@ -599,8 +456,8 @@ impl DataBuffer {
         max_points: usize,
         selection: &WaveformSeriesSelection,
     ) -> WaveformWindow {
-        let (start, end, latest) = self.range_indices(start_ms, end_ms);
-        self.get_min_max_range(start, end, latest, max_points, selection)
+        self.snapshot_window(start_ms, end_ms, selection)
+            .into_min_max(max_points)
     }
 
     /// 按相对最新时间的浮点毫秒范围生成停止态 LTTB 视觉采样。
@@ -611,8 +468,8 @@ impl DataBuffer {
         max_points: usize,
         selection: &WaveformSeriesSelection,
     ) -> WaveformWindow {
-        let (start, end, latest) = self.range_indices(start_ms, end_ms);
-        self.get_lttb_range(start, end, latest, max_points, selection)
+        self.snapshot_window(start_ms, end_ms, selection)
+            .into_lttb(max_points)
     }
 
     /// 按相对最新时间返回全部原始点，不执行显示降采样。
@@ -700,5 +557,215 @@ impl DataBuffer {
             writeln!(writer)?;
         }
         Ok(end.saturating_sub(start))
+    }
+}
+
+impl WindowSnapshot {
+    /// 降采样前窗口内的原始点数
+    pub fn raw_window_points(&self) -> usize {
+        self.timestamps.len()
+    }
+
+    /// 由选中局部序号构建输出窗口 (相对时间戳 + 完整通道槽形状)
+    fn build_window(&self, selected: &[usize], sampling: WaveformSampling) -> WaveformWindow {
+        let timestamps: Vec<f64> = selected
+            .iter()
+            .map(|&index| DataBuffer::relative_timestamp_ms(self.timestamps[index], self.latest_us))
+            .collect();
+        let mut channels = vec![Vec::new(); self.num_channels];
+        let mut derived: HashMap<String, HashMap<String, HashMap<String, Vec<f32>>>> =
+            HashMap::new();
+        for series in &self.series {
+            let values: Vec<f32> = selected.iter().map(|&index| series.values[index]).collect();
+            match &series.target {
+                SeriesTarget::Channel(channel) => channels[*channel] = values,
+                SeriesTarget::Derived {
+                    sink,
+                    source,
+                    handle,
+                } => {
+                    derived
+                        .entry(sink.clone())
+                        .or_default()
+                        .entry(source.clone())
+                        .or_default()
+                        .insert(handle.clone(), values);
+                }
+            }
+        }
+        let sampling = if self.timestamps.len() > timestamps.len() {
+            sampling
+        } else {
+            WaveformSampling::Raw
+        };
+        WaveformWindow {
+            seq: 0,
+            timestamps,
+            channels,
+            channel_count: self.num_channels,
+            derived,
+            buffer_points: self.buffer_points,
+            buffer_capacity: self.buffer_capacity,
+            latest_timestamp_us: self.latest_us,
+            raw_window_points: self.timestamps.len(),
+            sampling,
+        }
+    }
+
+    /// 实时逐像素峰谷包络 (锁外计算)。多序列共享 X 轴，因此每个桶会合并所有
+    /// 序列的 min/max 原始序号。若调用方预算小到连一个桶的全部峰谷都容纳不下，
+    /// 峰值完整性优先，返回点数可超过该软预算。
+    pub fn into_min_max(self, max_points: usize) -> WaveformWindow {
+        let raw_points = self.timestamps.len();
+        if raw_points == 0 {
+            return self.build_window(&[], WaveformSampling::MinMax);
+        }
+        let limit = max_points.max(2);
+        if self.series.is_empty() {
+            let selected = DataBuffer::uniform_indices(0, raw_points, limit);
+            return self.build_window(&selected, WaveformSampling::MinMax);
+        }
+        let minimum_extrema_budget = 2usize.saturating_add(self.series.len().saturating_mul(2));
+        let effective_limit = limit.max(minimum_extrema_budget);
+        if raw_points <= effective_limit {
+            return self.build_window(
+                &(0..raw_points).collect::<Vec<_>>(),
+                WaveformSampling::MinMax,
+            );
+        }
+        let bucket_count = ((effective_limit - 2) / (self.series.len() * 2))
+            .max(1)
+            .min(raw_points);
+        let mut selected = Vec::with_capacity(effective_limit);
+        selected.push(0);
+
+        for bucket in 0..bucket_count {
+            let bucket_start = bucket * raw_points / bucket_count;
+            let bucket_end = ((bucket + 1) * raw_points / bucket_count).min(raw_points);
+            for series in &self.series {
+                let mut min: Option<(usize, f32)> = None;
+                let mut max: Option<(usize, f32)> = None;
+                for index in bucket_start..bucket_end {
+                    let value = series.values[index];
+                    if !value.is_finite() {
+                        continue;
+                    }
+                    if min.is_none_or(|(_, current)| value < current) {
+                        min = Some((index, value));
+                    }
+                    if max.is_none_or(|(_, current)| value > current) {
+                        max = Some((index, value));
+                    }
+                }
+                if let Some((index, _)) = min {
+                    selected.push(index);
+                }
+                if let Some((index, _)) = max {
+                    selected.push(index);
+                }
+            }
+        }
+        selected.push(raw_points - 1);
+        selected.sort_unstable();
+        selected.dedup();
+        self.build_window(&selected, WaveformSampling::MinMax)
+    }
+
+    /// 停止态 LTTB 视觉采样 (锁外计算)
+    pub fn into_lttb(self, max_points: usize) -> WaveformWindow {
+        let raw_points = self.timestamps.len();
+        if raw_points == 0 {
+            return self.build_window(&[], WaveformSampling::Lttb);
+        }
+        let limit = max_points.max(3);
+        if self.series.is_empty() {
+            let selected = DataBuffer::uniform_indices(0, raw_points, limit);
+            return self.build_window(&selected, WaveformSampling::Lttb);
+        }
+        let effective_limit = limit.max(2usize.saturating_add(self.series.len()));
+        if raw_points <= effective_limit {
+            return self.build_window(&(0..raw_points).collect::<Vec<_>>(), WaveformSampling::Lttb);
+        }
+        let per_series_interior = ((effective_limit - 2) / self.series.len()).max(1);
+        let threshold = per_series_interior.saturating_add(2).min(raw_points);
+        let mut selected = Vec::with_capacity(effective_limit);
+        for series in &self.series {
+            selected.extend(self.lttb_series_indices(threshold, series));
+        }
+        selected.sort_unstable();
+        selected.dedup();
+        self.build_window(&selected, WaveformSampling::Lttb)
+    }
+
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    fn lttb_series_indices(&self, threshold: usize, series: &SnapshotSeries) -> Vec<usize> {
+        let points = self.timestamps.len();
+        if points <= threshold || threshold < 3 {
+            return (0..points).collect();
+        }
+
+        let every = (points - 2) as f64 / (threshold - 2) as f64;
+        let origin = self.timestamps[0];
+        let x = |index: usize| self.timestamps[index].saturating_sub(origin) as f64;
+        let mut selected = Vec::with_capacity(threshold);
+        selected.push(0);
+        let mut anchor = 0usize;
+
+        for bucket in 0..threshold - 2 {
+            let average_start = ((((bucket + 1) as f64 * every).floor() as usize) + 1).min(points);
+            let average_end = ((((bucket + 2) as f64 * every).floor() as usize) + 1).min(points);
+            let mut average_x = 0.0;
+            let mut average_y = 0.0;
+            let mut average_count = 0usize;
+            for index in average_start..average_end {
+                let value = series.values[index];
+                if value.is_finite() {
+                    average_x += x(index);
+                    average_y += f64::from(value);
+                    average_count += 1;
+                }
+            }
+            if average_count > 0 {
+                average_x /= average_count as f64;
+                average_y /= average_count as f64;
+            } else {
+                average_x = x(average_start.min(points - 1));
+                average_y = f64::from(series.values[anchor]);
+                if !average_y.is_finite() {
+                    average_y = 0.0;
+                }
+            }
+
+            let range_start = (((bucket as f64 * every).floor() as usize) + 1).min(points - 1);
+            let range_end = ((((bucket + 1) as f64 * every).floor() as usize) + 1)
+                .min(points - 1)
+                .max(range_start + 1);
+            let anchor_x = x(anchor);
+            let mut anchor_y = f64::from(series.values[anchor]);
+            if !anchor_y.is_finite() {
+                anchor_y = 0.0;
+            }
+            let mut best: Option<(usize, f64)> = None;
+            for index in range_start..range_end.min(points - 1) {
+                let value = series.values[index];
+                if !value.is_finite() {
+                    continue;
+                }
+                let candidate_x = x(index);
+                let candidate_y = f64::from(value);
+                let area = ((anchor_x - average_x) * (candidate_y - anchor_y)
+                    - (anchor_x - candidate_x) * (average_y - anchor_y))
+                    .abs();
+                if best.is_none_or(|(_, current)| area > current) {
+                    best = Some((index, area));
+                }
+            }
+            if let Some((index, _)) = best {
+                selected.push(index);
+                anchor = index;
+            }
+        }
+        selected.push(points - 1);
+        selected
     }
 }

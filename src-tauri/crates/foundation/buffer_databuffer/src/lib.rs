@@ -15,4 +15,5 @@ mod window;
 pub use data_buffer::DataBuffer;
 pub use window::{
     DerivedSeriesSelector, WaveformSampling, WaveformSeriesSelection, WaveformWindow,
+    WindowSnapshot,
 };

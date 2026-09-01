@@ -476,17 +476,23 @@ impl StreamSource for WaveformSource {
     }
 
     fn drain(&mut self, max: usize) -> Option<Self::Batch> {
-        let buf = self.buffer.lock();
-        let version = buf.version();
-        if version == self.last_version {
-            return None;
-        }
-        let window = self.view.as_ref().map_or_else(
-            || buf.get_min_max(max),
-            |view| buf.get_window_min_max(view.start_ms, view.end_ms, max, &view.selection),
-        );
+        // 锁内只做窗口快照拷贝 (纯 memcpy, 微秒级); min-max 包络在锁外计算。
+        // debug 构建下 70k 点 ×4 通道的包络计算可达 20ms+, 若持锁计算,
+        // 摄入热路径 (push_frame) 会被饿死在锁竞争上 → 广播溢出丢帧 → 波形失真
+        let (snapshot, version) = {
+            let buf = self.buffer.lock();
+            let version = buf.version();
+            if version == self.last_version {
+                return None;
+            }
+            let snapshot = self.view.as_ref().map_or_else(
+                || buf.snapshot_all(),
+                |view| buf.snapshot_window(view.start_ms, view.end_ms, &view.selection),
+            );
+            (snapshot, version)
+        };
         self.last_version = version;
-        Some(window)
+        Some(snapshot.into_min_max(max))
     }
 
     fn set_seq(batch: &mut Self::Batch, seq: u64) {
