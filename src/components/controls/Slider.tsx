@@ -1,95 +1,78 @@
-import { useRef, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { WidgetConfig } from '../../types';
-import { sendBindingValue } from './binding';
 import { useAppStore } from '../../store/appStore';
+import { snapControlValue } from '../../lib/utils/numericControl';
 import { WidgetCard } from '../ui/WidgetCard';
+import { sendBindingValue } from './binding';
+import { NumericValueInput } from './NumericValueInput';
 
 interface SliderProps {
   widget: Extract<WidgetConfig, { kind: 'Slider' }>;
   onRemove: () => void;
 }
 
-/// 滑块控件 — 拖动调节, 释放时发送值
-/// 当前值通过 setInputValue 推送到后端图 (事件驱动, 供下游 widget 读取)
 export function Slider({ widget, onRemove }: SliderProps) {
-  const { label, min, max, step, binding } = widget.params;
-  const value = useAppStore((s) => {
-    const w = s.widgets.find((w) => w.params.id === widget.params.id);
-    if (w?.kind === 'Slider') return w.params.default;
-    return widget.params.default;
-  });
-  const updateWidget = useAppStore((s) => s.updateWidget);
+  const { label, min, max, step, binding, id } = widget.params;
+  const preview = useAppStore((s) => s.inputPreviewValues[id]);
+  const previewInputValue = useAppStore((s) => s.previewInputValue);
+  const commitInputValue = useAppStore((s) => s.commitInputValue);
   const setInputValue = useAppStore((s) => s.setInputValue);
-  const lastSentRef = useRef(value);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
-    updateWidget(widget.params.id, {
-      kind: 'Slider',
-      params: { ...widget.params, default: v },
-    });
-  };
-
-  const handleRelease = () => {
-    if (value !== lastSentRef.current) {
-      sendBindingValue(binding, value);
-      lastSentRef.current = value;
-    }
-  };
-
-  // 鼠标滚轮调整: 向上加 step, 向下减 step
-  // 原生非被动监听 — React onWheel 默认 passive, preventDefault 无效会导致页面同时滚动
+  const value = preview ?? widget.params.value;
+  const valueRef = useRef(value);
   const inputRef = useRef<HTMLInputElement>(null);
-  const wheelStateRef = useRef({ value, min, max, step, binding, params: widget.params });
-  useEffect(() => {
-    wheelStateRef.current = { value, min, max, step, binding, params: widget.params };
-  });
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const { value: v, min: mn, max: mx, step: st, binding: bd, params } = wheelStateRef.current;
-      const dir = e.deltaY < 0 ? 1 : -1;
-      const increment = st >= 1 ? st : st * 5;
-      const raw = v + dir * increment;
-      const stepped = Math.round(raw / st) * st;
-      const clamped = Math.max(mn, Math.min(mx, stepped));
-      if (clamped === v) return;
-      updateWidget(widget.params.id, {
-        kind: 'Slider',
-        params: { ...params, default: clamped },
-      });
-      sendBindingValue(bd, clamped);
-      lastSentRef.current = clamped;
-    };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 同步当前值到后端图 (事件驱动, 供下游 widget 读取)
+  useEffect(() => { valueRef.current = value; }, [value]);
+  useEffect(() => { setInputValue(id, widget.params.value); }, [id, widget.params.value, setInputValue]);
+
+  const previewValue = useCallback((next: number) => {
+    previewInputValue(id, snapControlValue(next, { min, max, step }));
+  }, [id, max, min, previewInputValue, step]);
+
+  const commitValue = useCallback((next = valueRef.current) => {
+    const normalized = snapControlValue(next, { min, max, step });
+    commitInputValue(id, normalized);
+    sendBindingValue(binding, normalized);
+  }, [binding, commitInputValue, id, max, min, step]);
+
   useEffect(() => {
-    setInputValue(widget.params.id, value);
-  }, [widget.params.id, value, setInputValue]);
+    const element = inputRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const next = snapControlValue(valueRef.current + direction * step, { min, max, step });
+      previewInputValue(id, next);
+      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
+      wheelTimerRef.current = setTimeout(() => commitValue(next), 180);
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      element.removeEventListener('wheel', onWheel);
+      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
+    };
+  }, [commitValue, id, max, min, previewInputValue, step]);
 
   return (
     <WidgetCard label={label} onRemove={onRemove}>
-      <div className="flex flex-col gap-1 w-full">
+      <div className="nodrag nowheel flex flex-col gap-1.5 w-full">
         <input
           ref={inputRef}
           type="range"
-          className="slider-input"
+          className="slider-input nodrag nowheel"
           min={min}
           max={max}
           step={step}
           value={value}
-          onChange={handleChange}
-          onPointerUp={handleRelease}
-          onKeyUp={handleRelease}
+          onChange={(event) => previewValue(Number(event.target.value))}
+          onPointerUp={() => commitValue()}
+          onPointerCancel={() => commitValue()}
+          onKeyDown={(event) => { event.stopPropagation(); }}
+          onKeyUp={(event) => { event.stopPropagation(); commitValue(); }}
+          aria-label={label}
         />
-        <div className="text-xl font-semibold text-text-bright font-mono text-center">{value.toFixed(2)}</div>
+        <NumericValueInput value={value} min={min} max={max} step={step} onPreview={previewValue} onCommit={commitValue} />
       </div>
     </WidgetCard>
   );

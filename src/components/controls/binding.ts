@@ -1,19 +1,5 @@
 import type { WidgetBinding } from '../../types';
 import { useAppStore } from '../../store/appStore';
-import { downstreamProtocolOf, isGlobalNode } from '../../store/appStoreHelpers';
-
-/// 解析控件发送的目标: [transportNodeId, protocolNodeId | null]
-/// - transport: 第一个全局 Transport 节点
-/// - protocol: 该 Transport 字节边下游的 Protocol 节点, 缺省第一个 Protocol 节点
-function resolveSendTarget(): [string | null, string | null] {
-  const s = useAppStore.getState();
-  const transport = s.rfNodes.find((n) => n.type === 'transport' && isGlobalNode(n));
-  if (!transport) return [null, null];
-  const downstream = downstreamProtocolOf(transport.id, s.rfEdges, s.rfNodes);
-  if (downstream) return [transport.id, downstream];
-  const protocol = s.rfNodes.find((n) => n.type === 'protocol' && isGlobalNode(n));
-  return [transport.id, protocol?.id ?? null];
-}
 
 /// 根据绑定模式发送控件值
 /// - None: 不发送
@@ -21,22 +7,26 @@ function resolveSendTarget(): [string | null, string | null] {
 /// - Manual: 使用模板 {value} 替换后以字符串发送
 export function sendBindingValue(binding: WidgetBinding, value: number) {
   const state = useAppStore.getState();
-  const [transportId, protocolId] = resolveSendTarget();
-  if (!transportId) return;
 
   switch (binding.mode) {
     case 'None':
       return;
     case 'Auto': {
-      if (!protocolId) return;
-      const protocolNode = state.rfNodes.find((n) => n.id === protocolId);
+      const { transportId, protocolId } = binding.params;
+      const transportNode = state.rfNodes.find((n) => n.id === transportId && n.type === 'transport');
+      const protocolNode = state.rfNodes.find((n) => n.id === protocolId && n.type === 'protocol');
+      if (!transportNode || !protocolNode) return;
+      if (!state.rfEdges.some((edge) => edge.source === transportId && edge.target === protocolId)) return;
       const config = protocolNode?.data?.config as { kind?: string } | undefined;
       if (config?.kind === 'RawData') return;
       void state.sendWidgetValue(transportId, protocolId, binding, value);
       return;
     }
-    case 'Manual':
-      void state.sendText(transportId, binding.params.template.replace(/\{value\}/g, String(value)));
+    case 'Manual': {
+      const { transportId, template } = binding.params;
+      if (template.trim() === '' || !state.rfNodes.some((n) => n.id === transportId && n.type === 'transport')) return;
+      void state.sendText(transportId, template.replace(/\{value\}/g, String(value)));
       return;
+    }
   }
 }

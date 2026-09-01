@@ -28,9 +28,11 @@
 
 ## 控件 widget (按 tab)
 
-- **输入类**:Knob (旋钮 min/max/step)、Slider、Button (按下/松开各发 press_value/release_value)、
-  Radio (options: [[标签, 值],...])、Checkbox (checked_value/unchecked_value)、TextInput (文本下发)。
-  输入控件的值变化经 set_input_value 即时生效。
+- **输入类**:Knob / Slider (`min/max/step/value`)、Button (`pressValue/releaseValue`)、
+  Radio (`options: [{id,label,value}], selectedId`)、Checkbox
+  (`options: [{id,label,value}], selectedIds`，输出为已选项值之和)、TextInput (文本下发)。
+  输入控件统一输出单一 `value` 端口，值变化经 set_input_value 即时生效；直接发送绑定必须显式指定
+  Transport，Auto 绑定还需指定 Protocol 与通道。
 - **显示类**:Waveform (多通道波形)、Gauge、NumberDisplay、LED (阈值变色)、PieChart、
   Image (rgb888 帧图)、Label、Spectrum (频谱)、Model3D (轨迹/姿态)、TableView、TextDisplay、RawData。
 - **计算类**:Math (add/sub/mul/div/pow/mod/min/max/abs/sin/cos/tan/log/sqrt..., 可选 inputCount)、

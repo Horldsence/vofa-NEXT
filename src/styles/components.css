@@ -556,6 +556,8 @@ body.dragging-dock * {
   border: 2px solid var(--color-border);
   position: relative;
   cursor: grab;
+  touch-action: none;
+  user-select: none;
   transition: border-color var(--transition-fast) var(--ease-out-cubic);
 }
 

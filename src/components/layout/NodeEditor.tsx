@@ -23,6 +23,7 @@ import { WidgetNode } from '../nodes/WidgetNode';
 import { TransportNode } from '../nodes/TransportNode';
 import { ProtocolNode } from '../nodes/ProtocolNode';
 import { GlobalNodeProperties } from '../nodes/GlobalNodeProperties';
+import { WidgetProperties } from '../nodes/WidgetProperties';
 import { validateConnection } from '../../lib/utils/connectionRules';
 import { Maximize, LayoutGrid } from 'lucide-react';
 
@@ -111,7 +112,9 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   // 按当前 tab 过滤节点: 本 tab 的 widget 节点 + 全部全局节点 (Transport/Protocol)
   const tabNodes = useMemo(
     () =>
-      rfNodes.filter((n) => n.data.tabId === tabId || n.data.global === true),
+      rfNodes
+        .filter((n) => n.data.tabId === tabId || n.data.global === true)
+        .map((n) => ({ ...n, dragHandle: '.node-drag-handle' })),
     [rfNodes, tabId]
   );
 
@@ -142,6 +145,11 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
   // 选中的全局节点 → 右侧属性面板
   const selectedGlobalNode = useMemo(
     () => tabNodes.find((n) => n.selected && n.data.global === true),
+    [tabNodes]
+  );
+
+  const selectedWidgetNode = useMemo(
+    () => tabNodes.find((n) => n.selected && n.type === 'widget'),
     [tabNodes]
   );
 
@@ -275,7 +283,9 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           )}
         </Panel>
       </ReactFlow>
-      {selectedGlobalNode && <GlobalNodeProperties node={selectedGlobalNode} />}
+      {selectedGlobalNode
+        ? <GlobalNodeProperties node={selectedGlobalNode} />
+        : selectedWidgetNode && <WidgetProperties node={selectedWidgetNode} />}
     </div>
   );
 }

@@ -277,6 +277,7 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       kind: 'Waveform',
       params: {
         id: 'default-waveform',
+        label: 'Waveform',
         channels: defaultChannelCount,
         max_points: 10000,
         visible_channels: Array.from({ length: defaultChannelCount }, () => true),

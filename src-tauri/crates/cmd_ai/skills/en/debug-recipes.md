@@ -19,7 +19,7 @@ with blocks; named fields become output ports.
 
 - Input control: add a Knob/Slider widget and wire it downstream; or just
   set_input_value(widget_id, value) to change a value instantly.
-- Button press value: set_input_value works too (press_value).
+- Button press value: set_input_value works too (pressValue).
 - TextInput + TextOut writes strings back to a Transport's tx.
 
 ## Task 3: Hardware-less protocol debugging

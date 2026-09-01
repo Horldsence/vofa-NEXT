@@ -37,7 +37,7 @@ export function widgetTabType(kind: WidgetConfig['kind']): DataTabType | null {
 function windowTabName(widget: WidgetConfig): string {
   switch (widget.kind) {
     case 'Waveform':
-      return 'Waveform';
+      return widget.params.label;
     case 'PieChart':
     case 'Image':
     case 'Model3D':

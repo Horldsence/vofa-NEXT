@@ -1,5 +1,7 @@
 import { nanoid } from 'nanoid';
-import type { Model3DConfig, WidgetConfig } from '../../types';
+import type { ChoiceOption, Model3DConfig, WidgetBinding, WidgetConfig } from '../../types';
+import { normalizeCommandConfig } from './commandFrames';
+import { snapControlValue } from './numericControl';
 
 /// Custom widget 编辑器默认代码 (与 CustomWidgetEditor 中常量保持一致)
 export const DEFAULT_CUSTOM_CODE = `({
@@ -39,7 +41,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
       return {
         kind: 'Knob',
         params: {
-          id, label: 'Knob', min: 0, max: 100, step: 1, default: 50,
+          id, label: 'Knob', min: 0, max: 100, step: 1, value: 50,
           binding: { mode: 'None' },
         },
       };
@@ -47,7 +49,7 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
       return {
         kind: 'Button',
         params: {
-          id, label: 'Button', press_value: 1, release_value: 0,
+          id, label: 'Button', pressValue: 1, releaseValue: 0,
           binding: { mode: 'None' },
         },
       };
@@ -55,7 +57,13 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
       return {
         kind: 'Radio',
         params: {
-          id, label: 'Radio', options: [['A', 0], ['B', 1]], default: 0,
+          id,
+          label: 'Radio',
+          options: [
+            { id: `${id}-option-a`, label: 'A', value: 0 },
+            { id: `${id}-option-b`, label: 'B', value: 1 },
+          ],
+          selectedId: `${id}-option-a`,
           binding: { mode: 'None' },
         },
       };
@@ -63,7 +71,13 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
       return {
         kind: 'Checkbox',
         params: {
-          id, label: 'Checkbox', checked_value: 1, unchecked_value: 0, default: false,
+          id,
+          label: 'Checkbox',
+          options: [
+            { id: `${id}-option-a`, label: 'A', value: 1 },
+            { id: `${id}-option-b`, label: 'B', value: 2 },
+          ],
+          selectedIds: [],
           binding: { mode: 'None' },
         },
       };
@@ -71,19 +85,19 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
       return {
         kind: 'Slider',
         params: {
-          id, label: 'Slider', min: 0, max: 100, step: 1, default: 50,
+          id, label: 'Slider', min: 0, max: 100, step: 1, value: 50,
           binding: { mode: 'None' },
         },
       };
     case 'Label':
       return {
         kind: 'Label',
-        params: { id, text: 'Label', channel: null },
+        params: { id, label: 'Label', text: 'Label', channel: null },
       };
     case 'Waveform':
       return {
         kind: 'Waveform',
-        params: { id, channels: 4, max_points: 10000, visible_channels: [true, true, true, true] },
+        params: { id, label: 'Waveform', channels: 4, max_points: 10000, visible_channels: [true, true, true, true] },
       };
     case 'PieChart':
       return {
@@ -359,4 +373,214 @@ export function normalizeModel3DConfig(raw: Partial<Model3DConfig>): Model3DConf
     axisLength,
     modelSource,
   };
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as UnknownRecord
+    : {};
+}
+
+function finiteOr(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeBinding(value: unknown): WidgetBinding {
+  const binding = asRecord(value);
+  if (binding.mode === 'None') return { mode: 'None' };
+  const params = asRecord(binding.params);
+  if (
+    binding.mode === 'Auto' &&
+    typeof params.transportId === 'string' &&
+    typeof params.protocolId === 'string'
+  ) {
+    return {
+      mode: 'Auto',
+      params: {
+        transportId: params.transportId,
+        protocolId: params.protocolId,
+        channel: Math.max(0, Math.trunc(finiteOr(params.channel, 0))),
+      },
+    };
+  }
+  if (
+    binding.mode === 'Manual' &&
+    typeof params.transportId === 'string'
+  ) {
+    return {
+      mode: 'Manual',
+      params: {
+        transportId: params.transportId,
+        template: typeof params.template === 'string' ? params.template : '{value}',
+      },
+    };
+  }
+  // 旧版绑定没有明确目标。宁可禁用，也不能在多接口工作区静默发错设备。
+  return { mode: 'None' };
+}
+
+function normalizeOptions(value: unknown, widgetId: string): ChoiceOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index): ChoiceOption[] => {
+    if (Array.isArray(item)) {
+      const label = typeof item[0] === 'string' ? item[0] : `Option ${index + 1}`;
+      const optionValue = finiteOr(item[1], index);
+      return [{ id: `${widgetId}-option-${index + 1}`, label, value: optionValue }];
+    }
+    const option = asRecord(item);
+    if (Object.keys(option).length === 0) return [];
+    return [{
+      id: typeof option.id === 'string' && option.id !== ''
+        ? option.id
+        : `${widgetId}-option-${index + 1}`,
+      label: typeof option.label === 'string' && option.label.trim() !== ''
+        ? option.label
+        : `Option ${index + 1}`,
+      value: finiteOr(option.value, index),
+    }];
+  });
+}
+
+function normalizeRange(params: UnknownRecord): { min: number; max: number; step: number; value: number } {
+  const min = finiteOr(params.min, 0);
+  const proposedMax = finiteOr(params.max, 100);
+  const max = proposedMax > min ? proposedMax : min + 100;
+  const proposedStep = finiteOr(params.step, 1);
+  const step = proposedStep > 0 ? proposedStep : 1;
+  const rawValue = finiteOr(params.value, finiteOr(params.default, min));
+  return { min, max, step, value: snapControlValue(rawValue, { min, max, step }) };
+}
+
+/**
+ * 所有 widget 配置的单一归一化入口。它既迁移旧输入控件形态，也保证从
+ * workspace / graph:source / AI-MCP 写入的配置只以当前模型进入 store。
+ */
+export function normalizeWidgetConfig(widget: WidgetConfig): WidgetConfig {
+  const params = asRecord(widget.params);
+  const id = typeof params.id === 'string' ? params.id : '';
+  const fallbackLabel = widget.kind === 'Label' && typeof params.text === 'string'
+    ? params.text
+    : widget.kind;
+  const label = typeof params.label === 'string' && params.label.trim() !== ''
+    ? params.label
+    : fallbackLabel;
+
+  switch (widget.kind) {
+    case 'Knob':
+    case 'Slider': {
+      const range = normalizeRange(params);
+      return {
+        kind: widget.kind,
+        params: { id, label, ...range, binding: normalizeBinding(params.binding) },
+      };
+    }
+    case 'Button':
+      return {
+        kind: 'Button',
+        params: {
+          id,
+          label,
+          pressValue: finiteOr(params.pressValue, finiteOr(params.press_value, 1)),
+          releaseValue: finiteOr(params.releaseValue, finiteOr(params.release_value, 0)),
+          binding: normalizeBinding(params.binding),
+        },
+      };
+    case 'Radio': {
+      const options = normalizeOptions(params.options, id);
+      const safeOptions = options.length > 0
+        ? options
+        : [{ id: `${id}-option-1`, label: 'Option 1', value: 0 }];
+      const legacyIndex = Math.max(0, Math.trunc(finiteOr(params.default, 0)));
+      const requestedId = typeof params.selectedId === 'string' ? params.selectedId : '';
+      const selectedId = safeOptions.some((option) => option.id === requestedId)
+        ? requestedId
+        : (safeOptions[legacyIndex]?.id ?? safeOptions[0].id);
+      return {
+        kind: 'Radio',
+        params: { id, label, options: safeOptions, selectedId, binding: normalizeBinding(params.binding) },
+      };
+    }
+    case 'Checkbox': {
+      const isLegacy = 'checked_value' in params || 'unchecked_value' in params || 'default' in params;
+      const options = isLegacy
+        ? [{
+            id: `${id}-option-1`,
+            label: 'Option 1',
+            value: finiteOr(params.checked_value, 1),
+          }]
+        : normalizeOptions(params.options, id);
+      const safeOptions = options.length > 0
+        ? options
+        : [{ id: `${id}-option-1`, label: 'Option 1', value: 1 }];
+      const validIds = new Set(safeOptions.map((option) => option.id));
+      const selectedIds = isLegacy
+        ? (params.default === true ? [safeOptions[0].id] : [])
+        : (Array.isArray(params.selectedIds)
+            ? params.selectedIds.filter((item): item is string => typeof item === 'string' && validIds.has(item))
+            : []);
+      const emptyValue = isLegacy
+        ? finiteOr(params.unchecked_value, 0)
+        : finiteOr(params.emptyValue, 0);
+      return {
+        kind: 'Checkbox',
+        params: {
+          id,
+          label,
+          options: safeOptions,
+          selectedIds,
+          ...(emptyValue === 0 ? {} : { emptyValue }),
+          binding: normalizeBinding(params.binding),
+        },
+      };
+    }
+    case 'Label':
+      return {
+        kind: 'Label',
+        params: {
+          id,
+          label,
+          text: typeof params.text === 'string' ? params.text : 'Label',
+          channel: typeof params.channel === 'number' ? params.channel : null,
+        },
+      };
+    case 'Waveform':
+      return {
+        kind: 'Waveform',
+        params: { ...widget.params, id, label },
+      };
+    case 'Command':
+      return { kind: 'Command', params: normalizeCommandConfig({ ...params, id, label } as never) };
+    case 'Model3D':
+      return { kind: 'Model3D', params: normalizeModel3DConfig({ ...params, id, label }) };
+    default:
+      return {
+        ...widget,
+        params: { ...widget.params, id, label },
+      } as WidgetConfig;
+  }
+}
+
+/** 当前配置对应的单一数值输出；非输入控件返回 null。 */
+export function widgetInputValue(widget: WidgetConfig): number | null {
+  switch (widget.kind) {
+    case 'Knob':
+    case 'Slider':
+      return widget.params.value;
+    case 'Button':
+      return widget.params.releaseValue;
+    case 'Radio':
+      return widget.params.options.find((option) => option.id === widget.params.selectedId)?.value ?? 0;
+    case 'Checkbox': {
+      const selected = new Set(widget.params.selectedIds);
+      if (selected.size === 0) return widget.params.emptyValue ?? 0;
+      return widget.params.options.reduce(
+        (sum, option) => sum + (selected.has(option.id) ? option.value : 0),
+        0,
+      );
+    }
+    default:
+      return null;
+  }
 }

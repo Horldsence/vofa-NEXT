@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals, type NodeProps, type Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
@@ -114,6 +114,7 @@ const RawDataConnHint = memo(function RawDataConnHint({ nodeId }: { nodeId: stri
 export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const widget = data.widget as WidgetConfig | undefined;
   const removeWidget = useAppStore((s) => s.removeWidget);
+  const updateWidget = useAppStore((s) => s.updateWidget);
   const openCustomEditor = useAppStore((s) => s.openCustomEditor);
   const rfEdges = useAppStore((s) => s.rfEdges);
   const lang = useAppStore((s) => s.lang);
@@ -129,6 +130,40 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
   const handleEditCustom = useCallback(() => openCustomEditor(id), [openCustomEditor, id]);
   const updateNodeInternals = useUpdateNodeInternals();
+  const widgetLabel = widget?.params.label ?? '';
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState(widgetLabel);
+  const [nameInvalid, setNameInvalid] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!renaming) {
+      setNameDraft(widgetLabel);
+      setNameInvalid(false);
+    }
+  }, [renaming, widgetLabel]);
+
+  useEffect(() => {
+    if (!renaming) return;
+    nameInputRef.current?.focus();
+    nameInputRef.current?.select();
+  }, [renaming]);
+
+  const commitName = useCallback(() => {
+    if (!widget) return;
+    const label = nameDraft.trim();
+    if (label === '') {
+      setNameInvalid(true);
+      return;
+    }
+    if (label !== widget.params.label) {
+      updateWidget(id, {
+        ...widget,
+        params: { ...widget.params, label },
+      } as WidgetConfig);
+    }
+    setRenaming(false);
+  }, [id, nameDraft, updateWidget, widget]);
 
   // 双击节点重新打开数据窗口: 窗口已存在则激活, 已关闭则重新创建
   // (窗口 Tab id 与控件 id 相同 — 与 addWidget 自动建 Tab 共用 widgetToTab 映射)
@@ -172,7 +207,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   // 按控件类别着色 (与 WidgetPalette 分组颜色一致)
   const categoryColor = WIDGET_CATEGORY_COLORS[getWidgetCategory(widget.kind)];
   // 支持代码编辑的控件 — 节点头部显示编辑入口 (替代内嵌卡片的悬浮 ⚙)
-  const editable = ['Gauge', 'LED', 'NumberDisplay', 'Custom', 'Math', 'Filter', 'FFT', 'IFFT'].includes(widget.kind);
+  const editable = widget.kind === 'Custom';
   // 已连接的端口集合 — 用于 Handle 实色填充
   const connectedHandles = new Set<string>();
   for (const e of rfEdges) {
@@ -295,14 +330,6 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
     }
   };
 
-  // 获取 widget 显示名称 (LabelConfig 用 text, WaveformConfig 无 label 字段)
-  const widgetLabel =
-    widget.kind === 'Label'
-      ? widget.params.text
-      : 'label' in widget.params
-      ? widget.params.label
-      : widget.kind;
-
   return (
     <CanvasErrorTooltip message={errorMessage}>
       <div
@@ -318,15 +345,50 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
         title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
       >
       <div
-        className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px]"
+        className="node-drag-handle flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] cursor-grab active:cursor-grabbing"
         style={{ color: categoryColor }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setNameDraft(widgetLabel);
+          setNameInvalid(false);
+          setRenaming(true);
+        }}
+        title={t(lang, 'nodeRenameHint')}
       >
-        <span className="flex-1 truncate" title={widget.kind}>
-          {widgetLabel || widget.kind}
-        </span>
+        {renaming ? (
+          <input
+            ref={nameInputRef}
+            className={`nodrag nowheel flex-1 min-w-0 h-5 px-1 rounded bg-bg-input text-text-primary normal-case tracking-normal outline-none border ${nameInvalid ? 'border-red' : 'border-accent'}`}
+            value={nameDraft}
+            onChange={(event) => { setNameDraft(event.target.value); setNameInvalid(false); }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onBlur={commitName}
+            onKeyDown={(event) => {
+              event.stopPropagation();
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                commitName();
+              } else if (event.key === 'Escape') {
+                event.preventDefault();
+                setNameDraft(widgetLabel);
+                setNameInvalid(false);
+                setRenaming(false);
+              }
+            }}
+            aria-label={t(lang, 'widgetName')}
+            aria-invalid={nameInvalid}
+          />
+        ) : (
+          <span className="flex-1 truncate" title={widgetLabel || widget.kind}>
+            {widgetLabel || widget.kind}
+          </span>
+        )}
         {editable && (
           <button
-            className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded hover:bg-bg-hover transition-opacity"
+            className="nodrag w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded hover:bg-bg-hover transition-opacity"
             onClick={(e) => {
               e.stopPropagation();
               handleEditCustom();
@@ -337,7 +399,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
           </button>
         )}
         <button
-          className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"
+          className="nodrag w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"
           onClick={(e) => {
             e.stopPropagation();
             onRemove();

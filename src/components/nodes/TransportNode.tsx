@@ -91,7 +91,7 @@ export const TransportNode = memo(function TransportNode({ id, data }: NodeProps
               : undefined
         }
       >
-      <div className="flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] text-yellow">
+      <div className="node-drag-handle flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] text-yellow cursor-grab active:cursor-grabbing">
         <span className="flex items-center gap-1 flex-1 truncate">
           <Cable size={11} />
           {t(lang, kindLabelKey[config.kind])}
@@ -111,7 +111,7 @@ export const TransportNode = memo(function TransportNode({ id, data }: NodeProps
           title={t(lang, STATE_LABEL_KEY[connectionState] ?? 'notConnected')}
         />
         <button
-          className="w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"
+          className="nodrag w-4 h-4 p-0 opacity-60 hover:opacity-100 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover transition-opacity"
           onClick={(e) => {
             e.stopPropagation();
             removeGlobalNode(id);

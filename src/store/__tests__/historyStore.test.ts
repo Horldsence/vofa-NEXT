@@ -33,6 +33,7 @@ function resetStores(): void {
     rfNodes: [],
     rfEdges: [],
     widgets: [],
+    inputPreviewValues: {},
     controlTabs: [{ id: 'default', name: 'Tab 1', widgets: [] }],
     activeControlTabId: 'default',
     dataTabs: FIXED_DATA_TABS.map((t) => ({ ...t })),
@@ -91,6 +92,24 @@ describe('historyStore 撤销/重做核心', () => {
     expect(app().dataTabs.length).toBe(tabsBefore + 1);
   });
 
+  it('窗口型控件改名时同步数据 Tab 名称且保持 ID 不变', () => {
+    const app = () => useAppStore.getState();
+    app().addWidget(createWidget('Waveform'), 'default');
+    const widget = app().widgets[0];
+    const tab = app().dataTabs.find((item) => item.widgetId === widget.params.id);
+    expect(tab).toBeDefined();
+
+    app().updateWidget(widget.params.id, {
+      ...widget,
+      params: { ...widget.params, label: 'Motor Scope' },
+    } as typeof widget);
+
+    const renamed = app().dataTabs.find((item) => item.widgetId === widget.params.id);
+    expect(renamed?.id).toBe(tab?.id);
+    expect(renamed?.widgetId).toBe(widget.params.id);
+    expect(renamed?.name).toBe('Motor Scope');
+  });
+
   it('同控件连续参数更新在时间窗内合并为一条', () => {
     const app = () => useAppStore.getState();
 
@@ -99,13 +118,12 @@ describe('historyStore 撤销/重做核心', () => {
 
     const id = app().widgets[0].params.id;
     const w = app().widgets[0];
-    // Knob 的 default 字段在控件联合类型上需局部收窄
-    const defaultValueOf = (widget: typeof w) =>
-      (widget.params as unknown as Record<string, unknown>).default as number;
+    const currentValueOf = (widget: typeof w) =>
+      (widget.params as unknown as Record<string, unknown>).value as number;
 
     app().updateWidget(id, {
       ...w,
-      params: { ...w.params, default: 10 },
+      params: { ...w.params, value: 10 },
     } as typeof w);
     let hs = useHistoryStore.getState();
     expect(hs.entries).toHaveLength(3);
@@ -113,20 +131,40 @@ describe('historyStore 撤销/重做核心', () => {
 
     app().updateWidget(id, {
       ...(app().widgets[0]),
-      params: { ...w.params, default: 20 },
+      params: { ...w.params, value: 20 },
     } as typeof w);
     // 合并进栈顶而非新增
     hs = useHistoryStore.getState();
     expect(hs.entries).toHaveLength(3);
-    expect(defaultValueOf(app().widgets[0])).toBe(20);
+    expect(currentValueOf(app().widgets[0])).toBe(20);
 
     // 一次 undo 即回滚整个手势到「参数更新前」
     hs.undo();
-    expect(defaultValueOf(app().widgets[0])).toBe(defaultValueOf(w));
+    expect(currentValueOf(app().widgets[0])).toBe(currentValueOf(w));
 
     // 对应的一次 redo 回到手势末态
     useHistoryStore.getState().redo();
-    expect(defaultValueOf(app().widgets[0])).toBe(20);
+    expect(currentValueOf(app().widgets[0])).toBe(20);
+  });
+
+  it('输入预览不改配置或历史，提交只落一次最终值', () => {
+    const app = () => useAppStore.getState();
+    app().addWidget(createWidget('Slider'), 'default');
+    const slider = app().widgets[0];
+    expect(slider.kind).toBe('Slider');
+    if (slider.kind !== 'Slider') return;
+    const entriesBefore = useHistoryStore.getState().entries.length;
+
+    app().previewInputValue(slider.params.id, 61);
+    app().previewInputValue(slider.params.id, 62);
+    expect(app().inputPreviewValues[slider.params.id]).toBe(62);
+    expect((app().widgets[0] as typeof slider).params.value).toBe(50);
+    expect(useHistoryStore.getState().entries).toHaveLength(entriesBefore);
+
+    app().commitInputValue(slider.params.id, 62);
+    expect(app().inputPreviewValues[slider.params.id]).toBeUndefined();
+    expect((app().widgets[0] as typeof slider).params.value).toBe(62);
+    expect(useHistoryStore.getState().entries).toHaveLength(entriesBefore + 1);
   });
 
   it('跳转任意历史点后提交新操作丢弃其后的分支', () => {

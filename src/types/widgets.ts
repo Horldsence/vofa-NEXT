@@ -5,60 +5,60 @@ import type {
 } from './common';
 import type { CommandConfig, FrameDecoderConfig, TableViewConfig } from './frameDecoder';
 
-export interface KnobConfig {
+export interface WidgetBaseConfig {
   id: string;
   label: string;
+}
+
+export interface ChoiceOption {
+  id: string;
+  label: string;
+  value: number;
+}
+
+export interface KnobConfig extends WidgetBaseConfig {
   min: number;
   max: number;
   step: number;
-  default: number;
+  value: number;
   binding: WidgetBinding;
 }
 
-export interface ButtonConfig {
-  id: string;
-  label: string;
-  press_value: number;
-  release_value: number;
+export interface ButtonConfig extends WidgetBaseConfig {
+  pressValue: number;
+  releaseValue: number;
   binding: WidgetBinding;
 }
 
-export interface RadioConfig {
-  id: string;
-  label: string;
-  options: [string, number][];
-  default: number;
+export interface RadioConfig extends WidgetBaseConfig {
+  options: ChoiceOption[];
+  selectedId: string;
   binding: WidgetBinding;
 }
 
-export interface CheckboxConfig {
-  id: string;
-  label: string;
-  checked_value: number;
-  unchecked_value: number;
-  default: boolean;
+export interface CheckboxConfig extends WidgetBaseConfig {
+  options: ChoiceOption[];
+  selectedIds: string[];
+  /** 旧版单复选框的未选中返回值；新控件固定为 0。 */
+  emptyValue?: number;
   binding: WidgetBinding;
 }
 
-export interface SliderConfig {
-  id: string;
-  label: string;
+export interface SliderConfig extends WidgetBaseConfig {
   min: number;
   max: number;
   step: number;
-  default: number;
+  value: number;
   binding: WidgetBinding;
 }
 
-export interface LabelConfig {
-  id: string;
+export interface LabelConfig extends WidgetBaseConfig {
   text: string;
   /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
   channel: number | null;
 }
 
-export interface WaveformConfig {
-  id: string;
+export interface WaveformConfig extends WidgetBaseConfig {
   channels: number;
   max_points: number;
   visible_channels: boolean[];

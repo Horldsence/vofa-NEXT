@@ -37,8 +37,11 @@ export interface RawDataBatch {
 
 export type WidgetBinding =
   | { mode: 'None' }
-  | { mode: 'Auto'; params: { channel: number } }
-  | { mode: 'Manual'; params: { template: string } };
+  | {
+      mode: 'Auto';
+      params: { transportId: string; protocolId: string; channel: number };
+    }
+  | { mode: 'Manual'; params: { transportId: string; template: string } };
 
 // ============ 频域 DSP 类型 ============
 //

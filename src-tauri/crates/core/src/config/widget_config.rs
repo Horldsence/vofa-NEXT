@@ -33,7 +33,8 @@ pub struct KnobConfig {
     pub min: f32,
     pub max: f32,
     pub step: f32,
-    pub default: f32,
+    #[serde(alias = "default")]
+    pub value: f32,
     /// 绑定模式
     pub binding: WidgetBinding,
 }
@@ -43,9 +44,19 @@ pub struct KnobConfig {
 pub struct ButtonConfig {
     pub id: String,
     pub label: String,
+    #[serde(rename = "pressValue", alias = "press_value")]
     pub press_value: f32,
+    #[serde(rename = "releaseValue", alias = "release_value")]
     pub release_value: f32,
     pub binding: WidgetBinding,
+}
+
+/// 单选/多选共用的稳定选项。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChoiceOption {
+    pub id: String,
+    pub label: String,
+    pub value: f32,
 }
 
 /// 单选控件
@@ -53,8 +64,9 @@ pub struct ButtonConfig {
 pub struct RadioConfig {
     pub id: String,
     pub label: String,
-    pub options: Vec<(String, f32)>,
-    pub default: usize,
+    pub options: Vec<ChoiceOption>,
+    #[serde(rename = "selectedId")]
+    pub selected_id: String,
     pub binding: WidgetBinding,
 }
 
@@ -63,9 +75,15 @@ pub struct RadioConfig {
 pub struct CheckboxConfig {
     pub id: String,
     pub label: String,
-    pub checked_value: f32,
-    pub unchecked_value: f32,
-    pub default: bool,
+    pub options: Vec<ChoiceOption>,
+    #[serde(rename = "selectedIds")]
+    pub selected_ids: Vec<String>,
+    #[serde(
+        rename = "emptyValue",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub empty_value: Option<f32>,
     pub binding: WidgetBinding,
 }
 
@@ -77,7 +95,8 @@ pub struct SliderConfig {
     pub min: f32,
     pub max: f32,
     pub step: f32,
-    pub default: f32,
+    #[serde(alias = "default")]
+    pub value: f32,
     pub binding: WidgetBinding,
 }
 
@@ -85,6 +104,7 @@ pub struct SliderConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LabelConfig {
     pub id: String,
+    pub label: String,
     pub text: String,
     /// 绑定到接收通道 (可选)
     pub channel: Option<usize>,
@@ -94,6 +114,7 @@ pub struct LabelConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WaveformConfig {
     pub id: String,
+    pub label: String,
     pub channels: usize,
     /// 每通道最大点数
     pub max_points: usize,
@@ -140,7 +161,17 @@ pub enum WidgetBinding {
     /// 不绑定
     None,
     /// 自动绑定到 VOFA 通道
-    Auto { channel: usize },
+    Auto {
+        #[serde(rename = "transportId")]
+        transport_id: String,
+        #[serde(rename = "protocolId")]
+        protocol_id: String,
+        channel: usize,
+    },
     /// 手动命令模板, {value} 会被替换
-    Manual { template: String },
+    Manual {
+        #[serde(rename = "transportId")]
+        transport_id: String,
+        template: String,
+    },
 }

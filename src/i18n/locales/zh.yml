@@ -104,6 +104,21 @@ defaultValue: 默认值
 press: 按下
 release: 释放
 options: 选项
+widgetName: 控件名称
+nodeRenameHint: 双击标题栏修改名称
+currentValue: 当前值
+labelText: 标签正文
+optionValue: 返回值
+optionName: 选项名称
+addOption: 添加选项
+invalidRange: 最小值必须小于最大值
+invalidStep: 步长必须大于 0
+invalidValue: 请输入有效数值
+requiredValue: 此项不能为空
+bindingTransport: 目标接口
+bindingProtocol: 编码协议
+bindingTemplateHint: "{value} 会替换为控件当前值"
+bindingInvalidTarget: 绑定目标无效，当前不会发送
 
 # 数据区
 rawData: 原始数据

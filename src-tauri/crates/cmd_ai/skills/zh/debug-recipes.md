@@ -19,7 +19,7 @@
 
 - 输入控制: add_node(type=widget, kind=Knob/Slider) → connect 到下游;或直接
   set_input_value(widget_id, value) 立即改值触发求值。
-- Button 按下发值: set_input_value 同样适用 (press_value)。
+- Button 按下发值: set_input_value 同样适用 (pressValue)。
 - TextInput + TextOut 可把字符串写回 Transport 的 tx。
 
 ## 任务三: 无硬件调试协议

@@ -39,7 +39,7 @@ describe('widgetTab 控件 ↔ 窗口映射', () => {
 
     const wave: WidgetConfig = {
       kind: 'Waveform',
-      params: { id: 'wave-1', channels: 4, max_points: 10000, visible_channels: [true, true, true, true] },
+      params: { id: 'wave-1', label: 'Waveform', channels: 4, max_points: 10000, visible_channels: [true, true, true, true] },
     };
     expect(widgetToTab(wave)?.name).toBe('Waveform');
   });

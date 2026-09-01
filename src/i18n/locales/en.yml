@@ -104,6 +104,21 @@ defaultValue: Default
 press: Press
 release: Release
 options: Options
+widgetName: Widget Name
+nodeRenameHint: Double-click the title bar to rename
+currentValue: Current Value
+labelText: Label Text
+optionValue: Return Value
+optionName: Option Name
+addOption: Add Option
+invalidRange: Minimum must be less than maximum
+invalidStep: Step must be greater than 0
+invalidValue: Enter a valid number
+requiredValue: This field is required
+bindingTransport: Target Interface
+bindingProtocol: Encoding Protocol
+bindingTemplateHint: "{value} is replaced with the current control value"
+bindingInvalidTarget: Binding target is invalid; nothing will be sent
 
 # Data
 rawData: Raw Data

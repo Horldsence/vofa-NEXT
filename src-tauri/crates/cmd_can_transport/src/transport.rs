@@ -144,7 +144,7 @@ pub async fn send_widget_value(
 ) -> Result<()> {
     let data = match binding {
         WidgetBinding::None => return Ok(()),
-        WidgetBinding::Auto { channel } => {
+        WidgetBinding::Auto { channel, .. } => {
             let pn = protocol_node
                 .ok_or_else(|| Error::Config(ConfigError::AutoBindingMissingProtocolNode))?;
             let st = state
@@ -162,8 +162,8 @@ pub async fn send_widget_value(
             let bytes = engine.lock().encode_channel(channel, value);
             bytes
         }
-        WidgetBinding::Manual { template } => template
-            .replace("{value}", &format!("{value}"))
+        WidgetBinding::Manual { template, .. } => template
+            .replace(concat!("{", "value", "}"), &value.to_string())
             .into_bytes(),
     };
     send_raw(state, node_id, data).await

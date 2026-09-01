@@ -29,9 +29,12 @@ conversion) and custom frame schema.
 
 ## Widgets (per tab)
 
-- **Input**: Knob (min/max/step), Slider, Button (press_value/release_value),
-  Radio (options: [[label, value],...]), Checkbox (checked_value/unchecked_value),
-  TextInput (send text). Value changes apply via set_input_value immediately.
+- **Input**: Knob / Slider (`min/max/step/value`), Button (`pressValue/releaseValue`),
+  Radio (`options: [{id,label,value}], selectedId`), Checkbox
+  (`options: [{id,label,value}], selectedIds`; output is the sum of selected values),
+  TextInput (send text). Numeric inputs keep one `value` output and changes apply via
+  set_input_value immediately. Direct bindings select a Transport explicitly; Auto bindings
+  also select the Protocol and channel.
 - **Display**: Waveform, Gauge, NumberDisplay, LED (threshold color), PieChart,
   Image (rgb888 frames), Label, Spectrum, Model3D (trajectory/attitude),
   TableView, TextDisplay, RawData.

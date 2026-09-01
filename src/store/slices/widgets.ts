@@ -1,9 +1,8 @@
 import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
 import type { AppSlice } from './types';
-import { createWidget, normalizeModel3DConfig } from '../../lib/utils/createWidget';
+import { createWidget, normalizeWidgetConfig, widgetInputValue } from '../../lib/utils/createWidget';
 import { widgetToTab } from '../../lib/utils/widgetTab';
-import { normalizeCommandConfig } from '../../lib/utils/commandFrames';
 import { withHistoryOp, widgetKindLabelKey } from '../historyStore';
 import type { HistoryTarget } from '../historyStore';
 import type { AppStore } from '../appStore';
@@ -18,29 +17,23 @@ const widgetTarget = (kind: WidgetConfig['kind']): HistoryTarget => ({
 /// - Command: 旧版单帧 → frames
 /// - Model3D: 旧版缺 modelSource 字段 → builtin-cube fallback
 /// 其余控件原样返回
-function normalizeWidget(widget: WidgetConfig): WidgetConfig {
-  if (widget.kind === 'Command') {
-    return { kind: 'Command', params: normalizeCommandConfig(widget.params) };
-  }
-  if (widget.kind === 'Model3D') {
-    return { kind: 'Model3D', params: normalizeModel3DConfig(widget.params) };
-  }
-  return widget;
-}
-
 export interface WidgetSlice {
   widgets: WidgetConfig[];
+  inputPreviewValues: Record<string, number>;
   customEditorState: { open: boolean; widgetId: string | null };
   openCustomEditor: (widgetId?: string) => void;
   closeCustomEditor: () => void;
   addWidget: (widget: WidgetConfig, tabId: string, position?: { x: number; y: number }) => void;
   removeWidget: (id: string) => void;
   updateWidget: (id: string, widget: WidgetConfig) => void;
+  previewInputValue: (id: string, value: number) => void;
+  commitInputValue: (id: string, value: number) => void;
 }
 
 export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
   return {
     widgets: [],
+    inputPreviewValues: {},
     customEditorState: { open: false, widgetId: null },
 
     openCustomEditor: (widgetId) =>
@@ -79,7 +72,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
           target: widgetTarget(widget.kind),
         },
         () => {
-          widget = normalizeWidget(widget);
+          widget = normalizeWidgetConfig(widget);
           set((s) => {
             const pos = position ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 };
             const newNode: Node = {
@@ -103,6 +96,8 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
             );
             return newState;
           });
+          const inputValue = widgetInputValue(widget);
+          if (inputValue !== null) get().setInputValue(widget.params.id, inputValue);
           void get().syncTabGraph(tabId);
         }
       ),
@@ -122,6 +117,9 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
           set((s) => {
             const newState: Partial<AppStore> = {
               widgets: s.widgets.filter((w: WidgetConfig) => w.params.id !== id),
+              inputPreviewValues: Object.fromEntries(
+                Object.entries(s.inputPreviewValues).filter(([key]) => key !== id)
+              ),
               rfNodes: s.rfNodes.filter((n) => n.id !== id),
               rfEdges: s.rfEdges.filter((e) => e.source !== id && e.target !== id),
             };
@@ -157,7 +155,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
           target: widgetTarget(widget.kind),
         },
         () => {
-          widget = normalizeWidget(widget);
+          widget = normalizeWidgetConfig(widget);
           const node = get().rfNodes.find((n) => n.id === id);
           const tabId = node?.data?.tabId as string | undefined;
           set((s) => ({
@@ -165,11 +163,42 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
             rfNodes: s.rfNodes.map((n) =>
               n.id === id ? { ...n, data: { ...n.data, widget } } : n
             ),
+            dataTabs: s.dataTabs.map((tab) =>
+              tab.widgetId === id && 'label' in widget.params
+                ? { ...tab, name: widget.params.label }
+                : tab
+            ),
           }));
+          const inputValue = widgetInputValue(widget);
+          if (inputValue !== null) get().setInputValue(id, inputValue);
           if (tabId) void get().syncTabGraph(tabId);
         },
         // 滑块拖拽等高频连续更新 — 同控件短窗内合并为一条
         { coalesceKey: `widget.params.${id}` }
       ),
+
+    previewInputValue: (id, value) => {
+      if (!Number.isFinite(value)) return;
+      set((s) => ({ inputPreviewValues: { ...s.inputPreviewValues, [id]: value } }));
+      get().setInputValue(id, value);
+    },
+
+    commitInputValue: (id, value) => {
+      if (!Number.isFinite(value)) return;
+      const widget = get().widgets.find((item) => item.params.id === id);
+      set((s) => ({
+        inputPreviewValues: Object.fromEntries(
+          Object.entries(s.inputPreviewValues).filter(([key]) => key !== id)
+        ),
+      }));
+      if (widget?.kind !== 'Knob' && widget?.kind !== 'Slider') return;
+      if (widget.params.value !== value) {
+        get().updateWidget(id, {
+          kind: widget.kind,
+          params: { ...widget.params, value },
+        });
+      }
+      get().setInputValue(id, value);
+    },
   };
 }

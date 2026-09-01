@@ -1,110 +1,118 @@
-import { useRef, useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { WidgetConfig } from '../../types';
-import { sendBindingValue } from './binding';
 import { useAppStore } from '../../store/appStore';
+import { snapControlValue } from '../../lib/utils/numericControl';
 import { WidgetCard } from '../ui/WidgetCard';
+import { sendBindingValue } from './binding';
+import { NumericValueInput } from './NumericValueInput';
 
 interface KnobProps {
   widget: Extract<WidgetConfig, { kind: 'Knob' }>;
   onRemove: () => void;
 }
 
-/// 旋钮控件 — 拖动调节角度, 释放时发送值
-/// 当前值通过 setInputValue 推送到后端图 (事件驱动, 供下游 widget 读取)
 export function Knob({ widget, onRemove }: KnobProps) {
-  const { label, min, max, step, default: def, binding, id } = widget.params;
-  const [value, setValue] = useState(def);
-  const knobRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef(false);
+  const { label, min, max, step, binding, id } = widget.params;
+  const preview = useAppStore((s) => s.inputPreviewValues[id]);
+  const previewInputValue = useAppStore((s) => s.previewInputValue);
+  const commitInputValue = useAppStore((s) => s.commitInputValue);
   const setInputValue = useAppStore((s) => s.setInputValue);
+  const value = preview ?? widget.params.value;
+  const valueRef = useRef(value);
+  const knobRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ pointerId: number; startY: number; startValue: number } | null>(null);
+  const wheelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // 角度范围: -135° 到 +135° (270° 总行程)
-  const angle = ((value - min) / (max - min)) * 270 - 135;
+  useEffect(() => { valueRef.current = value; }, [value]);
+  useEffect(() => { setInputValue(id, widget.params.value); }, [id, widget.params.value, setInputValue]);
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    draggingRef.current = true;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
+  const previewValue = useCallback((next: number) => {
+    previewInputValue(id, snapControlValue(next, { min, max, step }));
+  }, [id, max, min, previewInputValue, step]);
 
-  const handlePointerMove = (e: React.PointerEvent) => {
-    if (!draggingRef.current || !knobRef.current) return;
-    const rect = knobRef.current.getBoundingClientRect();
-    const cx = rect.left + rect.width / 2;
-    const cy = rect.top + rect.height / 2;
-    const dx = e.clientX - cx;
-    const dy = e.clientY - cy;
-    // 计算角度 (0 在顶部, 顺时针为正)
-    let deg = Math.atan2(dx, -dy) * 180 / Math.PI;
-    // 限制在 -135 到 +135
-    if (deg > 135) deg = 135;
-    if (deg < -135) deg = -135;
-    const ratio = (deg + 135) / 270;
-    const raw = min + ratio * (max - min);
-    const stepped = Math.round(raw / step) * step;
-    const clamped = Math.max(min, Math.min(max, stepped));
-    setValue(clamped);
-  };
+  const commitValue = useCallback((next = valueRef.current) => {
+    const normalized = snapControlValue(next, { min, max, step });
+    commitInputValue(id, normalized);
+    sendBindingValue(binding, normalized);
+  }, [binding, commitInputValue, id, max, min, step]);
 
-  const handlePointerUp = () => {
-    if (draggingRef.current) {
-      draggingRef.current = false;
-      sendBindingValue(binding, value);
+  const finishPointer = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    commitValue();
   };
 
-  // 鼠标滚轮调整: 向上加 step, 向下减 step
-  // 原生非被动监听 — React onWheel 默认 passive, preventDefault 无效会导致页面同时滚动
-  const wheelStateRef = useRef({ value, min, max, step, binding });
   useEffect(() => {
-    wheelStateRef.current = { value, min, max, step, binding };
-  });
-  useEffect(() => {
-    const el = knobRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const { value: v, min: mn, max: mx, step: st, binding: bd } = wheelStateRef.current;
-      const dir = e.deltaY < 0 ? 1 : -1;
-      // 滚轮加速: 大步长时按 step, 小步长时按 5*step
-      const increment = st >= 1 ? st : st * 5;
-      const raw = v + dir * increment;
-      const stepped = Math.round(raw / st) * st;
-      const clamped = Math.max(mn, Math.min(mx, stepped));
-      if (clamped === v) return;
-      setValue(clamped);
-      sendBindingValue(bd, clamped);
+    const element = knobRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const next = snapControlValue(valueRef.current + direction * step, { min, max, step });
+      previewInputValue(id, next);
+      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
+      wheelTimerRef.current = setTimeout(() => commitValue(next), 180);
     };
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, []);
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      element.removeEventListener('wheel', onWheel);
+      if (wheelTimerRef.current) clearTimeout(wheelTimerRef.current);
+    };
+  }, [commitValue, id, max, min, previewInputValue, step]);
 
-  // 切换控件时重置默认值
-  useEffect(() => {
-    setValue(def);
-  }, [def]);
-
-  // 同步当前值到后端图 (事件驱动, 供下游 widget 读取)
-  useEffect(() => {
-    setInputValue(id, value);
-  }, [id, value, setInputValue]);
+  const angle = ((value - min) / (max - min)) * 270 - 135;
 
   return (
     <WidgetCard label={label} onRemove={onRemove}>
-      <div className="flex flex-col items-center gap-1">
+      <div className="nodrag nowheel flex flex-col items-center gap-1.5">
         <div
           ref={knobRef}
-          className="knob-dial"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
+          className="knob-dial nodrag nowheel"
+          role="slider"
+          tabIndex={0}
+          aria-label={label}
+          aria-valuemin={min}
+          aria-valuemax={max}
+          aria-valuenow={value}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            dragRef.current = { pointerId: event.pointerId, startY: event.clientY, startValue: valueRef.current };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const drag = dragRef.current;
+            if (drag?.pointerId !== event.pointerId) return;
+            const raw = drag.startValue + ((drag.startY - event.clientY) / 120) * (max - min);
+            previewValue(raw);
+          }}
+          onPointerUp={finishPointer}
+          onPointerCancel={finishPointer}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+            let next: number | null = null;
+            if (event.key === 'ArrowUp' || event.key === 'ArrowRight') next = valueRef.current + step;
+            if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') next = valueRef.current - step;
+            if (event.key === 'Home') next = min;
+            if (event.key === 'End') next = max;
+            if (next !== null) {
+              event.preventDefault();
+              previewValue(next);
+            }
+          }}
+          onKeyUp={(event) => {
+            if (['ArrowUp', 'ArrowRight', 'ArrowDown', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
+              event.stopPropagation();
+              commitValue();
+            }
+          }}
         >
-          <div
-            className="knob-indicator-line"
-            style={{ transform: `translateX(-50%) rotate(${angle}deg)` }}
-          />
+          <div className="knob-indicator-line" style={{ transform: `translateX(-50%) rotate(${angle}deg)` }} />
         </div>
-        <div className="text-xl font-semibold text-text-bright font-mono text-center">{value.toFixed(2)}</div>
+        <NumericValueInput value={value} min={min} max={max} step={step} onPreview={previewValue} onCommit={commitValue} />
       </div>
     </WidgetCard>
   );

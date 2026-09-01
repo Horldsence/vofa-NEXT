@@ -14,6 +14,6 @@ pub use transport_config::{
     TestSignal, TransportConfig, UdpConfig,
 };
 pub use widget_config::{
-    ButtonConfig, CheckboxConfig, ImageConfig, ImageFormat, KnobConfig, LabelConfig,
+    ButtonConfig, CheckboxConfig, ChoiceOption, ImageConfig, ImageFormat, KnobConfig, LabelConfig,
     PieChartConfig, RadioConfig, SliderConfig, WaveformConfig, WidgetBinding, WidgetConfig,
 };
