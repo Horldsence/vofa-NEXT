@@ -16,7 +16,7 @@ use pipeline_data_plane::byte_router::route_bytes;
 use pipeline_data_plane::decoder_feed::DecoderFeedCache;
 use pipeline_data_plane::DataPlaneState;
 use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset};
-use vofa_core::TransportConfig;
+use vofa_core::{TestDataConfig, TransportConfig};
 
 fn node(id: &str, kind: NodeKind) -> NodeDef {
     NodeDef {
@@ -28,7 +28,7 @@ fn node(id: &str, kind: NodeKind) -> NodeDef {
 
 fn edge(src: &str, src_h: &str, tgt: &str, tgt_h: &str) -> Edge {
     Edge {
-        id: format!("{}-{}", src, tgt),
+        id: format!("{src}-{tgt}"),
         source: src.into(),
         source_handle: src_h.into(),
         target: tgt.into(),
@@ -64,7 +64,7 @@ fn u8_decoder(id: &str) -> NodeDef {
     )
 }
 
-fn firewater(channels: Option<usize>) -> NodeKind {
+const fn firewater(channels: Option<usize>) -> NodeKind {
     NodeKind::Protocol {
         config: ProtocolConfig::FireWater { channels },
         convert_to: None,
@@ -75,7 +75,7 @@ fn firewater(channels: Option<usize>) -> NodeKind {
 /// 内存构造数据平面: 全局节点表 + BytePlan + protocol_states 同步
 fn setup_plane(nodes: Vec<NodeDef>, edges: Vec<Edge>) -> DataPlaneState {
     let state = AppState::new();
-    let plane = state.data_plane.clone();
+    let plane = state.data_plane;
     {
         let mut g = plane.global_nodes.lock();
         for n in nodes {
@@ -92,10 +92,10 @@ fn setup_plane(nodes: Vec<NodeDef>, edges: Vec<Edge>) -> DataPlaneState {
 fn firewater_bytes(channels: &[f32]) -> Vec<u8> {
     let s = channels
         .iter()
-        .map(|v| format!("{}", v))
+        .map(std::string::ToString::to_string)
         .collect::<Vec<_>>()
         .join(",");
-    format!("{}\n", s).into_bytes()
+    format!("{s}\n").into_bytes()
 }
 
 #[tokio::test]
@@ -106,7 +106,7 @@ async fn transport_to_protocol_feeds_source_frames() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(Some(3))),
@@ -140,7 +140,7 @@ async fn convert_to_chain_reencodes_downstream() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node(
@@ -233,7 +233,7 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node(
@@ -314,7 +314,10 @@ async fn rawdata_with_convert_to_still_passthrough_out() {
     let mut cache = DecoderFeedCache::new();
     let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
     assert_eq!(summary.frames, 0, "RawData 不产帧");
-    assert!(summary.decoders_fed, "设置 convert_to 后原文仍应透传而非丢弃");
+    assert!(
+        summary.decoders_fed,
+        "设置 convert_to 后原文仍应透传而非丢弃"
+    );
     assert_eq!(
         plane.source_texts.lock().get("pr").map(String::as_str),
         Some(",8"),
@@ -332,7 +335,7 @@ async fn rawdata_custom_schema_no_text_cache_no_passthrough() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node(
@@ -389,7 +392,7 @@ async fn auto_detection_applies_buffer_channels_on_change_only() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(None)),
@@ -445,7 +448,7 @@ async fn auto_detection_applies_buffer_channels_in_parallel_feed() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(None)),
@@ -512,7 +515,7 @@ async fn manual_mode_does_not_emit_channels_detected_event() {
             node(
                 "tp",
                 NodeKind::Transport {
-                    config: TransportConfig::TestData(Default::default()),
+                    config: TransportConfig::TestData(TestDataConfig::default()),
                 },
             ),
             node("pt", firewater(Some(2))),

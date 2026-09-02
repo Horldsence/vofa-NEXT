@@ -11,14 +11,14 @@ use node_kind::{NodeDef, NodeKind};
 use node_trigger::TriggerState;
 use pipeline_data_plane::DataPlaneState;
 use schema_types::{ProtocolConfig, TestDataLink};
-use vofa_core::TransportConfig;
+use vofa_core::{TestDataConfig, TransportConfig};
 
 fn transport_node(id: &str, tab: &str) -> NodeDef {
     NodeDef {
         id: id.into(),
         tab_id: tab.into(),
         kind: NodeKind::Transport {
-            config: TransportConfig::TestData(Default::default()),
+            config: TransportConfig::TestData(TestDataConfig::default()),
         },
     }
 }
@@ -42,7 +42,7 @@ async fn open_test_data(state: &AppState, id: &str, plane: &DataPlaneState) {
         .await
         .open(
             id,
-            TransportConfig::TestData(Default::default()),
+            TransportConfig::TestData(TestDataConfig::default()),
             TestDataLink::new(ProtocolConfig::RawData),
         )
         .await

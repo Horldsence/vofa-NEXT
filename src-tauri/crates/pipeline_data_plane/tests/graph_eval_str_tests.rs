@@ -72,7 +72,11 @@ async fn event_driven_evaluation_publishes_active_numeric_topics() {
         }],
     )
     .unwrap();
-    plane.eval.graphs.lock().insert("numeric-event".into(), graph);
+    plane
+        .eval
+        .graphs
+        .lock()
+        .insert("numeric-event".into(), graph);
     let mut receiver = plane
         .eval
         .data_bus

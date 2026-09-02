@@ -184,7 +184,7 @@ async fn feed_protocol(
     };
 
     let mut detection = None;
-    let out = if can_parallel {
+    let mut out = if can_parallel {
         // 首次进入并行: 接续主引擎内部缓冲里的半个帧 (false→true 转换沿)
         let enter_parallel = {
             let mut s = st.lock();
@@ -274,12 +274,6 @@ async fn feed_protocol(
         }
     }
 
-    // 数据帧 → source_frames 缓存 + 触发数值平面评估
-    if !out.frames.is_empty() {
-        summary.frames += out.frames.len() as u64;
-        summary.eval_ns += super::frame_dispatch::on_frames(plane, proto_id, &out.frames);
-    }
-
     // RawData 判定 + convert 引擎 (一次锁取齐)
     // 有效预设判定: 有 schema 时按 preset (用户编辑块后 preset=Custom, 走 SchemaEngine 产帧,
     // 不再做文本缓存/原文透传); 无 schema (旧前端) 回退按 config.kind
@@ -301,6 +295,7 @@ async fn feed_protocol(
     }
 
     // convert_to: 输出引擎重编码 → 沿本节点 out 边继续下推 (协议转换链)
+    // (提前计算: frames 随后按值移入 blocking 评估任务)
     let converted = match convert_engine {
         Some(ce) => {
             let mut bytes = Vec::new();
@@ -311,6 +306,33 @@ async fn feed_protocol(
         }
         None => Vec::new(),
     };
+
+    // 数据帧 → source_frames 缓存 + 触发数值平面评估
+    // 重型同步评估 (大批次可达 24ms+) 丢 blocking 池执行, 不占 tokio worker;
+    // await 保持同源批序, panic 语义透传 (只吞关闭型 JoinError)
+    if !out.frames.is_empty() {
+        summary.frames += out.frames.len() as u64;
+        let eval = plane.eval.clone();
+        let global_nodes = plane.global_nodes.clone();
+        let buffer = plane.buffer_for(proto_id);
+        let proto = proto_id.to_string();
+        let frames = std::mem::take(&mut out.frames);
+        let eval_task = tokio::task::spawn_blocking(move || {
+            super::frame_dispatch::on_frames_detached(
+                &eval,
+                &global_nodes,
+                &buffer,
+                &proto,
+                &frames,
+            )
+        });
+        match eval_task.await {
+            Ok(ns) => summary.eval_ns += ns,
+            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
+            Err(_) => {}
+        }
+    }
+
     if !converted.is_empty() {
         Box::pin(route_inner(
             plane,
