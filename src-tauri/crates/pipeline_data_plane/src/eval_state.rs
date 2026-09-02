@@ -10,7 +10,7 @@ use dsp_filter::DigitalFilter;
 use node_engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use node_frame_decoder::FrameParser;
 use node_trigger::TriggerState;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use pipeline_bus::DataBus;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -90,8 +90,9 @@ pub struct GraphEvalState {
     /// 图版本号 — sync_tab_graph/remove_tab_graph 时 +1,
     /// process_source_batch 据此检测重编译并清空复用的输出缓存
     pub graphs_version: Arc<AtomicU64>,
-    pub input_values: Arc<Mutex<HashMap<String, f32>>>,
-    pub custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
+    /// 高频批路径只读 (RwLock 读 guard 零克隆), set_input_value / 自定义回传写
+    pub input_values: Arc<RwLock<HashMap<String, f32>>>,
+    pub custom_outputs: Arc<RwLock<HashMap<String, HashMap<String, f32>>>>,
     /// 每源最新帧缓存 (key = Protocol 节点 id, latest-value 融合) —
     /// 与 DataPlaneState::source_frames 共享同一 Arc (两平面衔接点)
     pub source_frames: Arc<Mutex<SourceFramesMap>>,
@@ -154,8 +155,8 @@ pub fn build_graph_eval_state(
     data_bus: DataBus,
     graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
     graphs_version: Arc<AtomicU64>,
-    input_values: Arc<Mutex<HashMap<String, f32>>>,
-    custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
+    input_values: Arc<RwLock<HashMap<String, f32>>>,
+    custom_outputs: Arc<RwLock<HashMap<String, HashMap<String, f32>>>>,
     text_output_snapshot: Arc<Mutex<StringOutputSnapshot>>,
     custom_text_outputs: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     source_frames: Arc<Mutex<SourceFramesMap>>,

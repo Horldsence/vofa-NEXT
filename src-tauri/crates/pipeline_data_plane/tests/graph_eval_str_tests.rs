@@ -83,7 +83,7 @@ async fn event_driven_evaluation_publishes_active_numeric_topics() {
         .subscribe(TopicKey::new("math", "result"), 4)
         .await
         .unwrap();
-    plane.eval.input_values.lock().insert("input".into(), 12.5);
+    plane.eval.input_values.write().insert("input".into(), 12.5);
     frame_dispatch::refresh_snapshot(&plane);
     let batch = receiver.recv().await.unwrap();
     assert_eq!(batch.samples.last().map(|sample| sample.value), Some(12.5));

@@ -131,6 +131,42 @@ Transport.rx 字节 ──► byte_router::route_bytes
 - **慢路径**: `CompiledGraph::evaluate_into` — 逐节点 map 语义参考实现。
 - `equiv_tests` 持续校验两路径输出一致; 任何 lowering/求值改动必须保持该网全绿。
 
+## 评估单元与并发评估 (`eval_workers`)
+
+编译期把值平面切分为**评估单元** (`node_lower::units`):
+- **prelude 单元** (单元 0): 供给节点 op (ProtocolSource/Input/Custom/TextInput) —
+  无图输入的纯外部状态读;
+- **计算单元**: 计算节点 (Math/Str/Filter/Ifft/Trigger/FrameDecoder/TextOut) 按
+  f32/字符串边的连通分量划分 (并查集)。
+
+切分不变量: **跨单元数据边只能从供给节点发出** (计算节点之间的边会合并单元),
+因此任意单元的读要么来自本单元先写槽位, 要么来自 prelude 槽位。扁平 op 序按
+`[prelude][单元 1][单元 2]..` 重排为连续区段 (槽位分配序不变, 快照/派生反查不受影响)。
+
+运行时两条路径 (`PipelineConfig.eval_workers`, 默认 1):
+
+- **= 1 串行热路径**: 与旧版逐字节一致 (`graph_eval::process_source_batch`);
+  静态纯本地图 (`CompiledEval::is_static_local` — 仅 Input/TextInput/Custom/
+  Math/Str 且无 SpectrumSink/TextOut) 每批评估一次, 其派生边仍逐帧重复 push
+  常值保持派生环与主时间戳轴 1:1 对齐, DataBus 端口样本降为批尾单样本
+  (批内输入不变, 输出值与逐帧评估相同 — 样本密度 delta 为已接受的行为微变)。
+- **≥ 2 并行路径** (`graph_eval_parallel::process_source_batch_parallel`):
+  评估单元按 LPT 装箱为 K 桶, 批内常驻 worker (K-1 线程, 协调者跑桶 0) 以
+  自旋双屏障分块 (4096 帧) 推进; 每桶对涉及图各持一份槽位副本, 副本内先跑
+  prelude 再跑本桶单元。读路径 (派生边/端口批/频谱槽) 按 "正本槽位 → 所属
+  单元 → 桶" 分派到恰好一个桶, worker 只写私有 staging, 每块屏障后由协调者
+  按确定序回放 — 与串行版输出逐字节一致 (等价性回归
+  `tests/graph_eval_parallel_equiv.rs` 锚定: 单块/跨块/确定性/静态密度)。
+
+代价与适用性: 供给 op 在每桶副本各执行一次 (provider 占比高的小图并行收益低);
+真实长链图 (计算为主) w4 可达 ~1.8× 整批加速 (`pipeline_data_plane/benches/
+eval_bench.rs`)。共享表交接零克隆 (`mem::take` + `PutBack`/`TakeGuard`),
+filter/ifft/trigger 状态按单元 id 表切分, 批尾合并写回。
+
+其他热路径配套: 字节路由把重型评估丢 `spawn_blocking` (不占 tokio worker);
+分段计时 1/64 抽样 (700k fps 下 Instant::now 本身 ~5-7% 开销);
+`input_values`/`custom_outputs` 为 RwLock, 批路径读 guard 零克隆。
+
 ### 字符串算子表 (StrOp)
 
 字符串平面同时承担 数值 ↔ 文本 的互转 (源间转化的桥), 算子分四类

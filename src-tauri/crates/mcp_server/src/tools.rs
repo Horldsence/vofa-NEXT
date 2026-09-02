@@ -80,7 +80,7 @@ pub async fn inject_bytes(
 
 /// 设置控件输入值 (Input/Slider/Knob 等 widget 的当前值)。
 pub fn set_input_value(tb: &Toolbox, widget_id: &str, value: f32) -> Value {
-    tb.input_values.lock().insert(widget_id.to_string(), value);
+    tb.input_values.write().insert(widget_id.to_string(), value);
     frame_dispatch::refresh_snapshot(&tb.data_plane);
     json!({ "ok": true })
 }
@@ -168,19 +168,22 @@ pub async fn update_graph(
         .collect::<std::result::Result<_, _>>()
         .map_err(|e| format!("edges 反序列化失败: {e}"))?;
     let widgets: Option<Vec<app_state::WidgetRecord>> = match widgets {
-        Some(items) => Some(items
-            .into_iter()
-            .map(serde_json::from_value)
-            .collect::<std::result::Result<_, _>>()
-            .map_err(|e| format!("widgets 反序列化失败: {e}"))?),
+        Some(items) => Some(
+            items
+                .into_iter()
+                .map(serde_json::from_value)
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| format!("widgets 反序列化失败: {e}"))?,
+        ),
         None => None,
     };
     let positions: Option<HashMap<String, app_state::Position>> = match positions {
-        Some(map) => Some(map
-            .into_iter()
-            .map(|(id, v)| serde_json::from_value::<app_state::Position>(v).map(|p| (id, p)))
-            .collect::<std::result::Result<_, _>>()
-            .map_err(|e| format!("positions 反序列化失败: {e}"))?),
+        Some(map) => Some(
+            map.into_iter()
+                .map(|(id, v)| serde_json::from_value::<app_state::Position>(v).map(|p| (id, p)))
+                .collect::<std::result::Result<_, _>>()
+                .map_err(|e| format!("positions 反序列化失败: {e}"))?,
+        ),
         None => None,
     };
 

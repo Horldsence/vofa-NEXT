@@ -372,7 +372,7 @@ pub async fn set_input_value(
     widget_id: String,
     value: f32,
 ) -> Result<()> {
-    state.input_values.lock().insert(widget_id, value);
+    state.input_values.write().insert(widget_id, value);
     frame_dispatch::refresh_snapshot(&state.data_plane);
     Ok(())
 }
@@ -401,7 +401,7 @@ pub async fn submit_custom_output(
     widget_id: String,
     outputs: std::collections::HashMap<String, f32>,
 ) -> Result<()> {
-    state.custom_outputs.lock().insert(widget_id, outputs);
+    state.custom_outputs.write().insert(widget_id, outputs);
     frame_dispatch::refresh_snapshot(&state.data_plane);
     Ok(())
 }
@@ -477,7 +477,7 @@ mod tests {
     #[tokio::test]
     async fn update_tab_graph_refreshes_snapshot() {
         let state = AppState::new();
-        state.input_values.lock().insert("in1".into(), 7.0);
+        state.input_values.write().insert("in1".into(), 7.0);
 
         apply_tab_graph(
             &state,
@@ -510,7 +510,7 @@ mod tests {
     #[tokio::test]
     async fn remove_tab_graph_refreshes_snapshot() {
         let state = AppState::new();
-        state.input_values.lock().insert("in1".into(), 3.0);
+        state.input_values.write().insert("in1".into(), 3.0);
         apply_tab_graph(
             &state,
             None,

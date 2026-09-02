@@ -111,7 +111,7 @@ fn install(state: &AppState) {
     graphs.insert("t1".into(), dynamic_graph());
     graphs.insert("t2".into(), static_graph());
     drop(graphs);
-    let mut inputs = state.data_plane.eval.input_values.lock();
+    let mut inputs = state.data_plane.eval.input_values.write();
     inputs.insert("knob1".into(), 2.0);
     inputs.insert("knobA".into(), 5.0);
     inputs.insert("knobB".into(), 7.0);
@@ -333,6 +333,49 @@ async fn parallel_matches_serial_full_pipeline() {
             "{topic} 确定性"
         );
     }
+}
+
+#[tokio::test]
+async fn parallel_matches_serial_across_chunks() {
+    // 3000 帧 = 3 块 (EVAL_CHUNK=1024) — 锁定块间 staging 交换/回放不重复不丢失
+    let frames: Vec<DataFrame> = (0..3000)
+        .enumerate()
+        .map(|(i, v)| {
+            let f = f32::from(u16::try_from(v % 64).unwrap_or(0));
+            DataFrame::with_timestamp(
+                u64::try_from(i).unwrap_or(0) * 100,
+                vec![f, f * 2.0, f * 0.5, f + 1.0],
+            )
+        })
+        .collect();
+
+    let run = |workers: usize| {
+        let state = AppState::new();
+        install(&state);
+        set_workers(&state, workers);
+        frame_dispatch::on_frames(&state.data_plane, "pt", &frames);
+        let buf = state.data_plane.buffer_for("pt");
+        let mut b = buf.lock();
+        let mut derived = Vec::new();
+        for (sink, source) in [("sinkA", "m2"), ("sinkB", "m3"), ("sinkC", "m4")] {
+            let idx = b.derived_index_of(sink, source);
+            derived.push(b.get_derived(idx, 10_000));
+        }
+        (b.point_count(), derived, state)
+    };
+
+    let (serial_points, serial_derived, serial_state) = run(1);
+    let (par_points, par_derived, par_state) = run(4);
+
+    assert_eq!(serial_points, par_points, "点数一致");
+    assert_eq!(
+        serial_derived, par_derived,
+        "跨块派生环内容不一致 (重复回放/丢失)"
+    );
+    assert_eq!(
+        serial_state.data_plane.eval.output_snapshot.lock().values,
+        par_state.data_plane.eval.output_snapshot.lock().values
+    );
 }
 
 #[tokio::test]

@@ -38,11 +38,11 @@ pub struct AppState {
     /// 输入控件当前值 (Knob/Slider/Button/Radio/Checkbox)
     /// key: widget_id, value: 当前值
     /// 由前端 invoke('set_input_value') 更新
-    pub input_values: Arc<Mutex<HashMap<String, f32>>>,
+    pub input_values: Arc<RwLock<HashMap<String, f32>>>,
     /// Custom widget 回传输出
     /// key: widget_id, value: portId -> value
     /// 由前端 invoke('submit_custom_output') 更新
-    pub custom_outputs: Arc<Mutex<HashMap<String, HashMap<String, f32>>>>,
+    pub custom_outputs: Arc<RwLock<HashMap<String, HashMap<String, f32>>>>,
     /// 字符串输出 (Custom JS widget 字符串输出回传通道;
     /// Trigger 的字符串规则输出已由后端图求值直接产出)
     /// key: widget_id, value: portId -> string
@@ -81,8 +81,8 @@ impl AppState {
         let source_graphs: crate::SourceGraphs = Arc::new(Mutex::new(HashMap::new()));
         let workspace: crate::WorkspaceState =
             Arc::new(Mutex::new(crate::WorkspaceInner::default()));
-        let input_values = Arc::new(Mutex::new(HashMap::new()));
-        let custom_outputs = Arc::new(Mutex::new(HashMap::new()));
+        let input_values = Arc::new(RwLock::new(HashMap::new()));
+        let custom_outputs = Arc::new(RwLock::new(HashMap::new()));
         let custom_text_outputs = Arc::new(Mutex::new(HashMap::new()));
         let text_output_snapshot = Arc::new(Mutex::new(
             pipeline_data_plane::StringOutputSnapshot::default(),

@@ -34,7 +34,7 @@ pub struct Toolbox {
     /// 数据平面 (字节路由 / 缓冲 / 输出快照)。
     pub data_plane: pipeline_data_plane::DataPlaneState,
     /// 控件输入值表。
-    pub input_values: Arc<parking_lot::Mutex<HashMap<String, f32>>>,
+    pub input_values: Arc<parking_lot::RwLock<HashMap<String, f32>>>,
     /// tab 图表 (节点图提交)。
     pub graphs: Arc<parking_lot::Mutex<HashMap<String, node_engine::CompiledGraph>>>,
     /// 图版本号 (节点图提交)。

@@ -17,6 +17,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vofa_core::DataFrame;
 
+/// 分段计时抽样周期 — Instant::now 本身在 700k fps 下占 5-7% 纯观测开销,
+/// 每 64 帧抽 1 帧计时 ×64 估算分段耗时 (观测用, 不影响行为)
+const TIMING_SAMPLE_PERIOD: u64 = 64;
+
 /// eval 段细分耗时 (纳秒累计, 由调用方汇入数据平面指标)
 #[derive(Default)]
 pub struct EvalBreakdown {
@@ -61,9 +65,36 @@ impl<T> Drop for PutBack<'_, T> {
     }
 }
 
-/// [`PutBack::take`] 的便捷形式
-pub(crate) fn put_back<T: Default>(dst: &mut T) -> PutBack<'_, T> {
-    PutBack::take(dst)
+/// 持锁版整表取出 — 锁 guard 与取出值一起持有, Drop 时原样写回
+/// (调用方无需再绑定 mut 锁 guard, 并发路径直接跨线程共享 `get()`)
+pub(crate) struct TakeGuard<'a, T> {
+    guard: parking_lot::MutexGuard<'a, T>,
+    val: Option<T>,
+}
+
+impl<'a, T: Default> TakeGuard<'a, T> {
+    pub(crate) fn take(mut guard: parking_lot::MutexGuard<'a, T>) -> Self {
+        Self {
+            val: Some(std::mem::take(&mut *guard)),
+            guard,
+        }
+    }
+
+    pub(crate) const fn get(&self) -> &T {
+        self.val.as_ref().expect("TakeGuard 值仅在 Drop 时移出")
+    }
+
+    pub(crate) const fn get_mut(&mut self) -> &mut T {
+        self.val.as_mut().expect("TakeGuard 值仅在 Drop 时移出")
+    }
+}
+
+impl<T> Drop for TakeGuard<'_, T> {
+    fn drop(&mut self) {
+        if let Some(v) = self.val.take() {
+            *self.guard = v;
+        }
+    }
 }
 
 struct PortSampleBatch {
@@ -138,8 +169,8 @@ pub(crate) fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
 /// 调用时机: FrameDecoder 字节喂入后 / set_input_value / submit_custom_output
 /// (取代旧 evaluate_all_graphs_with 的空帧语义 — ProtocolSource 从缓存读最新值)
 pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &SourceFramesMap) {
-    let input_values = eval_state.input_values.lock().clone();
-    let custom_outputs = eval_state.custom_outputs.lock().clone();
+    let input_values = eval_state.input_values.read();
+    let custom_outputs = eval_state.custom_outputs.read();
     let source_texts = eval_state.source_texts.lock();
     let graphs = eval_state.graphs.lock();
     let mut filter_states = eval_state.filter_states.lock();
@@ -250,8 +281,8 @@ pub fn process_source_batch(
     if frames.is_empty() {
         return;
     }
-    let input_values = eval_state.input_values.lock().clone();
-    let custom_outputs = eval_state.custom_outputs.lock().clone();
+    let input_values = eval_state.input_values.read();
+    let custom_outputs = eval_state.custom_outputs.read();
     let source_texts = eval_state.source_texts.lock();
     let graphs = eval_state.graphs.lock();
     let graphs_version = eval_state.graphs_version.load(Ordering::Relaxed);
@@ -380,6 +411,7 @@ pub fn process_source_batch(
     let mut last_publish = std::time::Instant::now();
 
     for (i, frame) in frames.iter().enumerate() {
+        let timing_sampled = u64::try_from(i).unwrap_or(0) % TIMING_SAMPLE_PERIOD == 0;
         // 0. 该源最新帧入缓存 (其他源保持缓存值 — latest-value 融合)
         //    clone_from 复用 channels 分配, 稳态零分配
         match source_frames.get_mut(source_id) {
@@ -393,12 +425,23 @@ pub fn process_source_batch(
         }
 
         // 1. push 原始帧到该源自己的 buffer
-        let t = std::time::Instant::now();
+        let t = if timing_sampled {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         buffer.push_frame(frame);
-        breakdown.push_frame_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        if let Some(t) = t {
+            breakdown.push_frame_ns +=
+                u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
+        }
 
         // 2. 评估被触发的图 (编译期槽位表, 纯数组读写零字符串哈希)
-        let t = std::time::Instant::now();
+        let t = if timing_sampled {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         for (gi, g) in graph_list.iter().enumerate() {
             let (slots, written, str_slots, str_written) = &mut slot_bufs[gi];
             // 每帧清零 (memset/clear): slots 防上帧值泄漏, written 复刻 "本帧未产出 = 键不存在"
@@ -421,7 +464,10 @@ pub fn process_source_batch(
                 str_written,
             );
         }
-        breakdown.graph_eval_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        if let Some(t) = t {
+            breakdown.graph_eval_ns +=
+                u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
+        }
 
         // 只有 written=true 的槽位才进入端口历史。缺源/越界不会生成假样本。
         for batch in &mut port_batches {
@@ -433,7 +479,11 @@ pub fn process_source_batch(
         }
 
         // 3. 收集派生值 (批首预计算索引, 与 push_frame 时间戳对齐; 仅 written 槽位)
-        let t = std::time::Instant::now();
+        let t = if timing_sampled {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         for &(gi, slot, buf_idx) in &derived_edges {
             let (slots, written, ..) = &slot_bufs[gi];
             if written[slot] {
@@ -450,10 +500,17 @@ pub fn process_source_batch(
                 }
             }
         }
-        breakdown.derived_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        if let Some(t) = t {
+            breakdown.derived_ns +=
+                u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
+        }
 
         // 4. 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口 (仅 written 槽位)
-        let t = std::time::Instant::now();
+        let t = if timing_sampled {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
         if !analyzers.is_empty() {
             for (gi, g) in graph_list.iter().enumerate() {
                 let (slots, written, ..) = &slot_bufs[gi];
@@ -464,7 +521,10 @@ pub fn process_source_batch(
                 }
             }
         }
-        breakdown.spectrum_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
+        if let Some(t) = t {
+            breakdown.spectrum_ns +=
+                u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
+        }
 
         // 5. 每 1024 帧检查一次, 距上次发布 ≥8ms 则中途发布快照
         //    (物化当前帧槽位直接合并进 snap.values — 覆盖写, 未触发图旧值保留)

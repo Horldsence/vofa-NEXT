@@ -45,3 +45,10 @@ notify_events = { path = "../notify_events" }
 # data_plane/{frame_dispatch, reconcile} 的 #[cfg(test)] 模块用 AppState 构造测试
 app_state = { path = "../app_state" }
 node_testkit = { workspace = true }
+
+[[bench]]
+name = "eval_bench"
+harness = false
+
+[dev-dependencies.criterion]
+workspace = true
