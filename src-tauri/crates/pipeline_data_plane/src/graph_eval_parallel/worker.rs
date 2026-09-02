@@ -6,27 +6,46 @@ use buffer_databuffer::DataBuffer;
 use dsp_fft::SpectrumAnalyzer;
 
 use crate::graph_eval::{EvalBreakdown, SlotBufs};
+use crate::graph_eval_parallel::simd;
 
 use super::plan::{ns_since, BatchCtx, BucketPlan, WorkerState};
 
-/// 单桶单块执行 — 逐帧: prelude → 本桶计算单元 → staging (仅 written 置位)
+/// 单桶单块执行 — 图优先两相推进:
+///
+/// 相 1 (逐帧): prelude → 标量单元 → gather (SIMD 输入槽位) → 标量 staging
+/// 相 2 (块内批量): SIMD 资格单元 SoA 求值 → scatter 逐帧回写 + 延后 staging
+///
+/// 单元写集互斥 (编译期切分不变量; SIMD 单元读仅 prelude/本单元), 两相与
+/// 旧逐帧单相拓扑可观测输出一致: 派生环/端口批按槽位归属分区后各自帧序
+/// 不变, 快照物化读块尾副本状态不变。
 pub(super) fn run_bucket_chunk(
     plan: &BucketPlan,
     ws: &mut WorkerState,
     ctx: &BatchCtx<'_>,
     chunk: (usize, usize),
 ) {
-    for frame_i in chunk.0..chunk.1 {
-        let frame = &ctx.frames[frame_i];
-        for gp in &plan.graphs {
-            let g = ctx.graph_list[gp.gi];
-            let compiled = g.compiled();
-            let copy = ws.copies.get_mut(&gp.gi).expect("槽位副本已在批首预分配");
+    for gp in &plan.graphs {
+        let g = ctx.graph_list[gp.gi];
+        let compiled = g.compiled();
+        let copy = ws.copies.get_mut(&gp.gi).expect("槽位副本已在批首预分配");
+        let units = compiled.units();
+        let n = chunk.1 - chunk.0;
+        let simd_plan = &gp.simd;
+        let has_simd = !simd_plan.is_empty();
+        if has_simd {
+            let col_ws = ws.simd_cols.entry(gp.gi).or_default();
+            for &slot in simd_plan.in_slots.iter().chain(simd_plan.out_slots.iter()) {
+                col_ws.ensure_col(slot, n);
+            }
+        }
+
+        // —— 相 1: 逐帧 prelude + 标量单元 + gather + 标量 staging
+        for (f, frame_i) in (chunk.0..chunk.1).enumerate() {
+            let frame = &ctx.frames[frame_i];
             let resolved = compiled.resolve_frames(
                 ctx.sf_map,
                 ctx.trigger_src_idx[gp.gi].map(|idx| (idx, frame)),
             );
-            let units = compiled.units();
             // prelude 先行 (供给槽位写本副本, 计算单元跨单元读由此满足)
             compiled.run_unit_frame(
                 &units[0],
@@ -43,7 +62,7 @@ pub(super) fn run_bucket_chunk(
                 &mut copy.2,
                 &mut copy.3,
             );
-            for &u in &gp.unit_ids {
+            for &u in &gp.unit_ids_scalar {
                 compiled.run_unit_frame(
                     &units[u],
                     resolved.as_slice(),
@@ -59,6 +78,13 @@ pub(super) fn run_bucket_chunk(
                     &mut copy.2,
                     &mut copy.3,
                 );
+            }
+            if has_simd {
+                // gather: SIMD 输入槽位 (prelude 供给) 逐帧收进 SoA 列
+                let col_ws = ws.simd_cols.get_mut(&gp.gi).expect("列工作区已预建");
+                for &slot in &simd_plan.in_slots {
+                    col_ws.gather(slot, f, copy.0[slot]);
+                }
             }
             for (slot, buf_idx) in &gp.derived {
                 if copy.1[*slot] {
@@ -78,6 +104,43 @@ pub(super) fn run_bucket_chunk(
                     if copy.1[slot] {
                         ws.staged_spectra
                             .push((u32::try_from(si).unwrap_or(u32::MAX), copy.0[slot]));
+                    }
+                }
+            }
+        }
+
+        // —— 相 2: SIMD 单元批量求值 + scatter 逐帧回写 + 延后 staging
+        if has_simd {
+            let col_ws = ws.simd_cols.get_mut(&gp.gi).expect("列工作区已预建");
+            for unit in &simd_plan.units {
+                simd::ops::apply_unit(unit, col_ws, n);
+            }
+            let col_ws = ws.simd_cols.get(&gp.gi).expect("列工作区已预建");
+            for (f, frame_i) in (chunk.0..chunk.1).enumerate() {
+                let frame = &ctx.frames[frame_i];
+                for &slot in &simd_plan.out_slots {
+                    copy.0[slot] = col_ws.col(slot)[f];
+                    copy.1[slot] = true;
+                }
+                for (slot, buf_idx) in &gp.derived_simd {
+                    if copy.1[*slot] {
+                        ws.staged_derived.push((*buf_idx, copy.0[*slot]));
+                    }
+                }
+                for route in &gp.ports_simd {
+                    let acc = &mut ws.ports[*route];
+                    let slot = acc.slot;
+                    if copy.1[slot] {
+                        acc.timestamps.push(frame.timestamp);
+                        acc.values.push(f64::from(copy.0[slot]));
+                    }
+                }
+                for &si in &gp.spectra_simd {
+                    if let Some(slot) = plan.spectra[si].2 {
+                        if copy.1[slot] {
+                            ws.staged_spectra
+                                .push((u32::try_from(si).unwrap_or(u32::MAX), copy.0[slot]));
+                        }
                     }
                 }
             }

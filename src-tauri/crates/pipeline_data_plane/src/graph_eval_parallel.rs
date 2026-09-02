@@ -12,6 +12,9 @@
 //!   恰好一个桶 ([`plan`]); worker 只写私有 staging, 每块结束经 stage 交换槽交给
 //!   协调者, 按确定序回放 — 派生环与主时间戳轴的 1:1 对齐、端口批与快照语义与
 //!   串行版一致
+//! - **SIMD 批量单元**: Math 资格单元 (全 Math + 输入仅 prelude/本单元) 在
+//!   块内 SoA 批量求值 (SciRS2 SIMD, 逐位对齐标量; [`simd`]), 读路径按槽位
+//!   归属延后到 scatter 回放 — 可经 `eval_simd` 关闭退回全标量
 //! - **快照**: 中途发布点协调者置发布标志, worker 在块尾把本桶单元的物化增量
 //!   随 staging 交换带回, 协调者合并进 snap.values ([`publish`]) — 节奏与串行版一致
 //! - **共享状态零克隆交接**: `source_frames`/`source_texts`/`decoder_states`
@@ -25,12 +28,10 @@
 //! filter → decoder → ifft → trigger → analyzers), 批间仍互斥。
 
 mod barrier;
-mod gpu;
 mod plan;
 mod publish;
+mod simd;
 mod worker;
-
-pub(crate) use gpu::{process_source_batch_gpu, GpuPathState};
 
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,6 +64,7 @@ pub(crate) fn process_source_batch_parallel(
     frames: &[vofa_core::DataFrame],
     buffer: &mut DataBuffer,
     eval_workers: usize,
+    simd: bool,
     breakdown: &mut EvalBreakdown,
 ) {
     if frames.is_empty() {
@@ -146,8 +148,16 @@ pub(crate) fn process_source_batch_parallel(
             }
         }
     }
-    let ParallelPlans { arcs: plan_arcs, unit_bucket } =
-        build_plans(&graph_list, eval_state, &mut derived_edges, eval_workers);
+    let ParallelPlans {
+        arcs: plan_arcs,
+        unit_bucket,
+    } = build_plans(
+        &graph_list,
+        eval_state,
+        &mut derived_edges,
+        eval_workers,
+        simd,
+    );
 
     // —— 状态切分: 按单元 id 表 drain 出每桶子 map (未认领条目留原表, 批尾合并写回)
     let worker_states = split_states(
@@ -197,8 +207,9 @@ pub(crate) fn process_source_batch_parallel(
     let mut states_iter = worker_states.into_iter();
     let mut lead = states_iter.next().expect("至少一个桶");
     let lead_plan = Arc::clone(&plan_arcs[0]);
-    let return_slots: Vec<Arc<Mutex<Option<WorkerState>>>> =
-        (1..plan_arcs.len()).map(|_| Arc::new(Mutex::new(None))).collect();
+    let return_slots: Vec<Arc<Mutex<Option<WorkerState>>>> = (1..plan_arcs.len())
+        .map(|_| Arc::new(Mutex::new(None)))
+        .collect();
     let swap_slots: Vec<Arc<Mutex<StageSlot>>> = (1..plan_arcs.len())
         .map(|_| Arc::new(Mutex::new(StageSlot::new())))
         .collect();

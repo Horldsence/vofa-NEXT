@@ -318,9 +318,7 @@ async fn feed_protocol(
         let proto = proto_id.to_string();
         let frames = std::mem::take(&mut out.frames);
         let options = super::frame_dispatch::EvalOptions::from_config(&cfg);
-        let gpu_eval = plane.gpu_eval.clone();
         let eval_task = tokio::task::spawn_blocking(move || {
-            let mut gpu = gpu_eval.lock();
             super::frame_dispatch::on_frames_detached(
                 &eval,
                 &global_nodes,
@@ -328,7 +326,6 @@ async fn feed_protocol(
                 &proto,
                 &frames,
                 options,
-                &mut gpu,
             )
         });
         match eval_task.await {

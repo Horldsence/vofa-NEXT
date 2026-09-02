@@ -15,6 +15,7 @@ use rustc_hash::FxHashMap;
 
 use crate::eval_state::GraphEvalState;
 use crate::graph_eval::SlotBufs;
+use crate::graph_eval_parallel::simd::GraphSimdPlan;
 
 /// 分块大小 — 每块一次屏障对; 高帧率下 8ms 快照节流不受影响 (4096 帧 @700k
 /// fps ≈ 5.8ms < 8ms 门限), 低帧率批次天然单块
@@ -40,12 +41,22 @@ pub(super) struct BucketGraphPlan {
     pub(super) gi: usize,
     /// 本桶承担的计算单元下标 (不含 prelude; prelude 由所有涉及本图的桶本地复跑)
     pub(super) unit_ids: Vec<usize>,
-    /// (正本槽位, buffer 派生索引) — 正本属本桶
+    /// 本桶承担的标量单元下标 ([`Self::unit_ids`] 去除 SIMD 资格单元)
+    pub(super) unit_ids_scalar: Vec<usize>,
+    /// (正本槽位, buffer 派生索引) — 正本属本桶 (标量单元写出)
     pub(super) derived: Vec<(usize, usize)>,
-    /// 端口批路由下标 (桶级扁平表 [`BucketPlan::port_routes`])
+    /// 同 [`Self::derived`], 正本槽位归 SIMD 资格单元 (staging 延后到 scatter)
+    pub(super) derived_simd: Vec<(usize, usize)>,
+    /// 端口批路由下标 (桶级扁平表 [`BucketPlan::port_routes`]; 标量单元写出槽位)
     pub(super) ports: Vec<usize>,
-    /// 本图频谱项在 [`BucketPlan::spectra`] 中的下标
+    /// 同 [`Self::ports`], 槽位归 SIMD 资格单元
+    pub(super) ports_simd: Vec<usize>,
+    /// 本图频谱项在 [`BucketPlan::spectra`] 中的下标 (标量单元写出槽位)
     pub(super) spectra: Vec<usize>,
+    /// 同 [`Self::spectra`], 槽位归 SIMD 资格单元
+    pub(super) spectra_simd: Vec<usize>,
+    /// SIMD 批量求值计划 (`eval_simd` 关闭或无资格单元时为空)
+    pub(super) simd: GraphSimdPlan,
 }
 
 /// 桶执行计划 — 只读路由表 (Arc 共享给 worker)
@@ -70,9 +81,14 @@ impl BucketPlan {
             self.graphs.push(BucketGraphPlan {
                 gi,
                 unit_ids: Vec::new(),
+                unit_ids_scalar: Vec::new(),
                 derived: Vec::new(),
+                derived_simd: Vec::new(),
                 ports: Vec::new(),
+                ports_simd: Vec::new(),
                 spectra: Vec::new(),
+                spectra_simd: Vec::new(),
+                simd: GraphSimdPlan::default(),
             });
         }
     }
@@ -81,6 +97,8 @@ impl BucketPlan {
 /// worker 私有可变状态 — 批尾经归还箱交回协调者
 pub(super) struct WorkerState {
     pub(super) copies: FxHashMap<usize, SlotBufs>,
+    /// SIMD 列工作区 (图下标 → 槽位列缓存; 跨块复用容量)
+    pub(super) simd_cols: FxHashMap<usize, crate::graph_eval_parallel::simd::ops::SimdWorkspace>,
     pub(super) filters: HashMap<String, DigitalFilter>,
     pub(super) iffts: HashMap<String, IfftState>,
     pub(super) triggers: HashMap<String, TriggerState>,
@@ -98,6 +116,7 @@ impl WorkerState {
     pub(super) fn new(plan: &BucketPlan) -> Self {
         Self {
             copies: FxHashMap::default(),
+            simd_cols: FxHashMap::default(),
             filters: HashMap::new(),
             iffts: HashMap::new(),
             triggers: HashMap::new(),
@@ -143,6 +162,7 @@ pub(super) fn build_plans(
     eval_state: &GraphEvalState,
     derived_edges: &mut [Vec<(usize, usize)>],
     eval_workers: usize,
+    simd: bool,
 ) -> ParallelPlans {
     let mut tasks: Vec<(u32, usize, usize)> = Vec::new(); // (weight, gi, unit)
     for (gi, g) in graph_list.iter().enumerate() {
@@ -213,6 +233,59 @@ pub(super) fn build_plans(
             plans[b].spectra.push((gi, sink.clone(), *slot));
             let si = plans[b].spectra.len() - 1;
             plans[b].graph_mut(gi).spectra.push(si);
+        }
+    }
+
+    // SIMD 分区: 资格分析 + 标量/SIMD 单元与读路径切分 (simd 关闭时全标量)
+    for plan in &mut plans {
+        for gp in &mut plan.graphs {
+            let compiled = graph_list[gp.gi].compiled();
+            if simd {
+                gp.simd = GraphSimdPlan::build(compiled);
+            }
+            let simd_out = &gp.simd.out_slots;
+            let is_simd_slot = |slot: usize| simd_out.binary_search(&slot).is_ok();
+            let simd_units = &gp.simd.units;
+            gp.unit_ids_scalar = gp
+                .unit_ids
+                .iter()
+                .copied()
+                .filter(|u| !simd_units.iter().any(|p| p.unit_index == *u))
+                .collect();
+            let mut derived_simd = std::mem::take(&mut gp.derived_simd);
+            let mut derived_scalar = Vec::with_capacity(gp.derived.len());
+            for entry in std::mem::take(&mut gp.derived) {
+                if is_simd_slot(entry.0) {
+                    derived_simd.push(entry);
+                } else {
+                    derived_scalar.push(entry);
+                }
+            }
+            gp.derived = derived_scalar;
+            gp.derived_simd = derived_simd;
+            let mut ports_simd = std::mem::take(&mut gp.ports_simd);
+            let mut ports_scalar = Vec::with_capacity(gp.ports.len());
+            for route in std::mem::take(&mut gp.ports) {
+                let slot = plan.port_routes[route].1;
+                if is_simd_slot(slot) {
+                    ports_simd.push(route);
+                } else {
+                    ports_scalar.push(route);
+                }
+            }
+            gp.ports = ports_scalar;
+            gp.ports_simd = ports_simd;
+            let mut spectra_simd = std::mem::take(&mut gp.spectra_simd);
+            let mut spectra_scalar = Vec::with_capacity(gp.spectra.len());
+            for si in std::mem::take(&mut gp.spectra) {
+                if plan.spectra[si].2.is_some_and(&is_simd_slot) {
+                    spectra_simd.push(si);
+                } else {
+                    spectra_scalar.push(si);
+                }
+            }
+            gp.spectra = spectra_scalar;
+            gp.spectra_simd = spectra_simd;
         }
     }
 

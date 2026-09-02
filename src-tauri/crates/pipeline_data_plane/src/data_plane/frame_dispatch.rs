@@ -17,22 +17,19 @@ use parking_lot::Mutex;
 use pipeline_bus::{DataBus, SampleStatus, TopicKey};
 use std::collections::HashMap;
 use std::sync::Arc;
-use vofa_core::{DataFrame, EvalBackend, PipelineConfig};
+use vofa_core::{DataFrame, PipelineConfig};
 
 use super::DataPlaneState;
 use crate::eval_state::GraphEvalState;
 use crate::graph_eval::{evaluate_snapshot_now, process_source_batch, EvalBreakdown};
-use crate::graph_eval_parallel::GpuPathState;
 
 /// 评估分派选项 — [`PipelineConfig`] 的热路径投影 (每批读取一次)
 #[derive(Debug, Clone, Copy)]
 pub struct EvalOptions {
     /// 数值平面评估 worker 数 (CPU 路径; 1 = 串行)
     pub workers: usize,
-    /// 后端选择 (auto / cpu / gpu)
-    pub backend: EvalBackend,
-    /// 自动模式下走 GPU 的最小批帧数
-    pub gpu_min_batch: usize,
+    /// fork-join 并行路径内 Math 单元的 SIMD 批量求值开关
+    pub simd: bool,
 }
 
 impl EvalOptions {
@@ -41,8 +38,7 @@ impl EvalOptions {
     pub const fn from_config(cfg: &PipelineConfig) -> Self {
         Self {
             workers: cfg.eval_workers,
-            backend: cfg.eval_backend,
-            gpu_min_batch: cfg.gpu_min_batch,
+            simd: cfg.eval_simd,
         }
     }
 }
@@ -57,7 +53,6 @@ impl EvalOptions {
 pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) -> u64 {
     let buffer = plane.buffer_for(source_id);
     let options = EvalOptions::from_config(&plane.pipeline_config.read());
-    let mut gpu = plane.gpu_eval.lock();
     on_frames_detached(
         &plane.eval,
         &plane.global_nodes,
@@ -65,7 +60,6 @@ pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) 
         source_id,
         frames,
         options,
-        &mut gpu,
     )
 }
 
@@ -74,12 +68,10 @@ pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) 
 /// 供字节路由把整段重型同步评估丢进 `tokio::task::spawn_blocking` 执行:
 /// 大批次 (700k 时可达 24ms+) 不再占住 tokio worker, await 侧保持同源批序。
 ///
-/// 三路分派 (见 [`EvalOptions`]): `eval_backend = gpu` 或 `auto` 命中条件时
-/// 走 GPU 卸载 ([`crate::graph_eval_parallel::process_source_batch_gpu`],
-/// 失败自动回退 CPU); 否则 `workers ≥ 2` 走图内路径分块 fork-join 并行评估
-/// ([`crate::graph_eval_parallel`]), 1 = 串行热路径。
+/// 两路分派 (见 [`EvalOptions`]): `workers ≥ 2` 走图内路径分块 fork-join 并行
+/// 评估 ([`crate::graph_eval_parallel`], SIMD 开启时 Math 单元批量求值),
+/// 1 = 串行热路径。
 #[allow(clippy::implicit_hasher)] // 与 DataPlaneState.global_nodes 的具体 hasher 类型耦合, 泛化 S 会传染整个状态图
-#[allow(clippy::too_many_arguments)]
 pub fn on_frames_detached(
     eval: &GraphEvalState,
     global_nodes: &Mutex<HashMap<String, NodeDef>>,
@@ -87,7 +79,6 @@ pub fn on_frames_detached(
     source_id: &str,
     frames: &[DataFrame],
     options: EvalOptions,
-    gpu: &mut GpuPathState,
 ) -> u64 {
     if frames.is_empty() {
         return 0;
@@ -97,29 +88,19 @@ pub fn on_frames_detached(
     let mut sf = eval.source_frames.lock();
     let mut breakdown = EvalBreakdown::default();
 
-    let gpu_wanted = match options.backend {
-        EvalBackend::Gpu => true,
-        EvalBackend::Auto => frames.len() >= options.gpu_min_batch,
-        EvalBackend::Cpu => false,
-    };
-    let gpu_ran = gpu_wanted
-        && crate::graph_eval_parallel::process_source_batch_gpu(
-            eval, gpu, &mut sf, source_id, frames, &mut buf, &mut breakdown,
+    if options.workers > 1 {
+        crate::graph_eval_parallel::process_source_batch_parallel(
+            eval,
+            &mut sf,
+            source_id,
+            frames,
+            &mut buf,
+            options.workers,
+            options.simd,
+            &mut breakdown,
         );
-    if !gpu_ran {
-        if options.workers > 1 {
-            crate::graph_eval_parallel::process_source_batch_parallel(
-                eval,
-                &mut sf,
-                source_id,
-                frames,
-                &mut buf,
-                options.workers,
-                &mut breakdown,
-            );
-        } else {
-            process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
-        }
+    } else {
+        process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
     }
     breakdown.push_frame_ns + breakdown.graph_eval_ns + breakdown.derived_ns + breakdown.spectrum_ns
 }

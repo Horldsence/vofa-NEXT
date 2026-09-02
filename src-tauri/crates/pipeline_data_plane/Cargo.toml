@@ -16,8 +16,8 @@ buffer_graph = { workspace = true }
 buffer_raw = { workspace = true }
 node_engine = { workspace = true }
 node_eval = { workspace = true }
-node_gpu = { workspace = true }
-gpu_core = { workspace = true }
+node_lower = { workspace = true }
+scirs2-core = { workspace = true }
 rustc-hash = { workspace = true }
 node_kind = { workspace = true }
 node_trigger = { workspace = true }

@@ -1,15 +1,15 @@
-//! 数值平面评估基准 — 串行 (eval_workers=1) vs 图内路径并行 (≥2) vs GPU 卸载
+//! 数值平面评估基准 — 串行 (eval_workers=1) vs 图内路径并行 (≥2, SIMD on/off)
 //!
 //! 场景:
 //! - `serial_baseline_1chain`: 单链图 (ProtocolSource+Input→Math×2), 10k 帧
 //! - `parallel_8paths_w2/w4`: 单图 8 条独立 Math 链 (路径级并行的目标形态)
+//! - `deep8_chains_w2/w4`: 8 条 6 级深链 (计算为主)
 //! - `filter_heavy_w1/w4`: 4 条 Filter 状态链 (有状态切分正确性下的吞吐)
-//! - `gpu_*`: 同图集走 wgpu 卸载 (eval_backend = gpu) — `gpu_filter_heavy`
-//!   预期整图无资格回退 CPU (度量回退判定开销)
+//! - `simd_*`: 同图集 eval_simd on/off 对比 (Math 资格单元批量求值收益)
 //!
 //! 说明: 基准不订阅 DataBus 主题 (端口 staging 路径由等价性测试覆盖),
 //! 度量的是 push_frame + 图评估 + 派生回放 + 频谱回放的主路径耗时。
-//! GPU 组数值与 CPU 路径的等价性由 `tests/graph_eval_gpu_equiv.rs` 仲裁。
+//! SIMD 开关两侧的逐位等价性由 `tests/graph_eval_simd_equiv.rs` 仲裁。
 
 #![allow(clippy::cast_precision_loss)] // LCG 伪随机帧流: 小幅值整型 → f32 有意截断
 #![allow(clippy::needless_borrow)]
@@ -22,7 +22,7 @@ use node_engine::CompiledGraph;
 use node_kind::MathOp;
 use node_testkit::{edge, make_filter, make_input, make_math, make_protocol_source};
 use pipeline_data_plane::frame_dispatch;
-use vofa_core::{DataFrame, EvalBackend, PipelineConfig};
+use vofa_core::{DataFrame, PipelineConfig};
 
 /// 确定性伪随机帧流 (LCG)
 fn frames(count: usize, channels: usize) -> Vec<DataFrame> {
@@ -62,9 +62,10 @@ fn set_workers(app: &AppState, n: usize) {
     };
 }
 
-fn set_backend(app: &AppState, backend: EvalBackend) {
+fn set_simd(app: &AppState, enabled: bool) {
     *app.data_plane.pipeline_config.write() = PipelineConfig {
-        eval_backend: backend,
+        eval_workers: 4,
+        eval_simd: enabled,
         ..PipelineConfig::default()
     };
 }
@@ -136,6 +137,16 @@ fn filter_heavy(chains: usize) -> CompiledGraph {
         edges.push(edge(&format!("e{i}b"), &fid, "result", &mid, "in0"));
     }
     CompiledGraph::compile("t0".into(), nodes, edges).unwrap()
+}
+
+fn multi_path_8() -> CompiledGraph {
+    multi_path(8)
+}
+fn deep8() -> CompiledGraph {
+    deep_chains(8, 6)
+}
+fn filter4() -> CompiledGraph {
+    filter_heavy(4)
 }
 
 fn bench_eval(c: &mut Criterion) {
@@ -221,46 +232,36 @@ fn bench_eval(c: &mut Criterion) {
         });
     }
 
-    // GPU 卸载组: 同图集强制 eval_backend = gpu (10k 帧 ≥ gpu_min_batch)
-    // - 1chain / 8paths / deep8: Math 单元上 GPU
-    // - filter_heavy: 全图无 GPU 资格单元 → 首块前回退 CPU (度量判定开销)
-    group.bench_function("gpu_1chain", |b| {
-        let state = AppState::new();
-        setup(&state, vec![one_chain()]);
-        set_backend(&state, EvalBackend::Gpu);
-        b.iter_batched(
-            || (),
-            |()| {
-                let _ = black_box(frame_dispatch::on_frames(
-                    &state.data_plane,
-                    "pt",
-                    black_box(frames.as_slice()),
-                ));
-            },
-            BatchSize::SmallInput,
-        );
-    });
-    for (name, graph) in [
-        ("gpu_8paths", multi_path(8)),
-        ("gpu_deep8", deep_chains(8, 6)),
-        ("gpu_filter_heavy", filter_heavy(4)),
+    // SIMD 批量组: 同图集 w4 × eval_simd on/off 对比 (Math 资格单元 SoA 批量)
+    // - 1chain / 8paths / deep8: Math 单元全部 SIMD 资格
+    // - filter_heavy: Math 单元无资格输入 (Filter 有状态) → 全标量 (度量判定开销)
+    for (name, make_graph) in [
+        ("simd_1chain", one_chain as fn() -> CompiledGraph),
+        ("simd_8paths", multi_path_8 as fn() -> CompiledGraph),
+        ("simd_deep8", deep8 as fn() -> CompiledGraph),
+        ("simd_filter_heavy", filter4 as fn() -> CompiledGraph),
     ] {
-        let state = AppState::new();
-        setup(&state, vec![graph]);
-        set_backend(&state, EvalBackend::Gpu);
-        group.bench_function(name, |b| {
-            b.iter_batched(
-                || (),
-                |()| {
-                    let _ = black_box(frame_dispatch::on_frames(
-                        &state.data_plane,
-                        "pt",
-                        black_box(frames.as_slice()),
-                    ));
+        for enabled in [false, true] {
+            let state = AppState::new();
+            setup(&state, vec![make_graph()]);
+            set_simd(&state, enabled);
+            group.bench_function(
+                format!("{name}_{}", if enabled { "on" } else { "off" }),
+                |b| {
+                    b.iter_batched(
+                        || (),
+                        |()| {
+                            let _ = black_box(frame_dispatch::on_frames(
+                                &state.data_plane,
+                                "pt",
+                                black_box(frames.as_slice()),
+                            ));
+                        },
+                        BatchSize::SmallInput,
+                    );
                 },
-                BatchSize::SmallInput,
             );
-        });
+        }
     }
 
     group.finish();

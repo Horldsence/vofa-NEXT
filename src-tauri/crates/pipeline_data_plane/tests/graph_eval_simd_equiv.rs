@@ -1,16 +1,15 @@
-//! GPU/串行评估等价性回归 — wgpu 卸载路径 (eval_backend = gpu) 与
-//! 串行热路径 (eval_backend = cpu, eval_workers = 1) 的可观测输出一致。
+//! SciRS2 SIMD 批量求值等价性回归 — eval_simd on/off 的可观测输出**逐位一致**。
 //!
-//! 覆盖图集 (同源 pt, 双 tab):
-//! - t1 精确算子图: Math 链 (Mul+Add, GPU 单元) + Filter 状态链 (CPU 单元)
-//!   + Trigger (manual, CPU 单元) — GPU/CPU 混合图
-//! - t3 超越函数图: Sin→Cos 链 + Log (GPU 单元, ≤1e-5 相对容差)
+//! 覆盖图集 (同源 pt, 三 tab, eval_workers = 4 多桶):
+//! - t1 混合图: Math 链 (SIMD 单元) + Filter 状态链 (标量单元) + Trigger/Str
+//!   (标量单元) — 批量/逐帧混合拓扑
+//! - t3 超越函数图: Sin→Cos 链 + Log (SIMD 单元, 标量超越 — 位级一致)
+//! - t5 边缘值图: Div (除零→0) / Sqrt (负数→0) / Min/Max/Avg (NaN 过滤)
 //!
-//! 断言: DataBus 样本序列 (精确算子位级一致) / 派生环内容与点数 /
-//! output_snapshot (精确节点位级) / source_frames 缓存 一致;
-//! 5000 帧跨块 (EVAL_CHUNK) 分块推进; GPU 路径连跑两次验证确定性。
-//!
-//! 无 GPU 适配器环境 (部分 CI) 整组跳过。
+//! 帧流注入 NaN (每 17/23 帧) — NaN 过滤与全 NaN 空集语义全程受测。
+//! 断言: DataBus 样本序列 / 派生环 / output_snapshot / source_frames 全部
+//! 位级一致 (f64/f32 bits); 5000 帧跨块 (EVAL_CHUNK) 分块推进; SIMD 路径
+//! 连跑两次验证确定性。
 
 use std::collections::HashMap;
 
@@ -25,18 +24,18 @@ use node_testkit::{
 use node_trigger::TriggerMatchType;
 use pipeline_bus::TopicKey;
 use pipeline_data_plane::frame_dispatch;
-use vofa_core::{DataFrame, EvalBackend, PipelineConfig};
+use vofa_core::{DataFrame, PipelineConfig};
 
-/// t1 — GPU/CPU 混合图: Math 链 (GPU 单元) + Filter+Trigger 链 (CPU 单元)
-/// + Str 链 (CPU 单元)。注: trig 挂 m3 (m2 链保持纯 Math 可上 GPU)。
+/// t1 — 批量/标量混合图: Math 链 (SIMD 单元) + Filter+Trigger 链 (标量单元)
+/// + Str 链 (标量单元)。注: trig 挂 m3 (m2 链保持纯 Math 可批量)。
 fn mixed_graph() -> CompiledGraph {
     let nodes = vec![
         make_protocol_source("ps1", "t1", "pt", 4),
         make_input("knob1", "t1"),
-        // GPU 单元: ps.ch0 × ps.ch1 + knob1
+        // SIMD 单元: ps.ch0 × ps.ch1 + knob1
         make_math("m1", "t1", MathOp::Mul, 2),
         make_math("m2", "t1", MathOp::Add, 2),
-        // CPU 单元: 低通 (状态) + ps.ch3
+        // 标量单元: 低通 (状态) + ps.ch3
         make_filter(
             "f1",
             "t1",
@@ -46,7 +45,7 @@ fn mixed_graph() -> CompiledGraph {
             },
         ),
         make_math("m3", "t1", MathOp::Add, 2),
-        // CPU 单元: 字符串平面 → 数值 + Trigger (manual)
+        // 标量单元: 字符串平面 → 数值 + Trigger (manual)
         make_text_input("textin", "t1", "abcd"),
         make_str("slen", "t1", StrOp::Len),
         make_math("m4", "t1", MathOp::Add, 2),
@@ -90,7 +89,7 @@ fn mixed_graph() -> CompiledGraph {
     CompiledGraph::compile("t1".into(), nodes, edges).unwrap()
 }
 
-/// t3 — 超越函数图: Sin→Cos 链 + Log (ps.ch1 > 0 保证定义域)
+/// t3 — 超越函数图: Sin→Cos 链 + Log (NaN 注入受空集语义)
 fn transcendent_graph() -> CompiledGraph {
     let nodes = vec![
         make_protocol_source("ps3", "t3", "pt", 4),
@@ -110,10 +109,41 @@ fn transcendent_graph() -> CompiledGraph {
     CompiledGraph::compile("t3".into(), nodes, edges).unwrap()
 }
 
+/// t5 — 边缘值图: Div (除零→0) / Sqrt (负→0) / Min/Max/Avg (NaN 过滤)
+fn edge_graph() -> CompiledGraph {
+    let nodes = vec![
+        make_protocol_source("ps5", "t5", "pt", 4),
+        make_math("x_div", "t5", MathOp::Div, 2),
+        make_math("x_sqrt", "t5", MathOp::Sqrt, 1),
+        make_math("x_min", "t5", MathOp::Min, 2),
+        make_math("x_max", "t5", MathOp::Max, 2),
+        make_math("x_avg", "t5", MathOp::Avg, 2),
+        make_sink("sinkX1", "t5"),
+        make_sink("sinkX2", "t5"),
+        make_sink("sinkX3", "t5"),
+    ];
+    let edges = vec![
+        edge("h1", "ps5", "ch1", "x_div", "in0"),
+        edge("h2", "ps5", "ch3", "x_div", "in1"),
+        edge("h3", "ps5", "ch2", "x_sqrt", "in0"),
+        edge("h4", "ps5", "ch0", "x_min", "in0"),
+        edge("h5", "ps5", "ch1", "x_min", "in1"),
+        edge("h6", "ps5", "ch0", "x_max", "in0"),
+        edge("h7", "ps5", "ch2", "x_max", "in1"),
+        edge("h8", "ps5", "ch1", "x_avg", "in0"),
+        edge("h9", "ps5", "ch3", "x_avg", "in1"),
+        edge("h10", "x_div", "result", "sinkX1", "value"),
+        edge("h11", "x_sqrt", "result", "sinkX2", "value"),
+        edge("h12", "x_min", "result", "sinkX3", "value"),
+    ];
+    CompiledGraph::compile("t5".into(), nodes, edges).unwrap()
+}
+
 fn install(state: &AppState) {
     let mut graphs = state.data_plane.eval.graphs.lock();
     graphs.insert("t1".into(), mixed_graph());
     graphs.insert("t3".into(), transcendent_graph());
+    graphs.insert("t5".into(), edge_graph());
     drop(graphs);
     state
         .data_plane
@@ -123,22 +153,27 @@ fn install(state: &AppState) {
         .insert("knob1".into(), 2.0);
 }
 
-fn set_config(state: &AppState, backend: EvalBackend) {
+fn set_config(state: &AppState, simd: bool) {
     *state.data_plane.pipeline_config.write() = PipelineConfig {
-        eval_backend: backend,
+        eval_workers: 4,
+        eval_simd: simd,
         ..PipelineConfig::default()
     };
 }
 
 type BusRx = tokio::sync::broadcast::Receiver<std::sync::Arc<pipeline_bus::SampleBatch>>;
 
-const TOPICS: [(&str, &str); 6] = [
+const TOPICS: [(&str, &str); 10] = [
     ("m2", "result"),
     ("m3", "result"),
     ("m4", "result"),
     ("trig", "value"),
     ("t_cos", "result"),
     ("t_log", "result"),
+    ("x_div", "result"),
+    ("x_sqrt", "result"),
+    ("x_min", "result"),
+    ("x_avg", "result"),
 ];
 
 async fn subscribe_all(state: &AppState) -> HashMap<String, BusRx> {
@@ -184,6 +219,17 @@ async fn drain_bus(rx: &mut HashMap<String, BusRx>) -> HashMap<String, Vec<f64>>
     bus
 }
 
+/// NaN 参与比较 → 一律按位比较 (f64)
+fn assert_bits_eq(name: &str, a: &[f64], b: &[f64]) {
+    assert_eq!(a.len(), b.len(), "{name} 点数一致");
+    for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+        assert!(
+            x.to_bits() == y.to_bits(),
+            "{name}[{i}]: {x} vs {y} 位级不一致"
+        );
+    }
+}
+
 struct Observed {
     bus: HashMap<String, Vec<f64>>,
     snapshot: node_engine::ValuesMap,
@@ -196,7 +242,14 @@ async fn observe(state: &AppState, rx: &mut HashMap<String, BusRx>) -> Observed 
     let buf = state.data_plane.buffer_for("pt");
     let mut b = buf.lock();
     let mut derived = HashMap::new();
-    for (sink, source) in [("sinkA", "m2"), ("sinkT1", "t_cos"), ("sinkT2", "t_log")] {
+    for (sink, source) in [
+        ("sinkA", "m2"),
+        ("sinkT1", "t_cos"),
+        ("sinkT2", "t_log"),
+        ("sinkX1", "x_div"),
+        ("sinkX2", "x_sqrt"),
+        ("sinkX3", "x_min"),
+    ] {
         let idx = b.derived_index_of(sink, source);
         derived.insert(format!("{sink}/{source}"), b.get_derived(idx, 1_000_000));
     }
@@ -214,127 +267,95 @@ async fn observe(state: &AppState, rx: &mut HashMap<String, BusRx>) -> Observed 
     }
 }
 
-/// 5000 帧批次 — 跨 2 块 (EVAL_CHUNK = 4096)
+/// 5000 帧批次 — 跨 2 块 (EVAL_CHUNK = 4096); ch1/ch2/ch3 注入 NaN 与 0
 fn big_batch() -> Vec<DataFrame> {
     (0..5000)
         .map(|i| {
             let f = f32::from(u16::try_from(i % 256).unwrap_or(0)) - 128.0;
-            DataFrame::with_timestamp(
-                u64::try_from(i).unwrap_or(0) * 100,
-                vec![f, f.abs() + 0.5, f * 0.5, f + 3.0],
-            )
+            let ch1 = if i % 17 == 0 { f32::NAN } else { f.abs() + 0.5 };
+            let ch2 = if i % 23 == 0 { f32::NAN } else { f * 0.5 };
+            let ch3 = if i % 29 == 0 { 0.0 } else { f + 3.0 };
+            DataFrame::with_timestamp(u64::try_from(i).unwrap_or(0) * 100, vec![f, ch1, ch2, ch3])
         })
         .collect()
 }
 
-async fn run_fixture(backend: EvalBackend) -> Observed {
+async fn run_fixture(simd: bool) -> Observed {
     let state = AppState::new();
     install(&state);
-    set_config(&state, backend);
+    set_config(&state, simd);
     let mut rx = subscribe_all(&state).await;
     frame_dispatch::on_frames(&state.data_plane, "pt", &big_batch());
     observe(&state, &mut rx).await
 }
 
-/// 对称相对误差 (÷/超越函数 ≤2.5 ulp ≪ 1e-5)
-fn close_enough(a: f64, b: f64) -> bool {
-    (a - b).abs() / (a.abs() + b.abs()).max(1e-12) < 1e-5
-}
-
 #[tokio::test]
-async fn gpu_matches_serial_full_pipeline() {
-    let Some(_ctx) = gpu_core::GpuContext::acquire() else {
-        eprintln!("无 GPU 适配器, 跳过 GPU 等价测试");
-        return;
-    };
-    let serial = run_fixture(EvalBackend::Cpu).await;
-    let gpu = run_fixture(EvalBackend::Gpu).await;
+async fn simd_matches_scalar_full_pipeline_bitwise() {
+    let scalar = run_fixture(false).await;
+    let simd = run_fixture(true).await;
 
-    // 精确算子 (GPU Math 链 + CPU Filter/Trigger/Str) — 位级一致
-    for topic in ["m2/result", "m3/result", "m4/result", "trig/value"] {
-        let (sv, gv) = (serial.bus.get(topic).unwrap(), gpu.bus.get(topic).unwrap());
-        eprintln!("LEN {topic}: serial={} gpu={}", sv.len(), gv.len());
-        for (i, (a, b)) in sv.iter().zip(gv.iter()).enumerate() {
-            if a.to_bits() != b.to_bits() {
-                eprintln!("DIFF {topic}[{i}]: serial={a} gpu={b}");
-                if i > 6 { break; }
-            }
-        }
-        assert_eq!(
-            serial.bus.get(topic).unwrap(),
-            gpu.bus.get(topic).unwrap(),
-            "{topic} 值序列应位级一致"
+    // DataBus 样本序列 — 全部主题位级一致 (含超越函数: 标量超越无近似)
+    for topic in TOPICS.map(|(n, p)| format!("{n}/{p}")) {
+        let (sv, gv) = (
+            scalar.bus.get(&topic).unwrap(),
+            simd.bus.get(&topic).unwrap(),
         );
+        assert_bits_eq(&topic, sv, gv);
     }
-    // 超越函数 — 相对容差
-    for topic in ["t_cos/result", "t_log/result"] {
+
+    // 派生环 — 位级一致 + 点数一致
+    for key in [
+        "sinkA/m2",
+        "sinkT1/t_cos",
+        "sinkT2/t_log",
+        "sinkX1/x_div",
+        "sinkX2/x_sqrt",
+        "sinkX3/x_min",
+    ] {
         let (s, g) = (
-            serial.bus.get(topic).unwrap(),
-            gpu.bus.get(topic).unwrap(),
+            scalar.derived.get(key).unwrap(),
+            simd.derived.get(key).unwrap(),
         );
-        assert_eq!(s.len(), g.len(), "{topic} 样本数一致");
-        for (a, b) in s.iter().zip(g.iter()) {
+        assert_eq!(s.len(), g.len(), "派生环 {key} 点数一致");
+        for (i, (a, b)) in s.iter().zip(g.iter()).enumerate() {
             assert!(
-                close_enough(*a, *b),
-                "{topic}: gpu {b} vs cpu {a} 超出容差"
+                a.to_bits() == b.to_bits(),
+                "派生环 {key}[{i}]: {a} vs {b} 位级不一致"
             );
         }
     }
 
-    // 派生环: 精确算子位级 / 超越函数容差; 点数一致
-    for key in ["sinkA/m2", "sinkT1/t_cos", "sinkT2/t_log"] {
-        let (s, g) = (
-            serial.derived.get(key).unwrap(),
-            gpu.derived.get(key).unwrap(),
-        );
-        assert_eq!(s.len(), g.len(), "派生环 {key} 点数一致");
-        let tolerance = key.contains("t_cos") || key.contains("t_log");
-        for (a, b) in s.iter().zip(g.iter()) {
-            if tolerance {
-                assert!(
-                    close_enough(f64::from(*a), f64::from(*b)),
-                    "派生环 {key}: gpu {b} vs cpu {a}"
-                );
-            } else {
-                assert_eq!(a.to_bits(), b.to_bits(), "派生环 {key} 应位级一致");
-            }
-        }
-    }
-
-    // 快照: 精确节点位级 (m2); 超越函数容差 (t_cos/t_log)
-    let get = |o: &Observed, node: &str| {
-        o.snapshot
-            .get(node)
-            .and_then(|m| m.get("result"))
-            .copied()
-    };
-    assert_eq!(get(&serial, "m2"), get(&gpu, "m2"), "快照 m2 位级一致");
-    for node in ["t_cos", "t_log"] {
+    // 快照 — 全部 Math 节点位级一致
+    let get =
+        |o: &Observed, node: &str| o.snapshot.get(node).and_then(|m| m.get("result")).copied();
+    for node in ["m2", "t_cos", "t_log", "x_div", "x_sqrt", "x_min", "x_avg"] {
         let (a, b) = (
-            get(&serial, node).expect("cpu 快照有值"),
-            get(&gpu, node).expect("gpu 快照有值"),
+            get(&scalar, node).expect("标量快照有值"),
+            get(&simd, node).expect("simd 快照有值"),
         );
-        assert!(close_enough(f64::from(a), f64::from(b)), "快照 {node} 容差");
+        assert!(
+            a.to_bits() == b.to_bits(),
+            "快照 {node}: {a} vs {b} 位级不一致"
+        );
     }
 
     // source_frames 批尾缓存一致
-    assert_eq!(serial.source_frame, gpu.source_frame);
+    assert_eq!(scalar.source_frame, simd.source_frame);
 }
 
 #[tokio::test]
-async fn gpu_path_is_deterministic() {
-    let Some(_ctx) = gpu_core::GpuContext::acquire() else {
-        eprintln!("无 GPU 适配器, 跳过 GPU 确定性测试");
-        return;
-    };
-    let run1 = run_fixture(EvalBackend::Gpu).await;
-    let run2 = run_fixture(EvalBackend::Gpu).await;
+async fn simd_path_is_deterministic() {
+    let run1 = run_fixture(true).await;
+    let run2 = run_fixture(true).await;
     for topic in TOPICS.map(|(n, p)| format!("{n}/{p}")) {
-        assert_eq!(
-            run1.bus.get(&topic).unwrap(),
-            run2.bus.get(&topic).unwrap(),
-            "{topic} GPU 路径确定性"
-        );
+        let (a, b) = (run1.bus.get(&topic).unwrap(), run2.bus.get(&topic).unwrap());
+        assert_bits_eq(&topic, a, b);
     }
-    assert_eq!(run1.derived, run2.derived, "派生环确定性");
+    for key in run1.derived.keys() {
+        let (a, b) = (&run1.derived[key], &run2.derived[key]);
+        assert_eq!(a.len(), b.len(), "{key} 点数一致");
+        for (i, (x, y)) in a.iter().zip(b.iter()).enumerate() {
+            assert!(x.to_bits() == y.to_bits(), "派生环 {key}[{i}] 确定性破坏");
+        }
+    }
 }

@@ -2,25 +2,12 @@
 
 use serde::{Deserialize, Serialize};
 
+/// 数值平面评估后端
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PipelineMode {
     #[default]
     Auto,
-}
-
-/// 数值平面评估后端
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum EvalBackend {
-    /// 自动: 有可用 GPU 适配器 + 存在 GPU 资格单元 + 批帧数 ≥ gpu_min_batch
-    /// 时走 wgpu 卸载, 否则 CPU (串行/分块并行)
-    #[default]
-    Auto,
-    /// 强制 CPU (eval_workers = 1 串行, ≥2 单元分块并行)
-    Cpu,
-    /// 强制 GPU (无适配器/资格单元时自动回退 CPU, 会话失败后本版本内禁用)
-    Gpu,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,10 +18,9 @@ pub struct PipelineConfig {
     /// 数值平面评估 worker 数 — 1 = 串行 (默认, 行为与旧版一致);
     /// ≥2 启用图内路径 (评估单元) 分块 fork-join 并行评估
     pub eval_workers: usize,
-    /// 数值平面评估后端选择 (见 [`EvalBackend`])
-    pub eval_backend: EvalBackend,
-    /// 自动模式下走 GPU 的最小批帧数 (小批次上传/回传开销大于收益)
-    pub gpu_min_batch: usize,
+    /// fork-join 并行路径内 Math 单元的 SciRS2 SIMD 批量求值开关
+    /// (仅 eval_workers ≥ 2 生效; 结果与标量路径逐位一致)
+    pub eval_simd: bool,
     pub memory_budget_mb: usize,
     pub preview_fps_limit: u32,
     pub preview_bandwidth_mb_per_sec: usize,
@@ -46,8 +32,7 @@ impl Default for PipelineConfig {
             mode: PipelineMode::Auto,
             max_workers: 8,
             eval_workers: 1,
-            eval_backend: EvalBackend::Auto,
-            gpu_min_batch: 1024,
+            eval_simd: true,
             memory_budget_mb: 256,
             preview_fps_limit: 60,
             preview_bandwidth_mb_per_sec: 8,

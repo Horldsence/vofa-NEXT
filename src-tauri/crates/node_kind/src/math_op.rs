@@ -146,3 +146,4 @@ mod tests {
         assert_eq!(MathOp::Add.evaluate(&[1.0, f32::NAN, 2.0]), 3.0);
     }
 }
+
