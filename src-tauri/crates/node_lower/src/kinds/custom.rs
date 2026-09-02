@@ -10,7 +10,7 @@ pub(super) fn lower_custom(node: &NodeDef, outputs: &[String], ctx: &mut LowerCt
         .iter()
         .map(|p| (p.clone(), ctx.f32_slots.alloc(&node.id, p)))
         .collect();
-    ctx.ops.push(CompiledOp::Custom {
+    ctx.push_op(CompiledOp::Custom {
         node_id: node.id.clone(),
         ports,
     });

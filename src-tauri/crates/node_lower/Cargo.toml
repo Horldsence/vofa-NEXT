@@ -14,3 +14,6 @@ node_hir = { workspace = true }
 node_kind = { workspace = true }
 node_plane = { workspace = true }
 node_trigger = { workspace = true }
+
+[dev-dependencies]
+node_testkit = { workspace = true }

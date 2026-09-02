@@ -78,8 +78,101 @@ impl CompiledEval {
             .copied()
     }
 
-    /// 逐帧评估: 纯数组读写, 零字符串哈希
-    /// (唯一例外: 帧源解析 — 每个被引用 Protocol 源每帧一次 HashMap 查找)
+    /// 评估单元表 (下标 0 = prelude; 写集互斥, 见 `node_lower::EvalUnit`)
+    pub fn units(&self) -> &[node_lower::EvalUnit] {
+        &self.plan.units
+    }
+
+    /// 正本槽位 i → 所属单元下标 (运行时按单元→桶分派读路径)
+    pub fn slot_unit(&self) -> &[u32] {
+        &self.plan.slot_unit
+    }
+
+    /// 静态本地图判定 — 纯外部常量输入的纯函数图:
+    /// 无 SpectrumSink / TextOut, op 全部 ∈ {Input, TextInput, Custom, Math, Str}
+    /// (无 ProtocolSource/Filter/Ifft/Trigger/FrameDecoder — 逐帧评估是纯浪费,
+    /// 每批评估一次输出值相同; 见 graph_eval 静态图优化)
+    pub fn is_static_local(&self) -> bool {
+        self.plan.spectrum_slots.is_empty()
+            && self.plan.textouts.is_empty()
+            && self.plan.ops.iter().all(|op| {
+                matches!(
+                    op,
+                    CompiledOp::Input { .. }
+                        | CompiledOp::TextInput { .. }
+                        | CompiledOp::Custom { .. }
+                        | CompiledOp::Math { .. }
+                        | CompiledOp::Str { .. }
+                )
+            })
+    }
+
+    /// 帧源预解析 — 每源一次字符串查找; `override_frame` 覆盖指定源
+    /// 的帧引用 (并发路径: 触发源直接读批内帧切片, 不经共享缓存)
+    pub fn resolve_frames<'a>(
+        &'a self,
+        source_frames: &'a SourceFramesMap,
+        override_frame: Option<(usize, &'a DataFrame)>,
+    ) -> ResolvedFrames<'a> {
+        let n = self.plan.frame_sources.len();
+        let mut stack = [None; 8];
+        let mut heap: Vec<Option<&'a DataFrame>> = Vec::new();
+        if n <= 8 {
+            for (i, id) in self.plan.frame_sources.iter().enumerate() {
+                stack[i] = source_frames.get(id);
+            }
+        } else {
+            heap = self
+                .plan
+                .frame_sources
+                .iter()
+                .map(|id| source_frames.get(id))
+                .collect();
+        }
+        let mut resolved = ResolvedFrames {
+            stack,
+            heap,
+            len: n,
+        };
+        if let Some((idx, frame)) = override_frame {
+            resolved.set(idx, frame);
+        }
+        resolved
+    }
+}
+
+/// 预解析帧引用表 — 8 源以内走栈零分配, 超出落堆 (见 [`CompiledEval::resolve_frames`])
+pub struct ResolvedFrames<'a> {
+    stack: [Option<&'a DataFrame>; 8],
+    heap: Vec<Option<&'a DataFrame>>,
+    len: usize,
+}
+
+impl<'a> ResolvedFrames<'a> {
+    fn set(&mut self, idx: usize, frame: &'a DataFrame) {
+        if idx >= self.len {
+            return;
+        }
+        if self.heap.is_empty() {
+            self.stack[idx] = Some(frame);
+        } else {
+            self.heap[idx] = Some(frame);
+        }
+    }
+
+    /// op 直读视图 (长度 == frame_sources 数)
+    pub fn as_slice(&self) -> &[Option<&DataFrame>] {
+        let s: &[Option<&DataFrame>] = if self.heap.is_empty() {
+            &self.stack
+        } else {
+            &self.heap
+        };
+        &s[..self.len]
+    }
+}
+
+impl CompiledEval {
+    /// 逐帧评估全部 ops (现状入口, 调用方负责整表清零) — 内部走 [`Self::run_ops`]
     ///
     /// `source_frames`: 多源最新帧缓存 (key = Protocol 节点 id),
     ///   语义为 latest-value 融合 — 每个源独立缓存最近一帧, 本函数逐源读取;
@@ -95,7 +188,7 @@ impl CompiledEval {
     /// "本帧未产出 = 键不存在")。
     /// op 写槽位时置位 written — FrameDecoder 无 parser / Custom 无回传以外的
     /// 缺失都不写 (与 evaluate_into 的 map 语义一致)。
-    #[allow(clippy::too_many_arguments, clippy::cast_precision_loss)]
+    #[allow(clippy::too_many_arguments)]
     pub fn run(
         &self,
         source_frames: &SourceFramesMap,
@@ -111,21 +204,95 @@ impl CompiledEval {
         str_slots: &mut [String],
         str_written: &mut [bool],
     ) {
-        // 帧源预解析: 每源每帧一次字符串哈希, 之后 op 用下标零开销直读
-        // (8 源以内走栈数组, 避免逐帧堆分配)
-        let mut stack_src: [Option<&DataFrame>; 8] = [None; 8];
-        let mut heap_src;
-        let resolved: &mut [Option<&DataFrame>] = if self.plan.frame_sources.len() <= 8 {
-            &mut stack_src[..self.plan.frame_sources.len()]
-        } else {
-            heap_src = vec![None; self.plan.frame_sources.len()];
-            &mut heap_src
-        };
-        for (i, id) in self.plan.frame_sources.iter().enumerate() {
-            resolved[i] = source_frames.get(id);
-        }
+        let resolved = self.resolve_frames(source_frames, None);
+        self.run_ops(
+            &self.plan.ops,
+            resolved.as_slice(),
+            source_texts,
+            input_values,
+            custom_outputs,
+            filter_states,
+            decoder_states,
+            ifft_states,
+            trigger_states,
+            slots,
+            written,
+            str_slots,
+            str_written,
+        );
+    }
 
-        for op in &self.plan.ops {
+    /// 单帧单单元评估 (并发路径): 清本单元写槽位 → 执行单元 op 区段
+    ///
+    /// 单元写集互斥 (编译期切分不变量); 单元内读要么来自本单元先写槽位
+    /// (单元内拓扑序), 要么来自 prelude 槽位 (调用方保证本帧 prelude 先行)。
+    /// 调用方保证 `slots/written` 等缓冲按图独占 — 并发时每桶一份槽位副本。
+    #[allow(clippy::too_many_arguments)]
+    pub fn run_unit_frame(
+        &self,
+        unit: &node_lower::EvalUnit,
+        resolved: &[Option<&DataFrame>],
+        source_texts: &SourceTextsMap,
+        input_values: &HashMap<String, f32>,
+        custom_outputs: &HashMap<String, HashMap<String, f32>>,
+        filter_states: &mut HashMap<String, DigitalFilter>,
+        decoder_states: &HashMap<String, FrameParser>,
+        ifft_states: &mut HashMap<String, IfftState>,
+        trigger_states: &mut HashMap<String, TriggerState>,
+        slots: &mut [f32],
+        written: &mut [bool],
+        str_slots: &mut [String],
+        str_written: &mut [bool],
+    ) {
+        for &s in &unit.clear_slots {
+            let i = s as usize;
+            slots[i] = 0.0;
+            written[i] = false;
+        }
+        for &s in &unit.clear_str_slots {
+            let i = s as usize;
+            str_slots[i].clear();
+            str_written[i] = false;
+        }
+        self.run_ops(
+            &self.plan.ops[unit.op_start as usize..][..unit.op_len as usize],
+            resolved,
+            source_texts,
+            input_values,
+            custom_outputs,
+            filter_states,
+            decoder_states,
+            ifft_states,
+            trigger_states,
+            slots,
+            written,
+            str_slots,
+            str_written,
+        );
+    }
+
+    /// op 序列执行体 — 帧源已由调用方预解析 (`resolved` 与 plan.frame_sources 对齐)
+    ///
+    /// `ops` 可为全体 ops (串行路径) 或单元区段 (并发路径); 逐帧评估纯数组读写,
+    /// 唯一字符串查找是 ProtocolSourceStr 的文本缓存读取。
+    #[allow(clippy::too_many_arguments, clippy::cast_precision_loss)]
+    pub fn run_ops(
+        &self,
+        ops: &[CompiledOp],
+        resolved: &[Option<&DataFrame>],
+        source_texts: &SourceTextsMap,
+        input_values: &HashMap<String, f32>,
+        custom_outputs: &HashMap<String, HashMap<String, f32>>,
+        filter_states: &mut HashMap<String, DigitalFilter>,
+        decoder_states: &HashMap<String, FrameParser>,
+        ifft_states: &mut HashMap<String, IfftState>,
+        trigger_states: &mut HashMap<String, TriggerState>,
+        slots: &mut [f32],
+        written: &mut [bool],
+        str_slots: &mut [String],
+        str_written: &mut [bool],
+    ) {
+        for op in ops {
             match op {
                 CompiledOp::ProtocolSource { src, ch, slot } => {
                     if let Some(value) = resolved[*src].and_then(|f| f.channels.get(*ch)) {
@@ -426,6 +593,43 @@ impl CompiledEval {
                 Some(s) if written[*s] => Some((sink.as_str(), slots[*s])),
                 _ => None,
             })
+    }
+
+    /// 单元快照物化 — 仅物化本单元写槽位中 written 置位者 (并发路径按
+    /// 单元→桶副本读取; 与全表 [`Self::materialize`] 产出相同的键值集)
+    pub fn materialize_unit(
+        &self,
+        unit: &node_lower::EvalUnit,
+        slots: &[f32],
+        written: &[bool],
+        out: &mut ValuesMap,
+    ) {
+        for &s in &unit.clear_slots {
+            let i = s as usize;
+            if written[i] {
+                let (node_id, port) = &self.plan.slot_names[i];
+                let m = node_out_entry(out, node_id);
+                set_port(m, port, slots[i]);
+            }
+        }
+    }
+
+    /// 单元字符串快照物化 (语义同 [`Self::materialize_str`] 的单元化版本)
+    pub fn materialize_str_unit(
+        &self,
+        unit: &node_lower::EvalUnit,
+        str_slots: &[String],
+        str_written: &[bool],
+        out_str: &mut StringValuesMap,
+    ) {
+        for &s in &unit.clear_str_slots {
+            let i = s as usize;
+            if str_written[i] {
+                let (node_id, port) = &self.plan.str_slot_names[i];
+                let m = node_out_str_entry(out_str, node_id);
+                set_str_port(m, port, &str_slots[i]);
+            }
+        }
     }
 }
 

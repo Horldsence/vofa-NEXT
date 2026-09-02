@@ -12,8 +12,9 @@
 
 mod lower;
 mod ops;
+mod units;
 
 pub mod kinds;
 
 pub use lower::{lower_value_plane, LowerCtx, SlotArena, SlotPlan};
-pub use ops::{CompiledOp, TextOutSpec};
+pub use ops::{op_weight, CompiledOp, EvalUnit, TextOutSpec};

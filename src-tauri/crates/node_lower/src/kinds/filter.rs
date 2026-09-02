@@ -10,7 +10,7 @@ use crate::ops::CompiledOp;
 pub(super) fn lower_filter(node: &NodeDef, config: &FilterConfig, ctx: &mut LowerCtx) {
     let input = ctx.f32_in(&node.id, "in0");
     let out = ctx.f32_slots.alloc(&node.id, "result");
-    ctx.ops.push(CompiledOp::Filter {
+    ctx.push_op(CompiledOp::Filter {
         node_id: node.id.clone(),
         config: config.clone(),
         input,

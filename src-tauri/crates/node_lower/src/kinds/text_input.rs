@@ -7,7 +7,7 @@ use crate::ops::CompiledOp;
 
 pub(super) fn lower_text_input(node: &NodeDef, text: &str, ctx: &mut LowerCtx) {
     let out = ctx.str_slots.alloc(&node.id, "str");
-    ctx.ops.push(CompiledOp::TextInput {
+    ctx.push_op(CompiledOp::TextInput {
         text: text.to_string(),
         out,
     });

@@ -29,7 +29,7 @@ pub(super) fn lower_frame_decoder(node: &NodeDef, ctx: &mut LowerCtx) {
     let last_timestamp =
         enable_last_timestamp.then(|| ctx.f32_slots.alloc(&node.id, "last_timestamp"));
     let fps = enable_fps.then(|| ctx.f32_slots.alloc(&node.id, "fps"));
-    ctx.ops.push(CompiledOp::FrameDecoder {
+    ctx.push_op(CompiledOp::FrameDecoder {
         node_id: node.id.clone(),
         ports,
         valid,

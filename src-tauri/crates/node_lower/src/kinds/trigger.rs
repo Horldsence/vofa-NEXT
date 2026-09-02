@@ -21,7 +21,7 @@ pub(super) fn lower_trigger(
     let value = ctx.f32_slots.alloc(&node.id, "value");
     let matched = ctx.f32_slots.alloc(&node.id, "matched");
     let text = ctx.str_slots.alloc(&node.id, "text");
-    ctx.ops.push(CompiledOp::Trigger {
+    ctx.push_op(CompiledOp::Trigger {
         node_id: node.id.clone(),
         mode: mode.to_string(),
         edge: edge.to_string(),

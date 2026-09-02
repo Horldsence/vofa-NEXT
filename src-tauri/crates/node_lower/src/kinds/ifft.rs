@@ -7,7 +7,7 @@ use crate::ops::CompiledOp;
 
 pub(super) fn lower_ifft(node: &NodeDef, ctx: &mut LowerCtx) {
     let out = ctx.f32_slots.alloc(&node.id, "out0");
-    ctx.ops.push(CompiledOp::Ifft {
+    ctx.push_op(CompiledOp::Ifft {
         node_id: node.id.clone(),
         out,
     });

@@ -95,6 +95,46 @@ pub enum CompiledOp {
     TextInput { text: String, out: usize },
 }
 
+/// 评估单元 — 图内独立路径 (连通分量) 的执行产物, 见 `units` 模块切分
+///
+/// 单元 0 恒为 prelude (供给节点 op: ProtocolSource/Input/Custom/TextInput),
+/// 其余为计算节点连通分量。单元写集互斥; 跨单元读只发生在
+/// "计算单元读 prelude 槽位", 由执行方保证 prelude 先行 (并发时每槽位副本先跑 prelude)。
+pub struct EvalUnit {
+    /// 本单元在扁平 `SlotPlan::ops` 中的区段 `[op_start, op_start + op_len)`
+    pub op_start: u32,
+    pub op_len: u32,
+    /// 每帧评估前需清零的 f32 槽位 (= 本单元全部写槽位, 均为正本)
+    pub clear_slots: Vec<u32>,
+    /// 每帧评估前需清零的字符串槽位 (同上)
+    pub clear_str_slots: Vec<u32>,
+    /// 本单元引用的 Filter 节点 id (运行时按单元切分状态 map)
+    pub filter_ids: Vec<Box<str>>,
+    /// 本单元引用的 Ifft 节点 id
+    pub ifft_ids: Vec<Box<str>>,
+    /// 本单元引用的 Trigger 节点 id
+    pub trigger_ids: Vec<Box<str>>,
+    /// 桶分配权重估计 (LPT 贪心装箱)
+    pub weight: u32,
+}
+
+/// op 桶分配权重估计 — 相对开销启发式 (Math/供给 ≈1, 状态/块运算更重)
+pub const fn op_weight(op: &CompiledOp) -> u32 {
+    match op {
+        CompiledOp::Filter { .. } => 4,
+        CompiledOp::FrameDecoder { .. } => 8,
+        CompiledOp::Ifft { .. } => 16,
+        CompiledOp::Str { .. } | CompiledOp::Trigger { .. } => 2,
+        CompiledOp::Math { .. }
+        | CompiledOp::ProtocolSource { .. }
+        | CompiledOp::ProtocolSourceStr { .. }
+        | CompiledOp::Input { .. }
+        | CompiledOp::Custom { .. }
+        | CompiledOp::TextInput { .. }
+        | CompiledOp::TextOut { .. } => 1,
+    }
+}
+
 /// TextOut 发送规格 — 编译期收集 (TextOut 发送 ticker / 手动命令共用)
 #[derive(Debug, Clone)]
 pub struct TextOutSpec {
@@ -110,7 +150,12 @@ pub struct TextOutSpec {
 
 impl TextOutSpec {
     /// 从 TextOut 节点定义构造规格
-    pub fn from_kind(node_id: &str, target_transport: &str, newline: NewlineMode, min_interval_ms: u32) -> Self {
+    pub fn from_kind(
+        node_id: &str,
+        target_transport: &str,
+        newline: NewlineMode,
+        min_interval_ms: u32,
+    ) -> Self {
         Self {
             node_id: node_id.into(),
             target_transport: target_transport.into(),

@@ -44,7 +44,7 @@ pub(super) fn lower_str(
         PortDomain::F32 => (None, Some(ctx.f32_slots.alloc(&node.id, "result"))),
         PortDomain::Bytes => (None, None),
     };
-    ctx.ops.push(CompiledOp::Str {
+    ctx.push_op(CompiledOp::Str {
         op,
         str_inputs,
         str_defaults: str_defaults.into(),

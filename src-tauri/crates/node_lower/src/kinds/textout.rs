@@ -25,5 +25,5 @@ pub(super) fn lower_textout(node: &NodeDef, ctx: &mut LowerCtx<'_>) {
     // 未连接 (input = None) 时不写 — 无值不发
     let input = ctx.str_in(&node.id, "text");
     let out = ctx.str_slots.alloc(&node.id, "text");
-    ctx.ops.push(CompiledOp::TextOut { input, out });
+    ctx.push_op(CompiledOp::TextOut { input, out });
 }

@@ -18,5 +18,5 @@ pub(super) fn lower_math(node: &NodeDef, op: MathOp, input_count: usize, ctx: &m
         })
         .collect();
     let out = ctx.f32_slots.alloc(&node.id, "result");
-    ctx.ops.push(CompiledOp::Math { op, inputs, out });
+    ctx.push_op(CompiledOp::Math { op, inputs, out });
 }

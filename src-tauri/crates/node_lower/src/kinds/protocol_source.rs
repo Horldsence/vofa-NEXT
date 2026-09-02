@@ -17,11 +17,10 @@ pub(super) fn lower_protocol_source(
     for (i, port) in names.iter().enumerate() {
         if port == "str" {
             let slot = ctx.str_slots.alloc(&node.id, port);
-            ctx.ops.push(CompiledOp::ProtocolSourceStr { src, slot });
+            ctx.push_op(CompiledOp::ProtocolSourceStr { src, slot });
         } else {
             let slot = ctx.f32_slots.alloc(&node.id, port);
-            ctx.ops
-                .push(CompiledOp::ProtocolSource { src, ch: i, slot });
+            ctx.push_op(CompiledOp::ProtocolSource { src, ch: i, slot });
         }
     }
 }
