@@ -9,5 +9,5 @@ pub mod manager;
 pub mod test_data;
 
 pub use can_backend::CanBackend;
-pub use handle::TransportHandle;
+pub use handle::{LiveNodeHandle, TransportHandle};
 pub use manager::TransportManager;

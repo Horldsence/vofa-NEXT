@@ -35,17 +35,23 @@ export interface RawDataSnapshot {
 
 let nextWaveformCacheVersion = 1;
 
-function normalizeSamples(values: (number | null)[]): number[] {
-  return values.map((value) => value ?? NaN);
+/** 把 JSON 中的 null 缺口统一恢复为渲染层使用的 NaN (TypedArray)。 */
+function normalizeSamples(values: (number | null)[]): Float32Array {
+  const out = new Float32Array(values.length);
+  for (let i = 0; i < values.length; i++) out[i] = values[i] ?? NaN;
+  return out;
 }
 
-/** 把 JSON 中的 null 缺口统一恢复为渲染层使用的 NaN。 */
+/**
+ * 快照查询 (invoke JSON) 路径的归一化 — null→NaN + TypedArray 化。
+ * 波形流走 WWB1 二进制 (lib/data/waveformProtocol.ts), 无 null 问题。
+ */
 export function normalizeWaveformWindow(payload: WaveformWindowPayload): WaveformWindow {
   const derived: WaveformWindow['derived'] = {};
   for (const [sinkId, sources] of Object.entries(payload.derived)) {
-    const normalizedSources: Record<string, Record<string, number[]>> = {};
+    const normalizedSources: Record<string, Record<string, Float32Array>> = {};
     for (const [sourceId, handles] of Object.entries(sources)) {
-      const normalizedHandles: Record<string, number[]> = {};
+      const normalizedHandles: Record<string, Float32Array> = {};
       for (const [sourceHandle, values] of Object.entries(handles)) {
         normalizedHandles[sourceHandle] = normalizeSamples(values);
       }
@@ -55,6 +61,7 @@ export function normalizeWaveformWindow(payload: WaveformWindowPayload): Wavefor
   }
   return {
     ...payload,
+    timestamps: Float64Array.from(payload.timestamps),
     channels: payload.channels.map(normalizeSamples),
     derived,
   };
@@ -125,7 +132,7 @@ export class WaveformWindowCache {
 function emptyWaveformWindow(): WaveformWindow {
   return {
     seq: 0,
-    timestamps: [],
+    timestamps: new Float64Array(0),
     channels: [],
     channel_count: 0,
     derived: {},

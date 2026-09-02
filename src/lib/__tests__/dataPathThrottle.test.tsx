@@ -222,8 +222,8 @@ describe('buffer burst render-guard (RAF-throttled notify)', () => {
 
     const makeWindow = (points: number): WaveformWindow => ({
       seq: points,
-      timestamps: Array.from({ length: points }, (_, i) => i),
-      channels: [Array.from({ length: points }, (_, i) => i)],
+      timestamps: Float64Array.from({ length: points }, (_, i) => i),
+      channels: [Float32Array.from({ length: points }, (_, i) => i)],
       channel_count: 1,
       buffer_points: points,
       buffer_capacity: 2000,

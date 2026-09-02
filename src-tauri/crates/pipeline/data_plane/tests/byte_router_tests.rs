@@ -121,8 +121,10 @@ async fn transport_to_protocol_feeds_source_frames() {
         &firewater_bytes(&[1.0, 2.0, 3.0]),
         0,
         &mut cache,
+        None,
     )
     .await;
+    plane.flush_eval();
     assert_eq!(summary.frames, 1);
     let sf = plane.source_frames.lock();
     let f = sf.get("pt").expect("pt 应有最新帧");
@@ -151,7 +153,8 @@ async fn test_data_frames_use_configured_sample_clock() {
         vec![edge("tp", "rx", "pt", "in")],
     );
     let mut cache = DecoderFeedCache::new();
-    route_bytes(&plane, None, "tp", b"1\n2\n3\n4\n", 0, &mut cache).await;
+    route_bytes(&plane, None, "tp", b"1\n2\n3\n4\n", 0, &mut cache, None).await;
+    plane.flush_eval();
 
     let timestamps = plane.buffer_for("pt").lock().get_recent(4).timestamps;
     assert_eq!(timestamps.len(), 4);
@@ -171,7 +174,8 @@ async fn test_data_frames_use_configured_sample_clock() {
         };
         config.sample_rate = 350_000.0;
     }
-    route_bytes(&plane, None, "tp", b"5\n6\n7\n", 0, &mut cache).await;
+    route_bytes(&plane, None, "tp", b"5\n6\n7\n", 0, &mut cache, None).await;
+    plane.flush_eval();
     let absolute = plane.buffer_for("pt").lock().get_window_raw(-1_000.0, 0.0);
     let timestamps = absolute
         .timestamps
@@ -226,7 +230,8 @@ async fn connected_test_data_runtime_clock_overrides_stale_graph_config() {
         .unwrap();
 
     let mut cache = DecoderFeedCache::new();
-    route_bytes(&plane, None, "tp", b"1\n2\n3\n4\n", 0, &mut cache).await;
+    route_bytes(&plane, None, "tp", b"1\n2\n3\n4\n", 0, &mut cache, None).await;
+    plane.flush_eval();
 
     let timestamps = plane.buffer_for("pt").lock().get_recent(4).timestamps;
     assert_eq!(timestamps.len(), 4);
@@ -256,7 +261,8 @@ async fn serial_frames_are_spaced_by_wire_bitrate_instead_of_batch_arrival() {
     );
     let mut cache = DecoderFeedCache::new();
     // 8N1 下每帧 "N\n" 占 20 bit，115200 baud 对应 5760 frame/s。
-    route_bytes(&plane, None, "serial", b"1\n2\n3\n4\n", 0, &mut cache).await;
+    route_bytes(&plane, None, "serial", b"1\n2\n3\n4\n", 0, &mut cache, None).await;
+    plane.flush_eval();
 
     let timestamps = plane.buffer_for("pt").lock().get_recent(4).timestamps;
     assert_eq!(timestamps.len(), 4);
@@ -306,8 +312,10 @@ async fn convert_to_chain_reencodes_downstream() {
         &firewater_bytes(&[4.0, 5.0]),
         0,
         &mut cache,
+        None,
     )
     .await;
+    plane.flush_eval();
     assert_eq!(summary.frames, 2, "pa/pb 各解析出一帧");
     let sf = plane.source_frames.lock();
     assert_eq!(sf.get("pa").unwrap().channels, vec![4.0, 5.0]);
@@ -345,8 +353,10 @@ async fn inject_routes_to_multiple_downstreams() {
         &firewater_bytes(&[7.0, 8.0]),
         0,
         &mut cache,
+        None,
     )
     .await;
+    plane.flush_eval();
     assert_eq!(summary.frames, 1, "FireWater 解析出一帧");
     assert!(summary.decoders_fed, "FrameDecoder 应被喂入");
     // 协议分支
@@ -390,7 +400,7 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
     plane.eval.graphs.lock().insert("t1".into(), graph);
 
     let mut cache = DecoderFeedCache::new();
-    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
+    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache, None).await;
     assert_eq!(summary.frames, 0, "RawData 不产帧");
     assert!(
         summary.decoders_fed,
@@ -409,7 +419,7 @@ async fn rawdata_protocol_caches_text_and_passthrough_out() {
     }
 
     // UTF-8 lossy: 非法字节序列替换为 U+FFFD (覆盖写, latest-value)
-    let summary = route_bytes(&plane, None, "tp", b"\xff", 0, &mut cache).await;
+    let summary = route_bytes(&plane, None, "tp", b"\xff", 0, &mut cache, None).await;
     assert_eq!(summary.frames, 0);
     assert_eq!(
         plane.source_texts.lock().get("pr").map(String::as_str),
@@ -448,7 +458,7 @@ async fn rawdata_with_convert_to_still_passthrough_out() {
     plane.eval.graphs.lock().insert("t1".into(), graph);
 
     let mut cache = DecoderFeedCache::new();
-    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
+    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache, None).await;
     assert_eq!(summary.frames, 0, "RawData 不产帧");
     assert!(
         summary.decoders_fed,
@@ -503,7 +513,8 @@ async fn rawdata_custom_schema_no_text_cache_no_passthrough() {
     plane.eval.graphs.lock().insert("t1".into(), graph);
 
     let mut cache = DecoderFeedCache::new();
-    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache).await;
+    let summary = route_bytes(&plane, None, "tp", b",8", 0, &mut cache, None).await;
+    plane.flush_eval();
     // custom schema 走 SchemaEngine: 无 Header 块, 每字节一帧 (',' 与 '8' 各一帧)
     assert_eq!(summary.frames, 2, "SchemaEngine 应产帧");
     assert!(!summary.decoders_fed, "custom schema 不应沿 out 边透传原文");
@@ -546,8 +557,10 @@ async fn auto_detection_applies_buffer_channels_on_change_only() {
         &firewater_bytes(&[1.0, 2.0, 3.0]),
         0,
         &mut cache,
+        None,
     )
     .await;
+    plane.flush_eval();
     assert_eq!(summary.frames, 1);
     let buf = plane.buffer_for("pt");
     assert_eq!(buf.lock().channel_count(), 3, "检测值应直接应用到 buffer");
@@ -567,8 +580,10 @@ async fn auto_detection_applies_buffer_channels_on_change_only() {
         &firewater_bytes(&[4.0, 5.0, 6.0]),
         0,
         &mut cache,
+        None,
     )
     .await;
+    plane.flush_eval();
     assert_eq!(summary.frames, 1);
     assert_eq!(buf.lock().point_count(), 2, "同值检测不应重复清空 buffer");
     assert_eq!(buf.lock().channel_count(), 3);
@@ -599,7 +614,7 @@ async fn auto_detection_applies_buffer_channels_in_parallel_feed() {
     assert!(data.len() >= 32 * 1024, "前提: 批次需达到并行字节门槛");
 
     let mut cache = DecoderFeedCache::new();
-    let summary = route_bytes(&plane, None, "tp", &data, 8, &mut cache).await;
+    let summary = route_bytes(&plane, None, "tp", &data, 8, &mut cache, None).await;
     assert_eq!(summary.frames, 5000);
     assert_eq!(
         plane.buffer_for("pt").lock().channel_count(),
@@ -668,6 +683,7 @@ async fn manual_mode_does_not_emit_channels_detected_event() {
         &firewater_bytes(&[1.0, 2.0]),
         0,
         &mut cache,
+        None,
     )
     .await;
     assert_eq!(summary.frames, 1);
@@ -759,7 +775,7 @@ async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
                 Err(_) => break,
             }
         }
-        route_bytes(&plane, None, "tp", &data, 0, &mut cache).await;
+        route_bytes(&plane, None, "tp", &data, 0, &mut cache, None).await;
     }
     running.store(false, Ordering::Relaxed);
 
@@ -917,7 +933,7 @@ async fn run_stream_pressure_case(protocol: ProtocolConfig, channels: usize) {
                 Err(_) => break,
             }
         }
-        total_frames += route_bytes(&plane, None, "tp", &data, 0, &mut cache)
+        total_frames += route_bytes(&plane, None, "tp", &data, 0, &mut cache, None)
             .await
             .frames;
     }
@@ -960,4 +976,43 @@ async fn run_stream_pressure_case(protocol: ProtocolConfig, channels: usize) {
         jump_count == 0,
         "出现 {jump_count} 次相邻跳变 (最大 {max_step}), 正弦应平滑"
     );
+}
+
+/// 评估队列有界: 持续过载时丢最旧整批, 排空后缓冲保留最新 8 批
+/// (摄入/评估解耦后的显式降级语义 — 丢最旧保最新, 波形尾部始终可见)
+#[tokio::test]
+async fn frame_queue_overflow_keeps_newest_batches() {
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig::default()),
+                },
+            ),
+            node("pt", firewater(Some(3))),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+    let mut cache = DecoderFeedCache::new();
+    // EVAL_QUEUE_DEPTH = 8: 喂 12 批 (每批 1 帧, 值随批递增), 队列应保留最后 8 批
+    for i in 0..12u32 {
+        let v = i as f32 + 1.0;
+        route_bytes(
+            &plane,
+            None,
+            "tp",
+            &firewater_bytes(&[v, v, v]),
+            0,
+            &mut cache,
+            None,
+        )
+        .await;
+    }
+    plane.flush_eval();
+    // 12 批 - 8 = 前 4 批被丢弃
+    assert_eq!(plane.buffer_for("pt").lock().point_count(), 8);
+    let sf = plane.source_frames.lock();
+    let f = sf.get("pt").expect("pt 应有最新帧");
+    assert_eq!(f.channels, vec![12.0, 12.0, 12.0]);
 }

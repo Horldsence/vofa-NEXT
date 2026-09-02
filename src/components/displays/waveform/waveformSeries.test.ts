@@ -6,25 +6,25 @@ describe('resolveInputArray', () => {
     const derived = {
       wave: {
         custom: {
-          'out-a': [1, 2],
-          'out-b': [10, 20],
+          'out-a': Float32Array.from([1, 2]),
+          'out-b': Float32Array.from([10, 20]),
         },
       },
     };
 
-    expect(resolveInputArray(
+    expect([...resolveInputArray(
       { kind: 'derived', sourceId: 'custom', sourceHandle: 'out-a' },
       'wave',
       2,
       [],
       derived,
-    )).toEqual([1, 2]);
-    expect(resolveInputArray(
+    )]).toEqual([1, 2]);
+    expect([...resolveInputArray(
       { kind: 'derived', sourceId: 'custom', sourceHandle: 'out-b' },
       'wave',
       2,
       [],
       derived,
-    )).toEqual([10, 20]);
+    )]).toEqual([10, 20]);
   });
 });

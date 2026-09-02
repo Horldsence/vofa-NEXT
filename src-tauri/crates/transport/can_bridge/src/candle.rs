@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{CandleConfig, Result};
+use vofa_core::{CandleConfig, Result, INGEST_CHANNEL_CAPACITY};
 
 /// candleLight USB VID/PID
 const CANDLE_VID: u16 = 0x1209;
@@ -105,7 +105,7 @@ pub async fn spawn(
     let in_max_packet = ep_in.max_packet_size().max(64);
     let buf_size = in_max_packet * 8;
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

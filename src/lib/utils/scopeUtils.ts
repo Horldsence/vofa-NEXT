@@ -25,7 +25,10 @@ export function snapVPerDivUp(target: number): number {
 /// DC: 直通; AC: 减去窗口内非 NaN 均值 (去除直流分量); GND: 全部置 0 (显示 0V 基准)
 /// 注意: AC 耦合以整个传入数组为窗口估算直流分量 (非真正高通滤波器),
 /// 适用于观察叠加在缓变直流上的交流分量; 若信号含大幅瞬态, 均值会被拉偏。
-export function applyCoupling(values: number[], coupling: Coupling): number[] {
+export function applyCoupling(
+  values: Float32Array,
+  coupling: Coupling,
+): Float32Array {
   if (coupling === 'DC') return values;
   if (coupling === 'GND') return values.map((v) => (isNaN(v) ? NaN : 0));
   // AC: 减去非 NaN 均值
@@ -41,8 +44,8 @@ export function applyCoupling(values: number[], coupling: Coupling): number[] {
 
 /// 计算单通道测量值 (Vpp/Vmin/Vmax/Vavg/Vrms/Freq)
 export function computeMeasurements(
-  values: number[],
-  timestampsMs: number[]
+  values: Float32Array | number[],
+  timestampsMs: Float64Array | number[]
 ): ScopeMeasurements | null {
   if (values.length < 2) return null;
   let vmin = Infinity;

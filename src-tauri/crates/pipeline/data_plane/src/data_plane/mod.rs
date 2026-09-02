@@ -16,6 +16,7 @@
 //!   ([`frame_dispatch::refresh_snapshot`], 以 source_frames 现状评估)
 
 pub mod byte_router;
+pub mod eval_worker;
 pub mod frame_dispatch;
 pub mod read_task;
 pub mod reconcile;
@@ -29,14 +30,14 @@ use logic_types::{DecodedBuffer, LogicBuffer};
 use parking_lot::{Mutex, RwLock};
 use protocol_engine::ProtocolEngine;
 use schema_types::{ProtocolConfig, ProtocolSchema};
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::AppHandle;
 use tokio::task::JoinHandle;
 use transport_core::TransportManager;
-use vofa_core::PipelineConfig;
+use vofa_core::{DataFrame, PipelineConfig};
 
 use crate::eval_state::GraphEvalState;
 use crate::feed_parallel::ParallelFeeder;
@@ -232,6 +233,14 @@ pub struct DataPlaneState {
     pub buffers: Arc<Mutex<HashMap<String, Arc<Mutex<DataBuffer>>>>>,
     /// 每 Transport 节点 rx 的原始字节收集器
     pub raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
+    /// 每源待评估帧批队列 (字节平面 → 数值平面解耦点; key = Protocol 节点 id)
+    pub(crate) frame_queues: Arc<Mutex<HashMap<String, VecDeque<Vec<DataFrame>>>>>,
+    /// 评估 worker 唤醒器 (push 后 notify_one; 许可语义保证不丢唤醒)
+    pub(crate) eval_notify: Arc<tokio::sync::Notify>,
+    /// 评估 worker 轮转游标 (公平轮询各源队列)
+    eval_cursor: Arc<AtomicU64>,
+    /// 评估 worker 是否已启动 (单实例)
+    eval_worker_started: Arc<AtomicBool>,
     /// Transport 读任务句柄表 (key = Transport 节点 id)
     read_tasks: Arc<Mutex<HashMap<String, JoinHandle<()>>>>,
     /// 最近一次已对悬空 ProtocolSource 发出警告的 graphs_version (reconcile 去重)
@@ -269,6 +278,10 @@ impl DataPlaneState {
             source_texts,
             buffers: Arc::new(Mutex::new(HashMap::new())),
             raw_collectors: Arc::new(Mutex::new(HashMap::new())),
+            frame_queues: Arc::new(Mutex::new(HashMap::new())),
+            eval_notify: Arc::new(tokio::sync::Notify::new()),
+            eval_cursor: Arc::new(AtomicU64::new(0)),
+            eval_worker_started: Arc::new(AtomicBool::new(false)),
             read_tasks: Arc::new(Mutex::new(HashMap::new())),
             reconcile_warn_version: Arc::new(AtomicU64::new(u64::MAX)),
             eval,
@@ -302,6 +315,79 @@ impl DataPlaneState {
             .entry(source.to_string())
             .or_insert_with(|| Arc::new(Mutex::new(RawDataCollector::new())))
             .clone()
+    }
+
+    /// 解析产帧入评估队列 (字节平面 → 数值平面解耦点)
+    ///
+    /// 有界队列: 满时丢最旧整批并计数 (持续过载下保最新, 丢弃显式可观测),
+    /// 新帧持续流动, 波形尾部始终最新。返回是否入队 (供诊断)。
+    pub(crate) fn enqueue_frames(&self, source_id: &str, frames: Vec<DataFrame>) {
+        // 惰性启动: loopback/mcp 等命令路径不经过 attach, 首次入队时保证 worker 存活
+        self.ensure_eval_worker();
+        let dropped = {
+            let mut queues = self.frame_queues.lock();
+            let queue = queues.entry(source_id.to_string()).or_default();
+            let mut dropped = 0_u64;
+            while queue.len() >= eval_worker::EVAL_QUEUE_DEPTH {
+                if let Some(old) = queue.pop_front() {
+                    dropped += old.len() as u64;
+                }
+            }
+            queue.push_back(frames);
+            dropped
+        };
+        if dropped > 0 {
+            self.metrics.add_eval_dropped(dropped);
+        }
+        // 队列锁已释放再唤醒, worker 与生产者不在锁上互等
+        self.eval_notify.notify_one();
+    }
+
+    /// 公平轮询取一批待评估帧 (worker 消费)
+    pub(crate) fn pop_frame_batch(&self) -> Option<(String, Vec<DataFrame>)> {
+        let mut queues = self.frame_queues.lock();
+        let non_empty: Vec<String> = queues
+            .iter()
+            .filter(|(_, queue)| !queue.is_empty())
+            .map(|(key, _)| key.clone())
+            .collect();
+        let key = match non_empty.len() {
+            0 => return None,
+            1 => non_empty.into_iter().next()?,
+            n => {
+                let n64 = u64::try_from(n).unwrap_or(u64::MAX);
+                let cursor = self.eval_cursor.fetch_add(1, Ordering::Relaxed) % n64;
+                let index = usize::try_from(cursor).unwrap_or(0);
+                non_empty
+                    .into_iter()
+                    .nth(index)
+                    .expect("non_empty 长度已校验")
+            }
+        };
+        queues
+            .get_mut(&key)
+            .and_then(|queue| queue.pop_front().map(|frames| (key, frames)))
+    }
+
+    /// 同步排空评估队列 — 集成测试在 route_bytes 后立即断言 buffer/快照前调用
+    /// (运行时由 eval worker 异步消费)
+    pub fn flush_eval(&self) {
+        while let Some((source, frames)) = self.pop_frame_batch() {
+            let eval_ns = frame_dispatch::on_frames(self, &source, &frames);
+            self.metrics.eval_ns.fetch_add(eval_ns, Ordering::Relaxed);
+            self.metrics.frames_evaled.fetch_add(
+                u64::try_from(frames.len()).unwrap_or(u64::MAX),
+                Ordering::Relaxed,
+            );
+        }
+    }
+
+    /// 启动评估 worker (单实例; 首次 attach 时调用, 需在 tokio 运行时内)
+    fn ensure_eval_worker(&self) {
+        if !self.eval_worker_started.swap(true, Ordering::AcqRel) {
+            let plane = self.clone();
+            tokio::spawn(eval_worker::eval_worker(plane));
+        }
     }
 
     /// 同步 protocol_states 与全局节点表中的 Protocol 节点 (图重编译后调用):
@@ -358,7 +444,7 @@ impl DataPlaneState {
             let effective = cfg.manual_channels().unwrap_or(DEFAULT_BUFFER_CHANNELS);
             self.buffer_for(&id).lock().set_channels(effective);
         }
-        // source_frames / source_texts 清理由 protocol_states 存活集决定
+        // source_frames / source_texts / 评估队列清理由 protocol_states 存活集决定
         let live: Vec<String> = self.protocol_states.lock().keys().cloned().collect();
         self.source_frames
             .lock()
@@ -366,10 +452,14 @@ impl DataPlaneState {
         self.source_texts
             .lock()
             .retain(|id, _| live.iter().any(|k| k == id));
+        self.frame_queues
+            .lock()
+            .retain(|id, _| live.iter().any(|k| k == id));
     }
 
     /// 挂载 Transport 节点读任务 (open 成功后调用; 同 id 重复调用先 detach)
     pub async fn attach(&self, app: AppHandle, node_id: &str) {
+        self.ensure_eval_worker();
         self.detach(node_id);
         let rx = self.transport.lock().await.subscribe(node_id);
         let Some(rx) = rx else {
@@ -401,20 +491,27 @@ impl DataPlaneState {
 /// 流水线诊断指标 — 各 Transport 读任务共享, 每 2s 输出一次 (有活动时)。
 #[derive(Default)]
 pub struct DataPlaneMetrics {
-    /// 收到的消息数 / 字节数 (合批后)
+    /// 收到的消息数 (按广播消息逐条计数) / 字节数 (合批后)
     rx_msgs: AtomicU64,
     rx_bytes: AtomicU64,
     /// broadcast Lagged 丢弃的消息数
     lagged: AtomicU64,
-    /// 字节路由 + 协议解析累计耗时 ns / 批次数
+    /// 字节路由累计耗时 ns (含协议解析与数值平面) / 批次数
     feed_ns: AtomicU64,
     feed_batches: AtomicU64,
-    /// 数值平面评估累计耗时 ns / 帧数
+    /// 数值平面评估累计耗时 ns / 帧数 (parse 均 = (feed_ns - eval_ns) / 批)
     eval_ns: AtomicU64,
     frames_evaled: AtomicU64,
+    /// 评估队列溢出丢弃的帧数 (摄入/评估解耦后的显式降级计数)
+    eval_dropped: AtomicU64,
 }
 
 impl DataPlaneMetrics {
+    /// 评估队列溢出时累计丢弃帧数 (eval worker 调用)
+    pub fn add_eval_dropped(&self, frames: u64) {
+        self.eval_dropped.fetch_add(frames, Ordering::Relaxed);
+    }
+
     #[allow(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -423,23 +520,32 @@ impl DataPlaneMetrics {
     fn report(&self) {
         let rx_msgs = self.rx_msgs.swap(0, Ordering::Relaxed);
         let lagged = self.lagged.swap(0, Ordering::Relaxed);
-        if rx_msgs == 0 && lagged == 0 {
+        let eval_dropped = self.eval_dropped.swap(0, Ordering::Relaxed);
+        if rx_msgs == 0 && lagged == 0 && eval_dropped == 0 {
             return;
         }
         let secs = METRICS_REPORT_INTERVAL.as_secs_f64();
-        let batches = self.feed_batches.swap(0, Ordering::Relaxed);
+        let batches = self.feed_batches.swap(0, Ordering::Relaxed).max(1);
+        let feed_ns = self.feed_ns.swap(0, Ordering::Relaxed);
+        let eval_ns = self.eval_ns.swap(0, Ordering::Relaxed);
+        let frames = self.frames_evaled.swap(0, Ordering::Relaxed);
+        // feed 含解析与数值平面两段, 拆开报告便于定位瓶颈段
+        let parse_ns = feed_ns.saturating_sub(eval_ns);
         let msg = format!(
-            "数据平面指标: rx {:.1}MB/s ({} 消息/s) | feed {} 批, 均 {:.2}ms | \
-             eval 均 {:.2}ms/批, 帧均 {}/批 | Lagged 丢弃 {} 条",
+            "数据平面指标: rx {:.1}MB/s ({} 消息/s) | feed {} 批, 均 {:.2}ms \
+             (parse 均 {:.2}ms | eval 均 {:.2}ms), 帧均 {}/批 \
+             | Lagged 丢弃 {} 条, 评估队列丢弃 {} 帧",
             self.rx_bytes.swap(0, Ordering::Relaxed) as f64 / secs / 1e6,
             (rx_msgs as f64 / secs) as u64,
             batches,
-            self.feed_ns.swap(0, Ordering::Relaxed) as f64 / batches.max(1) as f64 / 1e6,
-            self.eval_ns.swap(0, Ordering::Relaxed) as f64 / batches.max(1) as f64 / 1e6,
-            self.frames_evaled.swap(0, Ordering::Relaxed) / batches.max(1),
+            feed_ns as f64 / batches as f64 / 1e6,
+            parse_ns as f64 / batches as f64 / 1e6,
+            eval_ns as f64 / batches as f64 / 1e6,
+            frames / batches,
             lagged,
+            eval_dropped,
         );
-        if lagged > 0 {
+        if lagged > 0 || eval_dropped > 0 {
             log::warn!("{msg}");
         } else {
             log::debug!("{msg}");

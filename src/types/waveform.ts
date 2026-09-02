@@ -9,22 +9,24 @@ interface WaveformWindowMeta {
   sampling: 'raw' | 'min_max' | 'lttb';
 }
 
-/// serde_json 会把 Rust 非有限浮点数编码为 null；仅允许在 IPC 边界出现。
+/// serde_json 会把 Rust 非有限浮点数编码为 null；仅允许在快照查询的 IPC 边界出现。
+/// (波形流走 WWB1 二进制, 无 null 问题 — 见 lib/data/waveformProtocol.ts)
 export interface WaveformWindowPayload extends WaveformWindowMeta {
   timestamps: number[];
   channels: (number | null)[][];
   derived: Record<string, Record<string, Record<string, (number | null)[]>>>;
 }
 
-/// IPC 归一化后的前端波形窗口；缺失样本一律为 NaN，不允许 null 泄漏到渲染层。
+/// 前端波形窗口; 缺失样本一律为 NaN, 不允许 null 泄漏到渲染层。
+/// 数组为 TypedArray: 流路径由 WWB1 解码零拷贝视图产生, 渲染层不再二次拷贝。
 export interface WaveformWindow extends WaveformWindowMeta {
   /// 相对最新时间戳的偏移 (毫秒, 负数=过去；保留微秒级小数)
-  timestamps: number[];
+  timestamps: Float64Array;
   /// 每通道的数据数组
-  channels: number[][];
+  channels: Float32Array[];
   /// 派生通道数据 (Math/Filter 等节点的输出, 作为 Waveform sink 的输入)
   /// key1 = sink_widget_id, key2 = source_widget_id, key3 = source_handle
-  derived: Record<string, Record<string, Record<string, number[]>>>;
+  derived: Record<string, Record<string, Record<string, Float32Array>>>;
 }
 
 export interface DerivedSeriesSelector {

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{Result, UdpConfig};
+use vofa_core::{Result, UdpConfig, INGEST_CHANNEL_CAPACITY};
 
 /// 启动 UDP 传输
 pub async fn spawn(
@@ -34,7 +34,7 @@ pub async fn spawn(
     // UdpSocket 的 send/recv 接受 &self, 用 Arc 共享
     let socket = Arc::new(socket);
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

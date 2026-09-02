@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{Result, SlcanConfig};
+use vofa_core::{Result, SlcanConfig, INGEST_CHANNEL_CAPACITY};
 
 /// 启动 slcan 传输
 ///
@@ -47,7 +47,7 @@ pub fn spawn(
         .try_clone()
         .map_err(|e| TransportError::SerialClone(e.into()))?;
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

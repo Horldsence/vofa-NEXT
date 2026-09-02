@@ -71,7 +71,8 @@ pub async fn inject_bytes(
     let hit = plane.byte_plan.lock().routes_for(source_node_id).len();
     let mut cache = DecoderFeedCache::new();
     let summary =
-        byte_router::route_bytes(&plane, Some(app), source_node_id, data, 0, &mut cache).await;
+        byte_router::route_bytes(&plane, Some(app), source_node_id, data, 0, &mut cache, None)
+            .await;
     if summary.decoders_fed {
         frame_dispatch::refresh_snapshot(&plane);
     }

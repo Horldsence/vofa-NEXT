@@ -121,10 +121,13 @@ async fn justfloat_chain_decodes_frames_into_value_plane() {
             &frame,
             0,
             &mut cache,
+            None,
         )
         .await;
         assert_eq!(summary.frames, 1, "每帧数据应解码出 1 帧 (第 {i} 帧)");
     }
+    // 摄入/评估解耦: 评估队列由 eval worker 异步消费, 测试中同步排空
+    state.data_plane.flush_eval();
 
     // 数值平面: ch0..ch3 出现在输出快照 (RawData 数值通道读取的数据源)
     let snap = state.data_plane.eval.output_snapshot.lock();
@@ -213,8 +216,11 @@ async fn auto_channels_above_four_flow_through_math_topic() {
         &frame,
         0,
         &mut cache,
+        None,
     )
     .await;
+    // 摄入/评估解耦: 同步排空评估队列, DataBus 样本由 on_frames 发布
+    state.data_plane.flush_eval();
 
     let channel_batch = channel_rx.recv().await.expect("ch7 sample");
     let math_batch = math_rx.recv().await.expect("math sample");

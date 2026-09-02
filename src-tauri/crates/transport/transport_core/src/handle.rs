@@ -16,7 +16,7 @@ pub struct TransportHandle {
     data_tx: broadcast::Sender<Vec<u8>>,
     cancel: Arc<AtomicBool>,
     state: parking_lot::Mutex<ConnectionState>,
-    stats: parking_lot::Mutex<TransportStats>,
+    stats: Arc<parking_lot::Mutex<TransportStats>>,
     /// 测试数据生成器运行状态 (仅 TestData 有效)
     test_data_running: Option<Arc<AtomicBool>>,
     /// 测试数据生成器恢复通知 (仅 TestData 有效)
@@ -25,7 +25,48 @@ pub struct TransportHandle {
     test_data_runtime: Option<watch::Sender<TestDataRuntime>>,
     /// 本连接当前实际使用的配置。TestData 热更新采样率时同步更新，供数据平面
     /// 恢复逐样本时间戳，不能只保留打开连接时的旧值。
-    config: parking_lot::RwLock<TransportConfig>,
+    /// Arc 包装以便 [`LiveNodeHandle`] 免 manager 全局锁共享读取。
+    config: Arc<parking_lot::RwLock<TransportConfig>>,
+}
+
+/// 读任务持有的轻量节点句柄 — 拿一次后免 manager 全局锁做每批查询
+///
+/// 数据平面读任务每批要查运行态配置 (采样时钟)、TestData 开关并上报 rx 统计;
+/// 逐批经 manager 全局锁查询会与 open/close/其他传输串行化。此句柄与
+/// [`TransportHandle`] 内部字段共享同一 Arc 存储, 克隆廉价; 生命周期上读任务
+/// 随连接关闭一同结束 (detach → abort), 不存在句柄悬垂于已重建连接的问题。
+pub struct LiveNodeHandle {
+    node_id: Arc<str>,
+    config: Arc<parking_lot::RwLock<TransportConfig>>,
+    stats: Arc<parking_lot::Mutex<TransportStats>>,
+    test_data_running: Option<Arc<AtomicBool>>,
+}
+
+impl LiveNodeHandle {
+    /// 本节点运行态配置 — 仅当查询节点与绑定节点一致时返回。
+    /// (协议转换链递归时 source 会变成 Protocol 节点 id, 此时无运行态配置,
+    /// 与 `TransportManager::config` 对非传输节点返回 None 的语义一致)
+    pub fn config_of(&self, node_id: &str) -> Option<TransportConfig> {
+        if node_id == &*self.node_id {
+            Some(self.config.read().clone())
+        } else {
+            None
+        }
+    }
+
+    /// 更新接收统计 (由消费侧在数据被处理完成后上报)
+    pub fn record_rx(&self, bytes: usize, frames: u64) {
+        let mut stats = self.stats.lock();
+        stats.rx_bytes += bytes as u64;
+        stats.rx_frames += frames;
+    }
+
+    /// 测试数据生成器运行状态 (三分: None = 非 TestData 节点)
+    pub fn test_data_running_state(&self) -> Option<bool> {
+        self.test_data_running
+            .as_ref()
+            .map(|r| r.load(Ordering::Relaxed))
+    }
 }
 
 impl TransportHandle {
@@ -43,11 +84,21 @@ impl TransportHandle {
             data_tx,
             cancel,
             state: parking_lot::Mutex::new(ConnectionState::Connected),
-            stats: parking_lot::Mutex::new(TransportStats::default()),
+            stats: Arc::new(parking_lot::Mutex::new(TransportStats::default())),
             test_data_running,
             test_data_notify,
             test_data_runtime,
-            config: parking_lot::RwLock::new(config),
+            config: Arc::new(parking_lot::RwLock::new(config)),
+        }
+    }
+
+    /// 取轻量句柄 (读任务启动时调用一次; node_id 由 manager 的表键提供)
+    pub fn live(&self, node_id: &str) -> LiveNodeHandle {
+        LiveNodeHandle {
+            node_id: Arc::from(node_id),
+            config: Arc::clone(&self.config),
+            stats: Arc::clone(&self.stats),
+            test_data_running: self.test_data_running.clone(),
         }
     }
 

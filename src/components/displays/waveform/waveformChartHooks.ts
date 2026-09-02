@@ -85,7 +85,7 @@ export function useUplotInit(
   plotRef: React.MutableRefObject<uPlot | null>,
   axisConfigRef: React.MutableRefObject<ScopeAxisConfig>,
   seriesSlotsRef: React.MutableRefObject<SeriesSlot[]>,
-  getDisplayData: () => number[][],
+  getDisplayData: () => [Float64Array, ...Float32Array[]],
   setCursorReadout: React.Dispatch<React.SetStateAction<{
     leftPx: number; topPx: number; xSec: number; yDiv: number;
     yVal: number; yUnit: string;
@@ -322,7 +322,7 @@ export function useUplotInit(
       const { w, h } = getContainerSize(container);
       plot = new uPlot(
         createOptions(w, h),
-        getDisplayData() as unknown as uPlot.AlignedData,
+        getDisplayData(),
         container
       );
       plotRef.current = plot;

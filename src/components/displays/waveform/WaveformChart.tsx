@@ -281,17 +281,39 @@ export function WaveformChart({
 
   const tooltipPos = useTooltipPos(cursorReadout, containerRef, tooltipRef);
 
+  const displayCacheRef = useRef<{ key: string; data: [Float64Array, ...Float32Array[]] } | null>(null);
+
   /// 取数据 — 返回 [timestamps, ...seriesSlots.length 个等长数组]
   /// 通道与派生输入统一按 SeriesSlot 的完整身份解析。
   /// 未连接的占位槽填 NaN
-  const getDisplayData = useCallback((): number[][] => {
+  ///
+  /// 结果按 (窗口版本 + 影响映射的配置) 键控缓存: 稳态下每帧只是键比较 +
+  /// 返回同一组 TypedArray 引用, 时间戳换算/耦合/归一化仅在键变化时重算。
+  const getDisplayData = useCallback((): [Float64Array, ...Float32Array[]] => {
     const cfg = axisConfigRef.current;
     const slots = seriesSlotsRef.current;
     const totalSlots = slots.length;
     const win = detailBuffer.get();
     if (win.timestamps.length === 0) {
-      return [[0], ...Array.from({ length: totalSlots }, () => [NaN])];
+      return [
+        new Float64Array([0]),
+        ...Array.from({ length: totalSlots }, () => new Float32Array([NaN])),
+      ];
     }
+
+    // 配置键: 仅包含影响数据映射的字段 (耦合/档位/位置/共用Y/slot 集合)
+    const cfgKey = `${cfg.sharedY ? 'S' : 'N'}|${slots.map((slot) => {
+      const c = getEffectiveChannel(cfg, slot.cfgIdx);
+      const input = slot.input.kind === 'channel'
+        ? `ch${slot.input.idx}`
+        : `d${slot.input.sourceId}/${slot.input.sourceHandle}`;
+      return `${input}:${c.coupling}:${c.vPerDiv}:${c.position}`;
+    }).join(',')}`;
+    const cacheKey = `${detailBuffer.version}|${totalSlots}|${cfgKey}`;
+    if (displayCacheRef.current?.key === cacheKey) {
+      return displayCacheRef.current.data;
+    }
+
     const timestamps = win.timestamps;
     const channelArrays = win.channels;
     const derivedMap = win.derived;
@@ -315,7 +337,9 @@ export function WaveformChart({
       if (cfg.sharedY) return coupled;
       return coupled.map((v) => (isNaN(v) ? NaN : (v - pos) / vPerDiv));
     });
-    return [tsSec, ...seriesDivs];
+    const data: [Float64Array, ...Float32Array[]] = [tsSec, ...seriesDivs];
+    displayCacheRef.current = { key: cacheKey, data };
+    return data;
   }, [widget.params.id, detailBuffer]);
 
   const updateMeasurements = useCallback(() => {
@@ -357,7 +381,7 @@ export function WaveformChart({
       plot.setSeries(i + 1, { show: channelConfig[slots[i].cfgIdx]?.show ?? true });
     }
     // 重新归一化数据 (用新的 vPerDiv / position / sharedY / yUnit 重新计算)
-    plot.setData(getDisplayData() as unknown as uPlot.AlignedData);
+    plot.setData(getDisplayData());
     plot.redraw();
     updateMeasurements();
   }, [
@@ -388,7 +412,7 @@ export function WaveformChart({
           const v = detailBuffer.version;
           if (v !== lastVersionRef.current) {
             lastVersionRef.current = v;
-            plotRef.current.setData(getDisplayData() as unknown as uPlot.AlignedData);
+            plotRef.current.setData(getDisplayData());
             updateMeasurements();
           }
         }

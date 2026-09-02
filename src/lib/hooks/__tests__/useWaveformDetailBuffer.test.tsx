@@ -10,8 +10,8 @@ const selection = { channels: [0], derived: [] };
 function waveform(value: number, latestTimestampUs = 10_000): WaveformWindow {
   return {
     seq: 0,
-    timestamps: [-0.001, 0],
-    channels: [[value, value]],
+    timestamps: Float64Array.from([-0.001, 0]),
+    channels: [Float32Array.from([value, value])],
     channel_count: 1,
     derived: {},
     buffer_points: 2,
@@ -177,9 +177,9 @@ describe('useWaveformDetailBuffer', () => {
 
     rerender({ sourceId: 'source-b' });
     expect(result.current.detailBuffer).not.toBe(sourceABuffer);
-    expect(result.current.detailBuffer.get().timestamps).toEqual([]);
+    expect(result.current.detailBuffer.get().timestamps.length).toBe(0);
     act(() => callbacks[0](waveform(99)));
-    expect(result.current.detailBuffer.get().timestamps).toEqual([]);
+    expect(result.current.detailBuffer.get().timestamps.length).toBe(0);
 
     await act(() => vi.advanceTimersByTime(75));
     act(() => callbacks[1](waveform(2)));

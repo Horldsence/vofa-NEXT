@@ -46,8 +46,8 @@ impl EvalOptions {
 /// Protocol 节点产出一批帧: 逐帧更新 source_frames → push 到该源自己的 DataBuffer →
 /// 评估被该源触发的 tab 图 → 派生边回写到该源 buffer。
 ///
-/// 同步包装 (测试 / 非 tokio 调用方): 热路径请用 [`on_frames_detached`] +
-/// `spawn_blocking`, 避免重型评估占用 tokio worker。
+/// 数值平面入口 — eval worker 消费评估队列时调用 (worker 侧经 blocking 池执行,
+/// 见 `eval_worker`; 测试 / flush 路径可直接同步调用 [`on_frames_detached`])。
 ///
 /// 返回数值平面耗时 ns (push_frame + 图评估 + 派生 + 频谱, 观测用)。
 pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) -> u64 {

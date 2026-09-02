@@ -8,8 +8,11 @@ function makeWindow(channels: number[][], durMs = 1000): WaveformWindow {
   const step = n > 1 ? durMs / (n - 1) : 0;
   return {
     seq: 1,
-    timestamps: Array.from({ length: n }, (_, i) => -durMs + i * step),
-    channels,
+    timestamps: Float64Array.from(
+      { length: n },
+      (_, i) => -durMs + i * step,
+    ),
+    channels: channels.map((values) => Float32Array.from(values)),
     channel_count: channels.length,
     derived: {},
     buffer_points: n,

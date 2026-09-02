@@ -1,5 +1,4 @@
-import type { Channel } from '@tauri-apps/api/core';
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import type {
   AiAdapterInfo,
   AiChatEvent,
@@ -32,10 +31,9 @@ import { normalizeWaveformWindow } from '../buffers/dataBuffer';
 import type { NodeDef, GraphEdge } from '../utils/nodeDef';
 import type { GraphDerivedPayload } from '../../store/slices/derived';
 import { clearRawDataBuffer } from '../buffers/rawDataSubscription';
-import {
-  subscribeDisplay,
-  subscribeDisplaySnapshot,
-} from '../buffers/shardedSubscription';
+import { subscribeDisplaySnapshot } from '../buffers/shardedSubscription';
+import { decodeWaveformWindow } from '../data/waveformProtocol';
+import { perfEvent, tickMetric } from '../utils/perfLog';
 
 /// 节点端口提示 — 与后端 `app_state::SourceNodeHint` 同形
 /// (供拓扑 op 解析默认 handle / RawData `src:` 改写; 字段缺省时后端按类型兜底)
@@ -272,7 +270,7 @@ export const api = {
     invoke<number | null>('get_detected_channels', { nodeId }),
 
   // ===== 波形缓冲区 (source = Protocol 节点 id) =====
-  /// 订阅波形数据 — 后端有序快照流
+  /// 订阅波形数据 — 后端 WWB1 二进制快照流 (TypedArray 零拷贝解码)
   /// 返回一个取消订阅函数
   subscribeWaveform: (
     source: string,
@@ -285,18 +283,30 @@ export const api = {
       selection?: WaveformSeriesSelection;
     },
   ) => {
-    return subscribeDisplay<WaveformWindowPayload>(
-      {
+    perfEvent('subscribe display:waveform');
+    const channel = new Channel<ArrayBuffer>();
+    channel.onmessage = (buffer) => {
+      tickMetric('display:waveform');
+      onEvent(decodeWaveformWindow(buffer));
+    };
+    invoke('subscribe_data', {
+      request: {
         kind: 'waveform',
         source,
         start_ms: options?.startMs,
         end_ms: options?.endMs,
         selection: options?.selection,
       },
-      'waveform',
-      (payload) => onEvent(normalizeWaveformWindow(payload)),
-      { intervalMs: options?.intervalMs, maxItems: options?.maxPoints },
-    );
+      onEvent: channel,
+      intervalMs: options?.intervalMs,
+      maxItems: options?.maxPoints,
+    }).catch((e) => {
+      console.error('波形订阅失败:', e);
+    });
+    return {
+      cancel: () =>
+        void closeTauriChannel(channel, 'unsubscribe_data', channel.id),
+    };
   },
 
   createWaveformSnapshot: (source: string) =>

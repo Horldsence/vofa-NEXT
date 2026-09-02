@@ -44,7 +44,7 @@ pub fn spawn(
     Arc<Notify>,
     watch::Sender<TestDataRuntime>,
 )> {
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(vofa_core::INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let (runtime_tx, mut runtime_rx) = watch::channel(TestDataRuntime { config, link });
     let cancel = Arc::new(AtomicBool::new(false));

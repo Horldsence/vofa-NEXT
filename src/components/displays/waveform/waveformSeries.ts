@@ -132,19 +132,19 @@ export function resolveInputArray(
   input: ConnectedInput,
   widgetId: string,
   tsLen: number,
-  channelArrays: number[][],
-  derivedMap: Record<string, Record<string, Record<string, number[]>>> | undefined
-): number[] {
-  let arr: number[] | undefined;
+  channelArrays: Float32Array[],
+  derivedMap: Record<string, Record<string, Record<string, Float32Array>>> | undefined
+): Float32Array {
+  let arr: Float32Array | undefined;
   if (input.kind === 'channel') {
     arr = channelArrays[input.idx];
   } else {
     arr = derivedMap?.[widgetId]?.[input.sourceId]?.[input.sourceHandle];
   }
-  if (!arr) return new Array<number>(tsLen).fill(NaN);
+  if (!arr) return new Float32Array(tsLen).fill(NaN);
   if (arr.length === tsLen) return arr;
   // 对齐: 截断或补 NaN
-  const padded = arr.slice(0, tsLen);
-  while (padded.length < tsLen) padded.push(NaN);
-  return padded;
+  const out = new Float32Array(tsLen).fill(NaN);
+  out.set(arr.subarray(0, Math.min(arr.length, tsLen)));
+  return out;
 }

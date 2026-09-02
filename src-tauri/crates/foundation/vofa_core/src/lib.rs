@@ -23,6 +23,14 @@ pub mod config;
 pub mod frame;
 pub mod serial_params;
 
+/// Transport → 数据平面 ingest 广播通道容量。
+///
+/// TestData 以最高 2000 条/s (每 500µs 一条) 发布,读任务单次服务(合批+解析,
+/// 评估解耦前还含数值平面)可达数十毫秒;容量必须能吸收数倍于服务时间的抖动,
+/// 否则广播环被覆盖 → `RecvError::Lagged` 直接丢数据(波形出现永久空洞)。
+/// 4096 条 ≈ 2s @ 500µs/条,内存上界 = 容量 × 单条字节数,可控。
+pub const INGEST_CHANNEL_CAPACITY: usize = 4096;
+
 pub use config::{
     ButtonConfig, CandleConfig, CheckboxConfig, ChoiceOption, ImageConfig, ImageFormat, KnobConfig,
     LabelConfig, PieChartConfig, PipelineConfig, PipelineMode, RadioConfig, SerialConfig,

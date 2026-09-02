@@ -252,6 +252,21 @@ async fn can_bitrate(state: &AppState, node_id: &str, override_bps: Option<u32>)
     }
 }
 
+/// JSON 事件编码器 — 低频流 (原始数据/CAN/逻辑/解码事件) 沿用 JSON 联合事件
+fn json_event<E, F>(map: F) -> impl Fn(E) -> InvokeResponseBody + Send + 'static
+where
+    E: serde::Serialize,
+    F: Fn(E) -> DisplayEvent + Send + 'static,
+{
+    move |event| {
+        let Ok(json) = serde_json::to_string(&map(event)) else {
+            log::error!("显示事件序列化失败");
+            return InvokeResponseBody::Json("{}".into());
+        };
+        InvokeResponseBody::Json(json)
+    }
+}
+
 fn spawn_stream<S, F>(
     state: &AppState,
     mut source: S,
@@ -259,10 +274,10 @@ fn spawn_stream<S, F>(
     interval: Duration,
     min_batch: usize,
     name: &'static str,
-    map: F,
+    encode: F,
 ) where
     S: StreamSource,
-    F: Fn(S::Batch) -> DisplayEvent + Send + 'static,
+    F: Fn(S::Batch) -> InvokeResponseBody + Send + 'static,
 {
     let channel_id = on_event.id();
     let mut cancel = subscription::register_cancel(&state.subscriptions, channel_id);
@@ -290,7 +305,7 @@ fn spawn_stream<S, F>(
                         continue;
                     };
                     S::set_seq(&mut batch, seq.fetch_add(1, Ordering::Relaxed));
-                    if !send_json(&on_event, &map(batch)) { break; }
+                    if on_event.send(encode(batch)).is_err() { break; }
                     rate.on_send();
                 }
             }
@@ -463,6 +478,7 @@ pub async fn subscribe_data(
                 ),
                 _ => WaveformSource::new(buffer),
             };
+            mode = "binary";
             spawn_stream(
                 &state,
                 waveform_source,
@@ -470,7 +486,9 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "波形",
-                DisplayEvent::Waveform,
+                |batch| {
+                    InvokeResponseBody::Raw(crate::waveform_binary::encode_waveform_window(&batch))
+                },
             );
         }
         DisplayRequest::RawData {
@@ -499,7 +517,7 @@ pub async fn subscribe_data(
                     interval,
                     max_items,
                     "原始数据",
-                    DisplayEvent::RawData,
+                    json_event(DisplayEvent::RawData),
                 );
             } else {
                 spawn_stream(
@@ -513,7 +531,7 @@ pub async fn subscribe_data(
                     interval,
                     max_items,
                     "过滤原始数据",
-                    DisplayEvent::RawData,
+                    json_event(DisplayEvent::RawData),
                 );
             }
         }
@@ -525,7 +543,7 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "过滤 CAN",
-                DisplayEvent::CanFrames,
+                json_event(DisplayEvent::CanFrames),
             ),
             None => spawn_stream(
                 &state,
@@ -534,7 +552,7 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "CAN",
-                DisplayEvent::CanFrames,
+                json_event(DisplayEvent::CanFrames),
             ),
         },
         DisplayRequest::LogicSamples { filter } => match filter {
@@ -545,7 +563,7 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "过滤逻辑采样",
-                DisplayEvent::LogicSamples,
+                json_event(DisplayEvent::LogicSamples),
             ),
             None => spawn_stream(
                 &state,
@@ -554,7 +572,7 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "逻辑采样",
-                DisplayEvent::LogicSamples,
+                json_event(DisplayEvent::LogicSamples),
             ),
         },
         DisplayRequest::DecodedEvents { filter } => match filter {
@@ -565,7 +583,7 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "过滤解码事件",
-                DisplayEvent::DecodedEvents,
+                json_event(DisplayEvent::DecodedEvents),
             ),
             None => spawn_stream(
                 &state,
@@ -574,7 +592,7 @@ pub async fn subscribe_data(
                 interval,
                 max_items,
                 "解码事件",
-                DisplayEvent::DecodedEvents,
+                json_event(DisplayEvent::DecodedEvents),
             ),
         },
         DisplayRequest::CanLoad {

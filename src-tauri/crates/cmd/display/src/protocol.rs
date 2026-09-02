@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use buffer_databuffer::{WaveformSeriesSelection, WaveformWindow};
+use buffer_databuffer::WaveformSeriesSelection;
 use buffer_raw::RawDataBatch;
 use can_types::{CanFrameBatch, CanFrameFilter, CanLoadSnapshot};
 use data_plane::{CustomInputBatch, GraphOutputSnapshot, StringOutputSnapshot};
@@ -85,7 +85,6 @@ pub enum DisplayEvent {
     CustomInputs(CustomInputBatch),
     StringOutputs(StringOutputSnapshot),
     Spectrum(HashMap<String, SpectrumResult>),
-    Waveform(WaveformWindow),
     RawData(RawDataBatch),
     CanFrames(CanFrameBatch),
     LogicSamples(LogicSampleBatch),

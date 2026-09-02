@@ -14,7 +14,7 @@ use tauri::AppHandle;
 use tokio::sync::broadcast;
 use vofa_core::{ConnectionState, TransportStats};
 
-use super::{byte_router, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
+use super::{byte_router, eval_worker, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
 use crate::feed_parallel::FEED_PARALLEL_UNIT;
 
 pub(super) fn mark_downstream_disconnected(plane: &DataPlaneState, transport_id: &str) {
@@ -57,12 +57,13 @@ pub(super) async fn read_task(
     let mut acc_frames: u64 = 0;
     let mut last_report = Instant::now();
     let mut controller = AdaptiveController::default();
+    // 启动时取一次轻量句柄: 每批的 TestData 开关查询 / 运行态配置 / rx 统计上报
+    // 都免 manager 全局锁 (逐批锁会与 open/close/其他传输串行化)
+    let live = plane.transport.lock().await.live_handle(&node_id);
     // TestData 生成停止边沿检测 (None = 非 TestData 节点, 永不触发)
-    let mut was_generating = plane
-        .transport
-        .lock()
-        .await
-        .test_data_running_state(&node_id)
+    let mut was_generating = live
+        .as_ref()
+        .and_then(transport_core::LiveNodeHandle::test_data_running_state)
         .unwrap_or(false);
 
     loop {
@@ -91,7 +92,10 @@ pub(super) async fn read_task(
                 Err(_) => break,
             }
         }
-        plane.metrics.rx_msgs.fetch_add(1, Ordering::Relaxed);
+        plane.metrics.rx_msgs.fetch_add(
+            u64::try_from(coalesced).unwrap_or(u64::MAX),
+            Ordering::Relaxed,
+        );
         plane
             .metrics
             .rx_bytes
@@ -99,11 +103,9 @@ pub(super) async fn read_task(
 
         // TestData 停止生成边沿: 排空广播积压 (已解析的当前批次正常处理,
         // 其后的排队消息全部丢弃), 波形立即冻结在停止时刻, 不再拖尾滚动
-        let generating = plane
-            .transport
-            .lock()
-            .await
-            .test_data_running_state(&node_id);
+        let generating = live
+            .as_ref()
+            .and_then(transport_core::LiveNodeHandle::test_data_running_state);
         if was_generating && generating == Some(false) {
             let mut dropped = 0_u64;
             loop {
@@ -115,6 +117,8 @@ pub(super) async fn read_task(
                     Err(_) => break,
                 }
             }
+            // 已解析未评估的队列批同样清空: 波形冻结在停止时刻, 不拖尾
+            dropped += eval_worker::clear_downstream_queues(&plane, &node_id);
             if dropped > 0 {
                 log::debug!("测试数据停止生成, 丢弃排队积压 {dropped} 条: {node_id}");
             }
@@ -143,12 +147,16 @@ pub(super) async fn read_task(
             &data,
             depth_hint,
             &mut dec_cache,
+            live.as_ref(),
         )
         .await;
         let service_time = t_feed.elapsed();
         let cfg = *plane.pipeline_config.read();
         let queued = rx.len();
-        let queue_fill = f64::from(u32::try_from(queued.min(256)).unwrap_or(256)) / 256.0;
+        // queue_fill 用广播通道真实容量 (通道均以 INGEST_CHANNEL_CAPACITY 创建),
+        // 不再硬编码 256
+        let queue_fill = f64::from(u32::try_from(queued).unwrap_or(u32::MAX))
+            / f64::from(u32::try_from(vofa_core::INGEST_CHANNEL_CAPACITY).unwrap_or(u32::MAX));
         let queue_age =
             service_time.saturating_mul(u32::try_from(queued.min(1_024)).unwrap_or(1_024));
         controller.observe(
@@ -168,26 +176,17 @@ pub(super) async fn read_task(
             Ordering::Relaxed,
         );
         plane.metrics.feed_batches.fetch_add(1, Ordering::Relaxed);
-        plane
-            .metrics
-            .eval_ns
-            .fetch_add(summary.eval_ns, Ordering::Relaxed);
-        plane
-            .metrics
-            .frames_evaled
-            .fetch_add(summary.frames, Ordering::Relaxed);
+        // eval 耗时/帧数由 eval worker 计量 (摄入/评估解耦)
 
         // FrameDecoder 被喂入 → 快照评估一次 (decoder 输出来自 last_frame 缓存)
         if summary.decoders_fed {
             frame_dispatch::refresh_snapshot(&plane);
         }
 
-        // 统计 (record_rx 由消费侧上报)
-        plane
-            .transport
-            .lock()
-            .await
-            .record_rx(&node_id, data.len(), summary.frames);
+        // 统计 (record_rx 由消费侧上报, 经轻量句柄免全局锁)
+        if let Some(live) = &live {
+            live.record_rx(data.len(), summary.frames);
+        }
         acc_bytes += data.len() as u64;
         acc_frames += summary.frames;
 

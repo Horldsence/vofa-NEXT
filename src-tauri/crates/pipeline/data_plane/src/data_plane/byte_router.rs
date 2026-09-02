@@ -40,8 +40,6 @@ pub struct RouteSummary {
     pub frames: u64,
     /// 是否有 FrameDecoder 被喂入 (调用方据此做快照评估)
     pub decoders_fed: bool,
-    /// 数值平面评估累计耗时 ns (观测用)
-    pub eval_ns: u64,
 }
 
 /// 沿全局 BytePlan 推送字节 (事件驱动入口)
@@ -57,6 +55,7 @@ pub async fn route_bytes(
     data: &[u8],
     depth_hint: usize,
     dec_cache: &mut DecoderFeedCache,
+    live: Option<&transport_core::LiveNodeHandle>,
 ) -> RouteSummary {
     let mut summary = RouteSummary::default();
     route_inner(
@@ -68,6 +67,7 @@ pub async fn route_bytes(
         dec_cache,
         &mut summary,
         0,
+        live,
     )
     .await;
     summary
@@ -83,6 +83,7 @@ async fn route_inner(
     dec_cache: &mut DecoderFeedCache,
     summary: &mut RouteSummary,
     depth: usize,
+    live: Option<&transport_core::LiveNodeHandle>,
 ) {
     if depth > MAX_ROUTE_DEPTH {
         log::warn!("字节路由深度超限 ({}), 丢弃 {} 字节", source_id, data.len());
@@ -109,6 +110,7 @@ async fn route_inner(
                     dec_cache,
                     summary,
                     depth,
+                    live,
                 )
                 .await;
             }
@@ -166,6 +168,7 @@ async fn feed_protocol(
     dec_cache: &mut DecoderFeedCache,
     summary: &mut RouteSummary,
     depth: usize,
+    live: Option<&transport_core::LiveNodeHandle>,
 ) {
     let Some(st) = plane.protocol_states.lock().get(proto_id).cloned() else {
         log::debug!("协议节点无运行时状态, 跳过喂入: {proto_id}");
@@ -225,7 +228,11 @@ async fn feed_protocol(
     // 已连接 Transport 的运行时配置是采样时钟权威；图配置可能正处于防抖同步
     // 或编译错误状态。TestData 使用明确采样率；串口按波特率、字符格式和本批
     // 实际字节/帧数估算线速。网络等无时钟信息的来源仍保留到达时间语义。
-    let live_transport_config = plane.transport.lock().await.config(source_id);
+    // 读任务热路径经轻量句柄免全局锁; 命令注入路径 (loopback/mcp) 无句柄, 回退全局锁
+    let live_transport_config = match live {
+        Some(live) => live.config_of(source_id),
+        None => plane.transport.lock().await.config(source_id),
+    };
     let graph_transport_config = || {
         plane.global_nodes.lock().get(source_id).and_then(|node| {
             if let NodeKind::Transport { config } = &node.kind {
@@ -340,7 +347,7 @@ async fn feed_protocol(
     }
 
     // convert_to: 输出引擎重编码 → 沿本节点 out 边继续下推 (协议转换链)
-    // (提前计算: frames 随后按值移入 blocking 评估任务)
+    // (编码须在入评估队列前完成: enqueue 会取走帧所有权)
     let converted = match convert_engine {
         Some(ce) => {
             let mut bytes = Vec::new();
@@ -352,34 +359,13 @@ async fn feed_protocol(
         None => Vec::new(),
     };
 
-    // 数据帧 → source_frames 缓存 + 触发数值平面评估
-    // 重型同步评估 (大批次可达 24ms+) 丢 blocking 池执行, 不占 tokio worker;
-    // await 保持同源批序, panic 语义透传 (只吞关闭型 JoinError)
+    // 数据帧 → 评估队列, eval worker 异步完成 source_frames 缓存 + 数值平面评估
+    // (摄入/评估解耦: 读任务不再被逐帧图求值阻塞; worker 内部经 blocking 池
+    // 执行 SIMD/并行批量求值, 见 eval_worker)
     if !out.frames.is_empty() {
         summary.frames += out.frames.len() as u64;
-        let eval = plane.eval.clone();
-        let global_nodes = plane.global_nodes.clone();
-        let buffer = plane.buffer_for(proto_id);
-        let proto = proto_id.to_string();
-        let frames = std::mem::take(&mut out.frames);
-        let options = super::frame_dispatch::EvalOptions::from_config(&cfg);
-        let eval_task = tokio::task::spawn_blocking(move || {
-            super::frame_dispatch::on_frames_detached(
-                &eval,
-                &global_nodes,
-                &buffer,
-                &proto,
-                &frames,
-                options,
-            )
-        });
-        match eval_task.await {
-            Ok(ns) => summary.eval_ns += ns,
-            Err(e) if e.is_panic() => std::panic::resume_unwind(e.into_panic()),
-            Err(_) => {}
-        }
+        plane.enqueue_frames(proto_id, std::mem::take(&mut out.frames));
     }
-
     if !converted.is_empty() {
         Box::pin(route_inner(
             plane,
@@ -390,6 +376,7 @@ async fn feed_protocol(
             dec_cache,
             summary,
             depth + 1,
+            live,
         ))
         .await;
     } else if is_raw_data && !data.is_empty() {
@@ -405,6 +392,7 @@ async fn feed_protocol(
             dec_cache,
             summary,
             depth + 1,
+            live,
         ))
         .await;
     }

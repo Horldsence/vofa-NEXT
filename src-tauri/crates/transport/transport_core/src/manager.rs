@@ -6,7 +6,7 @@ use vofa_core::{
     ConnectionState, Error, PortInfo, Result, TestDataConfig, TransportConfig, TransportStats,
 };
 
-use crate::handle::TransportHandle;
+use crate::handle::{LiveNodeHandle, TransportHandle};
 
 /// 传输管理器 — 按节点 ID 的多实例注册表
 ///
@@ -181,6 +181,12 @@ impl TransportManager {
         self.handles
             .get(node_id)
             .and_then(super::handle::TransportHandle::test_data_running_state)
+    }
+
+    /// 取节点轻量句柄 — 读任务启动时调用一次, 之后每批的配置/开关查询与 rx 统计
+    /// 上报都免 manager 全局锁 (不再与 open/close/其他传输串行化)
+    pub fn live_handle(&self, node_id: &str) -> Option<LiveNodeHandle> {
+        self.handles.get(node_id).map(|handle| handle.live(node_id))
     }
 
     /// 运行时热更新指定节点的链路配置 (图/协议变化后调用)

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, mpsc};
-use vofa_core::{Result, TcpClientConfig, TcpServerConfig};
+use vofa_core::{Result, TcpClientConfig, TcpServerConfig, INGEST_CHANNEL_CAPACITY};
 
 /// 启动 TCP 客户端
 pub async fn spawn_client(
@@ -25,7 +25,7 @@ pub async fn spawn_client(
 
     let (read_half, write_half) = stream.into_split();
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 
@@ -99,7 +99,7 @@ pub async fn spawn_server(
             source: e,
         })?;
 
-    let (data_tx, _) = broadcast::channel(256);
+    let (data_tx, _) = broadcast::channel(INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let cancel = Arc::new(AtomicBool::new(false));
 

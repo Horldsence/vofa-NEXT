@@ -94,6 +94,16 @@ export function WaveformTimeline({
   });
   const hoverState = useRef<HoverState>({ type: null });
 
+  // 渲染脏标记: 只有 数据版本 / 视图参数 / 悬停 / 主题 / 画布尺寸 变化才重绘
+  // (旧实现常驻 rAF 全量重绘, Stop 后也持续烧 CPU)
+  const dirtyRef = useRef(true);
+  const lastVersionRef = useRef(-1);
+  const lastBufferRef = useRef(buffer);
+  const lastThemeRef = useRef('');
+  const lastViewRef = useRef({ vEnd: Number.NaN, vWin: Number.NaN });
+  const lastDrawMsRef = useRef(0);
+  const theme = useSettingsStore((s) => s.settings.appearance.theme);
+
   const axisConfigRef = useRef(axisConfig);
   useEffect(() => { axisConfigRef.current = axisConfig; }, [axisConfig]);
 
@@ -117,9 +127,14 @@ export function WaveformTimeline({
       if (!ctx) return;
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      ctx.scale(dpr, dpr);
+      // 尺寸仅在真正变化时重设 (重设会清空并重新分配后备缓冲)
+      const pixelW = Math.round(rect.width * dpr);
+      const pixelH = Math.round(rect.height * dpr);
+      if (canvas.width !== pixelW || canvas.height !== pixelH) {
+        canvas.width = pixelW;
+        canvas.height = pixelH;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       const w = rect.width;
       const h = rect.height;
@@ -228,10 +243,29 @@ export function WaveformTimeline({
     };
 
     let rafId: number | null = null;
-    const tick = () => { draw(); rafId = requestAnimationFrame(tick); };
+    const tick = (nowMs: number) => {
+      // 脏判定: 缓存实例/数据版本/主题/视图参数任一变化才重绘, 且限 30fps
+      const dirty =
+        dirtyRef.current ||
+        lastBufferRef.current !== buffer ||
+        buffer.version !== lastVersionRef.current ||
+        theme !== lastThemeRef.current ||
+        lastViewRef.current.vEnd !== viewEndSec ||
+        lastViewRef.current.vWin !== timeWindowSec;
+      if (dirty && nowMs - lastDrawMsRef.current >= 33) {
+        dirtyRef.current = false;
+        lastDrawMsRef.current = nowMs;
+        lastBufferRef.current = buffer;
+        lastVersionRef.current = buffer.version;
+        lastThemeRef.current = theme;
+        lastViewRef.current = { vEnd: viewEndSec, vWin: timeWindowSec };
+        draw();
+      }
+      rafId = requestAnimationFrame(tick);
+    };
     rafId = requestAnimationFrame(tick);
     return () => { if (rafId !== null) cancelAnimationFrame(rafId); };
-  }, [viewEndSec, timeWindowSec, widgetId, getActiveWindow]);
+  }, [viewEndSec, timeWindowSec, widgetId, getActiveWindow, buffer, theme]);
 
   // ====== 命中检测: 判定鼠标位置对应的拖动类型 ======
   const hitTest = useCallback((clientX: number): 'left' | 'right' | 'window' | null => {
@@ -287,6 +321,7 @@ export function WaveformTimeline({
     const prev = hoverState.current.type;
     if (prev !== hit) {
       hoverState.current.type = hit;
+      dirtyRef.current = true;
       // 直接设置 cursor, 避免触发 re-render
       const canvas = canvasRef.current;
       if (canvas) {
@@ -302,6 +337,7 @@ export function WaveformTimeline({
   const handleMouseLeave = useCallback(() => {
     if (!dragState.current.active) {
       hoverState.current.type = null;
+      dirtyRef.current = true;
       const canvas = canvasRef.current;
       if (canvas) canvas.style.cursor = 'default';
     }
