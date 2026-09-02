@@ -1,8 +1,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use app_state::AppState;
+use buffer_databuffer::DataBuffer;
 use buffer_raw::DirectionFilter;
+use gpu_core::{envelope_minmax_cpu, GpuContext};
+use parking_lot::Mutex;
 use pipeline_bus::{RuntimeHealth, SampleBatch, SampleStatus, TopicKey};
 use pipeline_dispatcher::filtered_sources::{
     FilteredCanStreamSource, FilteredDecodedStreamSource, FilteredLogicStreamSource,
@@ -91,6 +95,149 @@ fn encode_samples(batch: &SampleBatch) -> Vec<u8> {
         });
     }
     bytes
+}
+
+/// 包络事件 kind (VNDP 体系内独立编号, 前端按 magic+kind 分派)
+const ENVELOPE_EVENT_KIND: u16 = 2;
+const ENVELOPE_HEADER_LEN: usize = 60;
+/// 单次包络压缩的窗口点数上限 (1M 点 CPU 参考 ~30ms / GPU ~10ms, 33ms 节拍内)
+const ENVELOPE_WINDOW_CAP: usize = 1_000_000;
+
+/// VENV v1 little-endian 包络帧: 头 + 每通道 columns×(f32 min, f32 max, u32 count)
+///
+/// 空列 (无有效样本): min=+inf / max=-inf / count=0 — 前端按断线处理。
+#[allow(clippy::cast_possible_truncation)] // columns 已 clamp 16..=4096; 计数字段超 u32 视为饱和
+fn encode_envelope(
+    seq: u64,
+    window: &buffer_databuffer::WaveformWindow,
+    columns: usize,
+    envelopes: &[gpu_core::Envelope],
+) -> Vec<u8> {
+    let channel_count = envelopes.len();
+    let per_channel = columns * 12;
+    let payload_len = channel_count * per_channel;
+    let mut bytes = Vec::with_capacity(ENVELOPE_HEADER_LEN + payload_len);
+    bytes.extend_from_slice(b"VENV");
+    bytes.extend_from_slice(&BINARY_SCHEMA_VERSION.to_le_bytes());
+    bytes.extend_from_slice(&ENVELOPE_EVENT_KIND.to_le_bytes());
+    bytes.extend_from_slice(&seq.to_le_bytes());
+    bytes.extend_from_slice(
+        &u32::try_from(window.timestamps.len())
+            .unwrap_or(u32::MAX)
+            .to_le_bytes(),
+    );
+    bytes.extend_from_slice(&(u32::try_from(columns).unwrap_or(u32::MAX)).to_le_bytes());
+    bytes.extend_from_slice(&(u32::try_from(channel_count).unwrap_or(u32::MAX)).to_le_bytes());
+    bytes.extend_from_slice(
+        &window
+            .timestamps
+            .first()
+            .copied()
+            .unwrap_or(0)
+            .to_le_bytes(),
+    );
+    bytes.extend_from_slice(&window.timestamps.last().copied().unwrap_or(0).to_le_bytes());
+    bytes.extend_from_slice(
+        &(u32::try_from(window.buffer_points).unwrap_or(u32::MAX)).to_le_bytes(),
+    );
+    bytes.extend_from_slice(
+        &(u32::try_from(window.buffer_capacity).unwrap_or(u32::MAX)).to_le_bytes(),
+    );
+    bytes.extend_from_slice(&u32::try_from(payload_len).unwrap_or(u32::MAX).to_le_bytes());
+    bytes.extend_from_slice(
+        &u32::try_from(ENVELOPE_HEADER_LEN)
+            .unwrap_or(60)
+            .to_le_bytes(),
+    );
+    for env in envelopes {
+        for v in &env.min {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        for v in &env.max {
+            bytes.extend_from_slice(&v.to_le_bytes());
+        }
+        for c in &env.count {
+            bytes.extend_from_slice(&c.to_le_bytes());
+        }
+    }
+    bytes
+}
+
+/// 波形包络流 — 快照语义 (buffer 版本变化即推送), GPU 加速 + CPU 回退
+///
+/// 与 [`spawn_stream`] 的 JSON 波形互不影响 (独立订阅): 大窗口 (> 前端
+/// maxPoints) 时前端可用包络订阅绘制全量窗口缎带。
+fn spawn_envelope_stream(
+    state: &AppState,
+    buffer: Arc<Mutex<DataBuffer>>,
+    columns: usize,
+    on_event: Channel<InvokeResponseBody>,
+    interval: Duration,
+) {
+    let channel_id = on_event.id();
+    let mut cancel = subscription::register_cancel(&state.subscriptions, channel_id);
+    let subscriptions = state.subscriptions.clone();
+    tokio::spawn(async move {
+        let mut rate = AdaptiveRate::new(
+            Duration::from_millis(16),
+            interval.max(Duration::from_millis(100)),
+        );
+        let mut seq: u64 = 0;
+        let mut last_version: u64 = 0;
+        let mut gpu: Option<std::sync::Arc<GpuContext>> = None;
+        loop {
+            tokio::select! {
+                _ = &mut cancel => break,
+                () = tokio::time::sleep(rate.current()) => {
+                    let (window, version) = {
+                        // block_in_place: 大窗口提取 + 压缩可达数十毫秒, 不占并发 worker
+                        let buffer = buffer.clone();
+                        tokio::task::block_in_place(move || {
+                            let buf = buffer.lock();
+                            let version = buf.version();
+                            if version == last_version {
+                                return (None, version);
+                            }
+                            let pts = buf.point_count().min(ENVELOPE_WINDOW_CAP);
+                            (Some(buf.get_recent(pts)), version)
+                        })
+                    };
+                    let Some(window) = window else {
+                        rate.on_idle();
+                        continue;
+                    };
+                    last_version = version;
+                    // GPU 上下文惰性获取 (pollster 阻塞, 须在 blocking 区)
+                    let envelopes = tokio::task::block_in_place(|| {
+                        if gpu.is_none() {
+                            gpu = GpuContext::acquire();
+                        }
+                        let columns = columns.max(1);
+                        window.channels.iter().map(|channel| {
+                            gpu.as_ref().map_or_else(
+                                || envelope_minmax_cpu(channel, columns),
+                                |ctx| {
+                                    gpu_core::envelope_minmax(ctx, channel, columns)
+                                        .unwrap_or_else(|_| {
+                                            envelope_minmax_cpu(channel, columns)
+                                        })
+                                },
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                    });
+                    seq += 1;
+                    let frame = encode_envelope(seq, &window, columns.max(1), &envelopes);
+                    if on_event.send(InvokeResponseBody::Raw(frame)).is_err() {
+                        break;
+                    }
+                    rate.on_send();
+                }
+            }
+        }
+        subscription::remove_subscription(&subscriptions, channel_id);
+        log::debug!("波形包络订阅已结束: {channel_id}");
+    });
 }
 
 async fn can_bitrate(state: &AppState, node_id: &str, override_bps: Option<u32>) -> u32 {
@@ -279,6 +426,17 @@ pub async fn subscribe_data(
                 max_items,
             )
             .await;
+        }
+        DisplayRequest::WaveformEnvelope { source, columns } => {
+            mode = "binary";
+            let columns = usize::try_from(columns).unwrap_or(2048).clamp(16, 4096);
+            spawn_envelope_stream(
+                &state,
+                state.data_plane.buffer_for(&source),
+                columns,
+                on_event,
+                interval,
+            );
         }
         DisplayRequest::Waveform { source } => spawn_stream(
             &state,

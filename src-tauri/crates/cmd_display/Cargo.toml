@@ -19,6 +19,7 @@ pipeline_bus = { workspace = true }
 pipeline_dispatcher = { workspace = true }
 pipeline_stream = { workspace = true }
 subscription = { workspace = true }
+gpu_core = { workspace = true }
 vofa_core = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }

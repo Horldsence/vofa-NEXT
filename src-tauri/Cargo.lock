@@ -992,6 +992,7 @@ dependencies = [
  "buffer_raw",
  "can_types",
  "dsp_fft",
+ "gpu_core",
  "log",
  "logic_types",
  "node_engine",
@@ -2385,6 +2386,8 @@ dependencies = [
 name = "gpu_core"
 version = "0.1.2"
 dependencies = [
+ "bytemuck",
+ "criterion",
  "log",
  "pollster",
  "thiserror 1.0.69",

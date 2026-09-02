@@ -139,6 +139,23 @@ impl ReadbackStaging {
         }
     }
 
+    /// 从已映射 staging 读取 `out.len()` 个 u32 (布局原样拷出)
+    ///
+    /// # Panics
+    /// 未先 [`Self::map_blocking`] (或已 unmap) 时由 wgpu 映射校验 panic
+    pub fn read_u32(&self, out: &mut [u32]) {
+        let bytes = self
+            .inner
+            .buffer()
+            .slice(..)
+            .get_mapped_range()
+            .expect("read_u32 要求 staging 处于已映射状态");
+        let need = out.len() * 4;
+        for (i, chunk) in bytes[..need].chunks_exact(4).enumerate() {
+            out[i] = u32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        }
+    }
+
     /// 解除映射 (幂等; 每块回读后必须调用, 否则下块 map 失败)
     pub fn unmap(&mut self) {
         if self.mapped {

@@ -1445,3 +1445,8 @@ convertNone: 无转换
 cmdNoByteRoute: 未连接字节路由 — 请将 loopbackOut 端口连到 Transport.tx 或 FrameDecoder.in
 noTransportNode: 无数据接口节点 — 请先从控件面板拖入「数据接口」
 targetTransport: 目标数据接口
+
+# 波形包络模式 (wgpu 降采样原型)
+envelopeModeTitle: "包络模式: 后端逐列 min/max 降采样 (GPU 加速), 前端仅绘制缎带 (原型)"
+envelopeMode: 包络
+envelopeStats: "窗口 {n} 点 → {columns} 列包络"

@@ -1445,3 +1445,8 @@ convertNone: No conversion
 cmdNoByteRoute: No byte route — connect loopbackOut to Transport.tx or FrameDecoder.in
 noTransportNode: No transport node — drag a "Data Interface" node from the palette first
 targetTransport: Target transport
+
+# 波形包络模式 (wgpu 降采样原型)
+envelopeModeTitle: "Envelope mode: backend per-column min/max decimation (GPU-accelerated), frontend draws ribbon only (prototype)"
+envelopeMode: Envelope
+envelopeStats: "window {n} pts → {columns}-col envelope"

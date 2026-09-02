@@ -11,3 +11,11 @@ wgpu = { workspace = true }
 pollster = { workspace = true }
 log = { workspace = true }
 thiserror = { workspace = true }
+bytemuck = { version = "1", features = ["derive"] }
+
+[[bench]]
+name = "envelope_bench"
+harness = false
+
+[dev-dependencies]
+criterion = { workspace = true }

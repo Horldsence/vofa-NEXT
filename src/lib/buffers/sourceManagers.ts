@@ -51,6 +51,16 @@ export function getWaveformBuffer(sourceId: string): WaveformWindowCache | null 
   return waveformSources.get(sourceId)?.buffer ?? null;
 }
 
+/// 反查缓冲对应的协议源 id (波形图按 buffer 引用溯源订阅时使用);
+/// 主波形单例 (无独立源缓冲) 返回主源 id
+export function waveformSourceIdOf(buffer: WaveformWindowCache): string | null {
+  if (buffer === waveformWindow) return primaryWaveformSource;
+  for (const [id, entry] of waveformSources) {
+    if (entry.buffer === buffer) return id;
+  }
+  return null;
+}
+
 // ==================== 主波形源 (驱动全局单例 waveformWindow) ====================
 
 let primaryWaveformSource: string | null = null;

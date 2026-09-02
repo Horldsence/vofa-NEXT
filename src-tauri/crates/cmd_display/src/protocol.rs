@@ -31,6 +31,12 @@ pub enum DisplayRequest {
     Waveform {
         source: String,
     },
+    /// 波形包络 (wgpu/CPU 逐列 min/max 降采样) — 二进制推送, 前端缎带绘制
+    WaveformEnvelope {
+        source: String,
+        /// 输出列数 (画布像素列), 后端 clamp 到 16..=4096
+        columns: u32,
+    },
     RawData {
         origin: RawDataOrigin,
         #[serde(default)]

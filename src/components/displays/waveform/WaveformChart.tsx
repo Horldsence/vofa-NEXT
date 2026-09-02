@@ -10,6 +10,8 @@ import type { WidgetConfig } from '../../../types';
 import { getEffectiveChannel, type ScopeAxisConfig } from '../../../types';
 import { timeBaseToWindowSec, applyCoupling } from '../../../lib/utils/scopeUtils';
 import { WaveformTimeline } from './WaveformTimeline';
+import { WaveformEnvelopeChart } from './WaveformEnvelopeChart';
+import { waveformSourceIdOf } from '../../../lib/buffers/sourceManagers';
 import {
   computeConnectedInputs, buildSeriesSlots, slotColor, resolveInputArray,
   type ConnectedInput, type SeriesSlot, type FrozenWaveformData, type TimelineSeriesSpec,
@@ -66,6 +68,10 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
 
   const [selectedRange, setSelectedRange] = useState<{ startSec: number; endSec: number } | null>(null);
   const [copyFeedback, setCopyFeedback] = useState(false);
+
+  /// 包络模式 (原型): 后端逐列 min/max 降采样, 前端仅绘制缎带 — 默认关
+  const [envelopeMode, setEnvelopeMode] = useState(false);
+  const envelopeSourceId = useMemo(() => waveformSourceIdOf(buffer), [buffer]);
 
   const tooltipRef = useRef<HTMLDivElement>(null);
 
@@ -337,6 +343,35 @@ export function WaveformChart({ widget, axisConfig, onConfigChange, buffer = wav
               channels={axisConfig.channels}
             />
           </svg>
+        )}
+
+        {/* 包络模式开关 (右上角, 提示条下方) — 开启时覆盖绘制后端降采样缎带 */}
+        {envelopeSourceId && (
+          <button
+            className={`absolute top-7 right-2 z-[100] px-2 py-0.5 text-[10px] rounded border transition-colors select-none ${
+              envelopeMode
+                ? 'text-green bg-bg-editor border-green/50'
+                : 'text-text-secondary bg-bg-editor/95 border-border/30 hover:text-text-primary hover:bg-bg-hover'
+            }`}
+            title={t(lang, 'envelopeModeTitle')}
+            onClick={() => setEnvelopeMode((v) => !v)}
+          >
+            {t(lang, 'envelopeMode')}
+          </button>
+        )}
+        {envelopeMode && envelopeSourceId && (
+          <div className="absolute inset-0 z-50 bg-bg-editor">
+            <WaveformEnvelopeChart
+              sourceId={envelopeSourceId}
+              series={timelineSeries.map((s) => ({
+                label:
+                  s.input.kind === 'channel'
+                    ? `CH${s.input.idx + 1}`
+                    : `MATH:${s.input.sourceId}`,
+                color: s.color,
+              }))}
+            />
+          </div>
         )}
 
         {/* 左上角提示: 按住 Ctrl/Cmd 隐藏光标 */}
