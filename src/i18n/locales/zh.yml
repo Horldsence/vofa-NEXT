@@ -595,6 +595,8 @@ settingNotifShowOnErrorDesc: 发生错误时显示通知
 # 设置项 - Performance
 settingMaxFeedWorkers: 自动并发 Worker 上限
 settingMaxFeedWorkersDesc: 后端根据积压自动扩缩容，实际 worker 数不超过 CPU 数和此安全上限
+settingEvalWorkers: 图评估并发数
+settingEvalWorkersDesc: 数值平面按图内独立路径并行评估，1 为串行；多路径大流量时调大可加速
 settingFeedParallelUnit: 并行分发单元
 settingFeedParallelUnitDesc: 每次分发给并行 worker 的消息批大小
 settingMinWorkerBytesKb: Worker 最小数据量 (KB)

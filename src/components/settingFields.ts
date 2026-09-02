@@ -371,6 +371,14 @@ export const SETTING_FIELDS: SettingFieldDef[] = [
   },
   {
     category: 'performance',
+    field: 'evalWorkers',
+    labelKey: 'settingEvalWorkers',
+    descKey: 'settingEvalWorkersDesc',
+    control: { kind: 'number', min: 1, max: 16, step: 1 },
+    keywords: ['worker', 'eval', '评估', '并行', '图计算'],
+  },
+  {
+    category: 'performance',
     field: 'memoryBudgetMb',
     labelKey: 'settingCoalesceMaxBytesKb',
     descKey: 'settingCoalesceMaxBytesKbDesc',

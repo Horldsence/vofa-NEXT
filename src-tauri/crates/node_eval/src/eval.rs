@@ -88,6 +88,16 @@ impl CompiledEval {
         &self.plan.slot_unit
     }
 
+    /// ProtocolSource 引用的全局 Protocol 节点 id 表 (并发路径解析触发源下标用)
+    pub fn frame_sources(&self) -> &[String] {
+        &self.plan.frame_sources
+    }
+
+    /// SpectrumSink 输入槽位表: (sink_node_id, 源值槽位; None = 无上游边)
+    pub fn spectrum_slots(&self) -> &[(String, Option<usize>)] {
+        &self.plan.spectrum_slots
+    }
+
     /// 静态本地图判定 — 纯外部常量输入的纯函数图:
     /// 无 SpectrumSink / TextOut, op 全部 ∈ {Input, TextInput, Custom, Math, Str}
     /// (无 ProtocolSource/Filter/Ifft/Trigger/FrameDecoder — 逐帧评估是纯浪费,

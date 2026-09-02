@@ -85,6 +85,8 @@ export interface AppSettings {
   performance: {
     mode: 'auto';
     maxWorkers: number;
+    /** 数值平面评估 worker 数 (1 = 串行; ≥2 启用图内路径并行评估) */
+    evalWorkers: number;
     memoryBudgetMb: number;
     previewFpsLimit: number;
     previewBandwidthMbPerSec: number;
@@ -181,6 +183,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   performance: {
     mode: 'auto',
     maxWorkers: 8,
+    evalWorkers: 1,
     memoryBudgetMb: 256,
     previewFpsLimit: 60,
     previewBandwidthMbPerSec: 8,

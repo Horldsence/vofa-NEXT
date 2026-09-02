@@ -27,7 +27,44 @@ pub struct EvalBreakdown {
 }
 
 /// 每 graph 一组槽位缓冲 (slots, written, str_slots, str_written), 批内跨帧复用
-type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
+pub(crate) type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
+
+/// `mem::take` + Drop 写回守卫 — 并发路径把共享表整表取出做零克隆共享,
+/// 任何退路 (含 panic 展开) 都把当前值原样放回, 不丢共享状态
+pub(crate) struct PutBack<'a, T> {
+    dst: &'a mut T,
+    val: Option<T>,
+}
+
+impl<'a, T: Default> PutBack<'a, T> {
+    pub(crate) fn take(dst: &'a mut T) -> Self {
+        Self {
+            val: Some(std::mem::take(dst)),
+            dst,
+        }
+    }
+
+    pub(crate) const fn get(&self) -> &T {
+        self.val.as_ref().expect("PutBack 值仅在 Drop 时移出")
+    }
+
+    pub(crate) const fn get_mut(&mut self) -> &mut T {
+        self.val.as_mut().expect("PutBack 值仅在 Drop 时移出")
+    }
+}
+
+impl<T> Drop for PutBack<'_, T> {
+    fn drop(&mut self) {
+        if let Some(v) = self.val.take() {
+            *self.dst = v;
+        }
+    }
+}
+
+/// [`PutBack::take`] 的便捷形式
+pub(crate) fn put_back<T: Default>(dst: &mut T) -> PutBack<'_, T> {
+    PutBack::take(dst)
+}
 
 struct PortSampleBatch {
     key: TopicKey,
@@ -40,7 +77,7 @@ struct PortSampleBatch {
 /// StringValuesMap (FxHash) 深合并进快照 map (std hasher) — 移动语义, 字符串零 clone
 ///
 /// 同 (node, port) 覆盖写; 两侧 hasher 不同 (FxHash vs SipHash) 故逐条目迁移
-fn merge_str_map(
+pub(crate) fn merge_str_map(
     src: node_engine::StringValuesMap,
     dst: &mut HashMap<String, HashMap<String, String>>,
 ) {
@@ -56,6 +93,8 @@ fn merge_str_map(
 fn publish_str_slots(
     graph_list: &[&CompiledGraph],
     slot_bufs: &[SlotBufs],
+    static_list: &[&CompiledGraph],
+    static_bufs: &[SlotBufs],
     out: &mut HashMap<String, HashMap<String, String>>,
 ) {
     let mut buf = node_engine::StringValuesMap::default();
@@ -63,6 +102,9 @@ fn publish_str_slots(
         let (_, _, str_slots, str_written) = &slot_bufs[gi];
         g.compiled()
             .materialize_str(str_slots, str_written, &mut buf);
+    }
+    for (bufs, g) in static_bufs.iter().zip(static_list) {
+        g.compiled().materialize_str(&bufs.2, &bufs.3, &mut buf);
     }
     merge_str_map(buf, out);
 }
@@ -72,7 +114,7 @@ fn publish_str_slots(
 /// - 不含任何 ProtocolSource (Input/Math/Custom 等纯本地图) → 任意源来帧都触发
 ///   (沿用旧单源架构行为: 所有图每帧评估)
 /// - 引用了其他源 → 不触发 (该源来帧时才评估)
-fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
+pub(crate) fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
     let mut has_source = false;
     for n in g.value_nodes() {
         if let NodeKind::ProtocolSource { node_id, .. } = &n.kind {
@@ -221,11 +263,20 @@ pub fn process_source_batch(
     let mut analyzers = eval_state.spectrum_analyzers.lock();
 
     // 仅保留被该源触发的图 (graph 下标固定 — 同一锁 guard 内迭代序稳定,
-    // 派生边/槽位缓冲按此对齐)
-    let graph_list: Vec<&CompiledGraph> = graphs
-        .values()
-        .filter(|g| graph_triggered_by(g, source_id))
-        .collect();
+    // 派生边/槽位缓冲按此对齐); 静态纯本地图 (输入批内不变的纯函数图) 单独
+    // 收集 — 每批评估一次, 输出值与逐帧评估相同 (见 is_static_local)
+    let mut graph_list: Vec<&CompiledGraph> = Vec::new();
+    let mut static_list: Vec<&CompiledGraph> = Vec::new();
+    for g in graphs.values() {
+        if !graph_triggered_by(g, source_id) {
+            continue;
+        }
+        if g.compiled().is_static_local() {
+            static_list.push(g);
+        } else {
+            graph_list.push(g);
+        }
+    }
 
     // 槽位缓冲: 每 graph 一组, 批内跨帧复用
     let mut slot_bufs: Vec<SlotBufs> = graph_list
@@ -274,6 +325,47 @@ pub fn process_source_batch(
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
                 derived_edges.push((gi, slot, buffer.derived_index_of(&e.target, &e.source)));
+            }
+        }
+    }
+
+    // 静态图: 每批评估一次 (无状态节点 — 全表传参无副作用), 派生边批首预计算
+    let mut static_bufs: Vec<SlotBufs> = static_list
+        .iter()
+        .map(|g| {
+            let c = g.compiled();
+            (
+                vec![0.0; c.slot_count()],
+                vec![false; c.slot_count()],
+                vec![String::new(); c.str_slot_count()],
+                vec![false; c.str_slot_count()],
+            )
+        })
+        .collect();
+    let t_static = std::time::Instant::now();
+    for (bufs, g) in static_bufs.iter_mut().zip(&static_list) {
+        g.compiled().run(
+            source_frames,
+            &source_texts,
+            &input_values,
+            &custom_outputs,
+            &mut filter_states,
+            &decoder_states,
+            &mut ifft_states,
+            &mut trigger_states,
+            &mut bufs.0,
+            &mut bufs.1,
+            &mut bufs.2,
+            &mut bufs.3,
+        );
+    }
+    breakdown.graph_eval_ns += u64::try_from(t_static.elapsed().as_nanos()).unwrap_or(u64::MAX);
+
+    let mut static_edges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); static_list.len()];
+    for (g, edges) in static_list.iter().zip(&mut static_edges) {
+        for e in g.edges() {
+            if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
+                edges.push((slot, buffer.derived_index_of(&e.target, &e.source)));
             }
         }
     }
@@ -348,6 +440,16 @@ pub fn process_source_batch(
                 buffer.push_derived_idx(buf_idx, slots[slot]);
             }
         }
+        // 静态图派生值逐帧重复 push (输出批内不变 — 常值重复写入与逐帧评估等价,
+        // 且保持派生环与主时间戳轴的 push 计数 1:1 对齐)
+        for (gi, edges) in static_edges.iter().enumerate() {
+            let (slots, written, ..) = &static_bufs[gi];
+            for (slot, buf_idx) in edges {
+                if written[*slot] {
+                    buffer.push_derived_idx(*buf_idx, slots[*slot]);
+                }
+            }
+        }
         breakdown.derived_ns += u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX);
 
         // 4. 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口 (仅 written 槽位)
@@ -374,12 +476,17 @@ pub fn process_source_batch(
                     let (slots, written, ..) = &slot_bufs[gi];
                     g.compiled().materialize(slots, written, &mut snap.values);
                 }
+                for (bufs, g) in static_bufs.iter().zip(&static_list) {
+                    g.compiled().materialize(&bufs.0, &bufs.1, &mut snap.values);
+                }
                 snap.tick = snap.tick.wrapping_add(1);
             }
             // 字符串输出与 f32 同点发布 (节流对齐, 仅 written 置位槽位物化)
             publish_str_slots(
                 &graph_list,
                 &slot_bufs,
+                &static_list,
+                &static_bufs,
                 &mut eval_state.graph_string_outputs.lock(),
             );
             last_publish = std::time::Instant::now();
@@ -400,6 +507,9 @@ pub fn process_source_batch(
             let (slots, written, ..) = &slot_bufs[gi];
             g.compiled().materialize(slots, written, &mut snap.values);
         }
+        for (bufs, g) in static_bufs.iter().zip(&static_list) {
+            g.compiled().materialize(&bufs.0, &bufs.1, &mut snap.values);
+        }
         snap.tick = snap.tick.wrapping_add(1);
         changed
     };
@@ -412,8 +522,32 @@ pub fn process_source_batch(
     publish_str_slots(
         &graph_list,
         &slot_bufs,
+        &static_list,
+        &static_bufs,
         &mut eval_state.graph_string_outputs.lock(),
     );
+
+    // 静态图端口批: 批尾单样本 (批尾帧时间戳) — 批内输出常量, 每帧重复发布
+    // 是纯浪费 (样本密度 delta 经等价性测试单测锚定);
+    // 锁释放前收集, 与动态批一起发布
+    let mut static_publish: Vec<(TopicKey, u64, f64)> = Vec::new();
+    if let Some(last) = frames.last() {
+        for (bufs, g) in static_bufs.iter().zip(&static_list) {
+            let compiled = g.compiled();
+            for (slot, (node_id, port)) in compiled.slot_names().iter().enumerate() {
+                if matches!(
+                    g.value_def(node_id).map(|node| &node.kind),
+                    Some(NodeKind::ProtocolSource { .. })
+                ) {
+                    continue;
+                }
+                let key = TopicKey::new(node_id, port);
+                if eval_state.data_bus.is_active(&key) && bufs.1[slot] {
+                    static_publish.push((key, last.timestamp, f64::from(bufs.0[slot])));
+                }
+            }
+        }
+    }
 
     drop(analyzers);
     drop(trigger_states);
@@ -431,5 +565,10 @@ pub fn process_source_batch(
                 Arc::from(batch.values),
             );
         }
+    }
+    for (key, ts, value) in static_publish {
+        eval_state
+            .data_bus
+            .publish_samples(key, Arc::from([ts]), Arc::from([value]));
     }
 }

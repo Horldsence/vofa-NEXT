@@ -26,7 +26,9 @@ impl NodeArm for TextOutArm {
         {
             return;
         }
-        let text = graph.resolve_str_input(node_id, "text", ctx.out_str).to_owned();
+        let text = graph
+            .resolve_str_input(node_id, "text", ctx.out_str)
+            .to_owned();
         set_str_port(node_out_str_entry(ctx.out_str, node_id), "text", &text);
     }
 }

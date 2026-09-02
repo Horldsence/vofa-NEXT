@@ -317,6 +317,7 @@ async fn feed_protocol(
         let buffer = plane.buffer_for(proto_id);
         let proto = proto_id.to_string();
         let frames = std::mem::take(&mut out.frames);
+        let eval_workers = cfg.eval_workers;
         let eval_task = tokio::task::spawn_blocking(move || {
             super::frame_dispatch::on_frames_detached(
                 &eval,
@@ -324,6 +325,7 @@ async fn feed_protocol(
                 &buffer,
                 &proto,
                 &frames,
+                eval_workers,
             )
         });
         match eval_task.await {

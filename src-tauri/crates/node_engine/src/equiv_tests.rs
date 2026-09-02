@@ -437,7 +437,10 @@ fn test_compiled_eval_rawdata_str_equivalence() {
         // ps1 的 "str" 端口物化为最新源文本 (ProtocolSourceStr 快路径特殊分支覆盖)
         let expected = texts_per_frame[frame_idx % 4];
         assert_eq!(
-            out_str_a.get("ps1").and_then(|p| p.get("str")).map(String::as_str),
+            out_str_a
+                .get("ps1")
+                .and_then(|p| p.get("str"))
+                .map(String::as_str),
             Some(expected)
         );
         assert!(out_str_a.contains_key("mid1"), "Mid 节点应参与求值");
@@ -532,7 +535,10 @@ fn test_compiled_eval_convert_ops_equivalence() {
         // fmt1 的 tmpl 内联回退生效: 输出形如 T=13.00V (帧 13)
         let expected_fmt = format!("T={:.2}V", f32::from(frame_idx));
         assert_eq!(
-            out_str_a.get("fmt1").and_then(|p| p.get("result")).map(String::as_str),
+            out_str_a
+                .get("fmt1")
+                .and_then(|p| p.get("result"))
+                .map(String::as_str),
             Some(expected_fmt.as_str()),
             "帧 {frame_idx} Format 内联模板应展开 knob 值"
         );

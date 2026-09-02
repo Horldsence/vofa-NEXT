@@ -30,6 +30,7 @@ pub mod decoder_feed;
 pub mod eval_state;
 pub mod feed_parallel;
 pub mod graph_eval;
+pub mod graph_eval_parallel;
 
 pub use data_plane::byte_router::RouteSummary;
 pub use data_plane::{

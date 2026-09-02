@@ -33,3 +33,4 @@ error = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
+pipeline_bus = { workspace = true }

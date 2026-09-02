@@ -14,6 +14,9 @@ pub enum PipelineMode {
 pub struct PipelineConfig {
     pub mode: PipelineMode,
     pub max_workers: usize,
+    /// 数值平面评估 worker 数 — 1 = 串行 (默认, 行为与旧版一致);
+    /// ≥2 启用图内路径 (评估单元) 分块 fork-join 并行评估
+    pub eval_workers: usize,
     pub memory_budget_mb: usize,
     pub preview_fps_limit: u32,
     pub preview_bandwidth_mb_per_sec: usize,
@@ -24,6 +27,7 @@ impl Default for PipelineConfig {
         Self {
             mode: PipelineMode::Auto,
             max_workers: 8,
+            eval_workers: 1,
             memory_budget_mb: 256,
             preview_fps_limit: 60,
             preview_bandwidth_mb_per_sec: 8,

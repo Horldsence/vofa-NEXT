@@ -7,9 +7,7 @@
 //! - [`restore_workspace`]: 启动时从 `workspace.json` 恢复存储并逐 tab 重编译,
 //!   让图在后端立即可求值 (前端随后水合, 不再回推整图)
 
-use app_state::{
-    load_workspace, DataTabMeta, Position, TabGraphFile, TabMeta, WidgetRecord,
-};
+use app_state::{load_workspace, DataTabMeta, Position, TabGraphFile, TabMeta, WidgetRecord};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -49,7 +47,8 @@ pub fn workspace_get(state: State<'_, AppState>) -> Option<WorkspaceSnapshot> {
     if !ws.restored {
         return None;
     }
-    let (tabs, data_tabs, positions) = (ws.tabs.clone(), ws.data_tabs.clone(), ws.positions.clone());
+    let (tabs, data_tabs, positions) =
+        (ws.tabs.clone(), ws.data_tabs.clone(), ws.positions.clone());
     drop(ws);
     let graphs = {
         let store = state.source_graphs.lock();

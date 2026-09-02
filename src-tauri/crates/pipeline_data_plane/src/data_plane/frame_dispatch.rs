@@ -32,13 +32,24 @@ use crate::graph_eval::{evaluate_snapshot_now, process_source_batch, EvalBreakdo
 /// 返回数值平面耗时 ns (push_frame + 图评估 + 派生 + 频谱, 观测用)。
 pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) -> u64 {
     let buffer = plane.buffer_for(source_id);
-    on_frames_detached(&plane.eval, &plane.global_nodes, &buffer, source_id, frames)
+    let eval_workers = plane.pipeline_config.read().eval_workers;
+    on_frames_detached(
+        &plane.eval,
+        &plane.global_nodes,
+        &buffer,
+        source_id,
+        frames,
+        eval_workers,
+    )
 }
 
 /// 帧分发主体 — 只依赖 eval 状态 + 全局节点表 + 该源 buffer (全部 Arc 可克隆)
 ///
 /// 供字节路由把整段重型同步评估丢进 `tokio::task::spawn_blocking` 执行:
 /// 大批次 (700k 时可达 24ms+) 不再占住 tokio worker, await 侧保持同源批序。
+///
+/// `eval_workers ≥ 2` 时走图内路径分块 fork-join 并行评估
+/// ([`crate::graph_eval_parallel`]), 1 = 串行热路径。
 #[allow(clippy::implicit_hasher)] // 与 DataPlaneState.global_nodes 的具体 hasher 类型耦合, 泛化 S 会传染整个状态图
 pub fn on_frames_detached(
     eval: &GraphEvalState,
@@ -46,6 +57,7 @@ pub fn on_frames_detached(
     buffer: &Arc<Mutex<DataBuffer>>,
     source_id: &str,
     frames: &[DataFrame],
+    eval_workers: usize,
 ) -> u64 {
     if frames.is_empty() {
         return 0;
@@ -54,7 +66,19 @@ pub fn on_frames_detached(
     let mut buf = buffer.lock();
     let mut sf = eval.source_frames.lock();
     let mut breakdown = EvalBreakdown::default();
-    process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
+    if eval_workers > 1 {
+        crate::graph_eval_parallel::process_source_batch_parallel(
+            eval,
+            &mut sf,
+            source_id,
+            frames,
+            &mut buf,
+            eval_workers,
+            &mut breakdown,
+        );
+    } else {
+        process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
+    }
     breakdown.push_frame_ns + breakdown.graph_eval_ns + breakdown.derived_ns + breakdown.spectrum_ns
 }
 

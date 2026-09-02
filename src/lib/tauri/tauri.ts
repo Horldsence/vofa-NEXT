@@ -142,6 +142,8 @@ export async function closeTauriChannel<T>(
 export interface PipelineConfig {
   mode: 'auto';
   max_workers: number;
+  /** 数值平面评估 worker 数 (1 = 串行默认; ≥2 启用图内路径并行评估) */
+  eval_workers: number;
   memory_budget_mb: number;
   preview_fps_limit: number;
   preview_bandwidth_mb_per_sec: number;

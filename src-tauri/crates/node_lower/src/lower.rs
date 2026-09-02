@@ -195,15 +195,15 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> SlotPlan {
                 s,
                 "arena 槽位下标必须连续递增 (alloc 序 == slot idx 序)"
             );
-            let s = u32::try_from(s).unwrap_or(u32::MAX);
-            slot_unit.push(s);
-            clear_f32[u].push(s);
+            let slot = u32::try_from(s).unwrap_or(u32::MAX);
+            slot_unit.push(u32::try_from(u).unwrap_or(u32::MAX));
+            clear_f32[u].push(slot);
         }
         for s in str_mark..ctx.str_slots.len() {
             debug_assert_eq!(str_slot_unit.len(), s, "字符串槽位下标必须连续递增");
-            let s = u32::try_from(s).unwrap_or(u32::MAX);
-            str_slot_unit.push(s);
-            clear_str[u].push(s);
+            let slot = u32::try_from(s).unwrap_or(u32::MAX);
+            str_slot_unit.push(u32::try_from(u).unwrap_or(u32::MAX));
+            clear_str[u].push(slot);
         }
     }
 

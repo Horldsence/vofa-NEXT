@@ -15,6 +15,8 @@ buffer_databuffer = { workspace = true }
 buffer_graph = { workspace = true }
 buffer_raw = { workspace = true }
 node_engine = { workspace = true }
+node_eval = { workspace = true }
+rustc-hash = { workspace = true }
 node_kind = { workspace = true }
 node_trigger = { workspace = true }
 node_frame_decoder = { workspace = true }
@@ -42,3 +44,4 @@ notify_events = { path = "../notify_events" }
 [dev-dependencies]
 # data_plane/{frame_dispatch, reconcile} 的 #[cfg(test)] 模块用 AppState 构造测试
 app_state = { path = "../app_state" }
+node_testkit = { workspace = true }

@@ -57,6 +57,14 @@ impl DataBuffer {
         }
     }
 
+    /// 读取派生通道最近 N 个点 (测试/显示消费端; 越界返回空)
+    pub fn get_derived(&self, idx: usize, count: usize) -> Vec<f32> {
+        match self.derived_list.get(idx) {
+            Some(e) => e.rb.recent(count),
+            None => Vec::new(),
+        }
+    }
+
     /// 清空所有派生缓冲区 (断开连接/清数据时调用)
     pub fn clear_derived(&mut self) {
         self.derived_list.clear();

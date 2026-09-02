@@ -42,10 +42,7 @@ fn gauge_record(id: &str) -> WidgetRecord {
 }
 
 fn temp_dir(tag: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "vofa-workspace-{tag}-{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("vofa-workspace-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("创建临时目录");
     dir
@@ -63,10 +60,11 @@ async fn workspace_survives_save_and_restore_roundtrip() {
         name: "Tab 1".into(),
         widgets: vec!["w-gauge".into()],
     }];
-    state.workspace.lock().positions.insert(
-        "w-gauge".into(),
-        Position { x: 12.5, y: 40.0 },
-    );
+    state
+        .workspace
+        .lock()
+        .positions
+        .insert("w-gauge".into(), Position { x: 12.5, y: 40.0 });
     apply_tab_graph(
         &state,
         None,
@@ -81,7 +79,10 @@ async fn workspace_survives_save_and_restore_roundtrip() {
         }],
         HashMap::new(),
         Some(vec![gauge_record("w-gauge")]),
-        Some(HashMap::from([("m1".to_string(), Position { x: 1.0, y: 2.0 })])),
+        Some(HashMap::from([(
+            "m1".to_string(),
+            Position { x: 1.0, y: 2.0 },
+        )])),
         None,
     )
     .await
@@ -111,7 +112,10 @@ async fn workspace_survives_save_and_restore_roundtrip() {
         "恢复时应逐 tab 重编译"
     );
     assert!(
-        fresh.graphs_version.load(std::sync::atomic::Ordering::Relaxed) >= 1,
+        fresh
+            .graphs_version
+            .load(std::sync::atomic::Ordering::Relaxed)
+            >= 1,
         "恢复提交应推进版本号 (前端水合基线)"
     );
 

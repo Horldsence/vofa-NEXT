@@ -214,6 +214,12 @@ async fn auto_channels_above_four_flow_through_math_topic() {
 
     let channel_batch = channel_rx.recv().await.expect("ch7 sample");
     let math_batch = math_rx.recv().await.expect("math sample");
-    assert_eq!(channel_batch.samples.last().map(|sample| sample.value), Some(8.0));
-    assert_eq!(math_batch.samples.last().map(|sample| sample.value), Some(8.0));
+    assert_eq!(
+        channel_batch.samples.last().map(|sample| sample.value),
+        Some(8.0)
+    );
+    assert_eq!(
+        math_batch.samples.last().map(|sample| sample.value),
+        Some(8.0)
+    );
 }

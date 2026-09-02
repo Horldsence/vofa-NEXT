@@ -595,6 +595,8 @@ settingNotifShowOnErrorDesc: Show a notification when an error occurs
 # Setting items - Performance
 settingMaxFeedWorkers: Auto Worker Limit
 settingMaxFeedWorkersDesc: Backend workers scale with backlog and never exceed CPU count or this safety limit
+settingEvalWorkers: Graph Eval Workers
+settingEvalWorkersDesc: Evaluate independent graph paths in parallel; 1 = serial, raise for multi-path high-rate graphs
 settingFeedParallelUnit: Feed Parallel Unit
 settingFeedParallelUnitDesc: Message batch size dispatched to parallel workers each time
 settingMinWorkerBytesKb: Min Worker Bytes (KB)

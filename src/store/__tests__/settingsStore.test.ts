@@ -71,6 +71,7 @@ describe('settingsStore', () => {
       config: {
         mode: 'auto',
         max_workers: DEFAULT_SETTINGS.performance.maxWorkers,
+        eval_workers: DEFAULT_SETTINGS.performance.evalWorkers,
         memory_budget_mb: DEFAULT_SETTINGS.performance.memoryBudgetMb,
         preview_fps_limit: DEFAULT_SETTINGS.performance.previewFpsLimit,
         preview_bandwidth_mb_per_sec: DEFAULT_SETTINGS.performance.previewBandwidthMbPerSec,

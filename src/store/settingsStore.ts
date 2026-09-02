@@ -150,6 +150,7 @@ export function toPipelineConfig(p: AppSettings['performance']): PipelineConfig 
   return {
     mode: p.mode,
     max_workers: p.maxWorkers,
+    eval_workers: p.evalWorkers,
     memory_budget_mb: p.memoryBudgetMb,
     preview_fps_limit: p.previewFpsLimit,
     preview_bandwidth_mb_per_sec: p.previewBandwidthMbPerSec,
@@ -214,6 +215,10 @@ function migrateSettings(settings: AppSettings): AppSettings {
       typeof rawPerformance.maxWorkers === 'number'
         ? rawPerformance.maxWorkers
         : DEFAULT_SETTINGS.performance.maxWorkers,
+    evalWorkers:
+      typeof rawPerformance.evalWorkers === 'number'
+        ? rawPerformance.evalWorkers
+        : DEFAULT_SETTINGS.performance.evalWorkers,
     memoryBudgetMb:
       typeof rawPerformance.memoryBudgetMb === 'number'
         ? rawPerformance.memoryBudgetMb
