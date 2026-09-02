@@ -1,0 +1,13 @@
+[package]
+name = "node_gpu"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gpu_core = { workspace = true }
+node_kind = { workspace = true }
+node_lower = { workspace = true }
+log = { workspace = true }

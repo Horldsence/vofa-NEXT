@@ -165,6 +165,8 @@ pub struct DataPlaneState {
     pub logic_buffer: Arc<Mutex<LogicBuffer>>,
     pub decoded_buffer: Arc<Mutex<DecodedBuffer>>,
     pub pipeline_config: Arc<RwLock<PipelineConfig>>,
+    /// GPU 评估路径会话状态 (版本化计划缓存 + 禁用闸; 源间互斥)
+    pub gpu_eval: Arc<Mutex<crate::graph_eval_parallel::GpuPathState>>,
     /// 流水线诊断指标 (2s 窗口)
     metrics: Arc<DataPlaneMetrics>,
 }
@@ -199,6 +201,7 @@ impl DataPlaneState {
             logic_buffer,
             decoded_buffer,
             pipeline_config,
+            gpu_eval: Arc::new(Mutex::new(crate::graph_eval_parallel::GpuPathState::new())),
             metrics: Arc::new(DataPlaneMetrics::default()),
         }
     }

@@ -8,7 +8,7 @@ pub mod pipeline_config;
 pub mod transport_config;
 pub mod widget_config;
 
-pub use pipeline_config::{PipelineConfig, PipelineMode};
+pub use pipeline_config::{EvalBackend, PipelineConfig, PipelineMode};
 pub use transport_config::{
     CandleConfig, SerialConfig, SlcanConfig, TcpClientConfig, TcpServerConfig, TestDataConfig,
     TestSignal, TransportConfig, UdpConfig,

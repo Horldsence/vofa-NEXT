@@ -37,6 +37,7 @@ members = [
   "crates/dsp_fft",
   "crates/dsp_window",
   "crates/error",
+  "crates/gpu_core",
   "crates/logic_decoder",
   "crates/logic_types",
   "crates/mcp_client",
@@ -48,6 +49,7 @@ members = [
   "crates/node_frame_decoder",
   "crates/node_hir",
   "crates/node_kind",
+  "crates/node_gpu",
   "crates/node_lower",
   "crates/node_plane",
   "crates/node_testkit",
@@ -168,6 +170,11 @@ glob = "0.3"
 rustc-hash = "2"
 criterion = { version = "0.7", features = ["html_reports"] }
 petgraph = { version = "0.8", default-features = false, features = ["stable_graph"] }
+# wgpu: 跨平台 GPU compute (macOS=Metal / Windows=DX12+Vulkan / Linux=Vulkan) —
+# 数值平面无状态 Math 单元的 WGSL 卸载后端; pollster 供阻塞线程上同步初始化/映射
+wgpu = "30"
+pollster = "1"
+gpu_core = { path = "crates/gpu_core" }
 buffer_ring = { path = "crates/buffer_ring" }
 buffer_databuffer = { path = "crates/buffer_databuffer" }
 buffer_graph = { path = "crates/buffer_graph" }
@@ -201,6 +208,7 @@ node_eval = { path = "crates/node_eval" }
 node_frame_decoder = { path = "crates/node_frame_decoder" }
 node_hir = { path = "crates/node_hir" }
 node_kind = { path = "crates/node_kind" }
+node_gpu = { path = "crates/node_gpu" }
 node_lower = { path = "crates/node_lower" }
 node_plane = { path = "crates/node_plane" }
 node_testkit = { path = "crates/node_testkit" }
