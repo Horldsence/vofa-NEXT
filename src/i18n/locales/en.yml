@@ -312,6 +312,7 @@ sharedYDesc: Toggle whether all channels share a single Y axis (V/div and Positi
 sharedYHint: Shared Y mode — Set V/div and Position uniformly in the "Channels" tab
 cursorHideHint: hide cursor
 cursorHiddenHint: Cursor hidden (release key to restore)
+waveformDerated: Buffer derated (envelope view)
 waveformInteractHintTitle: Waveform interaction
 waveformInteractHintMessage: Left-drag to select a range for copying or CSV export. Right-drag or Shift+left-drag to pan the view.
 waveformSnapshotUnavailable: Frozen display retained; raw snapshot resampling is unavailable

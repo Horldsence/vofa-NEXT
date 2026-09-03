@@ -1,15 +1,17 @@
 //! 评估 worker — 数值平面独立任务 (摄入/评估解耦点)
 //!
-//! 字节平面 (读任务) 只负责解析, 产帧入每源有界帧队列; 本 worker 单实例
-//! 消费所有队列, 经 [`frame_dispatch::on_frames`] 完成缓冲推送与图评估。
+//! 字节平面 (读任务) 负责解析 + **记录平面入库** (record_frames, 原始波形
+//! 不依赖本 worker); 本 worker 单实例消费评估队列, 经
+//! [`frame_dispatch::eval_frames`] 完成 source_frames 更新与图评估,
+//! 派生输出写独立时间轴。
 //!
 //! 设计约束:
 //! - **单 worker**: 图求值状态 (滤波/触发/解码/source_frames) 跨源共享, 串行化
 //!   保持旧同步调用 (读任务内联 eval) 的批间原子语义
 //! - **公平轮询**: 每次取批在不同非空源间轮转, 快源不饿死慢源
-//! - **有界 + 丢最旧**: 队列满时丢最旧整批并计数 (`eval_dropped`) —
-//!   持续过载下丢最旧保最新, 波形尾部始终可见, 且丢弃显式可观测
-//!   (取代解耦前 broadcast Lagged 在评估段的等价物)
+//! - **有界 + 丢最旧 + 显式缺口**: 队列满时丢最旧整批并计数 (`eval_dropped`);
+//!   取批时若该源有缺口, 先复位关联有状态算子 (滤波/触发/IFFT) 并告警 —
+//!   绝不带断裂状态产出看似连续的近似值 (不变量 5)
 //! - **重求值不占 tokio worker**: 批量求值 (SIMD/并行, 见
 //!   [`frame_dispatch::on_frames`]) 经 blocking 池执行, worker 任务只做调度
 
@@ -28,10 +30,25 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
         // 尚未进入等待, 许可也会存储并在下次 notified() 立即返回
         notify.notified().await;
         while let Some((source, frames)) = plane.pop_frame_batch() {
+            // 缺口 (队列溢出丢批) → 复位该源关联有状态算子 (不变量 5)
+            if plane.take_eval_gap(&source).is_some() {
+                crate::graph_eval::reset_source_transient_state(&plane.eval, &source);
+            }
             let frame_count = frames.len();
             let eval_plane = plane.clone();
             let eval_task = tokio::task::spawn_blocking(move || {
-                super::frame_dispatch::on_frames(&eval_plane, &source, &frames)
+                let buffer = eval_plane.buffer_for(&source);
+                let options = super::frame_dispatch::EvalOptions::from_config(
+                    &eval_plane.pipeline_config.read(),
+                );
+                super::frame_dispatch::eval_frames(
+                    &eval_plane.eval,
+                    &eval_plane.global_nodes,
+                    &buffer,
+                    &source,
+                    &frames,
+                    options,
+                )
             });
             match eval_task.await {
                 Ok(eval_ns) => {

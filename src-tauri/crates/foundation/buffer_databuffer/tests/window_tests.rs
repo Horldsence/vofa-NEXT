@@ -16,9 +16,11 @@ fn derived_values<'a>(window: &'a WaveformWindow, sink: &str, source: &str) -> &
 #[test]
 fn get_window_with_derived() {
     let mut buf = DataBuffer::new(100, 1);
+    let math = buf.derived_index_of("wave1", "math1");
     for i in 0..5 {
-        buf.push_frame(&DataFrame::new(vec![i as f32]));
-        buf.push_derived("wave1", "math1", (i * 10) as f32);
+        let frame = DataFrame::new(vec![i as f32]);
+        buf.push_frame_at(frame.timestamp, &frame.channels);
+        buf.push_derived_ts_idx(math, frame.timestamp, (i * 10) as f32);
     }
     let w = buf.get_recent(5);
     assert_eq!(w.channels[0], vec![0.0, 1.0, 2.0, 3.0, 4.0]);
@@ -64,8 +66,13 @@ fn get_window_negative_range_clamps_to_zero() {
 #[test]
 fn waveform_window_json_represents_non_finite_gaps_as_null() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![f32::NAN]));
-    buf.push_derived("wave1", "math1", f32::INFINITY);
+    let frame = DataFrame::new(vec![f32::NAN]);
+    buf.push_frame_at(frame.timestamp, &frame.channels);
+    buf.push_derived_ts_idx(
+        buf.derived_index_of("wave1", "math1"),
+        frame.timestamp,
+        f32::INFINITY,
+    );
     let w = buf.get_recent(1);
     let json = serde_json::to_value(&w).unwrap();
 
@@ -118,15 +125,19 @@ fn min_max_window_spans_history_and_preserves_extrema() {
 #[test]
 fn min_max_never_discards_series_extrema_to_meet_an_impossible_budget() {
     let mut buf = DataBuffer::new(100, 1);
+    let math_indices: Vec<_> = (0..12)
+        .map(|series| buf.derived_index_of("wave", &format!("math-{series}")))
+        .collect();
     for index in 0..50 {
-        buf.push_frame(&DataFrame::with_timestamp(index * 1_000, vec![0.0]));
-        for series in 0..12 {
+        let ts = u64::try_from(index).unwrap_or(0) * 1_000;
+        buf.push_frame_at(ts, &[0.0]);
+        for (series, math_index) in math_indices.iter().enumerate() {
             let value = if index == series * 3 + 1 {
                 100.0 + series as f32
             } else {
                 0.0
             };
-            buf.push_derived("wave", &format!("math-{series}"), value);
+            buf.push_derived_ts_idx(*math_index, ts, value);
         }
     }
 
@@ -199,14 +210,15 @@ fn duplicate_timestamps_and_empty_windows_have_exact_bounds() {
 #[test]
 fn selected_derived_envelope_preserves_nan_safe_extrema_and_endpoints() {
     let mut buf = DataBuffer::new(200, 1);
+    let math = buf.derived_index_of("wave", "math");
     for index in 0..200_u64 {
-        buf.push_frame(&DataFrame::with_timestamp(index * 10, vec![f32::NAN]));
+        buf.push_frame_at(index * 10, &[f32::NAN]);
         let value = match index {
             73 => 900.0,
             74 => -800.0,
             _ => f32::NAN,
         };
-        buf.push_derived("wave", "math", value);
+        buf.push_derived_ts_idx(math, index * 10, value);
     }
     let selection = WaveformSeriesSelection {
         channels: vec![],
@@ -310,12 +322,13 @@ fn snapshot_clone_remains_frozen_after_live_ring_wraps() {
 #[test]
 fn raw_csv_matches_selected_original_series() {
     let mut buf = DataBuffer::new(10, 2);
+    let math = buf.derived_index_of("wave", "math");
     for index in 0..3_u64 {
-        buf.push_frame(&DataFrame::with_timestamp(
+        buf.push_frame_at(
             10_000 + index,
-            vec![index as f32, (index + 10) as f32],
-        ));
-        buf.push_derived("wave", "math", (index + 20) as f32);
+            vec![index as f32, (index + 10) as f32].as_slice(),
+        );
+        buf.push_derived_ts_idx(math, 10_000 + index, (index + 20) as f32);
     }
     let selection = WaveformSeriesSelection {
         channels: vec![1],

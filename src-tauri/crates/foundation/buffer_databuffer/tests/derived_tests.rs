@@ -1,20 +1,20 @@
 #![allow(clippy::float_cmp, clippy::cast_precision_loss)] // 测试数值断言: 精确比较 + 小整数转 f32 无精度问题
 use buffer_databuffer::{DataBuffer, WaveformWindow};
-use vofa_core::DataFrame;
 
 fn derived_values<'a>(window: &'a WaveformWindow, sink: &str, source: &str) -> &'a Vec<f32> {
     &window.derived[sink][source][""]
 }
 
 #[test]
-fn push_derived_aligned_with_timestamps() {
+fn push_derived_aligned_by_timestamp() {
     let mut buf = DataBuffer::new(100, 2);
-    buf.push_frame(&DataFrame::new(vec![1.0, 2.0]));
-    buf.push_derived("wave1", "math1", 10.0);
-    buf.push_frame(&DataFrame::new(vec![3.0, 4.0]));
-    buf.push_derived("wave1", "math1", 30.0);
-    buf.push_frame(&DataFrame::new(vec![5.0, 6.0]));
-    buf.push_derived("wave1", "math1", 50.0);
+    // 派生值携带与原始帧相同的显式时间戳 → 窗口按时间精确对齐
+    buf.push_frame_at(1_000, &[1.0, 2.0]);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave1", "math1"), 1_000, 10.0);
+    buf.push_frame_at(2_000, &[3.0, 4.0]);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave1", "math1"), 2_000, 30.0);
+    buf.push_frame_at(3_000, &[5.0, 6.0]);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave1", "math1"), 3_000, 50.0);
 
     let w = buf.get_recent(3);
     assert_eq!(w.channels[0], vec![1.0, 3.0, 5.0]);
@@ -25,12 +25,14 @@ fn push_derived_aligned_with_timestamps() {
 #[test]
 fn derived_created_later_pads_nan() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_frame(&DataFrame::new(vec![2.0]));
-    buf.push_frame(&DataFrame::new(vec![3.0]));
-    buf.push_derived("wave1", "math1", 30.0);
-    buf.push_frame(&DataFrame::new(vec![4.0]));
-    buf.push_derived("wave1", "math1", 40.0);
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_frame_at(2_000, &[2.0]);
+    // 前两个时间戳无派生值 (求值尚未覆盖) → NaN 对齐
+    let math = buf.derived_index_of("wave1", "math1");
+    buf.push_derived_ts_idx(math, 3_000, 30.0);
+    buf.push_frame_at(3_000, &[3.0]);
+    buf.push_derived_ts_idx(math, 4_000, 40.0);
+    buf.push_frame_at(4_000, &[4.0]);
 
     let w = buf.get_recent(4);
     assert_eq!(w.channels[0], vec![1.0, 2.0, 3.0, 4.0]);
@@ -42,15 +44,40 @@ fn derived_created_later_pads_nan() {
     assert_eq!(derived[3], 40.0);
 }
 
+/// 求值落后于记录: 缺失时间戳的位置补 NaN, 已求值部分不错位
+#[test]
+fn eval_lag_shows_gap_not_misalignment() {
+    let mut buf = DataBuffer::new(100, 1);
+    let math = buf.derived_index_of("wave1", "math1");
+    // 记录平面全速入库
+    for i in 1..=4_u64 {
+        buf.push_frame_at(i * 1_000, &[i as f32]);
+    }
+    // 求值平面只完成 2/4 (第二批被丢弃)
+    buf.push_derived_ts_idx(math, 1_000, 10.0);
+    buf.push_derived_ts_idx(math, 3_000, 30.0);
+
+    let w = buf.get_recent(4);
+    let derived = derived_values(&w, "wave1", "math1");
+    assert_eq!(derived[0], 10.0);
+    assert!(derived[1].is_nan(), "丢批处应显示缺口");
+    assert_eq!(derived[2], 30.0);
+    assert!(derived[3].is_nan());
+    // 原始通道不受影响
+    assert_eq!(w.channels[0], vec![1.0, 2.0, 3.0, 4.0]);
+}
+
 #[test]
 fn multiple_derived_sources() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_derived("wave1", "math1", 10.0);
-    buf.push_derived("wave1", "math2", 20.0);
-    buf.push_frame(&DataFrame::new(vec![2.0]));
-    buf.push_derived("wave1", "math1", 30.0);
-    buf.push_derived("wave1", "math2", 40.0);
+    let m1 = buf.derived_index_of("wave1", "math1");
+    let m2 = buf.derived_index_of("wave1", "math2");
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_derived_ts_idx(m1, 1_000, 10.0);
+    buf.push_derived_ts_idx(m2, 1_000, 20.0);
+    buf.push_frame_at(2_000, &[2.0]);
+    buf.push_derived_ts_idx(m1, 2_000, 30.0);
+    buf.push_derived_ts_idx(m2, 2_000, 40.0);
 
     let w = buf.get_recent(2);
     assert_eq!(derived_values(&w, "wave1", "math1"), &vec![10.0, 30.0]);
@@ -60,10 +87,13 @@ fn multiple_derived_sources() {
 #[test]
 fn multiple_outputs_from_one_source_remain_distinct_and_aligned() {
     let mut buf = DataBuffer::new(100, 1);
+    let out_a = buf.derived_port_index_of("wave", "custom", "out-a");
+    let out_b = buf.derived_port_index_of("wave", "custom", "out-b");
     for index in 0..3 {
-        buf.push_frame(&DataFrame::new(vec![index as f32]));
-        buf.push_derived_port("wave", "custom", "out-a", 10.0 + index as f32);
-        buf.push_derived_port("wave", "custom", "out-b", 20.0 + index as f32);
+        let ts = u64::try_from(index + 1).unwrap_or(0) * 1_000;
+        buf.push_frame_at(ts, &[index as f32]);
+        buf.push_derived_ts_idx(out_a, ts, 10.0 + index as f32);
+        buf.push_derived_ts_idx(out_b, ts, 20.0 + index as f32);
     }
 
     let window = buf.get_recent(3);
@@ -83,9 +113,9 @@ fn multiple_outputs_from_one_source_remain_distinct_and_aligned() {
 #[test]
 fn multiple_derived_sinks() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_derived("wave1", "math1", 10.0);
-    buf.push_derived("wave2", "math2", 20.0);
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave1", "math1"), 1_000, 10.0);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave2", "math2"), 1_000, 20.0);
 
     let w = buf.get_recent(1);
     assert_eq!(derived_values(&w, "wave1", "math1"), &vec![10.0]);
@@ -95,8 +125,8 @@ fn multiple_derived_sinks() {
 #[test]
 fn clear_derived() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_derived("wave1", "math1", 10.0);
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave1", "math1"), 1_000, 10.0);
     assert!(!buf.get_recent(1).derived.is_empty());
 
     buf.clear_derived();
@@ -108,9 +138,9 @@ fn clear_derived() {
 #[test]
 fn remove_derived_sink() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_derived("wave1", "math1", 10.0);
-    buf.push_derived("wave2", "math2", 20.0);
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave1", "math1"), 1_000, 10.0);
+    buf.push_derived_ts_idx(buf.derived_index_of("wave2", "math2"), 1_000, 20.0);
 
     buf.remove_derived_sink("wave1");
     let w = buf.get_recent(1);
@@ -121,9 +151,11 @@ fn remove_derived_sink() {
 #[test]
 fn derived_ringbuffer_overflow() {
     let mut buf = DataBuffer::new(3, 1);
+    let math = buf.derived_index_of("wave1", "math1");
     for i in 0..5 {
-        buf.push_frame(&DataFrame::new(vec![i as f32]));
-        buf.push_derived("wave1", "math1", (i * 10) as f32);
+        let ts = u64::try_from(i + 1).unwrap_or(0) * 1_000;
+        buf.push_frame_at(ts, &[i as f32]);
+        buf.push_derived_ts_idx(math, ts, (i * 10) as f32);
     }
     let w = buf.get_recent(3);
     assert_eq!(w.channels[0], vec![2.0, 3.0, 4.0]);
@@ -140,7 +172,7 @@ fn derived_empty_buffer() {
 
 #[test]
 fn derived_index_of_idempotent() {
-    let mut buf = DataBuffer::new(100, 1);
+    let buf = DataBuffer::new(100, 1);
     let i1 = buf.derived_index_of("wave1", "math1");
     let i2 = buf.derived_index_of("wave1", "math1");
     assert_eq!(i1, i2);
@@ -149,8 +181,8 @@ fn derived_index_of_idempotent() {
 #[test]
 fn push_derived_idx_out_of_bounds_silently_drops() {
     let mut buf = DataBuffer::new(100, 1);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_derived_idx(999, 42.0);
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_derived_ts_idx(999, 1_000, 42.0);
     let w = buf.get_recent(1);
     assert!(w.derived.is_empty());
 }
@@ -159,12 +191,12 @@ fn push_derived_idx_out_of_bounds_silently_drops() {
 fn remove_derived_sink_rebuilds_index() {
     let mut buf = DataBuffer::new(100, 1);
     let _i_a = buf.derived_index_of("waveA", "math1");
-    let _i_b = buf.derived_index_of("waveB", "math1");
+    buf.derived_index_of("waveB", "math1");
     buf.remove_derived_sink("waveA");
     let new_i_b = buf.derived_index_of("waveB", "math1");
     assert_eq!(new_i_b, 0);
-    buf.push_frame(&DataFrame::new(vec![1.0]));
-    buf.push_derived_idx(new_i_b, 99.0);
+    buf.push_frame_at(1_000, &[1.0]);
+    buf.push_derived_ts_idx(new_i_b, 1_000, 99.0);
     let w = buf.get_recent(1);
     assert!(!w.derived.contains_key("waveA"));
     assert_eq!(derived_values(&w, "waveB", "math1"), &vec![99.0]);

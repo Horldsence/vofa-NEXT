@@ -143,17 +143,16 @@ pub async fn inject_bytes(
     let target_count = plane.byte_plan.lock().routes_for(&source_node_id).len();
 
     let mut cache = DecoderFeedCache::new();
-    let summary =
-        byte_router::route_bytes(
-            &plane,
-            Some(&app),
-            &source_node_id,
-            &data,
-            0,
-            &mut cache,
-            None,
-        )
-        .await;
+    let summary = byte_router::route_bytes(
+        &plane,
+        Some(&app),
+        &source_node_id,
+        &data,
+        0,
+        &mut cache,
+        None,
+    )
+    .await;
 
     // FrameDecoder 被喂入 → 快照评估一次 (decoder 输出来自 last_frame 缓存)
     if summary.decoders_fed {

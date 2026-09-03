@@ -184,6 +184,7 @@ regex = "1"
 glob = "0.3"
 rustc-hash = "2"
 criterion = { version = "0.7", features = ["html_reports"] }
+parking_lot = "0.12"
 petgraph = { version = "0.8", default-features = false, features = ["stable_graph"] }
 # wgpu: 跨平台 GPU compute (macOS=Metal / Windows=DX12+Vulkan / Linux=Vulkan) —
 # 波形包络降采样 (gpu_core); pollster 供阻塞线程上同步初始化/映射
@@ -290,7 +291,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 log = { workspace = true }
-parking_lot = "0.12"
+parking_lot = { workspace = true }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

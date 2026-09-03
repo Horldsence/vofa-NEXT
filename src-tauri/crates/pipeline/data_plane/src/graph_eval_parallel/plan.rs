@@ -105,7 +105,7 @@ pub(super) struct WorkerState {
     /// 与 [`BucketPlan::port_routes`] 按下标对齐
     pub(super) ports: Vec<PortAccum>,
     /// 派生 staging (buffer 派生索引, 值) — 每块与协调者交换
-    pub(super) staged_derived: Vec<(usize, f32)>,
+    pub(super) staged_derived: Vec<(usize, u64, f32)>,
     /// 频谱 staging (桶级 spectra 表下标, 值)
     pub(super) staged_spectra: Vec<(u32, f32)>,
     /// 快照物化增量 (发布标志置位时块尾物化, 随 staging 交换带回)

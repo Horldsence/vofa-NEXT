@@ -17,23 +17,33 @@ export interface DecodedWaveformWindow {
   latest_timestamp_us: number;
   raw_window_points: number;
   sampling: 'raw' | 'min_max' | 'lttb';
+  /** L0 滚动覆盖累计 (v2; 0 = 原始层完整覆盖当前窗口) */
+  storage_overflow: number;
+  /** 服务本窗口的金字塔层级 (v2; 0 = 原始层, >0 = min-max 降载显示) */
+  buffer_tier: number;
 }
 
-const HEADER_LEN = 64;
+const HEADER_LEN_V1 = 64;
+const HEADER_LEN_V2 = 80;
 const MAGIC = 0x31425757; // "WWB1" little-endian
 const SAMPLINGS = ['raw', 'min_max', 'lttb'] as const;
 
 /** 解码 WWB1 波形窗口。所有数组均为底层 buffer 的视图 (零拷贝)。 */
 export function decodeWaveformWindow(buffer: ArrayBuffer): DecodedWaveformWindow {
-  if (buffer.byteLength < HEADER_LEN) {
+  if (buffer.byteLength < HEADER_LEN_V1) {
     throw new Error('WWB1 waveform envelope is truncated');
   }
   const view = new DataView(buffer);
   if (view.getUint32(0, true) !== MAGIC) {
     throw new Error('WWB1 waveform envelope has invalid magic');
   }
-  if (view.getUint16(4, true) !== 1) {
+  const schemaVersion = view.getUint16(4, true);
+  if (schemaVersion > 2) {
     throw new Error('Unsupported WWB1 schema version');
+  }
+  // v2 头含降载元数据; 需按对应头长校验
+  if (schemaVersion === 2 && buffer.byteLength < HEADER_LEN_V2) {
+    throw new Error('WWB1 waveform envelope is truncated');
   }
   const sampling = SAMPLINGS[view.getUint16(6, true)] ?? 'raw';
   const seq = Number(view.getBigUint64(8, true));
@@ -46,23 +56,24 @@ export function decodeWaveformWindow(buffer: ArrayBuffer): DecodedWaveformWindow
   const channelCount = view.getUint32(56, true);
   const derivedCount = view.getUint32(60, true);
 
+  const headerLen = schemaVersion >= 2 ? HEADER_LEN_V2 : HEADER_LEN_V1;
   const timestampsBytes = pointCount * 8;
   const channelsBytes = slotCount * pointCount * 4;
   const derivedBytes = derivedCount * (6 + pointCount * 4);
-  const expected = HEADER_LEN + timestampsBytes + channelsBytes + derivedBytes;
+  const expected = headerLen + timestampsBytes + channelsBytes + derivedBytes;
   if (buffer.byteLength < expected) {
     throw new Error('WWB1 waveform envelope has invalid lengths');
   }
 
-  // 64 字节头 8 字节对齐, 时间戳列可直接视图读取
-  const timestamps = new Float64Array(buffer, HEADER_LEN, pointCount);
+  // 头 8 字节对齐, 时间戳列可直接视图读取
+  const timestamps = new Float64Array(buffer, headerLen, pointCount);
   const channels: Float32Array[] = [];
   for (let slot = 0; slot < slotCount; slot++) {
-    const offset = HEADER_LEN + timestampsBytes + slot * pointCount * 4;
+    const offset = headerLen + timestampsBytes + slot * pointCount * 4;
     channels.push(new Float32Array(buffer, offset, pointCount));
   }
 
-  let cursor = HEADER_LEN + timestampsBytes + channelsBytes;
+  let cursor = headerLen + timestampsBytes + channelsBytes;
   const derived: DecodedWaveformWindow['derived'] = {};
   for (let entry = 0; entry < derivedCount; entry++) {
     const readKey = () => {
@@ -84,6 +95,11 @@ export function decodeWaveformWindow(buffer: ArrayBuffer): DecodedWaveformWindow
     handles[handle] = values;
   }
 
+  // v2 降载元数据 (v1 报文视为零降载)
+  const storageOverflow =
+    schemaVersion >= 2 ? Number(view.getBigUint64(64, true)) : 0;
+  const bufferTier = schemaVersion >= 2 ? view.getUint8(72) : 0;
+
   return {
     seq,
     timestamps,
@@ -95,5 +111,7 @@ export function decodeWaveformWindow(buffer: ArrayBuffer): DecodedWaveformWindow
     latest_timestamp_us: latestTimestampUs,
     raw_window_points: rawWindowPoints,
     sampling,
+    storage_overflow: storageOverflow,
+    buffer_tier: bufferTier,
   };
 }

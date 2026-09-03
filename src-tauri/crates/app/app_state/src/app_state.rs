@@ -10,8 +10,8 @@ use data_plane::{
     DEFAULT_CAN_LOAD_STATS_WINDOW, DEFAULT_DECODED_BUFFER_CAPACITY, DEFAULT_LOGIC_BUFFER_CAPACITY,
 };
 use engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
-use logic_types::{DecodedBuffer, LogicBuffer};
 use kind::NodeKind;
+use logic_types::{DecodedBuffer, LogicBuffer};
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;

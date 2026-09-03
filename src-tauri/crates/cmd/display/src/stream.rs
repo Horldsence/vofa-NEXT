@@ -648,14 +648,8 @@ mod tests {
     #[test]
     fn detail_budget_above_source_limit_is_safely_capped() {
         assert_eq!(stream::bounded_drain_size(1, 8_000, 5_000), 5_000);
-        assert_eq!(
-            stream::bounded_drain_size(9_000, 1_000, 5_000),
-            5_000
-        );
-        assert_eq!(
-            stream::bounded_drain_size(2_500, 1_000, 5_000),
-            2_500
-        );
+        assert_eq!(stream::bounded_drain_size(9_000, 1_000, 5_000), 5_000);
+        assert_eq!(stream::bounded_drain_size(2_500, 1_000, 5_000), 2_500);
     }
 
     #[test]

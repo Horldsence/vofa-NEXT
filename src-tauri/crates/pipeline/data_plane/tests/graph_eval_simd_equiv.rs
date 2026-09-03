@@ -240,7 +240,7 @@ struct Observed {
 async fn observe(state: &AppState, rx: &mut HashMap<String, BusRx>) -> Observed {
     let bus = drain_bus(rx).await;
     let buf = state.data_plane.buffer_for("pt");
-    let mut b = buf.lock();
+    let b = buf.lock();
     let mut derived = HashMap::new();
     for (sink, source, handle) in [
         ("sinkA", "m2", "result"),

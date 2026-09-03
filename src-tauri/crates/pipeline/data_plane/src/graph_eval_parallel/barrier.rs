@@ -44,7 +44,7 @@ impl SpinBarrier {
 
 /// staging 交换槽 — worker 与协调者经互斥锁成对交接
 pub(super) struct StageSlot {
-    pub(super) staged_derived: Vec<(usize, f32)>,
+    pub(super) staged_derived: Vec<(usize, u64, f32)>,
     pub(super) staged_spectra: Vec<(u32, f32)>,
     pub(super) snapshot_delta: Option<(engine::ValuesMap, engine::StringValuesMap)>,
 }

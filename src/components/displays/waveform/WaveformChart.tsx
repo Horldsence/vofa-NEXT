@@ -267,6 +267,26 @@ export function WaveformChart({
 
   const { cursorHidden, isMac } = useCursorHide();
 
+  // 降载徽标 (不变量 2 可观测性): 后端原始层装不下窗口 → 金字塔层包络显示。
+  // 仅在状态变化时 setState, 不参与 rAF 渲染路径
+  const [derate, setDerate] = useState<{ tier: number; overflow: number } | null>(null);
+  const derateDetailRef = useRef('');
+  useEffect(() => {
+    const check = () => {
+      const win: { storage_overflow?: number; buffer_tier?: number } | undefined =
+        detailBuffer.get();
+      const overflow = win?.storage_overflow ?? 0;
+      const tier = win?.buffer_tier ?? 0;
+      const key = `${tier}:${overflow}`;
+      if (key !== derateDetailRef.current) {
+        derateDetailRef.current = key;
+        setDerate(tier > 0 || overflow > 0 ? { tier, overflow } : null);
+      }
+    };
+    check();
+    return detailBuffer.subscribe(check);
+  }, [detailBuffer]);
+
   // 光标吸附运行时配置: snap 来自设置, hidden 来自 Ctrl/Cmd 隐藏 (隐藏时不吸附但保留十字线)
   const cursorOptsRef = useRef<CursorDisplayOpts>({ snap: cursorSnap, hidden: false });
   cursorOptsRef.current = { snap: cursorSnap, hidden: cursorHidden };
@@ -550,6 +570,14 @@ export function WaveformChart({
             ? t(lang, 'cursorHiddenHint')
             : (isMac ? '⌘ ' : 'Ctrl ') + t(lang, 'cursorHideHint')}
         </div>
+
+        {/* 降载提示: 原始层装不下视图窗口, 由金字塔层提供真实包络 (不变量 2) */}
+        {derate && (
+          <div className="absolute top-7 right-2 z-[100] px-2 py-0.5 text-[10px] text-amber-400 bg-bg-editor/95 border border-amber-500/40 rounded pointer-events-none select-none shadow whitespace-nowrap">
+            {t(lang, 'waveformDerated')} · tier {derate.tier} · Δ
+            {derate.overflow}
+          </div>
+        )}
 
         {/* 框选导出/复制工具栏 */}
         {selectedRange && (

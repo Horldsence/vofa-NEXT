@@ -41,6 +41,36 @@ pub(super) fn mark_downstream_disconnected(plane: &DataPlaneState, transport_id:
     }
 }
 
+/// 合批的样本时长上限 (秒) — 单批代表的采样时长不超过 50ms,
+/// 防止高负载下"越合越大"的正反馈把处理延迟滚成秒级 (批一旦超过
+/// 评估吞吐的 1/8 就开始丢批, 批越大丢得越多)
+const MAX_BATCH_SAMPLE_SECONDS: f64 = 0.05;
+
+/// 传输名义字节速率 (C2: 合批样本时长上限的换算基准)
+/// TestData = 帧率 × 每帧字节数; 串口 = 波特率线速 (字节/s)
+fn nominal_bytes_per_sec(
+    live: Option<&transport_core::LiveNodeHandle>,
+    node_id: &str,
+    avg_bytes_per_frame: f64,
+) -> Option<f64> {
+    let config = live?.config_of(node_id)?;
+    match config {
+        vofa_core::TransportConfig::TestData(c) => {
+            Some(f64::from(c.sample_rate) * avg_bytes_per_frame.max(1.0))
+        }
+        vofa_core::TransportConfig::Serial(c) => {
+            let parity_bits = u32::from(c.parity != vofa_core::Parity::None);
+            let stop_bits = match c.stop_bits {
+                vofa_core::StopBits::One => 1,
+                vofa_core::StopBits::Two => 2,
+            };
+            let bits_per_byte = 1 + u32::from(c.data_bits) + parity_bits + stop_bits;
+            Some(f64::from(c.baud_rate) / f64::from(bits_per_byte))
+        }
+        _ => None,
+    }
+}
+
 /// Transport 节点读任务
 pub(super) async fn read_task(
     app: AppHandle,
@@ -57,6 +87,8 @@ pub(super) async fn read_task(
     let mut acc_frames: u64 = 0;
     let mut last_report = Instant::now();
     let mut controller = AdaptiveController::default();
+    // 每帧平均字节数 (EMA) — 合批样本时长上限的折算输入
+    let mut avg_bytes_per_frame = 16.0_f64;
     // 启动时取一次轻量句柄: 每批的 TestData 开关查询 / 运行态配置 / rx 统计上报
     // 都免 manager 全局锁 (逐批锁会与 open/close/其他传输串行化)
     let live = plane.transport.lock().await.live_handle(&node_id);
@@ -77,10 +109,23 @@ pub(super) async fn read_task(
         };
 
         // 自适应合批: try_recv 排空积压并拼接 (协议按字节流解析, 拼接语义安全;
-        // 负载越高单批越大, 天然背压自适应)
+        // 负载越高单批越大, 天然背压自适应)。上限取字节目标与"样本时长 50ms"
+        // 折算字节数的较小者 — 高速率下单批不失控 (C2)
+        let coalesce_cap = {
+            let bytes_target = controller.target_batch_bytes();
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            // 速率非负, ceil 后截断无害
+            let nominal_bound = nominal_bytes_per_sec(live.as_ref(), &node_id, avg_bytes_per_frame)
+                .map_or(usize::MAX, |bytes_per_sec| {
+                    let sample_bound = (bytes_per_sec * MAX_BATCH_SAMPLE_SECONDS).ceil() as usize;
+                    let floor = avg_bytes_per_frame.max(1.0) as usize;
+                    sample_bound.max(floor)
+                });
+            bytes_target.min(nominal_bound)
+        };
         let mut data = first;
         let mut coalesced = 1usize;
-        while coalesced < 1024 && data.len() < controller.target_batch_bytes() {
+        while coalesced < 1024 && data.len() < coalesce_cap {
             match rx.try_recv() {
                 Ok(mut next) => {
                     data.append(&mut next);
@@ -187,6 +232,11 @@ pub(super) async fn read_task(
         if let Some(live) = &live {
             live.record_rx(data.len(), summary.frames);
         }
+        if summary.frames > 0 {
+            #[allow(clippy::cast_precision_loss)] // EMA 统计近似, 精度损失无影响
+            let batch_avg = data.len() as f64 / summary.frames as f64;
+            avg_bytes_per_frame = avg_bytes_per_frame.mul_add(0.9, batch_avg * 0.1);
+        }
         acc_bytes += data.len() as u64;
         acc_frames += summary.frames;
 
@@ -208,8 +258,9 @@ pub(super) async fn read_task(
             last_stats = Instant::now();
         }
 
-        // 2s 诊断指标
+        // 2s 诊断指标 (含缓冲降载增量汇总)
         if last_report.elapsed() >= super::METRICS_REPORT_INTERVAL {
+            plane.report_buffer_overflow_delta();
             plane.metrics.report();
             last_report = Instant::now();
         }

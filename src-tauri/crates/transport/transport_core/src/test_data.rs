@@ -61,6 +61,10 @@ pub fn spawn(
         // 采样时钟只由已生成样本数推进，批次调度抖动和热更新不会重置相位。
         let mut sample_time_sec = 0.0_f64;
         let mut previous_sample_dt = None;
+        // 截止驱动节拍: sleep 到 deadline, 落后则补齐欠账 (单轮封顶 2 轮) —
+        // 调度抖动/下游短毛刺不降低有效采样率; 持续欠账说明系统承载不足,
+        // 由下游广播 Lagged 显式可观测, 生成器不无限积压
+        let mut next_deadline = tokio::time::Instant::now();
         loop {
             if running_gen.load(Ordering::Relaxed) {
                 let runtime = runtime_rx.borrow().clone();
@@ -81,7 +85,15 @@ pub fn spawn(
                     }
                 }
                 tokio::select! {
-                    () = tokio::time::sleep(msg_interval) => {
+                    () = tokio::time::sleep_until(next_deadline) => {
+                        // 截止节拍: 每轮恒定批量 (线缆帧大小确定, 协议测试依赖);
+                        // 落后超过一个间隔则重整相位 — 不追账 (追账会成倍改变
+                        // 消息大小; 持续欠账 = 系统承载不足, 由下游 Lagged 可观测)
+                        next_deadline += msg_interval;
+                        let now = tokio::time::Instant::now();
+                        if next_deadline < now {
+                            next_deadline = now + msg_interval;
+                        }
                         let mut data = Vec::new();
                         for _ in 0..samples_per_msg {
                             data.extend_from_slice(&generate_link_bytes(

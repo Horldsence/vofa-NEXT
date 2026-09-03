@@ -254,35 +254,60 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     }
 }
 
-/// 批内帧时间戳线性摊开 — 协议引擎每次 feed 只读一次时钟
-/// (`DataFrame::with_timestamp`), 批内所有帧共享同一时间戳; 高码率合批后数千帧
-/// 落在同一时刻, 波形渲染成阶梯。这里把非严格递增的批时间戳均匀摊到
-/// (缓冲最新时间戳, 批尾时间戳] 区间; 已严格递增的批次 (逐帧真实时间戳) 原样保留。
-fn spread_batch_timestamps(frames: &[DataFrame], buffer: &DataBuffer) -> Option<Vec<u64>> {
-    let n = frames.len();
-    if n < 2 {
-        return None;
+/// 缺口后的有状态算子复位 (不变量 5) — 求值平面丢弃整批造成时间缺口,
+/// 滤波/触发/IFFT 状态失去连续性; 显式复位并告警, 而不是带着断裂状态
+/// 继续产出看似连续的近似值 (静默畸变)。
+pub fn reset_source_transient_state(eval_state: &GraphEvalState, source_id: &str) {
+    let graphs = eval_state.graphs.lock();
+    let mut filters: Vec<String> = Vec::new();
+    let mut iffts: Vec<String> = Vec::new();
+    let mut triggers: Vec<String> = Vec::new();
+    for g in graphs.values() {
+        if !graph_triggered_by(g, source_id) {
+            continue;
+        }
+        let compiled = g.compiled();
+        filters.extend(g.filter_node_ids().iter().cloned());
+        iffts.extend(g.ifft_node_ids().iter().cloned());
+        for node in g.value_nodes() {
+            if matches!(node.kind, NodeKind::Trigger { .. }) {
+                triggers.push(node.id.clone());
+            }
+        }
+        let _ = compiled;
     }
-    let quantized = frames
-        .windows(2)
-        .any(|pair| pair[1].timestamp <= pair[0].timestamp);
-    if !quantized {
-        return None;
+    drop(graphs);
+    let mut reset = 0_usize;
+    if !filters.is_empty() {
+        let mut states = eval_state.filter_states.lock();
+        for key in &filters {
+            if states.remove(key).is_some() {
+                reset += 1;
+            }
+        }
     }
-    let end = frames[n - 1].timestamp;
-    let prev = buffer
-        .time_bounds_us()
-        .map_or(frames[0].timestamp, |(_, latest)| latest);
-    if end <= prev {
-        return None;
+    if !iffts.is_empty() {
+        let mut states = eval_state.ifft_states.lock();
+        for key in &iffts {
+            if states.remove(key).is_some() {
+                reset += 1;
+            }
+        }
     }
-    let span = u128::from(end - prev);
-    let count = n as u128;
-    Some(
-        (0..n)
-            .map(|i| prev + u64::try_from(span * (i as u128 + 1) / count).unwrap_or(u64::MAX))
-            .collect(),
-    )
+    if !triggers.is_empty() {
+        let mut states = eval_state.trigger_states.lock();
+        for key in &triggers {
+            if states.remove(key).is_some() {
+                reset += 1;
+            }
+        }
+    }
+    if reset > 0 {
+        log::warn!(
+            "求值缺口: 已复位源 {source_id} 关联的有状态算子 {reset} 项 (滤波/触发/IFFT), \
+             后续输出从复位后状态重新连续"
+        );
+    }
 }
 
 /// 单源帧批处理 (热路径) — 一个源的一批帧一次性完成
@@ -431,7 +456,10 @@ pub fn process_source_batch(
     for (g, edges) in static_list.iter().zip(&mut static_edges) {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                edges.push((slot, buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle)));
+                edges.push((
+                    slot,
+                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                ));
             }
         }
     }
@@ -445,11 +473,12 @@ pub fn process_source_batch(
     let publish_interval = std::time::Duration::from_millis(8);
     let mut last_publish = std::time::Instant::now();
 
-    let interp_ts = spread_batch_timestamps(frames, buffer);
-
+    // 帧时间戳由字节平面采样时钟权威给定 (单一时钟域, 见 ProtocolNodeState::
+    // restamp_frames_at_rate); 数值平面不再做任何时间戳加工 — 到达节奏绝不参与
+    // 显示时间轴。
     for (i, frame) in frames.iter().enumerate() {
         let timing_sampled = u64::try_from(i).unwrap_or(0) % TIMING_SAMPLE_PERIOD == 0;
-        let frame_ts = interp_ts.as_ref().map_or(frame.timestamp, |ts| ts[i]);
+        let frame_ts = frame.timestamp;
         // 0. 该源最新帧入缓存 (其他源保持缓存值 — latest-value 融合)
         //    clone_from 复用 channels 分配, 稳态零分配
         match source_frames.get_mut(source_id) {
@@ -464,19 +493,8 @@ pub fn process_source_batch(
             }
         }
 
-        // 1. push 原始帧到该源自己的 buffer (逐样本插值时间戳, 见 spread_batch_timestamps)
-        let t = if timing_sampled {
-            Some(std::time::Instant::now())
-        } else {
-            None
-        };
-        buffer.push_frame_at(frame_ts, &frame.channels);
-        if let Some(t) = t {
-            breakdown.push_frame_ns +=
-                u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
-        }
-
         // 2. 评估被触发的图 (编译期槽位表, 纯数组读写零字符串哈希)
+        //    (原始帧入库已由记录平面 record_frames 完成, 本层只做求值)
         let t = if timing_sampled {
             Some(std::time::Instant::now())
         } else {
@@ -518,7 +536,7 @@ pub fn process_source_batch(
             }
         }
 
-        // 3. 收集派生值 (批首预计算索引, 与 push_frame 时间戳对齐; 仅 written 槽位)
+        // 3. 收集派生值 (批首预计算索引, 携带帧时间戳写派生独立时间轴; 仅 written 槽位)
         let t = if timing_sampled {
             Some(std::time::Instant::now())
         } else {
@@ -527,16 +545,16 @@ pub fn process_source_batch(
         for &(gi, slot, buf_idx) in &derived_edges {
             let (slots, written, ..) = &slot_bufs[gi];
             if written[slot] {
-                buffer.push_derived_idx(buf_idx, slots[slot]);
+                buffer.push_derived_ts_idx(buf_idx, frame_ts, slots[slot]);
             }
         }
         // 静态图派生值逐帧重复 push (输出批内不变 — 常值重复写入与逐帧评估等价,
-        // 且保持派生环与主时间戳轴的 push 计数 1:1 对齐)
+        // 且保持派生序列对窗口的时间覆盖)
         for (gi, edges) in static_edges.iter().enumerate() {
             let (slots, written, ..) = &static_bufs[gi];
             for (slot, buf_idx) in edges {
                 if written[*slot] {
-                    buffer.push_derived_idx(*buf_idx, slots[*slot]);
+                    buffer.push_derived_ts_idx(*buf_idx, frame_ts, slots[*slot]);
                 }
             }
         }

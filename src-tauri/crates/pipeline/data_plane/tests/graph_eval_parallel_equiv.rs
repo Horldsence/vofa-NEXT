@@ -208,7 +208,7 @@ async fn observe(state: &AppState, rx: &mut HashMap<String, BusRx>) -> Observed 
         bus.insert(name.clone(), values);
     }
     let buf = state.data_plane.buffer_for("pt");
-    let mut b = buf.lock();
+    let b = buf.lock();
     let mut derived = HashMap::new();
     let mut derived_points = 0;
     for (sink, source, handle) in [
@@ -355,7 +355,7 @@ async fn parallel_matches_serial_across_chunks() {
         set_workers(&state, workers);
         frame_dispatch::on_frames(&state.data_plane, "pt", &frames);
         let buf = state.data_plane.buffer_for("pt");
-        let mut b = buf.lock();
+        let b = buf.lock();
         let mut derived = Vec::new();
         for (sink, source, handle) in [
             ("sinkA", "m2", "result"),

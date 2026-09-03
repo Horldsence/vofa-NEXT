@@ -88,7 +88,8 @@ pub(super) fn run_bucket_chunk(
             }
             for (slot, buf_idx) in &gp.derived {
                 if copy.1[*slot] {
-                    ws.staged_derived.push((*buf_idx, copy.0[*slot]));
+                    ws.staged_derived
+                        .push((*buf_idx, frame.timestamp, copy.0[*slot]));
                 }
             }
             for route in &gp.ports {
@@ -124,7 +125,8 @@ pub(super) fn run_bucket_chunk(
                 }
                 for (slot, buf_idx) in &gp.derived_simd {
                     if copy.1[*slot] {
-                        ws.staged_derived.push((*buf_idx, copy.0[*slot]));
+                        ws.staged_derived
+                            .push((*buf_idx, frame.timestamp, copy.0[*slot]));
                     }
                 }
                 for route in &gp.ports_simd {
@@ -152,13 +154,13 @@ pub(super) fn run_bucket_chunk(
 pub(super) fn drain_worker(
     plan: &BucketPlan,
     ws: &mut WorkerState,
-    buffer: &mut DataBuffer,
+    buffer: &DataBuffer,
     analyzers: &mut HashMap<String, SpectrumAnalyzer>,
     breakdown: &mut EvalBreakdown,
 ) {
     let t = std::time::Instant::now();
-    for (buf_idx, value) in ws.staged_derived.drain(..) {
-        buffer.push_derived_idx(buf_idx, value);
+    for (buf_idx, ts, value) in ws.staged_derived.drain(..) {
+        buffer.push_derived_ts_idx(buf_idx, ts, value);
     }
     breakdown.derived_ns += ns_since(t);
     let t = std::time::Instant::now();
@@ -191,20 +193,21 @@ pub(super) fn materialize_bucket(
     (values, str_values)
 }
 
-/// 静态图派生值逐帧重复 push 常值 (输出批内不变, 且保持派生环与主时间戳轴
-/// 的 push 计数 1:1 对齐)
+/// 静态图派生值回放 — 每帧携带该帧时间戳写入派生独立时间轴 (批内常值,
+/// 保持派生序列与窗口的时间覆盖一致)
 pub(super) fn push_static_derived(
     static_edges: &[Vec<(usize, usize)>],
     static_bufs: &[SlotBufs],
+    frames: &[vofa_core::DataFrame],
     chunk: (usize, usize),
-    buffer: &mut DataBuffer,
+    buffer: &DataBuffer,
 ) {
-    for _ in chunk.0..chunk.1 {
+    for frame in &frames[chunk.0..chunk.1] {
         for (gi, edges) in static_edges.iter().enumerate() {
             let bufs = &static_bufs[gi];
             for (slot, buf_idx) in edges {
                 if bufs.1[*slot] {
-                    buffer.push_derived_idx(*buf_idx, bufs.0[*slot]);
+                    buffer.push_derived_ts_idx(*buf_idx, frame.timestamp, bufs.0[*slot]);
                 }
             }
         }

@@ -602,6 +602,7 @@ name = "buffer_databuffer"
 version = "0.1.2"
 dependencies = [
  "buffer_ring",
+ "parking_lot",
  "serde",
  "serde_json",
  "vofa_core",

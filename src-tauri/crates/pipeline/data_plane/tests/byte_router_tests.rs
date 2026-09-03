@@ -10,11 +10,11 @@
 
 use app_state::AppState;
 use buffer_graph::Edge;
-use engine::BytePlan;
-use kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 use data_plane::byte_router::route_bytes;
 use data_plane::decoder_feed::DecoderFeedCache;
 use data_plane::DataPlaneState;
+use engine::BytePlan;
+use kind::{DecoderBlockDef, FieldType, NodeDef, NodeKind};
 use schema_types::{ProtocolConfig, ProtocolSchema, SchemaPreset, TestDataLink};
 use vofa_core::TransportConfig;
 
@@ -763,15 +763,27 @@ async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
     running.store(true, Ordering::Relaxed);
     let mut rx = data_tx.subscribe();
 
-    // 与 read_task 相同的合批策略 (目标 64KB)
+    // 与 read_task 相同的合批策略 (目标 64KB); 广播 Lagged 计数 (workspace
+    // 并行负载下可能溢出 — 丢消息产生诚实缺口, 见下方断言的容差)
     let mut cache = DecoderFeedCache::new();
+    let mut lost_messages = 0_u64;
     let deadline = Instant::now() + Duration::from_millis(500);
     while Instant::now() < deadline {
-        let Ok(first) = rx.recv().await else { break };
+        let first = match rx.recv().await {
+            Ok(first) => first,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                lost_messages += n;
+                continue;
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+        };
         let mut data = first;
         while data.len() < 64 * 1024 {
             match rx.try_recv() {
                 Ok(mut next) => data.append(&mut next),
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
+                    lost_messages += n;
+                }
                 Err(_) => break,
             }
         }
@@ -792,9 +804,14 @@ async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
         .windows(2)
         .map(|pair| pair[1] - pair[0])
         .fold(0.0_f64, f64::max);
+    // 无丢弃: 严格逐样本 (≈0.0014ms); 广播 Lagged 的丢消息产生诚实缺口
+    // (单消息 ≈350 样本 ≈0.5ms) — 缺口必须与丢失量自洽
+    let expected_max_gap_ms =
+        f64::from(u32::try_from(lost_messages).unwrap_or(u32::MAX)).mul_add(0.5, 0.05);
     assert!(
-        max_gap_ms < 0.05,
-        "采样时钟恢复失效: 相邻时间戳最大间隔 {max_gap_ms}ms (期望 ≈0.0014ms)"
+        max_gap_ms < expected_max_gap_ms,
+        "采样时钟恢复失效: 相邻时间戳最大间隔 {max_gap_ms}ms \
+         (期望 ≈0.0014ms, 丢失 {lost_messages} 条消息容差 {expected_max_gap_ms:.2}ms)"
     );
 
     // 诊断: min-max 实时窗口的实际输出形态 (700k, 100ms 窗口, 预算 10000, 4 通道)
@@ -1011,8 +1028,10 @@ async fn frame_queue_overflow_keeps_newest_batches() {
         .await;
     }
     plane.flush_eval();
-    // 12 批 - 8 = 前 4 批被丢弃
-    assert_eq!(plane.buffer_for("pt").lock().point_count(), 8);
+    // 不变量 3: 记录平面无条件入库 — 原始缓冲 12 帧全保留, 求值丢弃不影响波形
+    assert_eq!(plane.buffer_for("pt").lock().point_count(), 12);
+    // 不变量 5: 求值队列丢最旧保最新 — source_frames 为最新批, 且缺口被记账
+    // (flush_eval 消费缺口并复位有状态算子; 本例无状态图, 复位为空操作)
     let sf = plane.source_frames.lock();
     let f = sf.get("pt").expect("pt 应有最新帧");
     assert_eq!(f.channels, vec![12.0, 12.0, 12.0]);

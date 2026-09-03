@@ -43,17 +43,79 @@ impl EvalOptions {
     }
 }
 
-/// Protocol 节点产出一批帧: 逐帧更新 source_frames → push 到该源自己的 DataBuffer →
-/// 评估被该源触发的 tab 图 → 派生边回写到该源 buffer。
+/// 记录平面分块大小 — 分块持锁推送, 让显示读锁可以穿插
+/// (单批 14 万帧 → ~9 次锁获取, 每次 ~1ms, 不再长时间霸占缓冲锁)
+const RECORD_CHUNK: usize = 16_384;
+
+/// 端口预览发布预算 — 每批每通道最多发布的样本数 (超限步长抽点, 恒含批尾
+/// 最新值)。预览面板只需走势, 全量拷贝在 10M 帧/s 下不可行, 也是预览广播
+/// 溢出 ("样本预览跳过") 的压力来源。
+const PREVIEW_MAX_SAMPLES_PER_BATCH: usize = 512;
+
+/// 记录平面入口 — 原始帧**无条件**入库 (不变量 3)
 ///
-/// 数值平面入口 — eval worker 消费评估队列时调用 (worker 侧经 blocking 池执行,
-/// 见 `eval_worker`; 测试 / flush 路径可直接同步调用 [`on_frames_detached`])。
+/// 字节平面解析 + 采样时钟定案后调用: 原始通道按权威时间戳写入该源
+/// DataBuffer, 分块持锁; 求值积压/丢弃不影响本路径, 波形显示因此独立于
+/// 求值吞吐。端口预览发布 (降载后) 同属记录平面。
+pub fn record_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) {
+    if frames.is_empty() {
+        return;
+    }
+    publish_protocol_samples(&plane.eval.data_bus, &plane.global_nodes, source_id, frames);
+    let buffer = plane.buffer_for(source_id);
+    for chunk in frames.chunks(RECORD_CHUNK) {
+        let mut buf = buffer.lock();
+        for frame in chunk {
+            buf.push_frame_at(frame.timestamp, &frame.channels);
+        }
+    }
+}
+
+/// 求值平面入口 — source_frames 更新 + 图评估 + 派生通道写独立时间轴
+///
+/// eval worker 消费评估队列时调用 (记录平面已在路由时入库, 本函数不再推送
+/// 原始帧)。返回数值平面耗时 ns (观测用)。
+#[allow(clippy::implicit_hasher)] // 与 DataPlaneState.global_nodes 的具体 hasher 类型耦合, 泛化 S 会传染整个状态图
+pub fn eval_frames(
+    eval: &GraphEvalState,
+    _global_nodes: &Mutex<HashMap<String, NodeDef>>,
+    buffer: &Arc<Mutex<DataBuffer>>,
+    source_id: &str,
+    frames: &[DataFrame],
+    options: EvalOptions,
+) -> u64 {
+    if frames.is_empty() {
+        return 0;
+    }
+    let mut buf = buffer.lock();
+    let mut sf = eval.source_frames.lock();
+    let mut breakdown = EvalBreakdown::default();
+
+    if options.workers > 1 {
+        crate::graph_eval_parallel::process_source_batch_parallel(
+            eval,
+            &mut sf,
+            source_id,
+            frames,
+            &buf,
+            options.workers,
+            options.simd,
+            &mut breakdown,
+        );
+    } else {
+        process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
+    }
+    breakdown.push_frame_ns + breakdown.graph_eval_ns + breakdown.derived_ns + breakdown.spectrum_ns
+}
+
+/// 兼容入口 — 记录 + 求值一次完成 (测试 / 同步 flush 路径; 运行时两平面分离)
 ///
 /// 返回数值平面耗时 ns (push_frame + 图评估 + 派生 + 频谱, 观测用)。
 pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) -> u64 {
+    record_frames(plane, source_id, frames);
     let buffer = plane.buffer_for(source_id);
     let options = EvalOptions::from_config(&plane.pipeline_config.read());
-    on_frames_detached(
+    eval_frames(
         &plane.eval,
         &plane.global_nodes,
         &buffer,
@@ -65,7 +127,7 @@ pub fn on_frames(plane: &DataPlaneState, source_id: &str, frames: &[DataFrame]) 
 
 /// 帧分发主体 — 只依赖 eval 状态 + 全局节点表 + 该源 buffer (全部 Arc 可克隆)
 ///
-/// 供字节路由把整段重型同步评估丢进 `tokio::task::spawn_blocking` 执行:
+/// 供把整段重型同步评估丢进 `tokio::task::spawn_blocking` 执行:
 /// 大批次 (700k 时可达 24ms+) 不再占住 tokio worker, await 侧保持同源批序。
 ///
 /// 两路分派 (见 [`EvalOptions`]): `workers ≥ 2` 走图内路径分块 fork-join 并行
@@ -80,29 +142,7 @@ pub fn on_frames_detached(
     frames: &[DataFrame],
     options: EvalOptions,
 ) -> u64 {
-    if frames.is_empty() {
-        return 0;
-    }
-    publish_protocol_samples(&eval.data_bus, global_nodes, source_id, frames);
-    let mut buf = buffer.lock();
-    let mut sf = eval.source_frames.lock();
-    let mut breakdown = EvalBreakdown::default();
-
-    if options.workers > 1 {
-        crate::graph_eval_parallel::process_source_batch_parallel(
-            eval,
-            &mut sf,
-            source_id,
-            frames,
-            &mut buf,
-            options.workers,
-            options.simd,
-            &mut breakdown,
-        );
-    } else {
-        process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
-    }
-    breakdown.push_frame_ns + breakdown.graph_eval_ns + breakdown.derived_ns + breakdown.spectrum_ns
+    eval_frames(eval, global_nodes, buffer, source_id, frames, options)
 }
 
 /// 把协议帧按真实端口写入 Topic。只有帧中实际存在的通道才产生样本。
@@ -154,9 +194,16 @@ fn publish_protocol_samples(
         if !data_bus.is_active(&key) {
             continue;
         }
-        let mut timestamps = Vec::with_capacity(frames.len());
-        let mut values = Vec::with_capacity(frames.len());
-        for frame in frames {
+        // 降载发布: 步长抽点 + 恒含批尾最新值 (不变量 5 的降载可观测性由
+        // 预览面板自身承担; 全量拷贝在 10M 帧/s 下不可行, 且是预览广播
+        // 溢出 "样本预览跳过" 的压力来源)
+        let stride = frames.len().div_ceil(PREVIEW_MAX_SAMPLES_PER_BATCH).max(1);
+        let mut timestamps = Vec::with_capacity(frames.len() / stride + 1);
+        let mut values = Vec::with_capacity(frames.len() / stride + 1);
+        for (i, frame) in frames.iter().enumerate() {
+            if i % stride != 0 && i + 1 != frames.len() {
+                continue;
+            }
             if let Some(value) = frame.channels.get(channel) {
                 timestamps.push(frame.timestamp);
                 values.push(f64::from(*value));

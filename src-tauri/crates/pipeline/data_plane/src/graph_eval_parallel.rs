@@ -62,7 +62,7 @@ pub(crate) fn process_source_batch_parallel(
     source_frames: &mut SourceFramesMap,
     source_id: &str,
     frames: &[vofa_core::DataFrame],
-    buffer: &mut DataBuffer,
+    buffer: &DataBuffer,
     eval_workers: usize,
     simd: bool,
     breakdown: &mut EvalBreakdown,
@@ -102,6 +102,20 @@ pub(crate) fn process_source_batch_parallel(
     }
 
     if graph_list.is_empty() && static_list.is_empty() {
+        // 无图批次仍维护 source_frames (latest-value) — 与串行路径语义一致
+        // (eval_workers 默认并行后, 纯波形会话没有图也必须有最新帧缓存)
+        let sf = sf_map.get_mut();
+        if let Some(last) = frames.last() {
+            match sf.get_mut(source_id) {
+                Some(slot) => {
+                    slot.timestamp = last.timestamp;
+                    slot.channels.clone_from(&last.channels);
+                }
+                None => {
+                    sf.insert(source_id.to_string(), last.clone());
+                }
+            }
+        }
         return; // put_back 守卫落栈时原样写回
     }
 
@@ -134,7 +148,10 @@ pub(crate) fn process_source_batch_parallel(
     for (g, edges) in static_list.iter().zip(&mut static_edges) {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                edges.push((slot, buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle)));
+                edges.push((
+                    slot,
+                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                ));
             }
         }
     }
@@ -144,7 +161,10 @@ pub(crate) fn process_source_batch_parallel(
     for (gi, g) in graph_list.iter().enumerate() {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                derived_edges[gi].push((slot, buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle)));
+                derived_edges[gi].push((
+                    slot,
+                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                ));
             }
         }
     }
@@ -223,19 +243,14 @@ pub(crate) fn process_source_batch_parallel(
         if plan_arcs.len() == 1 {
             // 单桶: 协调者直跑 (staging 私有直 drain, 无屏障)
             for &(cs, ce) in &chunks {
-                let t = std::time::Instant::now();
-                for frame in &frames[cs..ce] {
-                    buffer.push_frame(frame);
-                }
-                breakdown.push_frame_ns += ns_since(t);
-
+                // 原始帧已由记录平面入库 (record_frames); 本层只做评估与派生回放
                 let t = std::time::Instant::now();
                 run_bucket_chunk(&lead_plan, &mut lead, &ctx, (cs, ce));
                 breakdown.graph_eval_ns += ns_since(t);
 
                 let t = std::time::Instant::now();
                 drain_worker(&lead_plan, &mut lead, buffer, &mut analyzers, breakdown);
-                push_static_derived(&static_edges, &static_bufs, (cs, ce), buffer);
+                push_static_derived(&static_edges, &static_bufs, frames, (cs, ce), buffer);
                 breakdown.derived_ns += ns_since(t);
 
                 if last_publish.elapsed() >= publish_interval {
@@ -301,12 +316,7 @@ pub(crate) fn process_source_batch_parallel(
 
                 // 协调者: 桶 0 执行 + 每块屏障间回放/发布
                 for &(cs, ce) in chunks_ref {
-                    let t = std::time::Instant::now();
-                    for frame in &frames[cs..ce] {
-                        buffer.push_frame(frame);
-                    }
-                    breakdown.push_frame_ns += ns_since(t);
-
+                    // 原始帧已由记录平面入库 (record_frames); 本层只做评估与派生回放
                     let t = std::time::Instant::now();
                     run_bucket_chunk(&lead_plan, &mut lead, &ctx, (cs, ce));
                     breakdown.graph_eval_ns += ns_since(t);
@@ -320,8 +330,8 @@ pub(crate) fn process_source_batch_parallel(
                     drain_worker(&lead_plan, &mut lead, buffer, &mut analyzers, breakdown);
                     for (b, slot) in swap_slots.iter().enumerate() {
                         let mut g = slot.lock();
-                        for (buf_idx, value) in g.staged_derived.drain(..) {
-                            buffer.push_derived_idx(buf_idx, value);
+                        for (buf_idx, ts, value) in g.staged_derived.drain(..) {
+                            buffer.push_derived_ts_idx(buf_idx, ts, value);
                         }
                         for (si, value) in g.staged_spectra.drain(..) {
                             let (_, sink, _) = &plan_arcs[b + 1].spectra[si as usize];
@@ -330,7 +340,7 @@ pub(crate) fn process_source_batch_parallel(
                             }
                         }
                     }
-                    push_static_derived(&static_edges, &static_bufs, (cs, ce), buffer);
+                    push_static_derived(&static_edges, &static_bufs, frames, (cs, ce), buffer);
                     breakdown.derived_ns += ns_since(t);
 
                     // 中途快照发布: 消费 worker 物化增量 + 协调者本桶/静态图

@@ -11,6 +11,8 @@
 //! - FrameDecoder 节点 `in`/`loopbackIn`: 走 feed_one_decoder 语义 (按边路由)
 //! - Transport 节点 `tx`: registry.send (协议转换回注 / 命令发送落地)
 
+use std::sync::Arc;
+
 use kind::{
     NodeKind, FRAME_DECODER_IN_HANDLE, LOOPBACK_IN_HANDLE, PROTOCOL_IN_HANDLE, TRANSPORT_TX_HANDLE,
 };
@@ -91,6 +93,41 @@ async fn route_inner(
     }
     // 路由表快照 (锁即刻释放, 下游分发不持 byte_plan 锁)
     let routes: Vec<_> = plane.byte_plan.lock().routes_for(source_id).to_vec();
+    // 路由去重组 (不变量 4): 同 (字节源, 协议配置等价) 的 Protocol 目标只解析
+    // 一次, 帧经 Arc fan-out 到组内各节点。组缺失时 (尚未 sync) 退回逐目标。
+    let groups = plane.route_groups.lock().get(source_id).cloned();
+    if let Some(groups) = groups.filter(|g| !g.is_empty()) {
+        let grouped: std::collections::HashSet<&str> = groups
+            .iter()
+            .flat_map(|(_, _, members)| members.iter().map(String::as_str))
+            .collect();
+        // 非协议目标照常逐边分发
+        for route in &routes {
+            if grouped.contains(route.target.as_str()) {
+                continue;
+            }
+            dispatch_non_protocol(
+                plane,
+                source_id,
+                data,
+                dec_cache,
+                summary,
+                &route.target,
+                &route.target_handle,
+                live,
+            )
+            .await;
+        }
+        // 每组只喂代表节点一次, 组员 fan-out
+        for (_, repr, members) in &groups {
+            feed_protocol(
+                plane, app, source_id, repr, members, data, depth_hint, dec_cache, summary, depth,
+                live,
+            )
+            .await;
+        }
+        return;
+    }
     for route in routes {
         let kind = plane
             .global_nodes
@@ -105,6 +142,7 @@ async fn route_inner(
                     app,
                     source_id,
                     &route.target,
+                    std::slice::from_ref(&route.target),
                     data,
                     depth_hint,
                     dec_cache,
@@ -114,47 +152,71 @@ async fn route_inner(
                 )
                 .await;
             }
-            (NodeKind::FrameDecoder { .. }, FRAME_DECODER_IN_HANDLE | LOOPBACK_IN_HANDLE) => {
-                let ts = vofa_core::now_us();
-                if crate::decoder_feed::feed_decoder_by_id(
-                    &plane.eval,
-                    &route.target,
-                    data,
-                    ts,
-                    dec_cache,
-                ) {
-                    summary.decoders_fed = true;
-                }
-            }
-            (NodeKind::Transport { .. }, TRANSPORT_TX_HANDLE) => {
-                // 协议转换回注 / 命令发送落地 — try_lock 避免与 open 的长持锁互等
-                match plane.transport.try_lock() {
-                    Ok(m) => {
-                        if let Err(e) = m.send(&route.target, data) {
-                            log::debug!("字节路由发送失败 ({}): {}", route.target, e);
-                        }
-                    }
-                    Err(_) => log::warn!(
-                        "传输注册表锁忙, 丢弃发往 {} 的 {} 字节",
-                        route.target,
-                        data.len()
-                    ),
-                }
-            }
             _ => {
-                log::debug!(
-                    "字节路由忽略: {} -> {}.{} (端口域或节点类型不匹配)",
+                dispatch_non_protocol(
+                    plane,
                     source_id,
-                    route.target,
-                    route.target_handle
-                );
+                    data,
+                    dec_cache,
+                    summary,
+                    &route.target,
+                    &route.target_handle,
+                    live,
+                )
+                .await;
             }
         }
     }
 }
 
-/// 喂入 Protocol 节点: 解析 → 帧分发 → 旁路缓冲 → convert 链下推 / RawData 文本缓存+透传
+/// 非协议字节目标分发 — FrameDecoder 喂入 / Transport 回注发送 / 忽略日志
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_non_protocol(
+    plane: &DataPlaneState,
+    source_id: &str,
+    data: &[u8],
+    dec_cache: &mut DecoderFeedCache,
+    summary: &mut RouteSummary,
+    target: &str,
+    target_handle: &str,
+    _live: Option<&transport_core::LiveNodeHandle>,
+) {
+    let kind = plane
+        .global_nodes
+        .lock()
+        .get(target)
+        .map(|n| n.kind.clone());
+    let Some(kind) = kind else { return };
+    match (&kind, target_handle) {
+        (NodeKind::FrameDecoder { .. }, FRAME_DECODER_IN_HANDLE | LOOPBACK_IN_HANDLE) => {
+            let ts = vofa_core::now_us();
+            if crate::decoder_feed::feed_decoder_by_id(&plane.eval, target, data, ts, dec_cache) {
+                summary.decoders_fed = true;
+            }
+        }
+        (NodeKind::Transport { .. }, TRANSPORT_TX_HANDLE) => {
+            // 协议转换回注 / 命令发送落地 — try_lock 避免与 open 的长持锁互等
+            match plane.transport.try_lock() {
+                Ok(m) => {
+                    if let Err(e) = m.send(target, data) {
+                        log::debug!("字节路由发送失败 ({target}): {e}");
+                    }
+                }
+                Err(_) => log::warn!("传输注册表锁忙, 丢弃发往 {} 的 {} 字节", target, data.len()),
+            }
+        }
+        _ => {
+            log::debug!(
+                "字节路由忽略: {source_id} -> {target}.{target_handle} (端口域或节点类型不匹配)"
+            );
+        }
+    }
+}
+
+/// 喂入去重组代表 Protocol 节点: 解析 → 帧分发 → 旁路缓冲 → convert 链下推
 ///
+/// `members` = 去重组全部节点 (代表在首位): 解析/时钟/检测/旁路/记录只做一次,
+/// 评估队列按节点 fan-out (`Arc<Vec<DataFrame>>` 零拷贝共享, 不变量 4)。
 /// 并行解析 (feed_parallel) 保留: 积压高时按帧边界切分并行, 积压低走顺序路径;
 /// ParallelFeeder 按 Protocol 节点持有 (tokio mutex 跨 await)。
 #[allow(clippy::too_many_arguments)]
@@ -163,6 +225,7 @@ async fn feed_protocol(
     app: Option<&AppHandle>,
     source_id: &str,
     proto_id: &str,
+    members: &[String],
     data: &[u8],
     depth_hint: usize,
     dec_cache: &mut DecoderFeedCache,
@@ -247,29 +310,47 @@ async fn feed_protocol(
         vofa_core::TransportConfig::TestData(config) => Some((
             super::SampleClockBasis::ExactRate,
             f64::from(config.sample_rate),
+            0_usize,
         )),
-        vofa_core::TransportConfig::Serial(config)
-            if !out.frames.is_empty() && !data.is_empty() =>
-        {
+        vofa_core::TransportConfig::Serial(config) if !data.is_empty() => {
+            // 名义线速时钟 (不变量 1): 波特率与字符格式是来源声明的权威时钟,
+            // 时间戳按字节域确定性推进; 每批实测帧长/到达节奏不再参与
+            // (旧"逐批线速估算+到达回填"是时钟抖动与波形畸变的源头)。
             let parity_bits = u32::from(config.parity != vofa_core::Parity::None);
             let stop_bits = match config.stop_bits {
                 vofa_core::StopBits::One => 1,
                 vofa_core::StopBits::Two => 2,
             };
             let bits_per_byte = 1 + u32::from(config.data_bits) + parity_bits + stop_bits;
-            let byte_count = u32::try_from(data.len()).unwrap_or(u32::MAX);
-            let frame_count = u32::try_from(out.frames.len()).unwrap_or(u32::MAX);
+            let bytes_per_sec = f64::from(config.baud_rate) / f64::from(bits_per_byte);
             Some((
-                super::SampleClockBasis::SerialWireRate,
-                f64::from(config.baud_rate) * f64::from(frame_count)
-                    / (f64::from(byte_count) * f64::from(bits_per_byte)),
+                super::SampleClockBasis::SerialNominal,
+                bytes_per_sec,
+                data.len(),
             ))
         }
         _ => None,
     });
-    if let Some((basis, sample_rate)) = clock_hint {
-        st.lock()
-            .restamp_frames_at_rate(source_id, basis, sample_rate, &mut out.frames);
+    // 时间权威定案 (不变量 1): hint 每批传入, 域锁定/缺失外推/Arrival 摊开
+    // 语义全部收口在 restamp_frames; 数值平面与显示端不再加工时间戳
+    let arrival_us = vofa_core::now_us();
+    st.lock()
+        .restamp_frames(clock_hint, arrival_us, &mut out.frames);
+    // 容量自洽 (不变量 2): 时钟域已知的来源按名义帧率整备缓冲容量
+    if let Some((basis, rate, _)) = clock_hint {
+        let frames_per_sec = match basis {
+            super::SampleClockBasis::ExactRate => Some(rate),
+            super::SampleClockBasis::SerialNominal => {
+                // 串口线速是字节率: 按本批实测字节/帧比折算帧率 (名义近似)
+                (!out.frames.is_empty() && !data.is_empty()).then(|| {
+                    rate * f64::from(u32::try_from(out.frames.len()).unwrap_or(0))
+                        / f64::from(u32::try_from(data.len()).unwrap_or(1))
+                })
+            }
+        };
+        if let Some(fps) = frames_per_sec {
+            plane.tune_buffer_capacity(proto_id, fps);
+        }
     }
     // 通道检测处理 (单次锁内取齐决策):
     // - 系统通知保持一次性语义 (detection_notified 闸)
@@ -359,12 +440,19 @@ async fn feed_protocol(
         None => Vec::new(),
     };
 
-    // 数据帧 → 评估队列, eval worker 异步完成 source_frames 缓存 + 数值平面评估
-    // (摄入/评估解耦: 读任务不再被逐帧图求值阻塞; worker 内部经 blocking 池
-    // 执行 SIMD/并行批量求值, 见 eval_worker)
+    // 数据帧 → 双平面分發 (不变量 3):
+    // - 记录平面: 原始帧无条件入库 (分块锁), 波形显示不依赖求值吞吐
+    // - 求值平面: 入评估队列, eval worker 异步完成 source_frames + 图评估
+    //   (有界队列满则丢最旧整批 = 显式缺口 + 状态复位)
     if !out.frames.is_empty() {
         summary.frames += out.frames.len() as u64;
-        plane.enqueue_frames(proto_id, std::mem::take(&mut out.frames));
+        // 记录平面一次入代表缓冲 (组员经 buffer_alias 读同一份, 不重复记)
+        super::frame_dispatch::record_frames(plane, proto_id, &out.frames);
+        // 求值平面 fan-out: 各节点独立 source_frames / 图求值 / 缺口记账
+        let frames = Arc::new(std::mem::take(&mut out.frames));
+        for member in members {
+            plane.enqueue_frames(member, Arc::clone(&frames));
+        }
     }
     if !converted.is_empty() {
         Box::pin(route_inner(

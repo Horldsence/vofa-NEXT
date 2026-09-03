@@ -10,6 +10,7 @@
 
 mod data_buffer;
 mod derived;
+pub mod tier;
 mod window;
 
 pub use data_buffer::DataBuffer;

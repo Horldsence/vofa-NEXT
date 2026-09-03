@@ -312,6 +312,7 @@ sharedYDesc: 切换所有通道是否共用同一个 Y 轴 (V/div 与 Position)
 sharedYHint: 共用 Y 模式 — V/div 与 Position 请在"通道"Tab 统一设置
 cursorHideHint: 隐藏光标
 cursorHiddenHint: 光标已隐藏 (松开按键恢复)
+waveformDerated: 缓冲已降载 (包络显示)
 waveformInteractHintTitle: 波形图交互
 waveformInteractHintMessage: 左键拖动可框选数据范围，用于复制或导出 CSV；按住 Shift 左键或用右键拖动可平移视图。
 waveformSnapshotUnavailable: 当前冻结画面已保留；原始快照重采样不可用

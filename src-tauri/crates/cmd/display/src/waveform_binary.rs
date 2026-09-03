@@ -18,7 +18,10 @@
 //! [52..56)  channel_slot_count c (u32)
 //! [56..60)  channel_count (u32)
 //! [60..64)  derived_entry_count d (u32)
-//! [64..)    timestamps: n × f64 (相对最新的毫秒偏移)
+//! [64..72)  storage_overflow (u64, v2) — L0 滚动覆盖累计 (降载徽标)
+//! [72..73)  buffer_tier (u8, v2) — 服务本窗口的金字塔层级 (0=原始层)
+//! [73..80)  保留 (零填充)
+//! [80..)    timestamps: n × f64 (相对最新的毫秒偏移)
 //! [..)      channels: c 列 × n × f32 (槽位全形, 空槽为 NaN)
 //! [..)      derived × d: (u16 长度 + UTF-8 bytes) × {sink, source, handle}
 //!                      + n × f32
@@ -27,8 +30,8 @@
 use buffer_databuffer::{WaveformSampling, WaveformWindow};
 
 pub const WAVEFORM_BINARY_MAGIC: &[u8; 4] = b"WWB1";
-pub const WAVEFORM_BINARY_SCHEMA_VERSION: u16 = 1;
-pub const WAVEFORM_BINARY_HEADER_LEN: usize = 64;
+pub const WAVEFORM_BINARY_SCHEMA_VERSION: u16 = 2;
+pub const WAVEFORM_BINARY_HEADER_LEN: usize = 80;
 
 const fn sampling_code(sampling: WaveformSampling) -> u16 {
     match sampling {
@@ -105,6 +108,12 @@ pub fn encode_waveform_window(window: &WaveformWindow) -> Vec<u8> {
             .unwrap_or(u32::MAX)
             .to_le_bytes(),
     );
+    // v2: 降载元数据
+    bytes.extend_from_slice(&window.storage_overflow.to_le_bytes());
+    bytes.push(window.buffer_tier);
+    while bytes.len() < WAVEFORM_BINARY_HEADER_LEN {
+        bytes.push(0);
+    }
 
     for ts in &window.timestamps {
         bytes.extend_from_slice(&ts.to_le_bytes());
@@ -153,6 +162,8 @@ mod tests {
             latest_timestamp_us: 1_234_567,
             raw_window_points: 2_000,
             sampling: WaveformSampling::MinMax,
+            storage_overflow: 7,
+            buffer_tier: 2,
         }
     }
 
@@ -160,25 +171,28 @@ mod tests {
     fn header_and_columns_are_encoded() {
         let bytes = encode_waveform_window(&sample_window());
         // 键名 15 字节 + 补齐 3 = 每项键区对齐到 24; (6+键名+补齐+4n) = 36
-        let expected = 64 + 8 * 3 + 4 * 3 * 3 + 24 + 4 * 3;
+        let expected = 80 + 8 * 3 + 4 * 3 * 3 + 24 + 4 * 3;
         assert_eq!(bytes.len(), expected);
         let view = &bytes[..WAVEFORM_BINARY_HEADER_LEN];
-        assert_eq!(u16::from_le_bytes(view[4..6].try_into().unwrap()), 1);
+        assert_eq!(u16::from_le_bytes(view[4..6].try_into().unwrap()), 2);
         assert_eq!(u16::from_le_bytes(view[6..8].try_into().unwrap()), 1); // min_max
         assert_eq!(u64::from_le_bytes(view[8..16].try_into().unwrap()), 42);
         assert_eq!(u32::from_le_bytes(view[48..52].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(view[52..56].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(view[56..60].try_into().unwrap()), 3);
         assert_eq!(u32::from_le_bytes(view[60..64].try_into().unwrap()), 1);
+        // v2 降载元数据
+        assert_eq!(u64::from_le_bytes(view[64..72].try_into().unwrap()), 7);
+        assert_eq!(view[72], 2);
         // timestamps
-        let ts: f64 = f64::from_le_bytes(bytes[64..72].try_into().unwrap());
+        let ts: f64 = f64::from_le_bytes(bytes[80..88].try_into().unwrap());
         assert!((ts + 30.0).abs() < 1e-9);
         // 通道 1 空槽对齐为 NaN
-        let ch1_offset = 64 + 8 * 3 + 4 * 3;
+        let ch1_offset = 80 + 8 * 3 + 4 * 3;
         let v: f32 = f32::from_le_bytes(bytes[ch1_offset..ch1_offset + 4].try_into().unwrap());
         assert!(v.is_nan());
         // 派生列 NaN 原生传递 (JSON 路径下这里曾是 null); 值列 4 字节对齐
-        let derived_offset = 64 + 8 * 3 + 4 * 3 * 3 + 24;
+        let derived_offset = 80 + 8 * 3 + 4 * 3 * 3 + 24;
         assert_eq!(derived_offset % 4, 0);
         let v: f32 = f32::from_le_bytes(
             bytes[derived_offset + 4..derived_offset + 8]
@@ -194,7 +208,7 @@ mod tests {
         window.channels = vec![vec![1.0]]; // 长度不足
         let bytes = encode_waveform_window(&window);
         // n 仍由 timestamps 决定 = 3; 键区 21 对齐到 24
-        let expected = 64 + 8 * 3 + 4 * 3 + 24 + 4 * 3;
+        let expected = 80 + 8 * 3 + 4 * 3 + 24 + 4 * 3;
         assert_eq!(bytes.len(), expected);
     }
 }

@@ -7,6 +7,10 @@ interface WaveformWindowMeta {
   latest_timestamp_us: number;
   raw_window_points: number;
   sampling: 'raw' | 'min_max' | 'lttb';
+  /** L0 滚动覆盖累计 (后端 v2 元数据; 旧路径缺省 0 = 无降载) */
+  storage_overflow?: number;
+  /** 服务本窗口的金字塔层级 (>0 = min-max 降载显示) */
+  buffer_tier?: number;
 }
 
 /// serde_json 会把 Rust 非有限浮点数编码为 null；仅允许在快照查询的 IPC 边界出现。

@@ -68,11 +68,19 @@ pub struct WindowSnapshot {
     timestamps: Vec<u64>,
     /// 选中序列 (通道/派生)
     series: Vec<SnapshotSeries>,
-    /// 通道槽总数 (WaveformWindow.channels 保持完整槽形状)
+    /// 通道槽总数 (WaveformWindow.channels 保持完整通道槽形状)
     num_channels: usize,
     /// 后端波形缓冲区当前点数/容量 (状态栏缓存使用率)
     buffer_points: usize,
     buffer_capacity: usize,
+    /// 是否来自金字塔层 (真实 min-max 包络; 采样标志强制非 Raw)
+    from_tier: bool,
+    /// 金字塔层序号 (from_tier 时的层 k, 0 基; raw 路径无意义)
+    tier_level: u8,
+    /// L0 滚动覆盖累计 (快照锚定时刻)
+    storage_overflow: u64,
+    /// 降采样前落在请求时间窗内的原始点数 (层服务时含已被 L0 覆盖丢弃的部分)
+    raw_window_points: usize,
 }
 
 /// 波形数据窗口 — 供前端查询
@@ -106,6 +114,12 @@ pub struct WaveformWindow {
     /// 窗口采用的采样策略。
     #[serde(default)]
     pub sampling: WaveformSampling,
+    /// L0 滚动覆盖丢弃的样本累计数 (降载徽标; 0 = 原始层完整覆盖当前窗口)
+    #[serde(default)]
+    pub storage_overflow: u64,
+    /// 服务本窗口的金字塔层级 (0 = 原始层; k>0 = min-max 第 k 层, 降载显示)
+    #[serde(default)]
+    pub buffer_tier: u8,
 }
 
 impl DataBuffer {
@@ -235,7 +249,7 @@ impl DataBuffer {
         )
     }
 
-    fn channel_value(&self, channel: usize, index: usize, total: usize) -> f32 {
+    pub(crate) fn channel_value(&self, channel: usize, index: usize, total: usize) -> f32 {
         let Some(series) = self.channels.get(channel) else {
             return f32::NAN;
         };
@@ -247,20 +261,10 @@ impl DataBuffer {
         }
     }
 
-    fn derived_value(&self, derived_index: usize, index: usize, total: usize) -> f32 {
-        let Some(entry) = self.derived_list.get(derived_index) else {
-            return f32::NAN;
-        };
-        let offset = total.saturating_sub(entry.rb.len());
-        if index < offset {
-            f32::NAN
-        } else {
-            entry.rb.get(index - offset).copied().unwrap_or(f32::NAN)
-        }
-    }
-
     fn selected_derived_indices(&self, selection: &WaveformSeriesSelection) -> Vec<usize> {
-        self.derived_list
+        self.derived
+            .lock()
+            .entries()
             .iter()
             .enumerate()
             .filter_map(|(index, entry)| {
@@ -281,7 +285,9 @@ impl DataBuffer {
         WaveformSeriesSelection {
             channels: (0..self.num_channels).collect(),
             derived: self
-                .derived_list
+                .derived
+                .lock()
+                .entries()
                 .iter()
                 .map(|entry| DerivedSeriesSelector {
                     sink_id: entry.sink.clone(),
@@ -307,6 +313,11 @@ impl DataBuffer {
             .map(|timestamp| Self::relative_timestamp_ms(timestamp, latest_us))
             .collect();
         let selected_channels = selection.channels.iter().copied().collect::<HashSet<_>>();
+        // 窗口绝对时间戳 (升序) — 派生序列按时间精确对齐到该轴
+        let window_ts: Vec<u64> = selected
+            .iter()
+            .filter_map(|&index| self.timestamps.get(index).copied())
+            .collect();
         let channels = (0..self.num_channels)
             .map(|channel| {
                 if !selected_channels.contains(&channel) {
@@ -324,20 +335,20 @@ impl DataBuffer {
             .collect::<HashSet<_>>();
         let mut derived: HashMap<String, HashMap<String, HashMap<String, Vec<f32>>>> =
             HashMap::new();
-        for (derived_index, entry) in self.derived_list.iter().enumerate() {
-            if entry.rb.is_empty() || !selected_derived.contains(&derived_index) {
-                continue;
+        {
+            let store = self.derived.lock();
+            for (derived_index, entry) in store.entries().iter().enumerate() {
+                if entry.rb.is_empty() || !selected_derived.contains(&derived_index) {
+                    continue;
+                }
+                let values = store.values_at_timestamps(derived_index, &window_ts);
+                derived
+                    .entry(entry.sink.clone())
+                    .or_default()
+                    .entry(entry.source.clone())
+                    .or_default()
+                    .insert(entry.source_handle.clone(), values);
             }
-            let values = selected
-                .iter()
-                .map(|&index| self.derived_value(derived_index, index, total))
-                .collect();
-            derived
-                .entry(entry.sink.clone())
-                .or_default()
-                .entry(entry.source.clone())
-                .or_default()
-                .insert(entry.source_handle.clone(), values);
         }
         let sampling = if raw_window_points > timestamps.len() {
             sampling
@@ -355,6 +366,8 @@ impl DataBuffer {
             latest_timestamp_us: latest_us,
             raw_window_points,
             sampling,
+            storage_overflow: self.storage_overflow,
+            buffer_tier: 0,
         }
     }
 
@@ -384,30 +397,42 @@ impl DataBuffer {
                 });
             }
         }
-        for derived_index in self.selected_derived_indices(selection) {
-            let entry = &self.derived_list[derived_index];
-            if entry.rb.is_empty() {
-                continue;
+        {
+            // 单次加锁完成筛选 + 时间对齐取值 (派生锁不可重入, 锁内不得再调
+            // selected_derived_indices 等加锁方法)
+            let store = self.derived.lock();
+            for (derived_index, entry) in store.entries().iter().enumerate() {
+                if entry.rb.is_empty()
+                    || !selection.derived.iter().any(|selected| {
+                        selected.sink_id == entry.sink
+                            && selected.source_id == entry.source
+                            && selected.source_handle == entry.source_handle
+                    })
+                {
+                    continue;
+                }
+                let values = store.values_at_timestamps(derived_index, &timestamps);
+                series.push(SnapshotSeries {
+                    target: SeriesTarget::Derived {
+                        sink: entry.sink.clone(),
+                        source: entry.source.clone(),
+                        handle: entry.source_handle.clone(),
+                    },
+                    values,
+                });
             }
-            let values = (start..end)
-                .map(|index| self.derived_value(derived_index, index, total))
-                .collect();
-            series.push(SnapshotSeries {
-                target: SeriesTarget::Derived {
-                    sink: entry.sink.clone(),
-                    source: entry.source.clone(),
-                    handle: entry.source_handle.clone(),
-                },
-                values,
-            });
         }
         WindowSnapshot {
             latest_us,
+            raw_window_points: timestamps.len(),
             timestamps,
             series,
             num_channels: self.num_channels,
             buffer_points: total,
             buffer_capacity: self.max_points,
+            from_tier: false,
+            tier_level: 0,
+            storage_overflow: self.storage_overflow,
         }
     }
 
@@ -431,6 +456,160 @@ impl DataBuffer {
             .copied()
             .unwrap_or(0);
         self.snapshot_range(0, total, latest, &self.all_series_selection())
+    }
+
+    /// 分层预算快照 — 波形流消费入口 (不变量 2: 容量自洽, 示波器语义)
+    ///
+    /// 窗口完整落在 L0 覆盖内且原始点数 ≤ 4×budget → 原始快照; 否则自动选择
+    /// 最小的金字塔层 (窗口内条目数 ≤ 4×budget), 提供**真实 min-max 包络**。
+    /// 窗口起点早于 L0 最旧样本时 (超出原始覆盖), 旧段由金字塔层补全 —
+    /// 旧数据降质不消失。
+    pub fn snapshot_window_budget(
+        &self,
+        start_ms: f64,
+        end_ms: f64,
+        selection: &WaveformSeriesSelection,
+        budget: usize,
+    ) -> WindowSnapshot {
+        let (start, end, latest) = self.range_indices(start_ms, end_ms);
+        let raw_count = end.saturating_sub(start);
+        let from_ts = Self::timestamp_at_offset(latest, start_ms.min(end_ms));
+        let to_ts = Self::timestamp_at_offset(latest, start_ms.max(end_ms));
+        let beyond_l0 = self.timestamps.len() >= self.max_points
+            && self
+                .timestamps
+                .get(0)
+                .is_some_and(|oldest| from_ts < *oldest);
+        if !beyond_l0 && raw_count <= budget.saturating_mul(4) {
+            return self.snapshot_range(start, end, latest, selection);
+        }
+        // 自底向上找"覆盖窗口起点且条目数 ≤ 4×budget"的最小层;
+        // 没有任何层覆盖起点 (数据比最粗层还老) → 用最粗层尽力而为
+        let mut fallback: Option<usize> = None;
+        for k in 0..self.tiers.len() {
+            let tier_fits = self.tiers[k]
+                .oldest_ts()
+                .is_some_and(|oldest| oldest <= from_ts);
+            let (lo, hi) = self.tiers[k].range_bounds(from_ts, to_ts);
+            if tier_fits && hi.saturating_sub(lo) <= budget.saturating_mul(4) {
+                return self.snapshot_tier(k, from_ts, to_ts, latest, selection);
+            }
+            if fallback.is_none() {
+                fallback = Some(k);
+            }
+        }
+        fallback.map_or_else(
+            || self.snapshot_range(start, end, latest, selection),
+            |k| self.snapshot_tier(k, from_ts, to_ts, latest, selection),
+        )
+    }
+
+    /// 全历史预算快照 (概览流) — 从能装下预算的最小层取全历史包络
+    pub fn snapshot_all_budget(&self, budget: usize) -> WindowSnapshot {
+        let latest = self
+            .timestamps
+            .get(self.timestamps.len().saturating_sub(1))
+            .copied()
+            .unwrap_or(0);
+        for k in (0..self.tiers.len()).rev() {
+            if self.tiers[k].entry_count() <= budget.saturating_mul(4) {
+                return self.snapshot_tier_all(k, latest);
+            }
+        }
+        self.snapshot_all()
+    }
+
+    /// 从第 `tier_ix` 层取窗口区间快照 (min-max 交错条目即真实包络)
+    fn snapshot_tier(
+        &self,
+        tier_ix: usize,
+        from_ts: u64,
+        to_ts: u64,
+        latest: u64,
+        selection: &WaveformSeriesSelection,
+    ) -> WindowSnapshot {
+        let tier = &self.tiers[tier_ix];
+        let (lo, hi) = tier.range_bounds(from_ts, to_ts);
+        let timestamps: Vec<u64> = tier
+            .series
+            .first()
+            .map(|s| {
+                (lo..hi)
+                    .filter_map(|i| s.ts.get(i).copied())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        let mut series = Vec::new();
+        let mut seen_channels = HashSet::new();
+        for &channel in &selection.channels {
+            if channel < tier.series.len() && seen_channels.insert(channel) {
+                let s = &tier.series[channel];
+                let values = (lo..hi)
+                    .map(|i| s.val.get(i).copied().unwrap_or(f32::NAN))
+                    .collect();
+                series.push(SnapshotSeries {
+                    target: SeriesTarget::Channel(channel),
+                    values,
+                });
+            }
+        }
+        {
+            let store = self.derived.lock();
+            for (derived_index, entry) in store.entries().iter().enumerate() {
+                if entry.rb.is_empty()
+                    || !selection.derived.iter().any(|selected| {
+                        selected.sink_id == entry.sink
+                            && selected.source_id == entry.source
+                            && selected.source_handle == entry.source_handle
+                    })
+                {
+                    continue;
+                }
+                let values = store.values_at_timestamps(derived_index, &timestamps);
+                series.push(SnapshotSeries {
+                    target: SeriesTarget::Derived {
+                        sink: entry.sink.clone(),
+                        source: entry.source.clone(),
+                        handle: entry.source_handle.clone(),
+                    },
+                    values,
+                });
+            }
+        }
+        // 窗口真实原始点数按层折算 (条目对数 × 16^(k+1)); 金字塔层服务的
+        // 窗口原始点数远大于本快照点数 → sampling 标 MinMax
+        let factor = 16_u64.pow(u32::try_from(tier_ix).unwrap_or(0) + 1);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let raw_window_points = hi.saturating_sub(lo).saturating_add(1) / 2 * factor as usize;
+        WindowSnapshot {
+            latest_us: latest,
+            timestamps,
+            series,
+            num_channels: self.num_channels,
+            buffer_points: self.timestamps.len(),
+            buffer_capacity: self.max_points,
+            from_tier: true,
+            tier_level: u8::try_from(tier_ix).unwrap_or(u8::MAX),
+            storage_overflow: self.storage_overflow,
+            raw_window_points,
+        }
+    }
+
+    /// 从第 `tier_ix` 层取全历史快照
+    fn snapshot_tier_all(&self, tier_ix: usize, latest: u64) -> WindowSnapshot {
+        let tier = &self.tiers[tier_ix];
+        let from = tier
+            .series
+            .first()
+            .and_then(|s| s.ts.get(0).copied())
+            .unwrap_or(0);
+        self.snapshot_tier(
+            tier_ix,
+            from,
+            u64::MAX,
+            latest,
+            &self.all_series_selection(),
+        )
     }
 
     fn uniform_indices(start: usize, end: usize, limit: usize) -> Vec<usize> {
@@ -521,20 +700,34 @@ impl DataBuffer {
             .collect();
         let derived = self.selected_derived_indices(selection);
 
+        // 行按 index 升序 = 时间戳升序; 派生值按时间对齐预取 (缺口 → 空单元格)
+        let row_ts: Vec<u64> = (start..end)
+            .filter_map(|index| self.timestamps.get(index).copied())
+            .collect();
+        let derived_columns: Vec<(String, Vec<f32>)> = {
+            let store = self.derived.lock();
+            derived
+                .iter()
+                .filter_map(|&derived_index| {
+                    let entry = store.entry(derived_index)?;
+                    let name = format!("{}:{}:{}", entry.sink, entry.source, entry.source_handle)
+                        .replace('"', "\"\"");
+                    Some((name, store.values_at_timestamps(derived_index, &row_ts)))
+                })
+                .collect()
+        };
+
         write!(writer, "timestamp_us")?;
         for channel in &channels {
             write!(writer, ",CH{channel}")?;
         }
-        for &derived_index in &derived {
-            let entry = &self.derived_list[derived_index];
-            let name = format!("{}:{}:{}", entry.sink, entry.source, entry.source_handle)
-                .replace('"', "\"\"");
+        for (name, _) in &derived_columns {
             write!(writer, ",\"{name}\"")?;
         }
         writeln!(writer)?;
 
         let total = self.timestamps.len();
-        for index in start..end {
+        for (row, index) in (start..end).enumerate() {
             let Some(timestamp) = self.timestamps.get(index) else {
                 continue;
             };
@@ -547,8 +740,8 @@ impl DataBuffer {
                     write!(writer, ",")?;
                 }
             }
-            for &derived_index in &derived {
-                let value = self.derived_value(derived_index, index, total);
+            for (_, values) in &derived_columns {
+                let value = values.get(row).copied().unwrap_or(f32::NAN);
                 if value.is_finite() {
                     write!(writer, ",{value}")?;
                 } else {
@@ -564,7 +757,7 @@ impl DataBuffer {
 impl WindowSnapshot {
     /// 降采样前窗口内的原始点数
     pub const fn raw_window_points(&self) -> usize {
-        self.timestamps.len()
+        self.raw_window_points
     }
 
     /// 由选中局部序号构建输出窗口 (相对时间戳 + 完整通道槽形状)
@@ -594,7 +787,7 @@ impl WindowSnapshot {
                 }
             }
         }
-        let sampling = if self.timestamps.len() > timestamps.len() {
+        let sampling = if self.from_tier || self.raw_window_points > timestamps.len() {
             sampling
         } else {
             WaveformSampling::Raw
@@ -608,8 +801,14 @@ impl WindowSnapshot {
             buffer_points: self.buffer_points,
             buffer_capacity: self.buffer_capacity,
             latest_timestamp_us: self.latest_us,
-            raw_window_points: self.timestamps.len(),
+            raw_window_points: self.raw_window_points,
             sampling,
+            storage_overflow: self.storage_overflow,
+            buffer_tier: if self.from_tier {
+                self.tier_level.saturating_add(1)
+            } else {
+                0
+            },
         }
     }
 
@@ -759,7 +958,10 @@ impl WindowSnapshot {
                 let candidate_x = x(index);
                 let candidate_y = f64::from(value);
                 let area = (anchor_x - candidate_x)
-                    .mul_add(-(average_y - anchor_y), (anchor_x - average_x) * (candidate_y - anchor_y))
+                    .mul_add(
+                        -(average_y - anchor_y),
+                        (anchor_x - average_x) * (candidate_y - anchor_y),
+                    )
                     .abs();
                 if best.is_none_or(|(_, current)| area > current) {
                     best = Some((index, area));

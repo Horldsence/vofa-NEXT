@@ -485,9 +485,11 @@ impl StreamSource for WaveformSource {
             if version == self.last_version {
                 return None;
             }
+            // 预算感知快照: 窗口超出 L0 覆盖或点数远超预算时, 自动从金字塔层
+            // 取真实 min-max 包络 (不变量 2: 示波器语义, 旧数据降质不消失)
             let snapshot = self.view.as_ref().map_or_else(
-                || buf.snapshot_all(),
-                |view| buf.snapshot_window(view.start_ms, view.end_ms, &view.selection),
+                || buf.snapshot_all_budget(max),
+                |view| buf.snapshot_window_budget(view.start_ms, view.end_ms, &view.selection, max),
             );
             (snapshot, version)
         };

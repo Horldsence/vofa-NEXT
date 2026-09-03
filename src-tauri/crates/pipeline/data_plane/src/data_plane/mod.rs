@@ -93,17 +93,34 @@ pub struct ProtocolNodeState {
     sample_clock: Option<SampleClock>,
 }
 
+/// 采样时钟域 (数据平面不变量 1: 每源单一权威时钟, 流内不切换不混叠)
+///
+/// 帧时间戳 = 逻辑时间, 由**字节平面**在解析后一次性定案, 数值平面与显示端
+/// 不做任何时间戳加工。到达时间只允许进入 Arrival 域 (来源无时钟声明时),
+/// 且一条流的生命周期内域不可变 — 杜绝"采样时钟段"与"到达摊开段"在同一
+/// 缓冲里交错 (波形折叠/畸变的根源)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SampleClockBasis {
+    /// TestData: 配置采样率, 帧域逐样本精确推进 (rate = 帧/s)
     ExactRate,
-    SerialWireRate,
+    /// 串口: 波特率名义线速, 字节域确定推进 (rate = 字节/s, 含起止/校验位)
+    SerialNominal,
 }
 
-struct SampleClock {
-    source_id: String,
-    basis: SampleClockBasis,
-    sample_rate: f64,
-    next_timestamp_us: f64,
+/// 每源逻辑时钟 — 首批锁定域, 之后与到达节奏彻底解耦
+enum SampleClock {
+    /// 来源声明时钟: TestData 采样率 / 串口波特率线速
+    Source {
+        basis: SampleClockBasis,
+        /// 名义速率: ExactRate = 帧/s; SerialNominal = 字节/s
+        rate: f64,
+        /// 下一未消费位置的逻辑时间 (µs): 帧域 = 下一帧; 字节域 = 下一字节
+        next_us: f64,
+        /// 首批锚点尚未消费 (首批把批尾锚定到到达时刻)
+        anchored: bool,
+    },
+    /// 无时钟声明 (网络等): 到达域, 批内按到达区间线性摊开
+    Arrival { next_us: f64 },
 }
 
 impl ProtocolNodeState {
@@ -133,64 +150,130 @@ impl ProtocolNodeState {
         }
     }
 
-    /// 按来源提供的采样率为一批帧恢复连续时间戳。
+    /// 为一批帧定案逻辑时间戳 (字节平面时间权威, 不变量 1)。
+    ///
+    /// - `hint`: `Some((basis, rate, batch_bytes))` = 来源声明的采样时钟
+    ///   (TestData = 配置采样率; 串口 = 波特率线速 + 本批字节数); `None` = 无时钟声明。
+    /// - `arrival_us`: 本批到达时刻 (仅用于首批锚点与 Arrival 域)。
+    ///
+    /// 域规则: **首批锁定时钟域, 流内不切换**。
+    /// - Source 域: 时间由名义速率确定性推进; 采样率热更新只换步长保持相位;
+    ///   hint 中途缺失 (运行态查询短暂失败) 沿用已锁定速率外推, 绝不落入到达域。
+    /// - Arrival 域: 批尾 = 到达时刻, 批内在 (上一批尾, 本批尾] 区间线性摊开;
+    ///   即使后续出现时钟声明也保持到达域 (不与历史段混写)。
+    ///
+    /// 任何情况下不重锚到到达时刻、不允许时间倒退。
     #[allow(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
         clippy::cast_sign_loss
     )]
-    pub(crate) fn restamp_frames_at_rate(
+    pub(crate) fn restamp_frames(
         &mut self,
-        source_id: &str,
-        basis: SampleClockBasis,
-        sample_rate: f64,
+        hint: Option<(SampleClockBasis, f64, usize)>,
+        arrival_us: u64,
         frames: &mut [vofa_core::DataFrame],
     ) {
-        if frames.is_empty() || !sample_rate.is_finite() || sample_rate <= 0.0 {
+        let n = frames.len();
+        if n == 0 {
+            // 无帧批次: 已锁定的串口字节时钟照常推进 (被消费字节的线速时间不丢失);
+            // 域未锁定时不做任何决策, 留给首个非空批次
+            if let (
+                Some(SampleClock::Source {
+                    basis: SampleClockBasis::SerialNominal,
+                    rate,
+                    next_us,
+                    anchored,
+                }),
+                Some((SampleClockBasis::SerialNominal, _, batch_bytes)),
+            ) = (&mut self.sample_clock, hint)
+            {
+                if !*anchored && batch_bytes > 0 {
+                    *next_us += f64::from(u32::try_from(batch_bytes).unwrap_or(u32::MAX))
+                        * 1_000_000.0
+                        / *rate;
+                }
+            }
             return;
         }
-        let step_us = 1_000_000.0 / sample_rate;
-        let reset = self
-            .sample_clock
-            .as_ref()
-            .is_none_or(|clock| clock.source_id != source_id || clock.basis != basis);
-        if reset {
-            let anchor_us = if basis == SampleClockBasis::SerialWireRate {
-                frames
-                    .last()
-                    .map_or_else(vofa_core::now_us, |frame| frame.timestamp)
-            } else {
-                vofa_core::now_us()
-            } as f64;
-            self.sample_clock = Some(SampleClock {
-                source_id: source_id.to_string(),
-                basis,
-                sample_rate,
-                next_timestamp_us: (frames.len().saturating_sub(1) as f64)
-                    .mul_add(-step_us, anchor_us),
+        if self.sample_clock.is_none() {
+            // 首批锁定时钟域; 锚点 = 本批尾到达时刻 (LIVE 窗口语义)
+            self.sample_clock = Some(match hint {
+                Some((basis, rate, _)) => SampleClock::Source {
+                    basis,
+                    rate,
+                    next_us: arrival_us as f64,
+                    anchored: true,
+                },
+                None => SampleClock::Arrival {
+                    next_us: arrival_us as f64,
+                },
             });
         }
-        let Some(clock) = &mut self.sample_clock else {
-            return;
-        };
-        // TestData 的明确采样率连续推进；串口线速是估算值，每批允许用真实到达
-        // 时刻补回线路空闲间隔，但绝不倒退或覆盖上一批时间戳。
-        if basis == SampleClockBasis::SerialWireRate {
-            let arrival_us = frames
-                .last()
-                .map_or_else(vofa_core::now_us, |frame| frame.timestamp)
-                as f64;
-            let arrival_start =
-                (frames.len().saturating_sub(1) as f64).mul_add(-step_us, arrival_us);
-            clock.next_timestamp_us = clock.next_timestamp_us.max(arrival_start);
-        } else if (clock.sample_rate - sample_rate).abs() > f64::EPSILON {
-            let previous_step_us = 1_000_000.0 / clock.sample_rate;
-            clock.next_timestamp_us += step_us - previous_step_us;
-        }
-        clock.sample_rate = sample_rate;
-        for frame in frames {
-            frame.timestamp = clock.next_timestamp_us.max(0.0).round() as u64;
-            clock.next_timestamp_us += step_us;
+        let arrival = arrival_us as f64;
+        match (&mut self.sample_clock, hint) {
+            (
+                Some(SampleClock::Source {
+                    basis,
+                    rate,
+                    next_us,
+                    anchored,
+                }),
+                hint_now,
+            ) => {
+                // hint 缺失: 沿用已锁定域与速率外推 (串口按 0 字节 = 不推进)
+                let (basis_now, rate_now, batch_bytes) = hint_now.unwrap_or((*basis, *rate, 0));
+                // 域变更 (同节点换传输类型, 罕见): 保持时间连续, 只换推进公式
+                *basis = basis_now;
+                let step_us = match basis_now {
+                    SampleClockBasis::ExactRate => {
+                        // 采样率热更新: 相位保持, 只替换步长
+                        if (*rate - rate_now).abs() > f64::EPSILON {
+                            let previous_step_us = 1_000_000.0 / *rate;
+                            *next_us += 1_000_000.0 / rate_now - previous_step_us;
+                        }
+                        *rate = rate_now;
+                        1_000_000.0 / *rate
+                    }
+                    SampleClockBasis::SerialNominal => {
+                        *rate = rate_now;
+                        // 字节域: 本批字节的线速时间均摊到批内各帧。串口线以恒定
+                        // 波特率送字节, 批内每帧步长 = 每帧字节数 × 位时间; 批间由
+                        // next_us 连续累积吸收帧长波动 — 确定性推进, 与到达抖动/
+                        // 合批大小无关。
+                        f64::from(u32::try_from(batch_bytes).unwrap_or(u32::MAX)) * 1_000_000.0
+                            / (*rate * n.max(1) as f64)
+                    }
+                };
+                // 首批: 回退本批起点使末帧恰为到达锚点, 之后时间纯逻辑推进
+                let mut ts = *next_us;
+                if *anchored {
+                    *anchored = false;
+                    let span = step_us * (n - 1).min(100_000_000) as f64;
+                    ts -= span;
+                }
+                for frame in frames.iter_mut() {
+                    frame.timestamp = ts.max(0.0).round() as u64;
+                    ts += step_us;
+                }
+                *next_us = ts;
+            }
+            (Some(SampleClock::Arrival { next_us }), _) => {
+                let end = arrival.max(*next_us);
+                if end > *next_us && n > 1 {
+                    let span = end - *next_us;
+                    for (i, frame) in frames.iter_mut().enumerate() {
+                        frame.timestamp =
+                            (*next_us + span * (i + 1) as f64 / n as f64).round() as u64;
+                    }
+                } else {
+                    for frame in frames.iter_mut() {
+                        frame.timestamp = end.round() as u64;
+                    }
+                }
+                *next_us = end;
+            }
+            (None, _) => unreachable!("上方已初始化 sample_clock"),
         }
     }
 
@@ -210,6 +293,17 @@ impl ProtocolNodeState {
 
 /// 数据缓冲区默认通道数 (buffer_for 懒建 / 自动模式引擎重建后待重新检测时的回退值)
 pub const DEFAULT_BUFFER_CHANNELS: usize = 4;
+
+/// 评估队列 (字节平面 → 数值平面解耦点): 每源有界批队列, 帧 Arc 共享 (不变量 4)
+pub(crate) type FrameQueue = VecDeque<Arc<Vec<DataFrame>>>;
+/// 字节路由去重组表: 字节源 → [(等价配置 key, 代表节点, 组员)]
+pub(crate) type RouteGroups = HashMap<String, Vec<(String, String, Vec<String>)>>;
+
+/// 容量整备的目标窗口秒数 — 覆盖默认 2s 视图 + overscan + 平移余量
+pub(crate) const BUFFER_WINDOW_TARGET_SECONDS: f64 = 2.5;
+
+/// 原始层容量的绝对上限 (防病态分配; 超出部分由金字塔层承担)
+pub(crate) const MAX_RAW_POINTS: usize = 16_000_000;
 
 /// 数据平面共享状态 (Arc 共享, 仿 GraphEvalState 模式)
 ///
@@ -233,8 +327,19 @@ pub struct DataPlaneState {
     pub buffers: Arc<Mutex<HashMap<String, Arc<Mutex<DataBuffer>>>>>,
     /// 每 Transport 节点 rx 的原始字节收集器
     pub raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
-    /// 每源待评估帧批队列 (字节平面 → 数值平面解耦点; key = Protocol 节点 id)
-    pub(crate) frame_queues: Arc<Mutex<HashMap<String, VecDeque<Vec<DataFrame>>>>>,
+    /// 每源待评估帧批队列 (字节平面 → 数值平面解耦点; key = Protocol 节点 id;
+    /// 元素 Arc 共享 — 去重组 fan-out 零拷贝, 不变量 4)
+    pub(crate) frame_queues: Arc<Mutex<HashMap<String, FrameQueue>>>,
+    /// 每源自上次成功求值以来被丢弃的帧数 (缺口记账, 不变量 5) —
+    /// eval worker 取批时消费, 触发有状态算子复位 + 告警
+    eval_gaps: Arc<Mutex<HashMap<String, u64>>>,
+    /// 每源最近一次容量整备的速率 (±5% 内不重复整备)
+    tuned_rate: Arc<Mutex<HashMap<String, f64>>>,
+    /// 字节路由去重组 (key = 字节源 id): (等价配置 key, 代表节点, 组员) —
+    /// 同源同配置的 Protocol 节点只解析一次, fan-out 给各 tab (不变量 4)
+    pub(crate) route_groups: Arc<Mutex<RouteGroups>>,
+    /// 缓冲别名: 去重组组员 → 代表 (组员显示读代表缓冲, 原始数据只记一份)
+    buffer_aliases: Arc<Mutex<HashMap<String, String>>>,
     /// 评估 worker 唤醒器 (push 后 notify_one; 许可语义保证不丢唤醒)
     pub(crate) eval_notify: Arc<tokio::sync::Notify>,
     /// 评估 worker 轮转游标 (公平轮询各源队列)
@@ -279,6 +384,10 @@ impl DataPlaneState {
             buffers: Arc::new(Mutex::new(HashMap::new())),
             raw_collectors: Arc::new(Mutex::new(HashMap::new())),
             frame_queues: Arc::new(Mutex::new(HashMap::new())),
+            eval_gaps: Arc::new(Mutex::new(HashMap::new())),
+            tuned_rate: Arc::new(Mutex::new(HashMap::new())),
+            route_groups: Arc::new(Mutex::new(HashMap::new())),
+            buffer_aliases: Arc::new(Mutex::new(HashMap::new())),
             eval_notify: Arc::new(tokio::sync::Notify::new()),
             eval_cursor: Arc::new(AtomicU64::new(0)),
             eval_worker_started: Arc::new(AtomicBool::new(false)),
@@ -294,11 +403,18 @@ impl DataPlaneState {
         }
     }
 
-    /// 取指定源的数据缓冲区 (不存在则按默认容量创建: 100k 点 × 默认通道数)
+    /// 取指定源的数据缓冲区 (不存在则按默认容量创建: 100k 点 × 默认通道数)。
+    /// 去重组组员解析到代表缓冲 (原始数据只记录一份, 不变量 4)。
     pub fn buffer_for(&self, source: &str) -> Arc<Mutex<DataBuffer>> {
+        let resolved = self
+            .buffer_aliases
+            .lock()
+            .get(source)
+            .cloned()
+            .unwrap_or_else(|| source.to_string());
         self.buffers
             .lock()
-            .entry(source.to_string())
+            .entry(resolved)
             .or_insert_with(|| {
                 Arc::new(Mutex::new(DataBuffer::new(
                     100_000,
@@ -321,7 +437,7 @@ impl DataPlaneState {
     ///
     /// 有界队列: 满时丢最旧整批并计数 (持续过载下保最新, 丢弃显式可观测),
     /// 新帧持续流动, 波形尾部始终最新。返回是否入队 (供诊断)。
-    pub(crate) fn enqueue_frames(&self, source_id: &str, frames: Vec<DataFrame>) {
+    pub(crate) fn enqueue_frames(&self, source_id: &str, frames: Arc<Vec<DataFrame>>) {
         // 惰性启动: loopback/mcp 等命令路径不经过 attach, 首次入队时保证 worker 存活
         self.ensure_eval_worker();
         let dropped = {
@@ -338,13 +454,19 @@ impl DataPlaneState {
         };
         if dropped > 0 {
             self.metrics.add_eval_dropped(dropped);
+            // 缺口记账 (不变量 5): eval 侧见到缺口即复位有状态算子并告警
+            *self
+                .eval_gaps
+                .lock()
+                .entry(source_id.to_string())
+                .or_insert(0) += dropped;
         }
         // 队列锁已释放再唤醒, worker 与生产者不在锁上互等
         self.eval_notify.notify_one();
     }
 
     /// 公平轮询取一批待评估帧 (worker 消费)
-    pub(crate) fn pop_frame_batch(&self) -> Option<(String, Vec<DataFrame>)> {
+    pub(crate) fn pop_frame_batch(&self) -> Option<(String, Arc<Vec<DataFrame>>)> {
         let mut queues = self.frame_queues.lock();
         let non_empty: Vec<String> = queues
             .iter()
@@ -369,11 +491,92 @@ impl DataPlaneState {
             .and_then(|queue| queue.pop_front().map(|frames| (key, frames)))
     }
 
+    /// 取某源累计的求值缺口帧数 (有则清零返回; 无返回 None)
+    pub(crate) fn take_eval_gap(&self, source_id: &str) -> Option<u64> {
+        self.eval_gaps.lock().remove(source_id).filter(|n| *n > 0)
+    }
+
+    /// 缓冲降载汇总 — 各源 storage_overflow 总和较上次报告的增量 (不变量 5:
+    /// 丢弃显式化; 金字塔层对被覆盖部分提供包络, 波形不缺失)
+    pub(crate) fn report_buffer_overflow_delta(&self) {
+        let total: u64 = self
+            .buffers
+            .lock()
+            .values()
+            .map(|b| b.lock().storage_overflow())
+            .sum();
+        let prev = self
+            .metrics
+            .last_overflow_reported
+            .swap(total, Ordering::Relaxed);
+        let delta = total.wrapping_sub(prev);
+        if delta > 0 {
+            log::warn!(
+                "缓冲降载: 原始层滚动覆盖 {delta} 样本 (2s), 窗口超出部分由金字塔层包络显示"
+            );
+        }
+    }
+
+    /// 容量自洽 (不变量 2): 按来源名义帧率整备缓冲容量
+    ///
+    /// L0 目标容量 = 帧率 × 目标窗口秒数, 受内存预算半额折算的点数封顶
+    /// (另一半留给派生层/金字塔/停止快照)。±5% 内的速率波动不重复整备。
+    /// 超出封顶的窗口由金字塔层提供包络 (示波器语义)。
+    pub(crate) fn tune_buffer_capacity(&self, source_id: &str, frames_per_sec: f64) {
+        if !frames_per_sec.is_finite() || frames_per_sec <= 0.0 {
+            return;
+        }
+        {
+            let tuned = self.tuned_rate.lock();
+            if tuned
+                .get(source_id)
+                .is_some_and(|r| (r - frames_per_sec).abs() / *r < 0.05)
+            {
+                return;
+            }
+        }
+        let budget_mb =
+            f64::from(u32::try_from(self.pipeline_config.read().memory_budget_mb).unwrap_or(256));
+        let channels = f64::from(
+            u32::try_from(self.buffer_for(source_id).lock().channel_count()).unwrap_or(4),
+        )
+        .max(1.0);
+        // 每样本 ≈ 8B 时间戳 + 4B×通道; 半预算给原始层
+        let bytes_per_point = 4.0f64.mul_add(channels, 8.0);
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let cap_points = (budget_mb * 0.5 * 1_048_576.0 / bytes_per_point) as usize;
+        let cap = cap_points.min(MAX_RAW_POINTS);
+        let buffer = self.buffer_for(source_id);
+        let mut b = buffer.lock();
+        if b.ensure_capacity_for_rate(frames_per_sec, BUFFER_WINDOW_TARGET_SECONDS, cap) {
+            log::info!(
+                "波形缓冲容量整备: 源 {source_id} 帧率 {frames_per_sec:.0}/s → {} 点 \
+                 (目标窗口 {BUFFER_WINDOW_TARGET_SECONDS}s, 封顶 {cap})",
+                b.max_points()
+            );
+        }
+        self.tuned_rate
+            .lock()
+            .insert(source_id.to_string(), frames_per_sec);
+    }
+
     /// 同步排空评估队列 — 集成测试在 route_bytes 后立即断言 buffer/快照前调用
-    /// (运行时由 eval worker 异步消费)
+    /// (运行时由 eval worker 异步消费; 记录平面已在路由时入库, 此处只评估)
     pub fn flush_eval(&self) {
         while let Some((source, frames)) = self.pop_frame_batch() {
-            let eval_ns = frame_dispatch::on_frames(self, &source, &frames);
+            if self.take_eval_gap(&source).is_some() {
+                crate::graph_eval::reset_source_transient_state(&self.eval, &source);
+            }
+            let buffer = self.buffer_for(&source);
+            let options = frame_dispatch::EvalOptions::from_config(&self.pipeline_config.read());
+            let eval_ns = frame_dispatch::eval_frames(
+                &self.eval,
+                &self.global_nodes,
+                &buffer,
+                &source,
+                &frames,
+                options,
+            );
             self.metrics.eval_ns.fetch_add(eval_ns, Ordering::Relaxed);
             self.metrics.frames_evaled.fetch_add(
                 u64::try_from(frames.len()).unwrap_or(u64::MAX),
@@ -438,6 +641,7 @@ impl DataPlaneState {
             }
         }
         drop(states);
+        drop(nodes);
         // 引擎 (重) 建后对齐该源 buffer 通道数: 手动 = 配置值;
         // 自动 = 检测值随引擎重置失效, 回默认通道数待重新检测 (set_channels 会清空已有数据)
         for (id, cfg) in rebuilt {
@@ -455,6 +659,64 @@ impl DataPlaneState {
         self.frame_queues
             .lock()
             .retain(|id, _| live.iter().any(|k| k == id));
+        self.eval_gaps
+            .lock()
+            .retain(|id, _| live.iter().any(|k| k == id));
+        // 路由去重组与缓冲别名 (不变量 4): 同 (字节源, 协议配置等价) 只解析一次
+        self.rebuild_route_groups();
+    }
+
+    /// 依据 BytePlan + 协议节点配置等价性重建去重组与缓冲别名 (冷路径,
+    /// 图重编译后调用)。等价 key = (config, convert_to, schema) 的 serde 值。
+    fn rebuild_route_groups(&self) {
+        let consumers: Vec<(String, Vec<String>)> = {
+            let plan = self.byte_plan.lock();
+            plan.consumers
+                .iter()
+                .map(|(source, routes)| {
+                    (
+                        source.clone(),
+                        routes.iter().map(|r| r.target.clone()).collect(),
+                    )
+                })
+                .collect()
+        };
+        let nodes = self.global_nodes.lock();
+        let states = self.protocol_states.lock();
+        let mut groups: RouteGroups = HashMap::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        for (source, targets) in consumers {
+            let mut protos: Vec<String> = targets
+                .into_iter()
+                .filter(|t| {
+                    matches!(
+                        nodes.get(t).map(|n| &n.kind),
+                        Some(NodeKind::Protocol { .. })
+                    )
+                })
+                .collect();
+            protos.sort();
+            let mut local: Vec<(String, String, Vec<String>)> = Vec::new();
+            for target in protos {
+                let key = states.get(&target).and_then(|st| {
+                    let s = st.lock();
+                    serde_json::to_string(&(&s.config, &s.convert_config, &s.schema)).ok()
+                });
+                let Some(key) = key else { continue };
+                match local.iter_mut().find(|(k, ..)| *k == key) {
+                    Some((_, _, members)) => members.push(target.clone()),
+                    None => local.push((key, target.clone(), vec![target.clone()])),
+                }
+            }
+            for (_, repr, members) in &local {
+                for member in members {
+                    aliases.insert(member.clone(), repr.clone());
+                }
+            }
+            groups.insert(source, local);
+        }
+        *self.route_groups.lock() = groups;
+        *self.buffer_aliases.lock() = aliases;
     }
 
     /// 挂载 Transport 节点读任务 (open 成功后调用; 同 id 重复调用先 detach)
@@ -504,6 +766,8 @@ pub struct DataPlaneMetrics {
     frames_evaled: AtomicU64,
     /// 评估队列溢出丢弃的帧数 (摄入/评估解耦后的显式降级计数)
     eval_dropped: AtomicU64,
+    /// 上次报告时各源缓冲 storage_overflow 总和 (增量输出)
+    last_overflow_reported: AtomicU64,
 }
 
 impl DataPlaneMetrics {
@@ -529,11 +793,13 @@ impl DataPlaneMetrics {
         let feed_ns = self.feed_ns.swap(0, Ordering::Relaxed);
         let eval_ns = self.eval_ns.swap(0, Ordering::Relaxed);
         let frames = self.frames_evaled.swap(0, Ordering::Relaxed);
-        // feed 含解析与数值平面两段, 拆开报告便于定位瓶颈段
+        // feed 含解析与数值平面两段, 拆开报告便于定位瓶颈段;
+        // 产帧估算 = 已求值 + 求值丢弃 (记录平面不受丢弃影响, 不变量 3)
         let parse_ns = feed_ns.saturating_sub(eval_ns);
+        let produced_per_sec = (frames.saturating_add(eval_dropped)) as f64 / secs;
         let msg = format!(
             "数据平面指标: rx {:.1}MB/s ({} 消息/s) | feed {} 批, 均 {:.2}ms \
-             (parse 均 {:.2}ms | eval 均 {:.2}ms), 帧均 {}/批 \
+             (parse 均 {:.2}ms | eval 均 {:.2}ms), 帧均 {}/批, 产帧≈{:.0}/s \
              | Lagged 丢弃 {} 条, 评估队列丢弃 {} 帧",
             self.rx_bytes.swap(0, Ordering::Relaxed) as f64 / secs / 1e6,
             (rx_msgs as f64 / secs) as u64,
@@ -542,6 +808,7 @@ impl DataPlaneMetrics {
             parse_ns as f64 / batches as f64 / 1e6,
             eval_ns as f64 / batches as f64 / 1e6,
             frames / batches,
+            produced_per_sec,
             lagged,
             eval_dropped,
         );
