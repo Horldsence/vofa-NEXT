@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:ci": "eslint . --max-warnings 0",
+    "check:layers": "node scripts/check-crate-layers.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

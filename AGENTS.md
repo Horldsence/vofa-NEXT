@@ -4,7 +4,7 @@
 
 VOFA-NEXT is a Tauri 2 desktop application. The React/TypeScript frontend lives in `src/`: UI code is under `components/`, Zustand state under `store/`, shared code under `lib/`, translations under `i18n/locales/`, and test setup under `test/`. Frontend tests are colocated in `__tests__/`. Static files belong in `public/`; documentation lives in `docs/`.
 
-The Rust Cargo workspace is rooted at `src-tauri/`. Startup code is in `src-tauri/src/`; focused packages live in `src-tauri/crates/<crate-name>/`, with integration tests in each crate's `tests/`. Keep transport, protocol, graph, and UI concerns in their existing modules.
+The Rust Cargo workspace is rooted at `src-tauri/`. The binary at `src-tauri/src/` is a pure composition root (plugin wiring + command registration only). Focused packages live in `src-tauri/crates/<layer>/<crate-name>/` under an enforced layering: `foundation`(L0) → `protocol`/`transport`/`node`(L1) → `pipeline`(L2) → `app`/`ai`(L3) → `cmd`(L4) → binary. Dependencies must respect layer rank (lower layers never depend on higher ones; `cmd/*` is never depended on by non-cmd crates). Crate names express function, not layer — no layer-prefix duplication (`crates/cmd/graph`, not `cmd_graph`). See `docs/architecture/crate-layers.md` for the authoritative layer table and the new-crate checklist; `pnpm check:layers` verifies the rules mechanically. Integration tests live in each crate's `tests/`.
 
 ## Build, Test, and Development Commands
 
@@ -17,6 +17,7 @@ The Rust Cargo workspace is rooted at `src-tauri/`. Startup code is in `src-taur
 - `pnpm lint:ci` runs ESLint with `--max-warnings 0`; reserved for the day the lint baseline hits zero.
 - `pnpm test` runs the Vitest suite once; `pnpm test:watch` supports iteration.
 - `pnpm build` type-checks and produces the frontend bundle.
+- `pnpm check:layers` validates the Rust crate layering rules (see `docs/architecture/crate-layers.md`).
 - `cd src-tauri && cargo test --workspace` runs all Rust tests.
 - `cd src-tauri && cargo clippy --workspace --all-targets` enforces backend lint policy.
 - `cd src-tauri && cargo fmt --check` verifies Rust formatting.
