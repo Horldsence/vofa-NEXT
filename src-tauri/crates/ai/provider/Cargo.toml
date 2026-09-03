@@ -1,0 +1,16 @@
+[package]
+name = "provider"
+description = "VOFA-NEXT AI 对话 LLM provider 聚合层 (genai 封装: 多 provider / 流式 / 工具调用)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+genai = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+error = { workspace = true }
+vofa_core = { workspace = true }

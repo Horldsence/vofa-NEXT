@@ -12,10 +12,10 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。三条�
    索引,`read_skill` 工具按需读全文。
 
 ```
-前端 AiChatPanel(薄视图) ──Tauri IPC──▶ cmd_ai ──▶ ai_chat(工具调用循环)──▶ ai_provider(genai 封装)
+前端 AiChatPanel(薄视图) ──Tauri IPC──▶ ai ──▶ chat(工具调用循环)──▶ provider(genai 封装)
                                  │              │        │
                                  │              │        ▼
-                                 │              │     ai_session(多会话 + 历史持久化, 后端持有)
+                                 │              │     session(多会话 + 历史持久化, 后端持有)
                                  │              ▼
                                  ├──▶ mcp_server(VOFA 能力 → MCP 工具, 127.0.0.1)
                                  │        └─ tools(共享工具实现, 内置执行器复用)
@@ -27,12 +27,12 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。三条�
 
 | crate | 职责 | 关键类型/函数 |
 |---|---|---|
-| `ai_provider` | LLM provider 聚合,封装 `genai 0.6` | `build_client`(AuthResolver 注 key / ServiceTargetResolver 覆盖端点)、`chat_turn_stream`(流式归一化)、`validate_config`、`ADAPTERS`(含 `orcarouter`) |
-| `ai_chat` | 多轮工具调用循环 + 任务取消 | `run_chat`、`TurnProvider` / `ToolExecutor`(均可 mock,循环逻辑离线单测)、`ChatTaskRegistry`(watch 取消)、`TurnRecorder`(流式事件 → 可持久化条目) |
-| `ai_session` | 会话持久化(所有权在后端) | `SessionStore`(多会话 CRUD + 落盘 `ai_chat_sessions.json`)、`ViewItemDto`/`ChatSession`(对齐前端视图)、`derive_history`(条目流 → LLM 消息) |
+| `provider` | LLM provider 聚合,封装 `genai 0.6` | `build_client`(AuthResolver 注 key / ServiceTargetResolver 覆盖端点)、`chat_turn_stream`(流式归一化)、`validate_config`、`ADAPTERS`(含 `orcarouter`) |
+| `chat` | 多轮工具调用循环 + 任务取消 | `run_chat`、`TurnProvider` / `ToolExecutor`(均可 mock,循环逻辑离线单测)、`ChatTaskRegistry`(watch 取消)、`TurnRecorder`(流式事件 → 可持久化条目) |
+| `session` | 会话持久化(所有权在后端) | `SessionStore`(多会话 CRUD + 落盘 `ai_chat_sessions.json`)、`ViewItemDto`/`ChatSession`(对齐前端视图)、`derive_history`(条目流 → LLM 消息) |
 | `mcp_client` | 连接外部 MCP server(stdio 子进程 / streamable-http) | `McpManager`(连接池、工具聚合加前缀 `mcp_{server}_{tool}`、路由调用)、配置持久化 `mcp_servers.json` |
 | `mcp_server` | 把本应用能力暴露为 MCP 工具 | `Toolbox`(AppState 共享句柄切片)、`VofaMcpServer`(rmcp `#[tool_router]`)、`tools`(共享工具实现,内置执行器直接复用)、`start` |
-| `cmd_ai` | Tauri 命令层 + 内置原生工具 + 知识库 | `AiState`(managed:任务表 / 会话存储 / 连接管理器 / 工具缓存 / server 句柄 / 前端托管调用注册表)、`ai_chat_send`(Channel 流式 + 双工具源组合)、`ai_tool_resolve`(前端回执)、`native_executor`(内置工具执行器)、`skills`(知识库文档 + 系统提示词组装)、`chat_*` 会话命令 |
+| `ai` | Tauri 命令层 + 内置原生工具 + 知识库 | `AiState`(managed:任务表 / 会话存储 / 连接管理器 / 工具缓存 / server 句柄 / 前端托管调用注册表)、`ai_chat_send`(Channel 流式 + 双工具源组合)、`ai_tool_resolve`(前端回执)、`native_executor`(内置工具执行器)、`skills`(知识库文档 + 系统提示词组装)、`chat_*` 会话命令 |
 
 依赖理由(遵循 AGENTS.md):
 
@@ -62,7 +62,7 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。三条�
 ### 会话与历史(后端持有)
 
 历史不再由前端携带:会话以"视图条目流"形式持久化在 app config dir 的
-`ai_chat_sessions.json`(`ai_session` crate,形态与 `mcp_servers.json` 一致)。
+`ai_chat_sessions.json`(`session` crate,形态与 `mcp_servers.json` 一致)。
 
 - `ai_chat_send(session_id, text, regenerate, ...)`:发送时后端先落盘用户条目
   (或 `regenerate` 时截掉最后一条用户条目之后的回合),`derive_history` 派生
@@ -84,13 +84,13 @@ VOFA-NEXT 的 AI 能力统一规划在 Rust 后端,前端只是薄 UI。三条�
 OpenAI 兼容聚合网关,可调目录内任意厂商模型,含 Anthropic / Gemini):
 
 - 模型名需带厂商前缀:`openai/gpt-4o-mini`、`anthropic/claude-sonnet-4`;
-- base_url 留空即走官方端点(后端 `ai_provider::ORCAROUTER_ENDPOINT` 兜底),
+- base_url 留空即走官方端点(后端 `provider::ORCAROUTER_ENDPOINT` 兜底),
   也可自定义网关地址;
 - 通过[推广链接](https://www.orcarouter.ai/ref/ref_1f7582998bdadbe7e0f3)
   注册可获取 API Key(推广码 `ref_1f7582998bdadbe7e0f3`,支持本项目)。
 
 其余 provider(openai / anthropic / gemini / deepseek / 通义 / Kimi / GLM /
-Ollama / OpenRouter 等)照旧,完整清单见设置下拉(与 `ai_provider::ADAPTERS` 一致)。
+Ollama / OpenRouter 等)照旧,完整清单见设置下拉(与 `provider::ADAPTERS` 一致)。
 
 ## MCP server 工具清单(本应用能力)
 
@@ -118,7 +118,7 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
 
 ## 内置原生工具层(内置 AI 直连软件能力)
 
-`cmd_ai::native_executor::NativeToolExecutor` 实现 `ai_chat::ToolExecutor`,
+`ai::native_executor::NativeToolExecutor` 实现 `chat::ToolExecutor`,
 与外部 MCP 工具经 `CompositeExecutor` 组合(同名内置优先;两组独立开关
 `builtinToolsEnabled` / `mcpToolsEnabled`)。工具分两类执行路径:
 
@@ -197,7 +197,7 @@ rmcp handler 只做参数包装——内置原生工具执行器调用同一批�
 
 ## 内置知识库(skills)
 
-`cmd_ai::skills` + `crates/cmd_ai/skills/{zh,en}/*.md`(`include_str!` 编译期
+`ai::skills` + `ai/skills/{zh,en}/*.md`(`include_str!` 编译期
 嵌入):`overview`(软件与核心概念)、`nodes-reference`(节点/控件参考)、
 `protocols`(协议格式)、`debug-recipes`(调试实战)、`tools-guide`(工具指南)。
 

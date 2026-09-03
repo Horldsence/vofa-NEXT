@@ -1,0 +1,14 @@
+[package]
+name = "buffer_graph"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+vofa_core = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

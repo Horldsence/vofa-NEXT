@@ -1,0 +1,18 @@
+[package]
+name = "buffer"
+description = "VOFA-NEXT 波形缓冲区 + 窗口视觉效果 Tauri 命令 (buffer.rs + window.rs)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+log = { workspace = true }
+tauri = { version = "2", features = [] }
+buffer_databuffer = { workspace = true }
+vofa_core = { workspace = true }
+window-vibrancy = "0.6"
+serde = { workspace = true }
+serde_json = { workspace = true }

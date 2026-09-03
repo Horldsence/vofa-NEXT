@@ -1,0 +1,15 @@
+[package]
+name = "net"
+description = "VOFA-NEXT TCP/UDP 网络传输 — TCP client/server + UDP socket"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+error = { workspace = true }

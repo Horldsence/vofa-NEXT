@@ -1,0 +1,23 @@
+[package]
+name = "graph_ops"
+description = "VOFA-NEXT 图提交核心 — tab 图编译提交/拓扑 op/派生数据/编译队列 (无 Tauri IPC, L3 应用核心)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+buffer_graph = { workspace = true }
+data_plane = { workspace = true }
+engine = { workspace = true }
+error = { workspace = true }
+kind = { workspace = true }
+notify_events = { workspace = true }
+parking_lot = "0.12"
+schema_types = { workspace = true }
+serde = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+vofa_core = { workspace = true }

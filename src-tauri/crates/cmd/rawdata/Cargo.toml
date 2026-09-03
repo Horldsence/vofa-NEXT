@@ -1,0 +1,17 @@
+[package]
+name = "rawdata"
+description = "VOFA-NEXT 原始数据订阅 + 帧解码器手动解析 Tauri 命令 (rawdata.rs + frame_decoder.rs)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+serde = { workspace = true }
+tauri = { version = "2", features = [] }
+vofa_core = { workspace = true }
+kind = { workspace = true }
+frame_decoder = { workspace = true }
+protocol_engine = { workspace = true }

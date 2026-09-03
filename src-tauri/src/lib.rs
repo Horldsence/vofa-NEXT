@@ -1,23 +1,27 @@
-// 直接引用 cmd_* crates 中的 Tauri 命令
-pub use cmd_ai::*;
-pub use cmd_buffer::*;
-pub use cmd_can_load::*;
-pub use cmd_can_transport::*;
-pub use cmd_debug::*;
-pub use cmd_display::*;
-pub use cmd_graph::*;
-pub use cmd_pipeline::*;
-pub use cmd_rawdata::*;
+//! `vofa-next` 二进制组合根 — 只做插件装配、状态管理与命令注册。
+//!
+//! 层级: L5 (顶端)。全部业务逻辑位于 `crates/<层>/*`; 后台任务 (ticker /
+//! 工作区防抖落盘 / 启动页兜底) 在 [`app_state`] 的 `runtime` 模块。
 
-pub use app_state::{spectrum_ticker, text_output_ticker, textout_sender_ticker, AppState};
-pub use menu_shell::ids;
-pub use menu_shell::{build_menu, on_menu_event};
 // 必须 glob 导入: `#[tauri::command]` 生成的 `__cmd__*` / `__tauri_command_name_*`
 // 宏 (`#[macro_export]`, doc-hidden) 只在 glob 导入时进入本 crate 宏命名空间,
 // `generate_handler!` 展开时需要它们在作用域内。
+pub use ai::*;
+pub use buffer::*;
+pub use can_load::*;
+pub use can_transport::*;
+pub use debug::*;
+pub use display::*;
+pub use graph::*;
+pub use pipeline::*;
+pub use rawdata::*;
+
+pub use app_state::AppState;
+pub use menu_shell::{build_menu, ids, on_menu_event};
+pub use update_flow::*;
+
 use tauri::Manager;
 use tauri_plugin_log::{Target, TargetKind};
-pub use update_flow::*;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -64,90 +68,22 @@ pub fn run() {
                 .path()
                 .app_config_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::from("."));
-            app.manage(cmd_ai::AiState::new(ai_config_dir.clone()));
+            app.manage(ai::AiState::new(ai_config_dir.clone()));
 
             // 工作区启动恢复: widget 配置 + 画布位置 + tab 元数据 + 各 tab 源图
             // 落盘在 app config dir 的 workspace.json; 恢复后逐 tab 重编译,
             // 前端就绪后经 workspace_get 水合 (返回 false = 无持久化, 默认启动)
             let restored = tauri::async_runtime::block_on(async {
                 let state = app.state::<AppState>();
-                cmd_graph::restore_workspace(&state, &ai_config_dir).await
+                graph::restore_workspace(&state, &ai_config_dir).await
             });
             log::info!(
                 "workspace restore: {}",
                 if restored { "loaded" } else { "none" }
             );
 
-            // 工作区防抖落盘任务 — 图提交 / 位置上报 / tab 变更置 dirty,
-            // 此任务周期性检查并整体覆盖写 (800ms 合并连发编辑)
-            {
-                let state = app.state::<AppState>();
-                let ws = state.workspace.clone();
-                let graphs = std::sync::Arc::clone(&state.source_graphs);
-                let dir = ai_config_dir.clone();
-                tauri::async_runtime::spawn(async move {
-                    loop {
-                        tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                        let should_save = {
-                            let mut w = ws.lock();
-                            if w.dirty {
-                                w.dirty = false;
-                                true
-                            } else {
-                                false
-                            }
-                        };
-                        if should_save {
-                            let file = app_state::collect_workspace_file(&ws, &graphs);
-                            if let Err(e) = app_state::save_workspace(&dir, &file) {
-                                log::warn!("工作区落盘失败: {e}");
-                            }
-                        }
-                    }
-                });
-            }
-
-            // 启动字符串输出 ticker (30 FPS 推送给 TextDisplay)
-            let eval_state_for_text = {
-                let state = app.state::<AppState>();
-                state.eval_state()
-            };
-            tauri::async_runtime::spawn(text_output_ticker(eval_state_for_text));
-
-            // 启动 TextOut 发送 ticker (图内字符串限速写回目标 Transport 的 tx)
-            let (eval_state_for_textout, transport_for_textout) = {
-                let state = app.state::<AppState>();
-                (
-                    state.eval_state(),
-                    std::sync::Arc::clone(&state.data_plane.transport),
-                )
-            };
-            tauri::async_runtime::spawn(textout_sender_ticker(
-                eval_state_for_textout,
-                transport_for_textout,
-            ));
-
-            // 启动频谱分析 ticker (30 FFT 计算 + 推送 SpectrumBatch)
-            let eval_state_for_spectrum = {
-                let state = app.state::<AppState>();
-                state.eval_state()
-            };
-            tauri::async_runtime::spawn(spectrum_ticker(eval_state_for_spectrum));
-
-            // 启动页兜底: 前端应在初始化完成后调用 close_splashscreen 关闭启动页;
-            // 若前端异常迟迟未调用, 超时强制切换, 防止永远卡在启动页
-            let fallback_handle = app.handle().clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(10));
-                if let Some(splash) = fallback_handle.get_webview_window("splashscreen") {
-                    log::warn!("splashscreen fallback: force closing after timeout");
-                    let _ = splash.close();
-                }
-                if let Some(main) = fallback_handle.get_webview_window("main") {
-                    let _ = main.show();
-                    let _ = main.set_focus();
-                }
-            });
+            // 后台任务: 工作区防抖落盘 / 推送 ticker / 启动页兜底
+            app_state::spawn_background_tasks(app.handle(), ai_config_dir);
 
             Ok(())
         })
@@ -266,21 +202,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            // 退出 flush: 防抖任务最长 800ms 间隔, 正常退出前把未落盘的
-            // 工作区变更同步写盘, 避免丢最后一次编辑
+            // 退出 flush: 把未落盘的工作区变更同步写盘 (逻辑在 app_state::runtime)
             if let tauri::RunEvent::Exit = event {
-                let state = app.state::<AppState>();
-                let ws = &state.workspace;
-                if ws.lock().dirty {
-                    let file = app_state::collect_workspace_file(ws, &state.source_graphs);
-                    let dir = app
-                        .path()
-                        .app_config_dir()
-                        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                    if let Err(e) = app_state::save_workspace(&dir, &file) {
-                        log::warn!("工作区退出落盘失败: {e}");
-                    }
-                }
+                app_state::flush_workspace_on_exit(app);
             }
         });
 }

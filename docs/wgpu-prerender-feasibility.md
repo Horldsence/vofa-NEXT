@@ -55,7 +55,7 @@ N 点 → columns×(min, max, count), 数据量缩小 N/columns 倍; 前端绘�
   负数全位取反 / 非负仅翻符号位; NaN 位模式检测 — Metal 快浮点会把
   `x != x` 折叠, 必须位运算; ±0 归一) + CPU 线性扫描参考实现, 两者
   **位级一致** (`tests/envelope_equiv.rs`, 含 NaN/±inf/±0 边缘与确定性)。
-- `cmd_display`: `DisplayRequest::WaveformEnvelope { source, columns }`
+- `display`: `DisplayRequest::WaveformEnvelope { source, columns }`
   → VENV v1 二进制帧 (头 60B + 每通道 columns×12B), 快照语义推送,
   GPU 不可用自动回退 CPU。
 - 前端: `envelopeProtocol.ts` 解码 (零拷贝视图) → `WaveformEnvelopeChart`

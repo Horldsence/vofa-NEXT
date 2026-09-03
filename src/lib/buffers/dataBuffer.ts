@@ -126,7 +126,7 @@ export interface RawDataLineSource {
 }
 
 /// 原始数据缓冲区 — 基于 Uint8Array 的环形缓冲区
-/// 接收来自后端 subscribe_rawdata Channel 的 RawDataBatch, RAF 节流后通知订阅者
+/// 接收来自后端 subscribe_data 统一入口 rawdata 通道的 RawDataBatch, RAF 节流后通知订阅者
 export class RawDataBuffer {
   private buf: Uint8Array;
   private writePos = 0;

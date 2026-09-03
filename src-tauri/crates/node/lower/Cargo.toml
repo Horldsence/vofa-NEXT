@@ -1,0 +1,19 @@
+[package]
+name = "lower"
+description = "节点图编译后端 — SlotArena 槽位分配 + per-kind lowering, 产出 SlotPlan 平坦操作序列"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rustc-hash = { workspace = true }
+dsp_filter = { workspace = true }
+hir = { workspace = true }
+kind = { workspace = true }
+plane = { workspace = true }
+trigger = { workspace = true }
+
+[dev-dependencies]
+testkit = { workspace = true }

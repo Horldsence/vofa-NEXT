@@ -1,0 +1,14 @@
+[package]
+name = "data_bus"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true }
+parking_lot = "0.12"
+log = { workspace = true }
+

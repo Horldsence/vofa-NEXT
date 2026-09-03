@@ -1,0 +1,15 @@
+[package]
+name = "buffer_databuffer"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+buffer_ring = { workspace = true }
+serde = { workspace = true }
+vofa_core = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

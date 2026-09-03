@@ -10,64 +10,77 @@ name = "vofa_next_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [workspace]
+# 分层规则见 docs/architecture/crate-layers.md：
+# 依赖只允许 rank(被依赖方) ≤ rank(依赖方)，同层可互依；
+# foundation(0) < protocol/transport/node(1) < pipeline(2) < app/ai(3) < cmd(4) < 二进制(5)
 members = [
-  "crates/ai_chat",
-  "crates/ai_provider",
-  "crates/ai_session",
-  "crates/app_state",
-  "crates/automotive_can",
-  "crates/automotive_diag",
-  "crates/automotive_isotp",
-  "crates/buffer_databuffer",
-  "crates/buffer_graph",
-  "crates/buffer_raw",
-  "crates/buffer_ring",
-  "crates/can_types",
-  "crates/cmd_buffer",
-  "crates/cmd_can_load",
-  "crates/cmd_can_transport",
-  "crates/cmd_debug",
-  "crates/cmd_display",
-  "crates/cmd_graph",
-  "crates/cmd_pipeline",
-  "crates/cmd_rawdata",
-  "crates/core",
-  "crates/diagnostic",
-  "crates/dsp_filter",
-  "crates/dsp_fft",
-  "crates/dsp_window",
-  "crates/error",
-  "crates/gpu_core",
-  "crates/logic_decoder",
-  "crates/logic_types",
-  "crates/mcp_client",
-  "crates/mcp_server",
-  "crates/menu_shell",
-  "crates/notify_events",
-  "crates/node_engine",
-  "crates/node_eval",
-  "crates/node_frame_decoder",
-  "crates/node_hir",
-  "crates/node_kind",
-  "crates/node_lower",
-  "crates/node_plane",
-  "crates/node_testkit",
-  "crates/node_trigger",
-  "crates/pipeline_data_plane",
-  "crates/pipeline_bus",
-  "crates/pipeline_dispatcher",
-  "crates/pipeline_stream",
-  "crates/protocol_can_bridge",
-  "crates/protocol_engine",
-  "crates/protocol_float",
-  "crates/schema_engine",
-  "crates/schema_types",
-  "crates/subscription",
-  "crates/transport_can_bridge",
-  "crates/transport_core",
-  "crates/transport_net",
-  "crates/transport_serial",
-  "crates/update_flow",
+  # L0 foundation — 错误/类型/缓冲/DSP 原语/自包含基础设施，禁止依赖任何上层
+  "crates/foundation/error",
+  "crates/foundation/can_types",
+  "crates/foundation/vofa_core",
+  "crates/foundation/logic_types",
+  "crates/foundation/diagnostic",
+  "crates/foundation/schema_types",
+  "crates/foundation/buffer_ring",
+  "crates/foundation/buffer_raw",
+  "crates/foundation/buffer_graph",
+  "crates/foundation/buffer_databuffer",
+  "crates/foundation/dsp_window",
+  "crates/foundation/dsp_filter",
+  "crates/foundation/dsp_fft",
+  "crates/foundation/subscription",
+  "crates/foundation/gpu_core",
+  "crates/foundation/notify_events",
+  # L1 protocol — 协议解析/编码引擎
+  "crates/protocol/protocol_engine",
+  "crates/protocol/protocol_float",
+  "crates/protocol/protocol_can_bridge",
+  "crates/protocol/logic_decoder",
+  "crates/protocol/schema_engine",
+  # L1 transport — 通道收发（串口/网络/CAN 桥接/汽车诊断）
+  "crates/transport/serial",
+  "crates/transport/net",
+  "crates/transport/can_bridge",
+  "crates/transport/transport_core",
+  "crates/transport/automotive_can",
+  "crates/transport/automotive_isotp",
+  "crates/transport/automotive_diag",
+  # L1 node — 节点图编译器与运行时（HIR→Plane→Lower→Eval）
+  "crates/node/kind",
+  "crates/node/hir",
+  "crates/node/plane",
+  "crates/node/lower",
+  "crates/node/eval",
+  "crates/node/engine",
+  "crates/node/frame_decoder",
+  "crates/node/trigger",
+  "crates/node/testkit",
+  # L2 pipeline — 数据平面（字节路由/数值求值/流框架/调度）
+  "crates/pipeline/data_bus",
+  "crates/pipeline/data_plane",
+  "crates/pipeline/stream",
+  "crates/pipeline/dispatcher",
+  # L3 app — 应用核心（全局状态/图提交核心/原生菜单/更新流）
+  "crates/app/app_state",
+  "crates/app/graph_ops",
+  "crates/app/menu_shell",
+  "crates/app/update_flow",
+  # L3 ai — AI/MCP 基础设施
+  "crates/ai/provider",
+  "crates/ai/session",
+  "crates/ai/chat",
+  "crates/ai/mcp_client",
+  "crates/ai/mcp_server",
+  # L4 cmd — Tauri IPC 命令薄适配层，不承载核心逻辑；禁止被任何非 cmd crate 依赖
+  "crates/cmd/ai",
+  "crates/cmd/buffer",
+  "crates/cmd/can_load",
+  "crates/cmd/can_transport",
+  "crates/cmd/debug",
+  "crates/cmd/display",
+  "crates/cmd/graph",
+  "crates/cmd/pipeline",
+  "crates/cmd/rawdata",
 ]
 
 [workspace.package]
@@ -128,6 +141,9 @@ too_many_lines = "allow"
 # MutexGuard 临界区按锁序整段持有是数据平面的刻意并发语义, 按逐次使用拆小作用域
 # 反而扩大竞态窗口 (clippy nursery 启发式)
 significant_drop_tightening = "allow"
+# Tauri 命令保持 async 以在 tokio 运行时执行 (sync 命令会跑在主线程, 持锁路径
+# 会阻塞 UI); 大量命令无 await 点属正常形态
+unused_async = "allow"
 
 
 
@@ -177,87 +193,97 @@ pollster = "1"
 # (SimdUnifiedOps, wide 后端, AVX2/NEON 运行时分发); std 必须显式开启
 # (0.6.5 打包缺陷: 关闭 default 后大量模块未按 no_std 门控)
 scirs2-core = { version = "0.6.5", default-features = false, features = ["std", "simd"] }
-gpu_core = { path = "crates/gpu_core" }
-buffer_ring = { path = "crates/buffer_ring" }
-buffer_databuffer = { path = "crates/buffer_databuffer" }
-buffer_graph = { path = "crates/buffer_graph" }
-buffer_raw = { path = "crates/buffer_raw" }
-ai_provider = { path = "crates/ai_provider" }
-ai_chat = { path = "crates/ai_chat" }
-ai_session = { path = "crates/ai_session" }
-mcp_client = { path = "crates/mcp_client" }
-mcp_server = { path = "crates/mcp_server" }
-cmd_ai = { path = "crates/cmd_ai" }
-cmd_buffer = { path = "crates/cmd_buffer" }
-cmd_can_load = { path = "crates/cmd_can_load" }
-cmd_can_transport = { path = "crates/cmd_can_transport" }
-cmd_debug = { path = "crates/cmd_debug" }
-cmd_display = { path = "crates/cmd_display" }
-cmd_graph = { path = "crates/cmd_graph" }
-cmd_pipeline = { path = "crates/cmd_pipeline" }
-cmd_rawdata = { path = "crates/cmd_rawdata" }
-vofa_core = { path = "crates/core" }
-error = { path = "crates/error" }
-can_types = { path = "crates/can_types" }
-logic_types = { path = "crates/logic_types" }
-diagnostic = { path = "crates/diagnostic" }
-schema_types = { path = "crates/schema_types" }
-protocol_engine = { path = "crates/protocol_engine" }
-protocol_float = { path = "crates/protocol_float" }
-protocol_can_bridge = { path = "crates/protocol_can_bridge" }
-logic_decoder = { path = "crates/logic_decoder" }
-node_engine = { path = "crates/node_engine" }
-node_eval = { path = "crates/node_eval" }
-node_frame_decoder = { path = "crates/node_frame_decoder" }
-node_hir = { path = "crates/node_hir" }
-node_kind = { path = "crates/node_kind" }
-node_lower = { path = "crates/node_lower" }
-node_plane = { path = "crates/node_plane" }
-node_testkit = { path = "crates/node_testkit" }
-node_trigger = { path = "crates/node_trigger" }
-schema_engine = { path = "crates/schema_engine" }
-transport_can_bridge = { path = "crates/transport_can_bridge" }
-transport_core = { path = "crates/transport_core" }
-transport_net = { path = "crates/transport_net" }
-transport_serial = { path = "crates/transport_serial" }
-dsp_window = { path = "crates/dsp_window" }
-dsp_filter = { path = "crates/dsp_filter" }
-dsp_fft = { path = "crates/dsp_fft" }
-automotive_isotp = { path = "crates/automotive_isotp" }
-automotive_diag = { path = "crates/automotive_diag" }
-automotive_can = { path = "crates/automotive_can" }
-pipeline_data_plane = { path = "crates/pipeline_data_plane" }
-pipeline_bus = { path = "crates/pipeline_bus" }
-pipeline_dispatcher = { path = "crates/pipeline_dispatcher" }
-pipeline_stream = { path = "crates/pipeline_stream" }
-notify_events = { path = "crates/notify_events" }
-app_state = { path = "crates/app_state" }
-menu_shell = { path = "crates/menu_shell" }
-update_flow = { path = "crates/update_flow" }
-subscription = { path = "crates/subscription" }
+# ---- workspace 内部 crate (按层分组, 路径 = crates/<层>/<crate>) ----
+# L0 foundation
+gpu_core = { path = "crates/foundation/gpu_core" }
+buffer_ring = { path = "crates/foundation/buffer_ring" }
+buffer_databuffer = { path = "crates/foundation/buffer_databuffer" }
+buffer_graph = { path = "crates/foundation/buffer_graph" }
+buffer_raw = { path = "crates/foundation/buffer_raw" }
+vofa_core = { path = "crates/foundation/vofa_core" }
+error = { path = "crates/foundation/error" }
+can_types = { path = "crates/foundation/can_types" }
+logic_types = { path = "crates/foundation/logic_types" }
+diagnostic = { path = "crates/foundation/diagnostic" }
+schema_types = { path = "crates/foundation/schema_types" }
+notify_events = { path = "crates/foundation/notify_events" }
+subscription = { path = "crates/foundation/subscription" }
+dsp_window = { path = "crates/foundation/dsp_window" }
+dsp_filter = { path = "crates/foundation/dsp_filter" }
+dsp_fft = { path = "crates/foundation/dsp_fft" }
+# L1 protocol
+protocol_engine = { path = "crates/protocol/protocol_engine" }
+protocol_float = { path = "crates/protocol/protocol_float" }
+protocol_can_bridge = { path = "crates/protocol/protocol_can_bridge" }
+logic_decoder = { path = "crates/protocol/logic_decoder" }
+schema_engine = { path = "crates/protocol/schema_engine" }
+# L1 transport
+can_bridge = { path = "crates/transport/can_bridge" }
+transport_core = { path = "crates/transport/transport_core" }
+net = { path = "crates/transport/net" }
+serial = { path = "crates/transport/serial" }
+automotive_isotp = { path = "crates/transport/automotive_isotp" }
+automotive_diag = { path = "crates/transport/automotive_diag" }
+automotive_can = { path = "crates/transport/automotive_can" }
+# L1 node
+engine = { path = "crates/node/engine" }
+eval = { path = "crates/node/eval" }
+frame_decoder = { path = "crates/node/frame_decoder" }
+hir = { path = "crates/node/hir" }
+kind = { path = "crates/node/kind" }
+lower = { path = "crates/node/lower" }
+plane = { path = "crates/node/plane" }
+testkit = { path = "crates/node/testkit" }
+trigger = { path = "crates/node/trigger" }
+# L2 pipeline
+data_plane = { path = "crates/pipeline/data_plane" }
+data_bus = { path = "crates/pipeline/data_bus" }
+dispatcher = { path = "crates/pipeline/dispatcher" }
+stream = { path = "crates/pipeline/stream" }
+# L3 app
+app_state = { path = "crates/app/app_state" }
+graph_ops = { path = "crates/app/graph_ops" }
+menu_shell = { path = "crates/app/menu_shell" }
+update_flow = { path = "crates/app/update_flow" }
+# L3 ai
+provider = { path = "crates/ai/provider" }
+chat = { path = "crates/ai/chat" }
+session = { path = "crates/ai/session" }
+mcp_client = { path = "crates/ai/mcp_client" }
+mcp_server = { path = "crates/ai/mcp_server" }
+# L4 cmd
+ai = { path = "crates/cmd/ai" }
+buffer = { path = "crates/cmd/buffer" }
+can_load = { path = "crates/cmd/can_load" }
+can_transport = { path = "crates/cmd/can_transport" }
+debug = { path = "crates/cmd/debug" }
+display = { path = "crates/cmd/display" }
+graph = { path = "crates/cmd/graph" }
+pipeline = { path = "crates/cmd/pipeline" }
+rawdata = { path = "crates/cmd/rawdata" }
 libautomotive = "0.1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-pipeline_data_plane = { workspace = true }
-pipeline_dispatcher = { workspace = true }
-pipeline_stream = { workspace = true }
+data_plane = { workspace = true }
+dispatcher = { workspace = true }
+stream = { workspace = true }
 notify_events = { workspace = true }
 app_state = { workspace = true }
 subscription = { workspace = true }
 menu_shell = { workspace = true }
 update_flow = { workspace = true }
-cmd_buffer = { workspace = true }
-cmd_ai = { workspace = true }
-cmd_can_load = { workspace = true }
-cmd_can_transport = { workspace = true }
-cmd_debug = { workspace = true }
-cmd_display = { workspace = true }
-cmd_graph = { workspace = true }
-cmd_pipeline = { workspace = true }
-cmd_rawdata = { workspace = true }
+buffer = { workspace = true }
+ai = { workspace = true }
+can_load = { workspace = true }
+can_transport = { workspace = true }
+debug = { workspace = true }
+display = { workspace = true }
+graph = { workspace = true }
+pipeline = { workspace = true }
+rawdata = { workspace = true }
 tauri = { version = "2", features = ["devtools", "macos-private-api"] }
 tauri-plugin-opener = "2"
 serde = { workspace = true }

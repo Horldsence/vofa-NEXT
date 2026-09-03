@@ -1,0 +1,18 @@
+[package]
+name = "can_bridge"
+description = "VOFA-NEXT CAN 桥接传输 — Slcan (ASCII over serial) + CandleLight (原生 USB bulk)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+tokio = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+error = { workspace = true }
+nusb = "0.2"
+serialport = "4"

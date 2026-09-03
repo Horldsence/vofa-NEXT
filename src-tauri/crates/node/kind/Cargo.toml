@@ -1,0 +1,18 @@
+[package]
+name = "kind"
+description = "VOFA-NEXT 节点种类系统 — NodeKind + NodeDef + PortDomain + MathOp + DecoderBlockDef re-export"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+vofa_core = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_window = { workspace = true }
+trigger = { workspace = true }
+schema_types = { workspace = true }

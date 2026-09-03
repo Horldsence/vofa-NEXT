@@ -1,0 +1,26 @@
+[package]
+name = "stream"
+description = "VOFA-NEXT 统一分片流框架 (StreamSource) + 自适应推送速率控制器 (AdaptiveRate + adaptive_channel_loop)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+logic_types = { workspace = true }
+buffer_databuffer = { workspace = true }
+buffer_raw = { workspace = true }
+# StreamGroupState 定义在 data_plane (与服务 app_state/data_plane 共享)
+data_plane = { workspace = true }
+serde = { workspace = true }
+tokio = { workspace = true }
+tauri = { version = "2", features = [] }
+log = { workspace = true }
+parking_lot = "0.12"
+error = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

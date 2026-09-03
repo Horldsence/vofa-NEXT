@@ -1,0 +1,30 @@
+[package]
+name = "can_transport"
+description = "VOFA-NEXT CAN 帧 / 传输 / 协议 Tauri 命令 (can.rs + transport.rs + protocol.rs)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+notify_events = { workspace = true }
+data_plane = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+parking_lot = "0.12"
+serde = { workspace = true }
+log = { workspace = true }
+buffer_raw = { workspace = true }
+vofa_core = { workspace = true }
+can_types = { workspace = true }
+kind = { workspace = true }
+protocol_engine = { workspace = true }
+protocol_float = { workspace = true }
+protocol_can_bridge = { workspace = true }
+logic_decoder = { workspace = true }
+schema_types = { workspace = true }
+transport_core = { workspace = true }
+can_bridge = { workspace = true }
+error = { workspace = true }

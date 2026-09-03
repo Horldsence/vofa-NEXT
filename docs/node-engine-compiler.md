@@ -2,14 +2,14 @@
 
 节点图引擎将前端同步来的节点图 (`Vec<NodeDef>` + `Vec<Edge>`) 编译为
 可执行产物。编译分三段, 对应编译器的前端/中端/后端模型, 按 crate 拆分:
-`node_hir` (前端) → `node_plane` (中端) → `node_lower` (后端 lowering) +
-`node_eval` (槽位运行时), 门面 `node_engine` 驱动流水线并保有 CompiledGraph
+`hir` (前端) → `plane` (中端) → `lower` (后端 lowering) +
+`eval` (槽位运行时), 门面 `engine` 驱动流水线并保有 CompiledGraph
 与慢路径求值。
 
 ```
 Vec<NodeDef> + Vec<Edge>
       │
-      ▼  前端 (node_hir)
+      ▼  前端 (hir)
 ┌─────────────────────────────────────────────┐
 │ TypedGraph: petgraph StableDiGraph           │
 │ <HirNode, HirEdge>                           │
@@ -21,14 +21,14 @@ Vec<NodeDef> + Vec<Edge>
 │ - 跨域边 → CompileError::DomainMismatch      │
 └─────────────────────────────────────────────┘
       │
-      ▼  中端 (node_plane)
+      ▼  中端 (plane)
 ┌──────────────────┐  ┌──────────────────────────────┐
 │ 字节平面子图      │  │ 值平面子图 (f32 ∪ 字符串边,   │
 │ → BytePlan       │  │ 无值输出节点剔除)             │
 │ (拓扑序+路由表)   │  │ → ValueMir (拓扑序 + 输入索引)│
 └──────────────────┘  └──────────────────────────────┘
       │                      │
-      ▼  后端                ▼  (node_lower: lower.rs / kinds / ops.rs)
+      ▼  后端                ▼  (lower: lower.rs / kinds / ops.rs)
 ┌──────────────────┐  ┌──────────────────────────────┐
 │ BytePlan          │  │ SlotArena (f32/字符串双 arena)│
 │ order + consumers │  │ → 平坦 CompiledOp 序列        │
@@ -116,14 +116,14 @@ Transport.rx 字节 ──► byte_router::route_bytes
 
 | 类型 | 模块 | 职责 |
 |---|---|---|
-| `TypedGraph` | node_hir | HIR: interning + 双角色定义 + 边分类 |
-| `EdgeClass` | node_hir | 边分类: Byte / F32 / Str / RawDataMarker |
-| `ValueMir` | node_plane | 值平面拓扑序 + input_index + in_names |
-| `BytePlan` | node_plane::byte_plan | 字节平面拓扑序 + consumers 路由表 |
-| `SlotArena` | node_lower | 槽位分配器 (同 (node,port) dedup) |
-| `CompiledOp` | node_lower::ops | 平坦槽位操作枚举 (定义与执行分离) |
-| `CompiledEval` | node_eval | 槽位评估表 — 热路径 `run` 零字符串哈希 |
-| `CompiledGraph` | node_engine::compile | 编译 facade + 节点查询访问器 |
+| `TypedGraph` | hir | HIR: interning + 双角色定义 + 边分类 |
+| `EdgeClass` | hir | 边分类: Byte / F32 / Str / RawDataMarker |
+| `ValueMir` | plane | 值平面拓扑序 + input_index + in_names |
+| `BytePlan` | plane::byte_plan | 字节平面拓扑序 + consumers 路由表 |
+| `SlotArena` | lower | 槽位分配器 (同 (node,port) dedup) |
+| `CompiledOp` | lower::ops | 平坦槽位操作枚举 (定义与执行分离) |
+| `CompiledEval` | eval | 槽位评估表 — 热路径 `run` 零字符串哈希 |
+| `CompiledGraph` | engine::compile | 编译 facade + 节点查询访问器 |
 
 ## 双路径求值
 
@@ -133,7 +133,7 @@ Transport.rx 字节 ──► byte_router::route_bytes
 
 ## 评估单元与并发评估 (`eval_workers`)
 
-编译期把值平面切分为**评估单元** (`node_lower::units`):
+编译期把值平面切分为**评估单元** (`lower::units`):
 - **prelude 单元** (单元 0): 供给节点 op (ProtocolSource/Input/Custom/TextInput) —
   无图输入的纯外部状态读;
 - **计算单元**: 计算节点 (Math/Str/Filter/Ifft/Trigger/FrameDecoder/TextOut) 按
@@ -159,7 +159,7 @@ Transport.rx 字节 ──► byte_router::route_bytes
   `tests/graph_eval_parallel_equiv.rs` 锚定: 单块/跨块/确定性/静态密度)。
 
 代价与适用性: 供给 op 在每桶副本各执行一次 (provider 占比高的小图并行收益低);
-真实长链图 (计算为主) w4 可达 ~1.8× 整批加速 (`pipeline_data_plane/benches/
+真实长链图 (计算为主) w4 可达 ~1.8× 整批加速 (`data_plane/benches/
 eval_bench.rs`)。共享表交接零克隆 (`mem::take` + `PutBack`/`TakeGuard`),
 filter/ifft/trigger 状态按单元 id 表切分, 批尾合并写回。
 
@@ -170,7 +170,7 @@ filter/ifft/trigger 状态按单元 id 表切分, 批尾合并写回。
 ### 字符串算子表 (StrOp)
 
 字符串平面同时承担 数值 ↔ 文本 的互转 (源间转化的桥), 算子分四类
-(`node_kind::str_op`, 端口表 = 单一事实源, 前端 `STR_OP_PORTS` 镜像):
+(`kind::str_op`, 端口表 = 单一事实源, 前端 `STR_OP_PORTS` 镜像):
 
 | 类别 | 算子 | 说明 |
 |---|---|---|
@@ -184,13 +184,13 @@ RawData(str) → MID/PARSE → 提取数值回波形通道。
 
 ## 扩展指南
 
-- **新增节点类型**: `node_kind` 加 NodeKind 变体 + `port_domain` 域表 →
-  `node_lower/src/kinds/` 加一个 `lower_*` 函数并在 `lower_node` 分派 →
-  `node_lower::ops` 加 `CompiledOp` 变体 → `node_eval::CompiledEval::run`
+- **新增节点类型**: `kind` 加 NodeKind 变体 + `port_domain` 域表 →
+  `lower/src/kinds/` 加一个 `lower_*` 函数并在 `lower_node` 分派 →
+  `lower::ops` 加 `CompiledOp` 变体 → `eval::CompiledEval::run`
   与门面 `evaluate` 各加一个执行臂。若节点**有输入但无输出端口且依赖拓扑序**
   (如 TextOut), 让它参与 eval_order 即可 — 无输出端口天然不会被下游引用;
   若需要编译期收集规格 (如 TextOutSpec), 在 `SlotPlan` 加字段。
-- **新增平面**: `EdgeClass` 加分类 + `node_plane` 加一个投影函数 (子图谓词 +
+- **新增平面**: `EdgeClass` 加分类 + `plane` 加一个投影函数 (子图谓词 +
   `topo` 排序) + 对应后端产物。
 - **环诊断**: `CompileError::Cycle` / `ByteCycle` 携带完整环路径
   (如 `a → b → a`), 由 `plane::extract_cycle` 三色 DFS 提取。
@@ -204,7 +204,7 @@ RawData(str) → MID/PARSE → 提取数值回波形通道。
   `lower_filter` 时产出 [b, a]; `evaluate` 时按 `config` 比较决定 `filter_states` 重建。
 - **Filter 回退 FIR**: 阶段三 FilterConfig 仅含 4 类预设 (lowpass/highpass/bandpass/bandstop);
   旧测试用了 `FilterKind::FIR` 临时造节点, 现已迁移至对应预设构造以维持现有测试。
-- **协议节点**: 自 `cmd_graph/src/derived.rs::compute_derived` 提供 `NodeDerived`
+- **协议节点**: 自 `graph/src/derived.rs::compute_derived` 提供 `NodeDerived`
   输出端口表与 `effective_channels`, 由 `update_tab_graph` 响应 + `graph:derived`
   事件差分推送, 前端写入 `derivedPorts` store。preset 协议 (JustFloat/FireWater/
   RawData/Slcan/CandleLight/LogicDecode) 的 schema 工厂与 `port_names` 已下沉,
@@ -212,7 +212,7 @@ RawData(str) → MID/PARSE → 提取数值回波形通道。
 
 ## 命令帧字节打包 (`compute_frame_bytes`)
 
-后端 IPC 单一权威 — `crates/cmd_buffer/src/{frame_field,frame_checksum,command_frame}.rs`:
+后端 IPC 单一权威 — `buffer/src/{frame_field,frame_checksum,command_frame}.rs`:
 
 - 块类型 `ConstHex` / `VarRef` / `TypedConst` / `Checksum` 序列化与前端 `CommandBlock` 对齐
   (snake_case `port_name` / `field_type` / `custom_script`)。

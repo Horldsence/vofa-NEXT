@@ -1,6 +1,6 @@
 import type { LogicSample, DecodedEvent } from '../../types';
 
-/// 逻辑采样环形缓冲区 — 接收来自后端 subscribe_logic_samples Channel
+/// 逻辑采样环形缓冲区 — 接收来自后端 subscribe_data 统一入口的 logic_samples 通道
 /// RAF 节流: 同一帧内多次 push 只通知一次, 避免高频批次导致 React 过度渲染
 /// 引用稳定: 数据未变化时不创建新数组, 避免 zustand 浅比较失效
 class LogicSampleBuffer {

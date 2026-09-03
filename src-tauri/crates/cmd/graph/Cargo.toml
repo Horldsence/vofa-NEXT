@@ -1,0 +1,29 @@
+[package]
+name = "graph"
+description = "VOFA-NEXT 节点图 + 逻辑分析仪 / 解码事件 Tauri 命令 (L4 薄适配, 核心在 graph_ops)"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+app_state = { workspace = true }
+graph_ops = { workspace = true }
+log = { workspace = true }
+data_plane = { workspace = true }
+schema_types = { workspace = true }
+serde = { workspace = true }
+tauri = { version = "2", features = [] }
+tokio = { workspace = true }
+buffer_graph = { workspace = true }
+vofa_core = { workspace = true }
+engine = { workspace = true }
+kind = { workspace = true }
+petgraph = { workspace = true }
+logic_types = { workspace = true }
+error = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+data_bus = { workspace = true }

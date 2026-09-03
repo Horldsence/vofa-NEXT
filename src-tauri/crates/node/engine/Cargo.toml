@@ -1,0 +1,25 @@
+[package]
+name = "engine"
+description = "VOFA-NEXT 节点图引擎门面 — 驱动 HIR/平面投影/Lowering 三段式编译流水线, 保有 CompiledGraph 与慢路径求值"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+petgraph = { workspace = true }
+buffer_graph = { workspace = true }
+dsp_fft = { workspace = true }
+dsp_filter = { workspace = true }
+dsp_window = { workspace = true }
+kind = { workspace = true }
+frame_decoder = { workspace = true }
+trigger = { workspace = true }
+hir = { workspace = true }
+plane = { workspace = true }
+lower = { workspace = true }
+eval = { workspace = true }
+
+[dev-dependencies]
+testkit = { workspace = true }

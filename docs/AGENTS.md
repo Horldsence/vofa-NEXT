@@ -37,7 +37,7 @@ pnpm tauri dev
 - `src/i18n/locales/{zh,en}.yml` — 所有用户可见文案走 i18n,中英双语同步添加
 - `src-tauri/src/lib.rs` — Tauri 入口,命令来自 `cmd_*` crates
 - `src-tauri/crates/` — 后端 workspace,命名即职责:`transport_*` 传输、`protocol_*` 协议、`buffer_*` 缓冲、`node_*` 节点图、`dsp_*` 信号处理、`pipeline_*` 数据平面、`cmd_*` Tauri 命令
-- `src-tauri/crates/cmd_buffer/src/{frame_field,frame_checksum,command_frame}.rs` — 命令帧字节打包后端权威
+- `src-tauri/buffer/src/{frame_field,frame_checksum,command_frame}.rs` — 命令帧字节打包后端权威
 
 ## 编码约定
 
@@ -45,7 +45,7 @@ pnpm tauri dev
 - **禁止留下编码过程痕迹**:不在代码 / 注释 / 文档中出现 `Stage X`、`Task #N`、`Phase N`、迭代编号、"待后续阶段"之类的过程标记;注释描述代码现状,不叙述重构历史
 - 最小改动:修 bug 不顺手重构,加功能不引入 speculative 抽象,风格向周围代码看齐
 - 不擅自新增依赖;确需新增时先说明理由
-- 大测试放 `tests/` 集成测试,不写巨型 inline `#[cfg(test)]` 模块(dev-dep 循环会踩 E0308,见 `pipeline_data_plane/tests/byte_router_tests.rs` 头部注释)
+- 大测试放 `tests/` 集成测试,不写巨型 inline `#[cfg(test)]` 模块(dev-dep 循环会踩 E0308,见 `data_plane/tests/byte_router_tests.rs` 头部注释)
 
 ## PR / 提交前的硬性要求(不可省略)
 

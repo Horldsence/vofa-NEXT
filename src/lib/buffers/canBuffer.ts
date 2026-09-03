@@ -1,6 +1,6 @@
 import type { CanFrame } from '../../types';
 
-/// CAN 帧环形缓冲区 — 接收来自后端 subscribe_can_frames Channel
+/// CAN 帧环形缓冲区 — 接收来自后端 subscribe_data 统一入口的 can_frames 通道
 /// RAF 节流: 同一帧内多次 push 只通知一次, 避免高频批次导致 React 过度渲染
 /// 引用稳定: 数据未变化时不创建新数组, 避免 zustand 浅比较失效
 export class CanFrameBuffer {
