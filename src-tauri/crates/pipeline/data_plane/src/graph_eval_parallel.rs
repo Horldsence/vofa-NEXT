@@ -134,7 +134,7 @@ pub(crate) fn process_source_batch_parallel(
     for (g, edges) in static_list.iter().zip(&mut static_edges) {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                edges.push((slot, buffer.derived_index_of(&e.target, &e.source)));
+                edges.push((slot, buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle)));
             }
         }
     }
@@ -144,7 +144,7 @@ pub(crate) fn process_source_batch_parallel(
     for (gi, g) in graph_list.iter().enumerate() {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                derived_edges[gi].push((slot, buffer.derived_index_of(&e.target, &e.source)));
+                derived_edges[gi].push((slot, buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle)));
             }
         }
     }

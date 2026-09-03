@@ -28,6 +28,7 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
         // 尚未进入等待, 许可也会存储并在下次 notified() 立即返回
         notify.notified().await;
         while let Some((source, frames)) = plane.pop_frame_batch() {
+            let frame_count = frames.len();
             let eval_plane = plane.clone();
             let eval_task = tokio::task::spawn_blocking(move || {
                 super::frame_dispatch::on_frames(&eval_plane, &source, &frames)
@@ -39,7 +40,7 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
                         .eval_ns
                         .fetch_add(eval_ns, std::sync::atomic::Ordering::Relaxed);
                     plane.metrics.frames_evaled.fetch_add(
-                        u64::try_from(frames.len()).unwrap_or(u64::MAX),
+                        u64::try_from(frame_count).unwrap_or(u64::MAX),
                         std::sync::atomic::Ordering::Relaxed,
                     );
                 }

@@ -119,6 +119,8 @@ impl DataBuffer {
         Some((oldest, latest))
     }
 
+    // 微秒时间戳 (~1.6e15) 转 f64 毫秒仅损失亚微秒精度, 显示用途足够
+    #[allow(clippy::cast_precision_loss)]
     fn relative_timestamp_ms(timestamp_us: u64, latest_us: u64) -> f64 {
         if timestamp_us <= latest_us {
             -((latest_us - timestamp_us) as f64) / 1000.0
@@ -129,7 +131,11 @@ impl DataBuffer {
 
     /// 兼容查询：获取相对时间窗口内的全部原始点。
     pub fn get_window(&self, start_ms: i64, end_ms: i64) -> WaveformWindow {
-        self.get_window_raw(start_ms as f64, end_ms as f64)
+        // 毫秒量级 i64 -> f64 无精度损失 (2^53 以内整数可精确表示)
+        #[allow(clippy::cast_precision_loss)]
+        {
+            self.get_window_raw(start_ms as f64, end_ms as f64)
+        }
     }
 
     /// 兼容查询：获取最近 N 个原始点。
@@ -202,16 +208,11 @@ impl DataBuffer {
         if total == 0 {
             return (0, 0, latest_us);
         }
-        let (start_ms, end_ms) = if start_ms <= end_ms {
-            (start_ms, end_ms)
-        } else {
-            (end_ms, start_ms)
-        };
-        let start_us = Self::timestamp_at_offset(latest_us, start_ms);
-        let end_us = Self::timestamp_at_offset(latest_us, end_ms);
+        let from_us = Self::timestamp_at_offset(latest_us, start_ms.min(end_ms));
+        let to_us = Self::timestamp_at_offset(latest_us, start_ms.max(end_ms));
         (
-            self.lower_bound_timestamp(start_us),
-            self.upper_bound_timestamp(end_us),
+            self.lower_bound_timestamp(from_us),
+            self.upper_bound_timestamp(to_us),
             latest_us,
         )
     }
@@ -562,7 +563,7 @@ impl DataBuffer {
 
 impl WindowSnapshot {
     /// 降采样前窗口内的原始点数
-    pub fn raw_window_points(&self) -> usize {
+    pub const fn raw_window_points(&self) -> usize {
         self.timestamps.len()
     }
 
@@ -697,7 +698,11 @@ impl WindowSnapshot {
         self.build_window(&selected, WaveformSampling::Lttb)
     }
 
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     fn lttb_series_indices(&self, threshold: usize, series: &SnapshotSeries) -> Vec<usize> {
         let points = self.timestamps.len();
         if points <= threshold || threshold < 3 {
@@ -753,8 +758,8 @@ impl WindowSnapshot {
                 }
                 let candidate_x = x(index);
                 let candidate_y = f64::from(value);
-                let area = ((anchor_x - average_x) * (candidate_y - anchor_y)
-                    - (anchor_x - candidate_x) * (average_y - anchor_y))
+                let area = (anchor_x - candidate_x)
+                    .mul_add(-(average_y - anchor_y), (anchor_x - average_x) * (candidate_y - anchor_y))
                     .abs();
                 if best.is_none_or(|(_, current)| area > current) {
                     best = Some((index, area));

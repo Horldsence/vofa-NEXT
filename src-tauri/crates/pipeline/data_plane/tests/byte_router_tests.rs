@@ -996,6 +996,7 @@ async fn frame_queue_overflow_keeps_newest_batches() {
     );
     let mut cache = DecoderFeedCache::new();
     // EVAL_QUEUE_DEPTH = 8: 喂 12 批 (每批 1 帧, 值随批递增), 队列应保留最后 8 批
+    #[allow(clippy::cast_precision_loss)] // 0..12 的小整数转 f32 精确
     for i in 0..12u32 {
         let v = i as f32 + 1.0;
         route_bytes(

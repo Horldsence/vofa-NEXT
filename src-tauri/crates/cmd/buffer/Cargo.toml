@@ -16,3 +16,4 @@ vofa_core = { workspace = true }
 window-vibrancy = "0.6"
 serde = { workspace = true }
 serde_json = { workspace = true }
+tokio = { workspace = true }

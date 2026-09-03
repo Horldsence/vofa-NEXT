@@ -380,7 +380,7 @@ pub fn process_source_batch(
     }
 
     // 派生边预计算: (graph 下标, 槽位下标, buffer 派生索引)
-    // 每批一次 (slot_of / derived_index_of 命中即返回), 逐帧零哈希直写;
+    // 每批一次 (slot_of / derived_port_index_of 命中即返回), 逐帧零哈希直写;
     // 槽位解析不到 (图结构不含该端口) 的边本批跳过
     let mut derived_edges: Vec<(usize, usize, usize)> = Vec::new();
     for (gi, g) in graph_list.iter().enumerate() {
@@ -431,7 +431,7 @@ pub fn process_source_batch(
     for (g, edges) in static_list.iter().zip(&mut static_edges) {
         for e in g.edges() {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
-                edges.push((slot, buffer.derived_index_of(&e.target, &e.source)));
+                edges.push((slot, buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle)));
             }
         }
     }

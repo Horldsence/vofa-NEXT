@@ -105,7 +105,7 @@ impl DataBuffer {
     }
 
     /// 当前缓冲区实际分配的主要时序数据字节数估算，供冻结快照预算使用。
-    pub fn estimated_bytes(&self) -> usize {
+    pub const fn estimated_bytes(&self) -> usize {
         let series = 1usize
             .saturating_add(self.num_channels)
             .saturating_add(self.derived_list.len());

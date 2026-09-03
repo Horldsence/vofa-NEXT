@@ -242,15 +242,15 @@ async fn observe(state: &AppState, rx: &mut HashMap<String, BusRx>) -> Observed 
     let buf = state.data_plane.buffer_for("pt");
     let mut b = buf.lock();
     let mut derived = HashMap::new();
-    for (sink, source) in [
-        ("sinkA", "m2"),
-        ("sinkT1", "t_cos"),
-        ("sinkT2", "t_log"),
-        ("sinkX1", "x_div"),
-        ("sinkX2", "x_sqrt"),
-        ("sinkX3", "x_min"),
+    for (sink, source, handle) in [
+        ("sinkA", "m2", "result"),
+        ("sinkT1", "t_cos", "result"),
+        ("sinkT2", "t_log", "result"),
+        ("sinkX1", "x_div", "result"),
+        ("sinkX2", "x_sqrt", "result"),
+        ("sinkX3", "x_min", "result"),
     ] {
-        let idx = b.derived_index_of(sink, source);
+        let idx = b.derived_port_index_of(sink, source, handle);
         derived.insert(format!("{sink}/{source}"), b.get_derived(idx, 1_000_000));
     }
     Observed {

@@ -1,4 +1,9 @@
-#![allow(clippy::float_cmp, clippy::cast_precision_loss)] // 测试数值断言: 精确比较 + 小整数转 f32 无精度问题
+#![allow(
+    clippy::float_cmp,
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+)] // 测试数值断言: 精确比较 + 小整数/采样时钟换算的 cast 均有界
 use buffer_databuffer::{
     DataBuffer, DerivedSeriesSelector, WaveformSampling, WaveformSeriesSelection, WaveformWindow,
 };
@@ -258,9 +263,9 @@ fn min_max_high_rate_smooth_signal_stays_dense() {
         let t = index as f64 / 700_000.0;
         let channels = (0..4)
             .map(|ch| {
-                let freq = 1.0 + ch as f64;
-                ((t * freq * 2.0 * std::f64::consts::PI).sin() * (1.0 + ch as f64 * 0.5) * 50.0
-                    + 128.0) as f32
+                let freq = 1.0 + f64::from(ch);
+                ((t * freq * 2.0 * std::f64::consts::PI).sin() * f64::from(ch).mul_add(0.5, 1.0))
+                    .mul_add(50.0, 128.0) as f32
             })
             .collect();
         buf.push_frame(&DataFrame::with_timestamp(timestamp, channels));

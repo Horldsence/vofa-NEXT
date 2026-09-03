@@ -211,13 +211,13 @@ async fn observe(state: &AppState, rx: &mut HashMap<String, BusRx>) -> Observed 
     let mut b = buf.lock();
     let mut derived = HashMap::new();
     let mut derived_points = 0;
-    for (sink, source) in [
-        ("sinkA", "m2"),
-        ("sinkB", "m3"),
-        ("sinkC", "m4"),
-        ("sinkD", "trig"),
+    for (sink, source, handle) in [
+        ("sinkA", "m2", "result"),
+        ("sinkB", "m3", "result"),
+        ("sinkC", "m4", "result"),
+        ("sinkD", "trig", "value"),
     ] {
-        let idx = b.derived_index_of(sink, source);
+        let idx = b.derived_port_index_of(sink, source, handle);
         let recent = b.get_derived(idx, 10_000);
         derived_points = recent.len();
         derived.insert(format!("{sink}/{source}"), recent);
@@ -357,8 +357,12 @@ async fn parallel_matches_serial_across_chunks() {
         let buf = state.data_plane.buffer_for("pt");
         let mut b = buf.lock();
         let mut derived = Vec::new();
-        for (sink, source) in [("sinkA", "m2"), ("sinkB", "m3"), ("sinkC", "m4")] {
-            let idx = b.derived_index_of(sink, source);
+        for (sink, source, handle) in [
+            ("sinkA", "m2", "result"),
+            ("sinkB", "m3", "result"),
+            ("sinkC", "m4", "result"),
+        ] {
+            let idx = b.derived_port_index_of(sink, source, handle);
             derived.push(b.get_derived(idx, 10_000));
         }
         (b.point_count(), derived, state)

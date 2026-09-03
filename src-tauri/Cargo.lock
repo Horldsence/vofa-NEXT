@@ -592,6 +592,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tauri",
+ "tokio",
  "vofa_core",
  "window-vibrancy",
 ]

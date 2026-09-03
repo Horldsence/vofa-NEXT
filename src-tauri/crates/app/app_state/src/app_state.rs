@@ -11,7 +11,7 @@ use data_plane::{
 };
 use engine::{CompiledGraph, SourceFramesMap, SourceTextsMap};
 use logic_types::{DecodedBuffer, LogicBuffer};
-use node_kind::NodeKind;
+use kind::NodeKind;
 use parking_lot::{Mutex, RwLock};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicU64;
@@ -210,7 +210,7 @@ impl Default for AppState {
 mod tests {
     use super::{AppState, WaveformSnapshot};
     use buffer_databuffer::DataBuffer;
-    use node_kind::{NodeDef, NodeKind};
+    use kind::{NodeDef, NodeKind};
     use schema_types::ProtocolConfig;
     use std::sync::Arc;
 

@@ -128,15 +128,15 @@ fn encode_envelope(
     );
     bytes.extend_from_slice(&(u32::try_from(columns).unwrap_or(u32::MAX)).to_le_bytes());
     bytes.extend_from_slice(&(u32::try_from(channel_count).unwrap_or(u32::MAX)).to_le_bytes());
-    bytes.extend_from_slice(
-        &window
-            .timestamps
-            .first()
-            .copied()
-            .unwrap_or(0)
-            .to_le_bytes(),
-    );
-    bytes.extend_from_slice(&window.timestamps.last().copied().unwrap_or(0).to_le_bytes());
+    // envelope 线上协议的窗口边界为 i64 毫秒 (前端 BigInt64 解码);
+    // WaveformWindow.timestamps 已是 f64 毫秒, 打包时四舍五入取整
+    let first_ts_ms = window.timestamps.first().copied().unwrap_or(0.0).round();
+    let last_ts_ms = window.timestamps.last().copied().unwrap_or(0.0).round();
+    #[allow(clippy::cast_possible_truncation)]
+    {
+        bytes.extend_from_slice(&(first_ts_ms as i64).to_le_bytes());
+        bytes.extend_from_slice(&(last_ts_ms as i64).to_le_bytes());
+    }
     bytes.extend_from_slice(
         &(u32::try_from(window.buffer_points).unwrap_or(u32::MAX)).to_le_bytes(),
     );
@@ -295,7 +295,7 @@ fn spawn_stream<S, F>(
                     let backlog = source.backlog();
                     // 显示点数预算由调用方传入；即使未来某个源给出超过自身硬上限的
                     // 预算，也不能让 usize::clamp(min > max) 使订阅任务 panic。
-                    let drain_size = pipeline_stream::bounded_drain_size(
+                    let drain_size = stream::bounded_drain_size(
                         backlog,
                         min_batch,
                         S::MAX_DRAIN,
@@ -470,7 +470,7 @@ pub async fn subscribe_data(
             let waveform_source = match (start_ms, end_ms) {
                 (Some(start_ms), Some(end_ms)) => WaveformSource::with_view(
                     buffer,
-                    pipeline_stream::WaveformViewSpec {
+                    stream::WaveformViewSpec {
                         start_ms,
                         end_ms,
                         selection,
@@ -647,13 +647,13 @@ mod tests {
 
     #[test]
     fn detail_budget_above_source_limit_is_safely_capped() {
-        assert_eq!(pipeline_stream::bounded_drain_size(1, 8_000, 5_000), 5_000);
+        assert_eq!(stream::bounded_drain_size(1, 8_000, 5_000), 5_000);
         assert_eq!(
-            pipeline_stream::bounded_drain_size(9_000, 1_000, 5_000),
+            stream::bounded_drain_size(9_000, 1_000, 5_000),
             5_000
         );
         assert_eq!(
-            pipeline_stream::bounded_drain_size(2_500, 1_000, 5_000),
+            stream::bounded_drain_size(2_500, 1_000, 5_000),
             2_500
         );
     }
