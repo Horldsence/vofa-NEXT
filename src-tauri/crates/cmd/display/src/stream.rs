@@ -27,6 +27,14 @@ const BINARY_SCHEMA_VERSION: u16 = 1;
 const SAMPLE_EVENT_KIND: u16 = 1;
 const SAMPLE_HEADER_LEN: usize = 68;
 
+/// 请求间隔是发送下限，不是空闲退避上限；概览 100ms 不能在有数据时加速到 16ms。
+fn display_rate(interval: Duration, fps_limit: u32) -> AdaptiveRate {
+    let fps = u64::from(fps_limit.max(1));
+    let fps_interval = Duration::from_millis(1_000_u64.div_ceil(fps));
+    let min = interval.max(fps_interval).max(Duration::from_millis(16));
+    AdaptiveRate::new(min, min.max(Duration::from_millis(100)))
+}
+
 fn direction(value: &str) -> DirectionFilter {
     match value.to_ascii_lowercase().as_str() {
         "rx" => DirectionFilter::Rx,
@@ -177,11 +185,11 @@ fn spawn_envelope_stream(
     let channel_id = on_event.id();
     let mut cancel = subscription::register_cancel(&state.subscriptions, channel_id);
     let subscriptions = state.subscriptions.clone();
+    let mut rate = display_rate(
+        interval,
+        state.data_plane.eval.data_bus.limits().preview_fps_limit,
+    );
     tokio::spawn(async move {
-        let mut rate = AdaptiveRate::new(
-            Duration::from_millis(16),
-            interval.max(Duration::from_millis(100)),
-        );
         let mut seq: u64 = 0;
         let mut last_version: u64 = 0;
         let mut gpu: Option<std::sync::Arc<GpuContext>> = None;
@@ -282,11 +290,11 @@ fn spawn_stream<S, F>(
     let channel_id = on_event.id();
     let mut cancel = subscription::register_cancel(&state.subscriptions, channel_id);
     let subscriptions = state.subscriptions.clone();
+    let mut rate = display_rate(
+        interval,
+        state.data_plane.eval.data_bus.limits().preview_fps_limit,
+    );
     tokio::spawn(async move {
-        let mut rate = AdaptiveRate::new(
-            Duration::from_millis(16),
-            interval.max(Duration::from_millis(100)),
-        );
         let seq = AtomicU64::new(0);
         loop {
             tokio::select! {
@@ -644,6 +652,44 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
     use vofa_core::DataFrame;
+
+    #[test]
+    fn continuous_overview_updates_respect_requested_interval() {
+        let mut rate = display_rate(Duration::from_millis(100), 60);
+        let mut elapsed = Duration::ZERO;
+        for _ in 0..100 {
+            elapsed += rate.current();
+            rate.on_send();
+        }
+        assert_eq!(elapsed, Duration::from_secs(10));
+        rate.on_idle();
+        rate.on_send();
+        assert_eq!(rate.current(), Duration::from_millis(100));
+    }
+
+    #[test]
+    fn display_rate_respects_detail_interval_and_preview_limit() {
+        assert_eq!(
+            display_rate(Duration::from_millis(33), 60).current(),
+            Duration::from_millis(33)
+        );
+        assert_eq!(
+            display_rate(Duration::ZERO, 60).current(),
+            Duration::from_millis(17)
+        );
+        assert_eq!(
+            display_rate(Duration::from_millis(16), 10).current(),
+            Duration::from_millis(100)
+        );
+        assert_eq!(
+            display_rate(Duration::ZERO, 0).current(),
+            Duration::from_secs(1)
+        );
+        assert_eq!(
+            display_rate(Duration::from_secs(2), 60).current(),
+            Duration::from_secs(2)
+        );
+    }
 
     #[test]
     fn detail_budget_above_source_limit_is_safely_capped() {

@@ -113,7 +113,6 @@ try {
 }
 
 const errors = [];
-const binaryRank = LAYERS.binary;
 
 for (const pkg of meta.packages) {
   const layer = pkg.name === BINARY ? "binary" : CRATE_TO_LAYER[pkg.name];

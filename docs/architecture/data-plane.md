@@ -23,7 +23,7 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
  ▼ 采样时钟定案 (A1): ts = 锚点 + 逻辑推进, 域锁定, 到达时间不参与
  ▼┬─────────────────────┬──────────────────────────────┐
  │ 记录平面 (A3)         │ 求值平面                       │
- │ record_frames:       │ 有界队列 (8 批/源)             │
+ │ record_frames:       │ 有界队列 (帧/字节/批数预算)    │
  │ 原始帧无条件入库       │ 满则丢最旧整批 = 显式缺口 (A5)   │
  │ 分块锁 (16k/次)       │ eval_workers = min(cores,8)   │
  │ 端口预览降载发布       │ 缺口 → 滤波/触发/IFFT 复位+告警 │
@@ -62,7 +62,7 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
    解析/时钟/检测/旁路/记录, 帧以 `Arc<Vec<DataFrame>>` fan-out 到各节点
    评估队列 (零拷贝)。组员显示经 `buffer_aliases` 读代表缓冲。
    组在 `sync_protocol_states` 尾部重建 (`rebuild_route_groups`)。
-5. **丢弃显式化** — 任何丢弃都可见: 求值丢批 → 缺口记账 (`eval_gaps`) →
+5. **丢弃显式化** — 任何丢弃都可见: 求值丢批 → 队列缺口标记 (`pending_gap`) →
    eval 侧复位该源关联的滤波/触发/IFFT 状态并 `log::warn`;
    原始层覆盖 → `storage_overflow` 计数 → 2s 指标 warn + WWB1 头 + 前端徽标;
    预览降载 → 步长抽点恒含批尾最新值。**不存在静默缝合**。
@@ -89,7 +89,12 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
 无计算的 ProtocolSource→Sink 图只需批尾快照，标准 ch<n> 波形不重复记录派生环。
 **原始波形显示不消耗该预算** (不变量 3)。挂接重滤波图组时, 若
 实测每批服务时间超过该批样本的到达间隔，将持续出现"评估队列丢弃"告警 —
-这是显式承载上限而非缺陷; 处置: 降低采样率 / 精简图组 / 提高 eval_workers。
+应分别检查平均承载与长尾停顿；增加 worker 不一定提高简单图吞吐，需要基准验证。
+评估队列每源最多 140,000 帧、8 MiB Vec 分配容量估计和 256 批，三者同时约束。
+单批自身超预算时拒绝并清空更旧积压，全部计入求值缺口；预算不含执行中的批次、
+allocator 元数据或其他源，不是进程级内存上限。
+消费者仅合并已经到达的同源独占小批，最多 16,384 帧，不额外等待；共享批不复制、
+不越过。这样在摄入延迟后的集中补交中摊薄任务提交成本，仍保留逐帧计算和跨源轮询。
 
 ## 6. 诊断指标 (2s 窗口, `数据平面指标`)
 
@@ -99,7 +104,9 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
 速率按实际报告间隔换算，产帧口径不叠加 fan-out 的消费/丢弃帧数。
 
 判读:
-- `评估队列丢弃 > 0` → 求值承载不足 (见 §5), 有状态算子已复位;
+- `评估队列丢弃 > 0` → 已超出积压预算，可能是持续承载不足、短时调度/服务停顿
+  或单批过大；消费者读取缺口时复位有状态算子。通过 `eval_diagnostics` 的
+  排队、blocking 调度和服务最大耗时区分等待环节，不能只看平均求值耗时;
 - `缓冲降载` warn → 窗口超出原始层容量, 前端出现降载徽标;
 - `Lagged 丢弃 > 0` → 解析前真实丢失；TestData 时间轴保留对应空洞，不再发生
   随丢包累计的整体时间压缩；数据本身无法恢复，仍需降低源速率或减少负载;
@@ -113,7 +120,7 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
 | 采样时钟域 | `data_plane/src/data_plane/mod.rs` (`SampleClock`, `restamp_frames`) |
 | 记录/求值入口 | `data_plane/src/data_plane/frame_dispatch.rs` (`record_frames` / `eval_frames`) |
 | 去重组路由 | `data_plane/src/data_plane/byte_router.rs` (`route_inner` 分组路径), `mod.rs` (`rebuild_route_groups`) |
-| 缺口记账/复位 | `mod.rs` (`eval_gaps`), `graph_eval.rs` (`reset_source_transient_state`) |
+| 缺口记账/复位 | `eval_queue.rs` (`pending_gap` 与批次一同出队), `graph_eval.rs` (`reset_source_transient_state`) |
 | 金字塔 | `buffer_databuffer/src/tier.rs`, 预算查询 `window.rs` (`snapshot_window_budget`) |
 | 派生独立时间轴 | `buffer_databuffer/src/derived.rs` (`DerivedStore`) |
 | 容量整定 | `mod.rs` (`tune_buffer_capacity`), `data_buffer.rs` (`ensure_capacity_for_rate`) |

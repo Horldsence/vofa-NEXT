@@ -9,6 +9,9 @@ edition = "2021"
 name = "vofa_next_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[profile.release]
+debug = true
+
 [workspace]
 # 分层规则见 docs/architecture/crate-layers.md：
 # 依赖只允许 rank(被依赖方) ≤ rank(依赖方)，同层可互依；
@@ -302,3 +305,6 @@ tauri-plugin-process = "2"
 semver = "1"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 window-vibrancy = "0.6"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"

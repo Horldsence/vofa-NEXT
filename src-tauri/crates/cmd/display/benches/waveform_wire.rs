@@ -24,6 +24,9 @@ fn bench_wire(c: &mut Criterion) {
             &window,
             |b, w| b.iter(|| black_box(encode_waveform_window(black_box(w)))),
         );
+        group.throughput(Throughput::Bytes(
+            serde_json::to_vec(&window).unwrap().len() as u64,
+        ));
         group.bench_with_input(
             BenchmarkId::new("json", format!("{channels}ch_{points}")),
             &window,

@@ -17,9 +17,6 @@
 
 use super::DataPlaneState;
 
-/// 每源队列深度（批数）；字节量依赖批大小与通道数，不等同于固定内存上限。
-pub(super) const EVAL_QUEUE_DEPTH: usize = 8;
-
 /// 评估 worker 主循环 — 随首个 attach 启动, 常驻
 pub(super) async fn eval_worker(plane: DataPlaneState) {
     log::debug!("评估 worker 已启动");
@@ -28,29 +25,44 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
         // Notify 许可语义保证不丢唤醒: 生产者 push 后 notify_one, 即使 worker
         // 尚未进入等待, 许可也会存储并在下次 notified() 立即返回
         notify.notified().await;
-        while let Some((source, frames)) = plane.pop_frame_batch() {
+        while let Some((source, frames, gap)) = plane.pop_frame_batch() {
             // 缺口 (队列溢出丢批) → 复位该源关联有状态算子 (不变量 5)
-            if plane.take_eval_gap(&source).is_some() {
+            if gap {
                 crate::graph_eval::reset_source_transient_state(&plane.eval, &source);
             }
             let frame_count = frames.len();
             let eval_plane = plane.clone();
+            let dispatched = std::time::Instant::now();
             let eval_task = tokio::task::spawn_blocking(move || {
+                eval_plane.metrics.dispatch_wait_max_ns.fetch_max(
+                    u64::try_from(dispatched.elapsed().as_nanos()).unwrap_or(u64::MAX),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                let service = std::time::Instant::now();
                 let buffer = eval_plane.buffer_for(&source);
                 let options = super::frame_dispatch::EvalOptions::from_config(
                     &eval_plane.pipeline_config.read(),
                 );
-                super::frame_dispatch::eval_frames(
+                let eval_ns = super::frame_dispatch::eval_frames(
                     &eval_plane.eval,
                     &eval_plane.global_nodes,
                     &buffer,
                     &source,
                     &frames,
                     options,
-                )
+                );
+                eval_plane.metrics.eval_service_max_ns.fetch_max(
+                    u64::try_from(service.elapsed().as_nanos()).unwrap_or(u64::MAX),
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+                eval_ns
             });
             match eval_task.await {
                 Ok(eval_ns) => {
+                    plane
+                        .metrics
+                        .eval_batches_total
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     plane
                         .metrics
                         .eval_completed_total
@@ -107,7 +119,7 @@ pub(super) fn clear_downstream_queues(plane: &DataPlaneState, transport_id: &str
         let mut queues = plane.frame_queues.lock();
         for target in targets {
             if let Some(queue) = queues.get_mut(&target) {
-                dropped += queue.drain(..).map(|batch| batch.len() as u64).sum::<u64>();
+                dropped += queue.clear();
             }
         }
     }

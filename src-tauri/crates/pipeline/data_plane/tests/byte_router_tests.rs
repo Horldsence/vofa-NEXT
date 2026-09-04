@@ -1132,7 +1132,7 @@ async fn sustained_justfloat_over_10mbps_keeps_waveform_timeline_stable() {
     );
 }
 
-/// 评估队列有界: 持续过载时丢最旧整批, 排空后缓冲保留最新 8 批
+/// 评估队列有界: 小批过载受 256 批上限约束，记录平面不丢帧。
 /// (摄入/评估解耦后的显式降级语义 — 丢最旧保最新, 波形尾部始终可见)
 #[tokio::test]
 async fn frame_queue_overflow_keeps_newest_batches() {
@@ -1149,27 +1149,36 @@ async fn frame_queue_overflow_keeps_newest_batches() {
         vec![edge("tp", "rx", "pt", "in")],
     );
     let mut cache = DecoderFeedCache::new();
-    // EVAL_QUEUE_DEPTH = 8: 喂 12 批 (每批 1 帧, 值随批递增), 队列应保留最后 8 批
-    #[allow(clippy::cast_precision_loss)] // 0..12 的小整数转 f32 精确
-    for i in 0..12u32 {
-        let v = i as f32 + 1.0;
-        route_bytes(
-            &plane,
-            None,
-            "tp",
-            &firewater_bytes(&[v, v, v]),
-            0,
-            &mut cache,
-            None,
-        )
-        .await;
-    }
+    // 禁用本次喂入的协作预算让出，单线程 worker 在断言前不会消费。
+    tokio::task::unconstrained(async {
+        #[allow(clippy::cast_precision_loss)] // 0..300 的小整数转 f32 精确
+        for i in 0..300u32 {
+            let v = i as f32 + 1.0;
+            route_bytes(
+                &plane,
+                None,
+                "tp",
+                &firewater_bytes(&[v, v, v]),
+                0,
+                &mut cache,
+                None,
+            )
+            .await;
+        }
+    })
+    .await;
+    let diag = plane.eval_diagnostics();
+    assert_eq!(diag.queued_batches, 256);
+    assert_eq!(diag.queued_frames, 256);
+    assert_eq!(diag.dropped_frames, 44);
     plane.flush_eval();
-    // 不变量 3: 记录平面无条件入库 — 原始缓冲 12 帧全保留, 求值丢弃不影响波形
-    assert_eq!(plane.buffer_for("pt").lock().point_count(), 12);
+    assert_eq!(plane.eval_diagnostics().completed_frames, 256);
+    assert_eq!(plane.eval_diagnostics().queued_estimated_bytes, 0);
+    // 不变量 3: 记录平面无条件入库，求值丢弃不影响原始波形。
+    assert_eq!(plane.buffer_for("pt").lock().point_count(), 300);
     // 不变量 5: 求值队列丢最旧保最新 — source_frames 为最新批, 且缺口被记账
     // (flush_eval 消费缺口并复位有状态算子; 本例无状态图, 复位为空操作)
     let sf = plane.source_frames.lock();
     let f = sf.get("pt").expect("pt 应有最新帧");
-    assert_eq!(f.channels, vec![12.0, 12.0, 12.0]);
+    assert_eq!(f.channels, vec![300.0, 300.0, 300.0]);
 }

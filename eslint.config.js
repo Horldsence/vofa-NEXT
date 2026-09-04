@@ -28,8 +28,10 @@ export default tseslint.config(
   js.configs.recommended,
 
   // 3. TypeScript 严格档:type-checked(类型相关 bug)+ stylistic(风格一致)
-  ...tseslint.configs.recommendedTypeChecked,
-  ...tseslint.configs.stylisticTypeChecked,
+  ...[
+    ...tseslint.configs.recommendedTypeChecked,
+    ...tseslint.configs.stylisticTypeChecked,
+  ].map(config => ({ ...config, files: ['**/*.{ts,tsx}'] })),
 
   // 4. 给所有 TS/TSX 开 projectService,自动按文件选正确的 tsconfig
   //    (src/* → tsconfig.json, vite.config.ts → tsconfig.node.json)
@@ -135,7 +137,7 @@ export default tseslint.config(
 
   // 7. 根目录配置文件:vite/vitest 等走 Node 环境
   {
-    files: ['*.config.{js,ts,mjs,cjs}'],
+    files: ['*.config.{js,ts,mjs,cjs}', 'scripts/**/*.{js,mjs,cjs}'],
     languageOptions: {
       globals: {
         ...globals.node,

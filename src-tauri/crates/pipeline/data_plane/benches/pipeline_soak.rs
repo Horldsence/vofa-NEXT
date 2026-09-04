@@ -113,13 +113,53 @@ fn main() {
         std::env::var("VOFA_SOAK_SECONDS").map_or(60, |s| s.parse().expect("seconds"));
     let computed = std::env::var("VOFA_SOAK_GRAPH").is_ok_and(|s| s == "math");
     let generator = std::env::var("VOFA_SOAK_GENERATOR").is_ok_and(|s| s == "1");
+    let stall_ms: u64 = std::env::var("VOFA_SOAK_EVAL_STALL_MS")
+        .map_or(0, |s| s.parse().expect("stall milliseconds"));
+    let ingest_stall_ms: u64 = std::env::var("VOFA_SOAK_INGEST_STALL_MS")
+        .map_or(0, |s| s.parse().expect("ingest stall milliseconds"));
+    assert!(seconds > 0, "长跑时间必须大于零");
+    assert!(stall_ms <= 1_000, "人为图锁停顿最多 1 秒");
+    assert!(ingest_stall_ms <= 1_000, "人为摄入停顿最多 1 秒");
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
         .enable_all()
         .build()
         .unwrap();
     let plane = setup(computed);
+    if let Ok(workers) = std::env::var("VOFA_SOAK_EVAL_WORKERS") {
+        let workers: usize = workers.parse().expect("eval workers");
+        assert!((1..=16).contains(&workers), "评估线程数范围为 1..=16");
+        plane.pipeline_config.write().eval_workers = workers;
+    }
+    println!(
+        "{}",
+        serde_json::json!({"benchmark_config": {
+            "sample_rate":config().sample_rate, "channels":config().channels,
+        "pipeline":*plane.pipeline_config.read(), "injected_stall_ms":stall_ms,
+        "injected_ingest_stall_ms":ingest_stall_ms,
+            "seconds":seconds, "generator":generator, "computed":computed,
+        }})
+    );
     let stop = Arc::new(AtomicBool::new(false));
+    // 单独报告的干扰场景，不改变正常长跑或生产代码。每 5 秒模拟一次图锁被占用。
+    let stalls = if stall_ms > 0 {
+        let stall_plane = plane.clone();
+        let stall_stop = stop.clone();
+        Some(std::thread::spawn(move || {
+            let mut count = 0;
+            loop {
+                std::thread::park_timeout(Duration::from_secs(5));
+                if stall_stop.load(Ordering::Relaxed) {
+                    return count;
+                }
+                let _graphs = stall_plane.eval.graphs.lock();
+                std::thread::sleep(Duration::from_millis(stall_ms));
+                count += 1;
+            }
+        }))
+    } else {
+        None
+    };
     let query_plane = plane.clone();
     let query_stop = stop.clone();
     let queries = std::thread::spawn(move || {
@@ -154,12 +194,29 @@ fn main() {
             let overview = overview.into_min_max(2_000);
             assert!(detail.latest_timestamp_us >= latest, "原始时间不得倒退");
             latest = detail.latest_timestamp_us;
+            assert_eq!(
+                detail.latest_timestamp_us, overview.latest_timestamp_us,
+                "主图和概览必须共享原始锚点"
+            );
             for window in [&detail, &overview] {
                 assert!(window.timestamps.windows(2).all(|w| w[0] <= w[1]));
                 assert!(window
                     .channels
                     .iter()
                     .all(|c| c.is_empty() || c.len() == window.timestamps.len()));
+                if latest > 0 {
+                    // 空数组也满足 windows().all()；必须独立验证窗口没有塌缩或消失。
+                    assert!(window.timestamps.len() >= 2, "已有数据的窗口不得消失");
+                    assert_eq!(window.channels.len(), 4);
+                    assert!(
+                        window
+                            .channels
+                            .iter()
+                            .all(|c| c.len() == window.timestamps.len()
+                                && c.iter().all(|v| v.is_finite())),
+                        "原始通道不得缺列或出现非有限值"
+                    );
+                }
             }
             std::hint::black_box((detail, overview));
             times.push(start.elapsed().as_secs_f64() * 1_000.0);
@@ -168,7 +225,7 @@ fn main() {
         }
         times
     });
-    runtime.block_on(async {
+    let (lagged, diag, throughput, preview_lagged) = runtime.block_on(async {
         // 真实订阅触发端口 staging、DataBus 批处理和消费路径。
         let key = TopicKey::new(if computed { "math0" } else { "pt" }, if computed { "result" } else { "ch0" });
         let mut preview = plane.eval.data_bus.subscribe(key.clone(), 0).await.unwrap();
@@ -203,10 +260,19 @@ fn main() {
         let mut lagged = 0_u64;
         let mut latencies = Vec::new();
         let mut max_queue_frames = 0;
+        let mut max_queue_bytes = 0;
         let mut tick_bytes = 0;
         let mut tick = Instant::now();
         let mut next = tokio::time::Instant::now();
+        let mut last_ingest_stall = Instant::now();
+        let mut ingest_stalls = 0;
         while start.elapsed() < Duration::from_secs(seconds) {
+            if ingest_stall_ms > 0 && last_ingest_stall.elapsed() >= Duration::from_secs(5) {
+                // 生成器继续工作，恢复后真实接收广播积压，检验求值对突发补交的承载。
+                tokio::time::sleep(Duration::from_millis(ingest_stall_ms)).await;
+                last_ingest_stall = Instant::now();
+                ingest_stalls += 1;
+            }
             let data = if generator {
                 match tokio::time::timeout(Duration::from_secs(2), rx.recv()).await.expect("生成器超时") {
                     Ok(data) => data,
@@ -226,8 +292,9 @@ fn main() {
             frames += result.frames as u64;
             let diag = plane.eval_diagnostics();
             max_queue_frames = max_queue_frames.max(diag.queued_frames);
+            max_queue_bytes = max_queue_bytes.max(diag.queued_estimated_bytes);
             if tick.elapsed() >= Duration::from_secs(5) {
-                println!("{}", serde_json::json!({"elapsed_s":start.elapsed().as_secs_f64(), "rx_MB_s":(bytes-tick_bytes) as f64 / tick.elapsed().as_secs_f64() / 1e6, "queue_frames":diag.queued_frames, "eval_dropped":diag.dropped_frames}));
+                println!("{}", serde_json::json!({"elapsed_s":start.elapsed().as_secs_f64(), "rx_MB_s":(bytes-tick_bytes) as f64 / tick.elapsed().as_secs_f64() / 1e6, "queue_frames":diag.queued_frames, "eval_dropped":diag.dropped_frames, "queue_wait_max_ms":diag.queue_wait_max_ns as f64/1e6, "dispatch_wait_max_ms":diag.dispatch_wait_max_ns as f64/1e6, "eval_service_max_ms":diag.eval_service_max_ns as f64/1e6}));
                 tick = Instant::now(); tick_bytes = bytes;
             }
         }
@@ -246,15 +313,39 @@ fn main() {
         plane.eval.data_bus.unsubscribe(&key);
         preview_task.abort();
         let diag = plane.eval_diagnostics();
+        println!("{}", serde_json::json!({"eval_completed_batches":diag.completed_batches, "injected_ingest_stalls":ingest_stalls, "injected_ingest_stall_ms":ingest_stall_ms}));
+        assert!(ingest_stall_ms == 0 || ingest_stalls > 0, "摄入停顿场景必须实际注入至少一次");
         let buffer = plane.buffer_for("pt");
         let buffer = buffer.lock();
         println!("{}", serde_json::json!({"raw_capacity":buffer.max_points(), "raw_points":buffer.point_count(), "raw_overwritten":buffer.storage_overflow(), "buffer_estimated_bytes":buffer.estimated_bytes()}));
         println!("{}", serde_json::json!({"preview_batches":preview_batches.load(Ordering::Relaxed), "preview_lagged_batches":preview_lagged.load(Ordering::Relaxed), "data_bus":plane.eval.data_bus.health()}));
-        println!("{}", serde_json::json!({"graph":if computed {"math4"} else {"raw4"}, "generator":generator, "elapsed_s":elapsed, "bytes":bytes, "frames":frames, "rx_MB_s":bytes as f64/elapsed/1e6, "lagged_messages":lagged, "eval_completed":diag.completed_frames, "eval_dropped":diag.dropped_frames, "max_queue_frames":max_queue_frames, "drain_ms":drain.elapsed().as_secs_f64()*1000.0, "ingest":summary(latencies)}));
+        println!("{}", serde_json::json!({"graph":if computed {"math4"} else {"raw4"}, "generator":generator, "elapsed_s":elapsed, "bytes":bytes, "frames":frames, "rx_MB_s":bytes as f64/elapsed/1e6, "lagged_messages":lagged, "eval_completed":diag.completed_frames, "eval_dropped":diag.dropped_frames, "max_queue_frames":max_queue_frames, "max_queue_estimated_bytes":max_queue_bytes, "queue_wait_max_ms":diag.queue_wait_max_ns as f64/1e6, "dispatch_wait_max_ms":diag.dispatch_wait_max_ns as f64/1e6, "eval_service_max_ms":diag.eval_service_max_ns as f64/1e6, "drain_ms":drain.elapsed().as_secs_f64()*1000.0, "ingest":summary(latencies)}));
         assert_eq!(bytes / 20, frames, "JustFloat 不得静默丢帧");
+        (lagged, diag, bytes as f64/elapsed/1e6, preview_lagged.load(Ordering::Relaxed))
     });
     println!(
         "{}",
         serde_json::json!({"query_detail_and_overview":summary(queries.join().unwrap())})
+    );
+    if let Some(stalls) = stalls {
+        stalls.thread().unpark();
+        let count = stalls.join().unwrap();
+        println!(
+            "{}",
+            serde_json::json!({"injected_graph_lock_stall_ms":stall_ms, "injected_stalls":count})
+        );
+        assert!(count > 0, "人为停顿场景必须实际注入至少一次");
+    }
+    assert_eq!(lagged, 0, "接收广播不得丢消息");
+    assert_eq!(diag.dropped_frames, 0, "评估队列不得丢帧");
+    assert_eq!(preview_lagged, 0, "样本订阅不得丢批");
+    assert_eq!(
+        plane.eval.data_bus.health().ingress_dropped,
+        0,
+        "DataBus 摄入不得丢批"
+    );
+    assert!(
+        throughput > 10.0,
+        "实收吞吐必须超过 10 MB/s，实际 {throughput}"
     );
 }

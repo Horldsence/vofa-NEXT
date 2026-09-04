@@ -16,6 +16,7 @@
 //!   ([`frame_dispatch::refresh_snapshot`], 以 source_frames 现状评估)
 
 pub mod byte_router;
+mod eval_queue;
 pub mod eval_worker;
 pub mod frame_dispatch;
 pub mod read_task;
@@ -321,7 +322,7 @@ impl ProtocolNodeState {
 pub const DEFAULT_BUFFER_CHANNELS: usize = 4;
 
 /// 评估队列 (字节平面 → 数值平面解耦点): 每源有界批队列, 帧 Arc 共享 (不变量 4)
-pub(crate) type FrameQueue = VecDeque<Arc<Vec<DataFrame>>>;
+use eval_queue::FrameQueue;
 /// 字节路由去重组表: 字节源 → [(等价配置 key, 代表节点, 组员)]
 pub(crate) type RouteGroups = HashMap<String, Vec<(String, String, Vec<String>)>>;
 
@@ -356,9 +357,6 @@ pub struct DataPlaneState {
     /// 每源待评估帧批队列 (字节平面 → 数值平面解耦点; key = Protocol 节点 id;
     /// 元素 Arc 共享 — 去重组 fan-out 零拷贝, 不变量 4)
     pub(crate) frame_queues: Arc<Mutex<HashMap<String, FrameQueue>>>,
-    /// 每源自上次成功求值以来被丢弃的帧数 (缺口记账, 不变量 5) —
-    /// eval worker 取批时消费, 触发有状态算子复位 + 告警
-    eval_gaps: Arc<Mutex<HashMap<String, u64>>>,
     /// 每源最近一次容量整备的速率 (±5% 内不重复整备)
     tuned_rate: Arc<Mutex<HashMap<String, f64>>>,
     /// 字节路由去重组 (key = 字节源 id): (等价配置 key, 代表节点, 组员) —
@@ -410,7 +408,6 @@ impl DataPlaneState {
             buffers: Arc::new(Mutex::new(HashMap::new())),
             raw_collectors: Arc::new(Mutex::new(HashMap::new())),
             frame_queues: Arc::new(Mutex::new(HashMap::new())),
-            eval_gaps: Arc::new(Mutex::new(HashMap::new())),
             tuned_rate: Arc::new(Mutex::new(HashMap::new())),
             route_groups: Arc::new(Mutex::new(HashMap::new())),
             buffer_aliases: Arc::new(Mutex::new(HashMap::new())),
@@ -462,37 +459,24 @@ impl DataPlaneState {
     /// 解析产帧入评估队列 (字节平面 → 数值平面解耦点)
     ///
     /// 有界队列: 满时丢最旧整批并计数 (持续过载下保最新, 丢弃显式可观测),
-    /// 新帧持续流动, 波形尾部始终最新。返回是否入队 (供诊断)。
+    /// 原始记录不依赖本队列；超预算大批同样显式计为缺口。
     pub(crate) fn enqueue_frames(&self, source_id: &str, frames: Arc<Vec<DataFrame>>) {
         // 惰性启动: loopback/mcp 等命令路径不经过 attach, 首次入队时保证 worker 存活
         self.ensure_eval_worker();
-        let dropped = {
+        {
             let mut queues = self.frame_queues.lock();
             let queue = queues.entry(source_id.to_string()).or_default();
-            let mut dropped = 0_u64;
-            while queue.len() >= eval_worker::EVAL_QUEUE_DEPTH {
-                if let Some(old) = queue.pop_front() {
-                    dropped += old.len() as u64;
-                }
+            let dropped = queue.push(frames);
+            if dropped > 0 {
+                self.metrics.add_eval_dropped(dropped);
             }
-            queue.push_back(frames);
-            dropped
-        };
-        if dropped > 0 {
-            self.metrics.add_eval_dropped(dropped);
-            // 缺口记账 (不变量 5): eval 侧见到缺口即复位有状态算子并告警
-            *self
-                .eval_gaps
-                .lock()
-                .entry(source_id.to_string())
-                .or_insert(0) += dropped;
         }
         // 队列锁已释放再唤醒, worker 与生产者不在锁上互等
         self.eval_notify.notify_one();
     }
 
-    /// 公平轮询取一批待评估帧 (worker 消费)
-    pub(crate) fn pop_frame_batch(&self) -> Option<(String, Arc<Vec<DataFrame>>)> {
+    /// 公平轮询取一批待评估帧，并在同一队列锁下取得该批之前的缺口标记。
+    pub(crate) fn pop_frame_batch(&self) -> Option<(String, Arc<Vec<DataFrame>>, bool)> {
         let mut queues = self.frame_queues.lock();
         let non_empty: Vec<String> = queues
             .iter()
@@ -512,14 +496,15 @@ impl DataPlaneState {
                     .expect("non_empty 长度已校验")
             }
         };
-        queues
-            .get_mut(&key)
-            .and_then(|queue| queue.pop_front().map(|frames| (key, frames)))
-    }
-
-    /// 取某源累计的求值缺口帧数 (有则清零返回; 无返回 None)
-    pub(crate) fn take_eval_gap(&self, source_id: &str) -> Option<u64> {
-        self.eval_gaps.lock().remove(source_id).filter(|n| *n > 0)
+        queues.get_mut(&key).and_then(|queue| {
+            queue.pop_ready().map(|(frames, enqueued, gap)| {
+                self.metrics.queue_wait_max_ns.fetch_max(
+                    u64::try_from(enqueued.elapsed().as_nanos()).unwrap_or(u64::MAX),
+                    Ordering::Relaxed,
+                );
+                (key, frames, gap)
+            })
+        })
     }
 
     /// 缓冲降载汇总 — 各源 storage_overflow 总和较上次报告的增量 (不变量 5:
@@ -634,8 +619,8 @@ impl DataPlaneState {
     /// 同步排空评估队列 — 集成测试在 route_bytes 后立即断言 buffer/快照前调用
     /// (运行时由 eval worker 异步消费; 记录平面已在路由时入库, 此处只评估)
     pub fn flush_eval(&self) {
-        while let Some((source, frames)) = self.pop_frame_batch() {
-            if self.take_eval_gap(&source).is_some() {
+        while let Some((source, frames, gap)) = self.pop_frame_batch() {
+            if gap {
                 crate::graph_eval::reset_source_transient_state(&self.eval, &source);
             }
             let buffer = self.buffer_for(&source);
@@ -650,6 +635,9 @@ impl DataPlaneState {
             );
             self.metrics.eval_ns.fetch_add(eval_ns, Ordering::Relaxed);
             self.metrics.eval_batches.fetch_add(1, Ordering::Relaxed);
+            self.metrics
+                .eval_batches_total
+                .fetch_add(1, Ordering::Relaxed);
             self.metrics.frames_evaled.fetch_add(
                 u64::try_from(frames.len()).unwrap_or(u64::MAX),
                 Ordering::Relaxed,
@@ -664,13 +652,14 @@ impl DataPlaneState {
     pub fn eval_diagnostics(&self) -> EvalDiagnostics {
         let queues = self.frame_queues.lock();
         EvalDiagnostics {
-            queued_batches: queues.values().map(VecDeque::len).sum(),
-            queued_frames: queues
-                .values()
-                .flat_map(|q| q.iter())
-                .map(|b| b.len())
-                .sum(),
+            queued_batches: queues.values().map(FrameQueue::len).sum(),
+            queued_frames: queues.values().map(|q| q.frames).sum(),
+            queued_estimated_bytes: queues.values().map(|q| q.bytes).sum(),
+            queue_wait_max_ns: self.metrics.queue_wait_max_ns.load(Ordering::Relaxed),
+            dispatch_wait_max_ns: self.metrics.dispatch_wait_max_ns.load(Ordering::Relaxed),
+            eval_service_max_ns: self.metrics.eval_service_max_ns.load(Ordering::Relaxed),
             completed_frames: self.metrics.eval_completed_total.load(Ordering::Relaxed),
+            completed_batches: self.metrics.eval_batches_total.load(Ordering::Relaxed),
             dropped_frames: self.metrics.eval_dropped_total.load(Ordering::Relaxed),
         }
     }
@@ -747,9 +736,6 @@ impl DataPlaneState {
             .lock()
             .retain(|id, _| live.iter().any(|k| k == id));
         self.frame_queues
-            .lock()
-            .retain(|id, _| live.iter().any(|k| k == id));
-        self.eval_gaps
             .lock()
             .retain(|id, _| live.iter().any(|k| k == id));
         // 路由去重组与缓冲别名 (不变量 4): 同 (字节源, 协议配置等价) 只解析一次
@@ -840,12 +826,21 @@ impl DataPlaneState {
     }
 }
 
-/// 流水线诊断指标 — 各 Transport 读任务共享, 每 2s 输出一次 (有活动时)。
+/// 非破坏性评估诊断；最大延迟是自创建以来的墙钟值，不随日志窗口清零。
 #[derive(Debug, Clone, Copy)]
 pub struct EvalDiagnostics {
     pub queued_batches: usize,
     pub queued_frames: usize,
+    /// 所有源待求值 Vec 的分配容量估计，不含执行中批次与 allocator 元数据。
+    pub queued_estimated_bytes: usize,
+    /// 入队到出队的最大等待纳秒数。
+    pub queue_wait_max_ns: u64,
+    /// 提交 blocking 任务到该闭包开始执行的最大等待纳秒数。
+    pub dispatch_wait_max_ns: u64,
+    /// blocking 闭包内取缓冲、配置与求值的最大服务纳秒数，含锁等待。
+    pub eval_service_max_ns: u64,
     pub completed_frames: u64,
+    pub completed_batches: u64,
     pub dropped_frames: u64,
 }
 
@@ -869,7 +864,11 @@ pub struct DataPlaneMetrics {
     /// 评估队列溢出丢弃的帧数 (摄入/评估解耦后的显式降级计数)
     eval_dropped: AtomicU64,
     eval_completed_total: AtomicU64,
+    eval_batches_total: AtomicU64,
     eval_dropped_total: AtomicU64,
+    queue_wait_max_ns: AtomicU64,
+    dispatch_wait_max_ns: AtomicU64,
+    eval_service_max_ns: AtomicU64,
     /// 多读任务共享报告时钟，避免把实际超过 2 秒的窗口当成固定 2 秒。
     last_report: Mutex<Option<std::time::Instant>>,
     /// 上次报告时各源缓冲 storage_overflow 总和 (增量输出)

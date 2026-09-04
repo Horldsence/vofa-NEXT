@@ -6,6 +6,7 @@
     "splashscreen"
   ],
   "permissions": [
-    "notification:allow-is-permission-granted"
+    "notification:allow-is-permission-granted",
+    "notification:default"
   ]
 }

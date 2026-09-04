@@ -4,8 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use super::plan::WorkerState;
 
-/// 自旋屏障 — 分块工作在微秒~百微秒量级, `std::sync::Barrier` 的
-/// 互斥锁/条件变量睡眠唤醒 (~50µs) 会吃掉并行收益; 这里先自旋后让出
+/// 自旋屏障：短批优先减少休眠唤醒开销，长等待通过 yield 让出执行权。
 pub(super) struct SpinBarrier {
     threads: usize,
     count: AtomicUsize,
@@ -58,6 +57,30 @@ impl Drop for PanicSignal<'_> {
     }
 }
 
+/// staging 交换槽 — worker 与协调者经互斥锁成对交接
+pub(super) struct StageSlot {
+    pub(super) staged_derived: Vec<(usize, u64, f32)>,
+    pub(super) staged_spectra: Vec<(u32, f32)>,
+    pub(super) snapshot_delta: Option<(engine::ValuesMap, engine::StringValuesMap)>,
+}
+
+impl StageSlot {
+    pub(super) const fn new() -> Self {
+        Self {
+            staged_derived: Vec::new(),
+            staged_spectra: Vec::new(),
+            snapshot_delta: None,
+        }
+    }
+
+    /// 与 worker 私有 staging 原位交换 (worker 拿回旧缓冲复用, 协调者取得本块产物)
+    pub(super) const fn swap_from(&mut self, ws: &mut WorkerState) {
+        std::mem::swap(&mut self.staged_derived, &mut ws.staged_derived);
+        std::mem::swap(&mut self.staged_spectra, &mut ws.staged_spectra);
+        std::mem::swap(&mut self.snapshot_delta, &mut ws.snapshot_delta);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{PanicSignal, SpinBarrier};
@@ -97,7 +120,7 @@ mod tests {
     fn panic_releases_waiter_without_all_participants() {
         let barrier = Arc::new(SpinBarrier::new(2));
         let broken = Arc::new(AtomicBool::new(false));
-        let barrier_worker = barrier.clone();
+        let barrier_worker = barrier;
         let broken_worker = broken.clone();
         let waiter = std::thread::spawn(move || barrier_worker.wait(&broken_worker));
         let result = std::panic::catch_unwind(|| {
@@ -106,29 +129,5 @@ mod tests {
         });
         assert!(result.is_err());
         waiter.join().unwrap();
-    }
-}
-
-/// staging 交换槽 — worker 与协调者经互斥锁成对交接
-pub(super) struct StageSlot {
-    pub(super) staged_derived: Vec<(usize, u64, f32)>,
-    pub(super) staged_spectra: Vec<(u32, f32)>,
-    pub(super) snapshot_delta: Option<(engine::ValuesMap, engine::StringValuesMap)>,
-}
-
-impl StageSlot {
-    pub(super) const fn new() -> Self {
-        Self {
-            staged_derived: Vec::new(),
-            staged_spectra: Vec::new(),
-            snapshot_delta: None,
-        }
-    }
-
-    /// 与 worker 私有 staging 原位交换 (worker 拿回旧缓冲复用, 协调者取得本块产物)
-    pub(super) const fn swap_from(&mut self, ws: &mut WorkerState) {
-        std::mem::swap(&mut self.staged_derived, &mut ws.staged_derived);
-        std::mem::swap(&mut self.staged_spectra, &mut ws.staged_spectra);
-        std::mem::swap(&mut self.snapshot_delta, &mut ws.snapshot_delta);
     }
 }

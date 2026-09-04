@@ -33,3 +33,6 @@ PLAN.md
 promo.html
 promo_cover.html
 promo_cover_vertical.html
+
+# Profiling artifacts
+src-tauri/flamegraph.svg
