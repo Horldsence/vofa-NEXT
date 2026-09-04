@@ -99,7 +99,12 @@ export function computeMeasurements(
   return { vpp, vmin, vmax, vavg, vrms, freq, period };
 }
 
-/// Auto Set: 基于 waveformWindow 数据自动适配时基与每通道 V/div
+/// Auto Set 的拟合窗口上限 (秒) — 只适配最近一段历史。
+/// 金字塔分层激活后概览缓存是无界全历史包络: 按全历史算时基会钳死在最大档
+/// (表现即「按钮失效」), 纵向被深历史旧极值压扁; 裁剪后目标时基天然 ≤1s/div。
+export const AUTOSET_WINDOW_SEC = 10;
+
+/// Auto Set: 基于最近一段 waveformWindow 数据自动适配时基与每通道 V/div
 /// 信号垂直方向约占 70% (上下各留 ~15% 余量), 避免完全顶满
 export function computeAutoSetConfig(
   win: WaveformWindow,
@@ -108,12 +113,17 @@ export function computeAutoSetConfig(
 ): ScopeAxisConfig {
   if (win.timestamps.length < 2) return currentConfig;
 
-  const firstTs = win.timestamps[0];
   const lastTs = win.timestamps[win.timestamps.length - 1];
-  const totalDurSec = (lastTs - firstTs) / 1000;
-  if (totalDurSec <= 0) return currentConfig;
+  // 裁剪出最近 AUTOSET_WINDOW_SEC 窗口 (时间戳升序) —
+  // 深历史不参与时基/纵向拟合, 只决定回退时机
+  const fitStartTs = lastTs - AUTOSET_WINDOW_SEC * 1000;
+  let startIdx = 0;
+  while (startIdx < win.timestamps.length - 1 && win.timestamps[startIdx] < fitStartTs) startIdx++;
+  if (lastTs - win.timestamps[startIdx] <= 0) return currentConfig;
 
-  // 时基: 总时长 / 10 格
+  const totalDurSec = (lastTs - win.timestamps[startIdx]) / 1000;
+
+  // 时基: 窗口时长 / 10 格
   const targetTb = totalDurSec / H_DIVS;
   let bestTbIdx = 0;
   let bestTbDiff = Infinity;
@@ -142,13 +152,14 @@ export function computeAutoSetConfig(
   }
 
   if (currentConfig.sharedY) {
-    // 共用 Y 模式: 计算所有连接通道的全局 min/max, 设置单一 vPerDiv/position 到 channels[0]
+    // 共用 Y 模式: 计算所有连接通道在拟合窗口内的全局 min/max, 设置单一 vPerDiv/position 到 channels[0]
     let globalMin = Infinity;
     let globalMax = -Infinity;
     for (const chIdx of channelsToUse) {
       const ch = win.channels[chIdx];
       if (!ch || ch.length === 0) continue;
-      for (const v of ch) {
+      for (let i = startIdx; i < ch.length; i++) {
+        const v = ch[i];
         if (isNaN(v)) continue;
         if (v < globalMin) globalMin = v;
         if (v > globalMax) globalMax = v;
@@ -164,13 +175,14 @@ export function computeAutoSetConfig(
       };
     }
   } else {
-    // 独立 Y 模式: 每通道独立计算 vPerDiv/position
+    // 独立 Y 模式: 每通道在拟合窗口内独立计算 vPerDiv/position
     for (const chIdx of channelsToUse) {
       const ch = win.channels[chIdx];
       if (!ch || ch.length === 0) continue;
       let vmin = Infinity;
       let vmax = -Infinity;
-      for (const v of ch) {
+      for (let i = startIdx; i < ch.length; i++) {
+        const v = ch[i];
         if (isNaN(v)) continue;
         if (v < vmin) vmin = v;
         if (v > vmax) vmax = v;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { computeAutoSetConfig, snapVPerDivUp } from '../scopeUtils';
-import { createDefaultScopeConfig, formatVPerDiv, type WaveformWindow } from '../../../types';
+import { computeAutoSetConfig, snapVPerDivUp, AUTOSET_WINDOW_SEC } from '../scopeUtils';
+import { createDefaultScopeConfig, formatVPerDiv, TIME_BASES_SEC, type WaveformWindow } from '../../../types';
 
 /// 构造 WaveformWindow 测试夹具 — ts 为相对毫秒, channels 与 channel_count 对齐
 function makeWindow(channels: number[][], durMs = 1000): WaveformWindow {
@@ -93,6 +93,87 @@ describe('computeAutoSetConfig', () => {
     // 全局 vpp = 1e-3 - (-5e-4) = 1.5e-3 → target ≈ 2.68e-4 → 向上取 5e-4
     expect(next.channels[0].vPerDiv).toBeCloseTo(5e-4);
     expect(next.channels[0].position).toBeCloseTo(2.5e-4, 6);
+  });
+
+  describe('金字塔全历史裁剪 (AUTOSET_WINDOW_SEC)', () => {
+    /// 构造跨 totalSec 秒的长历史: 前 oldEndRatio 段为旧极值, 最近 recentSec 秒为小信号
+    function longHistoryWindow(opts: {
+      totalSec: number;
+      recentSec: number;
+      oldValue: number;
+      recentVpp: number;
+    }): WaveformWindow {
+      const { totalSec, recentSec, oldValue, recentVpp } = opts;
+      const rate = 100; // 100 Hz
+      const n = totalSec * rate;
+      const timestamps = Float64Array.from({ length: n }, (_, i) => (i / rate) * 1000);
+      const recentStartSec = totalSec - recentSec;
+      const ch = Float32Array.from({ length: n }, (_, i) => {
+        const sec = i / rate;
+        return sec < recentStartSec
+          ? oldValue
+          : (recentVpp / 2) * Math.sin((sec - recentStartSec) * Math.PI * 2);
+      });
+      return {
+        seq: 1,
+        timestamps,
+        channels: [ch],
+        channel_count: 1,
+        derived: {},
+        buffer_points: n,
+        buffer_capacity: n,
+        latest_timestamp_us: 0,
+        raw_window_points: n,
+        sampling: 'min_max',
+      };
+    }
+
+    it('历史跨度超时基上限: 按最近窗口取档, 不再钳死在最大档', () => {
+      // 120s 历史 → 全历史时基目标 12s/div (表内最大 5s/div, 旧逻辑永远钳死);
+      // 裁剪后最近 10s → 目标 1s/div
+      const cfg = createDefaultScopeConfig(1);
+      const next = computeAutoSetConfig(
+        longHistoryWindow({ totalSec: 120, recentSec: 10, oldValue: 50, recentVpp: 2 }),
+        cfg,
+        [0],
+      );
+      expect(next.timeBase).toBeLessThanOrEqual(1);
+      expect(next.timeBase).toBe(TIME_BASES_SEC[TIME_BASES_SEC.indexOf(1)]);
+    });
+
+    it('深历史旧极值不撑大纵向档位 (独立 Y)', () => {
+      // 最近 12s 内 Vpp≈2 (整个裁剪窗都被新信号覆盖), 旧历史是 ±50 平台 —
+      // 档位应按 2 取 (≈0.5), 而非 100 (≈20)
+      const cfg = createDefaultScopeConfig(1);
+      cfg.sharedY = false;
+      const next = computeAutoSetConfig(
+        longHistoryWindow({ totalSec: 120, recentSec: 12, oldValue: 50, recentVpp: 2 }),
+        cfg,
+        [0],
+      );
+      expect(next.channels[0].vPerDiv).toBeCloseTo(0.5);
+      expect(next.channels[0].position).toBeCloseTo(0, 5);
+    });
+
+    it('sharedY 同样只统计最近窗口', () => {
+      const cfg = createDefaultScopeConfig(1);
+      cfg.sharedY = true;
+      const next = computeAutoSetConfig(
+        longHistoryWindow({ totalSec: 120, recentSec: 12, oldValue: 50, recentVpp: 2 }),
+        cfg,
+        [0],
+      );
+      expect(next.channels[0].vPerDiv).toBeCloseTo(0.5);
+    });
+
+    it(`短历史 (≤${AUTOSET_WINDOW_SEC}s) 全窗口拟合, 行为不变`, () => {
+      const ch = Array.from({ length: 100 }, (_, i) => (i % 2 === 0 ? 0 : 39));
+      const cfg = createDefaultScopeConfig(1);
+      cfg.sharedY = false;
+      const next = computeAutoSetConfig(makeWindow([ch], 5000), cfg, [0]);
+      // 与既有「大信号」用例同参数: vpp=39 → 向上取 10
+      expect(next.channels[0].vPerDiv).toBe(10);
+    });
   });
 });
 
