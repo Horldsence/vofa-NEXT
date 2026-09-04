@@ -11,3 +11,10 @@ workspace = true
 serde = { workspace = true }
 schema_types = { workspace = true }
 log = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "frame_decoder_bench"
+harness = false

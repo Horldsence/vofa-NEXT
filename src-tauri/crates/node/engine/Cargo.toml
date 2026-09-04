@@ -23,3 +23,8 @@ eval = { workspace = true }
 
 [dev-dependencies]
 testkit = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "compile_bench"
+harness = false

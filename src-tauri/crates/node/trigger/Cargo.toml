@@ -12,3 +12,10 @@ serde = { workspace = true }
 regex = { workspace = true }
 glob = { workspace = true }
 log = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "trigger_bench"
+harness = false

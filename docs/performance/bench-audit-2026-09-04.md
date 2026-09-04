@@ -57,6 +57,12 @@ CARGO_PROFILE_BENCH_DEBUG=0 VOFA_SOAK_SECONDS=300 VOFA_SOAK_GRAPH=math VOFA_SOAK
 | 派生查询 | 4 条派生，历史容量 2k/100k/1750k，最近 128 点 | 容量增长是否导致耗时退化 |
 | 字节摄入 | 4 通道 JustFloat，64 KB 批 | 解码/时钟/记录/入队；无复杂图、不含 IPC |
 | 图计算 | 单链、8 路、8×6 深链、4 路 Filter，1/2/4 worker、SIMD | 10k 帧耗时；保持跨轮单调时间，不含波形 sink |
+| 图编译 | 同上 4 种图 + 字节链 Transport→Protocol→ProtocolSource→Math | 全链与 HIR/值平面/字节平面/lowering 分段耗时；前端拓扑改动触发路径 |
+| 槽位求值 | 单链、8×6 深链、4 路 Filter，10k 帧批 | `CompiledEval::run` + 每帧清零协议；与 graph_eval 端到端差值为数据平面开销 |
+| 边集合 | 8/64/512 条边增删、索引重建、帧路由、环检测 | buffer_graph 数据结构本身；不含字节平面路由 |
+| 触发器匹配 | 6 种匹配类型 × 1/8 规则 × 命中/未命中 | `TriggerMatcher::match_input` 单次调用；含每次调用克隆规则表的开销 |
+| 帧解码 | 帧头+N×UInt16LE[+Sum8 校验]+帧尾，2048 帧连续流 | `FrameParser::feed` 字节吞吐；通用逐帧状态机，不等同专用 JustFloat 解码 |
+| 图提交辅助 | 50/500 节点派生端口表、ProtocolSource 注入 | `compute_derived` / `inject_protocol_sources` 纯函数；不含编译与 AppState 写入 |
 | 波形编码 | 4ch×2k、4ch×12k、16ch×12k | WWB1/JSON 编码耗时与实际字节量，不含 IPC |
 | CPU/GPU 包络 | 100k/1M/4M 点，2048 列 | 含 GPU 上传/读回；无适配器必须明确标为未测 |
 | 前端 CPU | 同三种窗口规模 | WWB1 解码、JSON 归一化、全通道 AC+测量；不含 React/Canvas |
@@ -126,6 +132,89 @@ Criterion 点估计，长跑使用单次调用的实际分位数；两者不能�
 
 部分并行结果波动较大（例如 Filter+SIMD 95% 区间 2.895–3.731ms）；不能仅据
 一次排序自动修改全局 worker/SIMD 配置。成本与图结构、可向量化单元、调度相关。
+
+### 图/边/节点补测（同日追加）
+
+同日为图/边/节点链路补充 6 个 Criterion bench（`buffer_graph` / `engine` /
+`eval` / `trigger` / `frame_decoder` / `graph_ops`），已并入
+`scripts/bench-audit.sh` 审计序列。图为前端每次拓扑改动触发的编译路径此前
+完全未被度量，`eval` crate 此前连测试都没有。以下为同环境同日实测基线。
+
+图编译（`engine compile_bench`，节点数括注；分段之和可与 `full` 对照）：
+
+| 图 | full | typed | value_plane | byte_plan | lower |
+|---|---:|---:|---:|---:|---:|
+| 单链 (4) | 3.08µs | 0.44µs | 0.75µs | 0.038µs | 1.87µs |
+| 8 条独立链 (9) | 7.22µs | 1.19µs | 1.74µs | 0.035µs | 4.37µs |
+| 8×6 深链 (49) | 28.4µs | 5.31µs | 7.73µs | 0.12µs | 16.2µs |
+| 4 条 Filter (9) | 6.36µs | 1.19µs | 1.72µs | 0.035µs | 3.36µs |
+| 字节链 Transport→Protocol (4) | 2.43µs | 0.37µs | 0.38µs | 0.44µs | 1.18µs |
+
+编译耗时近似随节点数线性（约 0.5–0.6µs/节点），lowering 恒为最大分段
+（无字节边时约占 full 的 48–61%）。真实规模的编译在微秒级，不是当前瓶颈；
+该基准的价值是防止编译路径回归。
+
+槽位求值（`eval eval_run_bench`，10k 帧批，含每帧槽位清零协议）与
+`graph_eval` 1 worker 端到端对照：
+
+| 图 | run 10k | 折算每帧 | materialize | graph_eval 1w | 求值占端到端 |
+|---|---:|---:|---:|---:|---:|
+| 单链 | 662µs | 66ns | 0.43µs | 1.015ms | 65% |
+| 8×6 深链 | 8.155ms | 815ns | 3.40µs | 9.076ms | 90% |
+| 4 条 Filter | 1.784ms | 178ns | 0.76µs | 2.179ms | 82% |
+
+端到端与微基准相减即为数据平面开销（锁、派生收集、记录写入）；两列测量
+批次不同，差值是量级参考而非精确分解。
+
+边集合（`buffer_graph node_graph_bench`，N 条边，每项处理 N 条边）：
+
+| 操作 | N=8 | N=64 | N=512 | 扩展性 |
+|---|---:|---:|---:|---|
+| update_edges（替换+重建） | 1.27µs | 9.50µs | 76.2µs | 线性 |
+| add_edge（逐条插入） | 1.74µs | 12.8µs | 105µs | 线性 |
+| remove_edge（逐条删除） | 4.67µs | 263µs | 16.6ms | **O(n²)：8× 边数耗时 ×63** |
+| has_cycle（无环链图） | 0.92µs | 15.7µs | 395µs | 超线性（逐边 DFS 重扫） |
+| route_frame（4 通道 fan-out） | 0.52µs | 3.06µs | 23.3µs | 线性 |
+| route_value（单源推送） | 0.32µs | 2.26µs | 16.8µs | 线性 |
+
+`remove_edge` 每删一条边全量 retain + 重建索引，512 边的逐条删除达 16.6ms；
+当前图规模（几十条边）不构成问题，但该 API 若被用于批量编辑循环需先改为
+批量删除。`has_cycle` 无 intern 的 String DFS 同为已知超线性形态，均只
+钉住基线、本次不改动实现。
+
+触发器匹配（`trigger trigger_bench`，单次 `match_input`）：
+
+| 类型 | 1 规则（命中） | 8 规则命中（末尾） |
+|---|---:|---:|
+| Exact | 103ns | 478ns |
+| Prefix | 99ns | 466ns |
+| Contains | 99ns | 471ns |
+| Range | 129ns | 678ns |
+| Regex | 135ns | 701ns |
+| Glob | 142ns | 668ns |
+
+成本近似随规则数线性（每次调用克隆规则表的既有形态），miss 与 hit 相当；
+数十条规则内单次匹配仍在微秒以下，不构成每帧瓶颈。
+
+帧解码（`frame_decoder frame_decoder_bench`，2048 帧连续流单次喂入）：
+
+| 块组合 | 帧长 | 耗时 | 吞吐 |
+|---|---:|---:|---:|
+| 帧头 + 4×UInt16LE + 帧尾 | 10 B | 952µs | 20.5MiB/s（约 2.1M 帧/s） |
+| 同上 + Inline Sum8 校验 | 11 B | 1.02ms | 21.0MiB/s |
+| 帧头 + 16×UInt16LE + 帧尾 | 34 B | 2.81ms | 23.6MiB/s |
+
+`FrameParser` 是逐帧状态机，吞吐 (~21MB/s 十进制) 与专用 JustFloat 摄入
+路径 (427MiB/s) 相差一个数量级以上，属于预期：后者是批量特化解码。使用
+FrameDecoder 节点承载 14MB/s 级数据时余量仅约 1.5×，高码率场景应优先使用
+原生协议而非自定义块。
+
+图提交辅助（`graph_ops graph_ops_bench`）：`compute_derived` 50/500 节点
+为 2.70/23.7µs（约 47ns/节点），`inject_protocol_sources` 0.37–0.50µs，
+均可忽略，bench 用于防止回归。
+
+以上 6 项覆盖新增链路，其余验证边界（无 IPC、无 GUI、单机同日测量）
+沿用本节开头口径。
 
 ### 编码与前端 CPU
 

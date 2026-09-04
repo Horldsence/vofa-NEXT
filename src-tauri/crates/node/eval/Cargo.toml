@@ -16,3 +16,15 @@ kind = { workspace = true }
 frame_decoder = { workspace = true }
 lower = { workspace = true }
 trigger = { workspace = true }
+
+[dev-dependencies]
+# bench fixture 构造: HIR/值平面编译出 SlotPlan (testkit 提供节点/边工厂)
+buffer_graph = { workspace = true }
+hir = { workspace = true }
+plane = { workspace = true }
+testkit = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "eval_run_bench"
+harness = false

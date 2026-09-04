@@ -613,6 +613,7 @@ dependencies = [
 name = "buffer_graph"
 version = "0.1.2"
 dependencies = [
+ "criterion",
  "serde",
  "serde_json",
  "vofa_core",
@@ -1738,6 +1739,7 @@ name = "engine"
 version = "0.1.2"
 dependencies = [
  "buffer_graph",
+ "criterion",
  "dsp_fft",
  "dsp_filter",
  "dsp_window",
@@ -1823,12 +1825,17 @@ dependencies = [
 name = "eval"
 version = "0.1.2"
 dependencies = [
+ "buffer_graph",
+ "criterion",
  "dsp_fft",
  "dsp_filter",
  "frame_decoder",
+ "hir",
  "kind",
  "lower",
+ "plane",
  "rustc-hash 2.1.3",
+ "testkit",
  "trigger",
  "vofa_core",
 ]
@@ -1989,6 +1996,7 @@ dependencies = [
 name = "frame_decoder"
 version = "0.1.2"
 dependencies = [
+ "criterion",
  "log",
  "schema_types",
  "serde",
@@ -2460,6 +2468,7 @@ version = "0.1.2"
 dependencies = [
  "app_state",
  "buffer_graph",
+ "criterion",
  "data_plane",
  "engine",
  "error",
@@ -2469,6 +2478,7 @@ dependencies = [
  "schema_types",
  "serde",
  "tauri",
+ "testkit",
  "tokio",
  "vofa_core",
 ]
@@ -6912,6 +6922,7 @@ dependencies = [
 name = "trigger"
 version = "0.1.2"
 dependencies = [
+ "criterion",
  "glob",
  "log",
  "regex",

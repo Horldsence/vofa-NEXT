@@ -28,8 +28,20 @@ audit_run() {
   fi
 }
 cd "$audit_root/src-tauri"
-cargo bench -p buffer_databuffer -p data_plane -p display -p gpu_core --no-run 2>&1 | tee "$audit_out/build.log"
-for audit_spec in 'buffer_databuffer waveform_pyramid_bench' 'data_plane ingest_bench' 'data_plane eval_bench' 'display waveform_wire' 'gpu_core envelope_bench'; do
+cargo bench -p buffer_databuffer -p data_plane -p display -p gpu_core \
+  -p buffer_graph -p engine -p eval -p trigger -p frame_decoder -p graph_ops --no-run 2>&1 | tee "$audit_out/build.log"
+for audit_spec in \
+  'buffer_databuffer waveform_pyramid_bench' \
+  'data_plane ingest_bench' \
+  'data_plane eval_bench' \
+  'display waveform_wire' \
+  'gpu_core envelope_bench' \
+  'buffer_graph node_graph_bench' \
+  'engine compile_bench' \
+  'eval eval_run_bench' \
+  'trigger trigger_bench' \
+  'frame_decoder frame_decoder_bench' \
+  'graph_ops graph_ops_bench'; do
   read -r audit_package audit_bench <<< "$audit_spec"
   audit_run "$audit_bench" cargo bench -p "$audit_package" --bench "$audit_bench" -- --noplot
 done

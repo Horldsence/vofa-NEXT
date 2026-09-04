@@ -21,3 +21,11 @@ serde = { workspace = true }
 tauri = { version = "2", features = [] }
 tokio = { workspace = true }
 vofa_core = { workspace = true }
+
+[dev-dependencies]
+testkit = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "graph_ops_bench"
+harness = false
