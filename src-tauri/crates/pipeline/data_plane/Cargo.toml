@@ -52,5 +52,13 @@ testkit = { workspace = true }
 name = "eval_bench"
 harness = false
 
+[[bench]]
+name = "ingest_bench"
+harness = false
+
+[[bench]]
+name = "pipeline_soak"
+harness = false
+
 [dev-dependencies.criterion]
 workspace = true

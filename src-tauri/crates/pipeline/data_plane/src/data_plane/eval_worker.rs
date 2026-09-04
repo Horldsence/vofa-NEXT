@@ -17,8 +17,7 @@
 
 use super::DataPlaneState;
 
-/// 每源队列深度 (批数)。8 批 × ~12k 帧/批 ≈ 10 万帧缓冲 (~400KB/源 @4 通道),
-/// 足以吸收评估段的秒级毛刺, 同时限制最坏内存与评估延迟。
+/// 每源队列深度（批数）；字节量依赖批大小与通道数，不等同于固定内存上限。
 pub(super) const EVAL_QUEUE_DEPTH: usize = 8;
 
 /// 评估 worker 主循环 — 随首个 attach 启动, 常驻
@@ -52,6 +51,14 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
             });
             match eval_task.await {
                 Ok(eval_ns) => {
+                    plane
+                        .metrics
+                        .eval_completed_total
+                        .fetch_add(frame_count as u64, std::sync::atomic::Ordering::Relaxed);
+                    plane
+                        .metrics
+                        .eval_batches
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     plane
                         .metrics
                         .eval_ns

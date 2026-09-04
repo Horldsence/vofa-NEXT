@@ -1,14 +1,15 @@
 //! 数值平面评估基准 — 串行 (eval_workers=1) vs 图内路径并行 (≥2, SIMD on/off)
 //!
 //! 场景:
-//! - `serial_baseline_1chain`: 单链图 (ProtocolSource+Input→Math×2), 10k 帧
-//! - `parallel_8paths_w2/w4`: 单图 8 条独立 Math 链 (路径级并行的目标形态)
-//! - `deep8_chains_w2/w4`: 8 条 6 级深链 (计算为主)
-//! - `filter_heavy_w1/w4`: 4 条 Filter 状态链 (有状态切分正确性下的吞吐)
-//! - `simd_*`: 同图集 eval_simd on/off 对比 (Math 资格单元批量求值收益)
+//! - `one_chain`: 单链图 (ProtocolSource+Input→Math×2), 10k 帧
+//! - `eight_paths`: 单图 8 条独立 Math 链
+//! - `deep8`: 8 条 6 级深链
+//! - `filter4`: 4 条 Filter 状态链
+//! - 每种图比较 workers=1/2/4 和 workers=4 + SIMD
 //!
 //! 说明: 基准不订阅 DataBus 主题 (端口 staging 路径由等价性测试覆盖),
-//! 度量的是 push_frame + 图评估 + 派生回放 + 频谱回放的主路径耗时。
+//! 度量原始记录 + 图评估；这些图不含波形/频谱 sink，不代表派生写入成本。
+//! 含真实波形 sink 和订阅的并发负载由 pipeline_soak 测量。
 //! SIMD 开关两侧的逐位等价性由 `tests/graph_eval_simd_equiv.rs` 仲裁。
 
 #![allow(clippy::cast_precision_loss)] // LCG 伪随机帧流: 小幅值整型 → f32 有意截断
@@ -16,7 +17,7 @@
 use std::hint::black_box;
 
 use app_state::AppState;
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use data_plane::frame_dispatch;
 use dsp_filter::FilterConfig;
 use engine::CompiledGraph;
@@ -53,21 +54,6 @@ fn setup(app: &AppState, graphs: Vec<CompiledGraph>) {
         .input_values
         .write()
         .insert("knob1".into(), 2.0);
-}
-
-fn set_workers(app: &AppState, n: usize) {
-    *app.data_plane.pipeline_config.write() = PipelineConfig {
-        eval_workers: n,
-        ..PipelineConfig::default()
-    };
-}
-
-fn set_simd(app: &AppState, enabled: bool) {
-    *app.data_plane.pipeline_config.write() = PipelineConfig {
-        eval_workers: 4,
-        eval_simd: enabled,
-        ..PipelineConfig::default()
-    };
 }
 
 /// 单链基线图
@@ -150,122 +136,56 @@ fn filter4() -> CompiledGraph {
 }
 
 fn bench_eval(c: &mut Criterion) {
-    let frames = frames(10_000, 4);
     let mut group = c.benchmark_group("graph_eval");
-    group.throughput(criterion::Throughput::Elements(frames.len() as u64));
-
-    // 串行基线: 单链
-    group.bench_function("serial_baseline_1chain_w1", |b| {
-        let state = AppState::new();
-        setup(&state, vec![one_chain()]);
-        set_workers(&state, 1);
-        b.iter_batched(
-            || (),
-            |()| {
-                let _ = black_box(frame_dispatch::on_frames(
-                    &state.data_plane,
-                    "pt",
-                    black_box(frames.as_slice()),
-                ));
-            },
-            BatchSize::SmallInput,
-        );
-    });
-
-    // 8 独立路径: 串行 vs 并行 2/4
-    for workers in [1usize, 2, 4] {
-        group.bench_function(format!("parallel_8paths_w{workers}"), |b| {
-            let state = AppState::new();
-            setup(&state, vec![multi_path(8)]);
-            set_workers(&state, workers);
-            b.iter_batched(
-                || (),
-                |()| {
-                    let _ = black_box(frame_dispatch::on_frames(
-                        &state.data_plane,
-                        "pt",
-                        black_box(frames.as_slice()),
-                    ));
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-
-    // 8 条 6 级深链 (计算为主): 串行 vs 并行 2/4
-    for workers in [1usize, 2, 4] {
-        group.bench_function(format!("deep8_chains_w{workers}"), |b| {
-            let state = AppState::new();
-            setup(&state, vec![deep_chains(8, 6)]);
-            set_workers(&state, workers);
-            b.iter_batched(
-                || (),
-                |()| {
-                    let _ = black_box(frame_dispatch::on_frames(
-                        &state.data_plane,
-                        "pt",
-                        black_box(frames.as_slice()),
-                    ));
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-
-    // Filter 重图: 串行 vs 并行 4
-    for workers in [1usize, 4] {
-        group.bench_function(format!("filter_heavy_4chains_w{workers}"), |b| {
-            let state = AppState::new();
-            setup(&state, vec![filter_heavy(4)]);
-            set_workers(&state, workers);
-            b.iter_batched(
-                || (),
-                |()| {
-                    let _ = black_box(frame_dispatch::on_frames(
-                        &state.data_plane,
-                        "pt",
-                        black_box(frames.as_slice()),
-                    ));
-                },
-                BatchSize::SmallInput,
-            );
-        });
-    }
-
-    // SIMD 批量组: 同图集 w4 × eval_simd on/off 对比 (Math 资格单元 SoA 批量)
-    // - 1chain / 8paths / deep8: Math 单元全部 SIMD 资格
-    // - filter_heavy: Math 单元无资格输入 (Filter 有状态) → 全标量 (度量判定开销)
+    group.throughput(criterion::Throughput::Elements(10_000));
     for (name, make_graph) in [
-        ("simd_1chain", one_chain as fn() -> CompiledGraph),
-        ("simd_8paths", multi_path_8 as fn() -> CompiledGraph),
-        ("simd_deep8", deep8 as fn() -> CompiledGraph),
-        ("simd_filter_heavy", filter4 as fn() -> CompiledGraph),
+        ("one_chain", one_chain as fn() -> CompiledGraph),
+        ("eight_paths", multi_path_8 as fn() -> CompiledGraph),
+        ("deep8", deep8 as fn() -> CompiledGraph),
+        ("filter4", filter4 as fn() -> CompiledGraph),
     ] {
-        for enabled in [false, true] {
+        for (workers, simd) in [(1, false), (2, false), (4, false), (4, true)] {
             let state = AppState::new();
             setup(&state, vec![make_graph()]);
-            set_simd(&state, enabled);
-            group.bench_function(
-                format!("{name}_{}", if enabled { "on" } else { "off" }),
-                |b| {
-                    b.iter_batched(
-                        || (),
-                        |()| {
-                            let _ = black_box(frame_dispatch::on_frames(
-                                &state.data_plane,
-                                "pt",
-                                black_box(frames.as_slice()),
-                            ));
-                        },
-                        BatchSize::SmallInput,
-                    );
-                },
-            );
+            *state.data_plane.pipeline_config.write() = PipelineConfig {
+                eval_workers: workers,
+                eval_simd: simd,
+                ..PipelineConfig::default()
+            };
+            let mut batch = frames(10_000, 4);
+            let mut epoch = 0_u64;
+            group.bench_function(format!("{name}_w{workers}_simd{simd}"), |b| {
+                // 构造/推进时间轴不计入求值；每轮严格递增，避免污染环和状态算子。
+                b.iter_custom(|iterations| {
+                    let mut elapsed = std::time::Duration::ZERO;
+                    for _ in 0..iterations {
+                        for (i, frame) in batch.iter_mut().enumerate() {
+                            frame.timestamp = epoch + i as u64 * 100;
+                        }
+                        epoch += batch.len() as u64 * 100;
+                        let start = std::time::Instant::now();
+                        black_box(frame_dispatch::on_frames(
+                            &state.data_plane,
+                            "pt",
+                            black_box(&batch),
+                        ));
+                        elapsed += start.elapsed();
+                    }
+                    elapsed
+                });
+            });
         }
     }
-
     group.finish();
 }
 
-criterion_group!(benches, bench_eval);
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .output_directory(std::path::Path::new("../../../target/criterion/graph_eval"))
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2))
+        .sample_size(20);
+    targets = bench_eval
+}
 criterion_main!(benches);

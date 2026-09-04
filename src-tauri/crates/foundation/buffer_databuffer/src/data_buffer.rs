@@ -34,8 +34,8 @@ pub struct DataBuffer {
     /// 派生通道存储 (求值平面写入, 独立时间轴 + 独立锁)
     pub(crate) derived: SharedDerivedStore,
     /// 派生版本号快照 (避免每次 version() 加锁 — 与派生锁内版本单调合并)
-    pub(crate) derived_version: AtomicU64,
-    /// min-max 金字塔层 (L1 起; L0 即 channels + timestamps 本体)
+    pub(crate) derived_version: Arc<AtomicU64>,
+    /// min-max 金字塔层 (tier 0 = 16 个原始样本/块; 原始层为 channels + timestamps)
     pub(crate) tiers: Vec<Tier>,
     /// L0 逻辑推送总数 (折叠节拍用, 环形覆盖不改写)
     pub(crate) raw_pushed: u64,
@@ -54,7 +54,7 @@ impl Clone for DataBuffer {
             num_channels: self.num_channels,
             version: self.version,
             derived: Arc::new(Mutex::new(snapshot)),
-            derived_version: AtomicU64::new(self.derived_version.load(Ordering::Relaxed)),
+            derived_version: Arc::new(AtomicU64::new(self.derived_version.load(Ordering::Relaxed))),
             tiers: self.tiers.clone(),
             raw_pushed: self.raw_pushed,
             storage_overflow: self.storage_overflow,
@@ -72,7 +72,7 @@ impl DataBuffer {
             num_channels: nc,
             version: 0,
             derived: shared_derived_store(),
-            derived_version: AtomicU64::new(0),
+            derived_version: Arc::new(AtomicU64::new(0)),
             tiers: Vec::new(),
             raw_pushed: 0,
             storage_overflow: 0,
@@ -177,7 +177,12 @@ impl DataBuffer {
             .max_points
             .saturating_mul(8usize.saturating_add(series.saturating_sub(1).saturating_mul(4)));
         let derived = self.derived.lock().estimated_bytes(self.max_points);
-        raw.saturating_add(derived)
+        let tiers = self
+            .tiers
+            .iter()
+            .map(Tier::estimated_bytes)
+            .fold(0_usize, usize::saturating_add);
+        raw.saturating_add(derived).saturating_add(tiers)
     }
 
     /// 设置最大容量 (保留最近数据; 金字塔层按新容量重建)

@@ -30,7 +30,7 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
  │ (≤512 点/批, A4)     │ 派生输出写独立时间轴 (带显式 ts) │
  ▼┴─────────────────────┴──────────────────────────────┤
  │ DataBuffer: L0 原始环 (容量 = 速率×窗口, 预算封顶, 自动整定)
- │   + min-max 金字塔 L1..Ln (×16/层, 固定 4096 条目/层)
+ │   + min-max 金字塔 L1..Ln (×16/层, 固定 4096 块/层)
  │   溢出滚动覆盖计数 storage_overflow (显式降载)
  │   派生通道: 独立 Mutex, 独立时间轴, 与原始通道零锁竞争
  ▼ 快照: 窗口在 L0 覆盖内且点数 ≤ 4×预算 → 原始;
@@ -46,15 +46,17 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
 1. **单一时钟域** — 每源一个逻辑时钟, 首批锁定 (Source/Arrival 二选一),
    流内不切换; 帧时间戳 = 锚点 + 逻辑推进 (TestData: 帧×1/速率; 串口: 字节×位时间),
    到达时间只在首批锚点出现。hint 中途缺失沿用已锁定速率外推, 绝不落入到达域。
-   实现: `ProtocolNodeState::restamp_frames`。数值平面/显示端**不加工时间戳**
-   (`spread_batch_timestamps` 已删除)。
+   TestData 的 broadcast `Lagged(n)` 按生成器消息契约换算为丢失帧数, 下一批逻辑
+   时钟显式跨过缺口, 不把缺口两侧静默拼接。实现: `ProtocolNodeState::restamp_frames`。
+   数值平面/显示端**不加工时间戳** (`spread_batch_timestamps` 已删除)。
 2. **容量自洽** — L0 容量由 `速率 × 2.5s` 自动整定
    (`tune_buffer_capacity`, ±5% 抖动不重复), 受内存预算半额折算封顶
    (默认 memory_budget_mb 的一半, 绝对上限 16M 点)。超出部分由金字塔层承担,
    L0 滚动覆盖时 `storage_overflow` 计数 (WWB1 v2 元数据 + 前端徽标)。
 3. **记录与求值解耦** — 原始波形入库 (`record_frames`) 在字节平面路由时完成,
    分块持锁; 求值积压/丢弃只影响派生通道与 source_frames。派生通道持有
-   **独立时间轴 + 独立 Mutex** (`DerivedStore`), 与原始通道零锁竞争;
+   **独立时间轴 + 独立 Mutex** (`DerivedStore`)，求值只在取 `DerivedWriter`
+   时短暂访问原始缓冲，不在整批图计算期间持有原始锁；派生写入按批获取锁。
    查询按时间精确对齐, 求值缺口表现为 NaN 断线而非错位缝合。
 4. **一次解析多路分发** — 同 (字节源, 协议配置等价) 的 Protocol 节点共享一次
    解析/时钟/检测/旁路/记录, 帧以 `Arc<Vec<DataFrame>>` fan-out 到各节点
@@ -67,34 +69,42 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
 
 ## 4. 金字塔存储 (min-max tiers)
 
-- 结构: L1..Ln 每层是上一层的 ×16 min-max 摘要, 每块一对交错条目
-  (min_ts, max_ts)/(min, max); 每层固定 4096 条目 → 跨度按 ×16 几何增长
+- 结构: L1..Ln 每层是上一层的 ×16 min-max 摘要。每块使用一对相同的公共
+  块末时间戳, 各通道在该公共 X 位置保存 `(min,max)`；时间轴始终单调且通道
+  严格对齐，绝不借用某个通道自己的极值时刻作为其他通道的 X 坐标。
+  每层固定 4096 块 → 跨度按 ×16 几何增长
   (L1≈6.5 万样本, L2≈100 万, L3≈1600 万…), 内存每层 ~100KB/通道。
 - 写入: L0 每 16 样本折叠一块, 级联向上, 摊销 O(1)/样本
   (`DataBuffer::maybe_fold`)。
 - 查询 (`snapshot_window_budget` / `snapshot_all_budget`): 窗口完整落在 L0
   覆盖内且点数 ≤ 4×预算 → 原始快照; 否则自底向上找"覆盖窗口起点且
-  条目数 ≤ 4×预算"的最小层。派生序列按时间精确对齐到层轴。
+  条目数 ≤ 4×预算"的最小层。派生序列按时间精确对齐到层轴，但没有独立
+  长期金字塔，不能把块末派生样本当成派生 min-max 包络保证。
 - 停止态快照: `DataBuffer::clone` 深拷贝即冻结 (含金字塔/派生)。
 
 ## 5. 成本模型 (全样本严格求值的边界)
 
-串行求值实测 ~0.91µs/帧 (含逐帧图求值); fork-join + SIMD 路径
-(`eval_workers = min(cores, 8)`, 与串行逐位一致) 按核数折算。
+求值成本取决于实际图结构、订阅与派生写入，不能按核心数线性折算。
+`eval_bench` 分别测串行、fork-join 与 SIMD；简单图并行调度可能比串行更慢。
+无计算的 ProtocolSource→Sink 图只需批尾快照，标准 ch<n> 波形不重复记录派生环。
 **原始波形显示不消耗该预算** (不变量 3)。挂接重滤波图组时, 若
-`帧率 × 单帧成本 / workers > 1` 将持续出现"评估队列丢弃"告警 —
+实测每批服务时间超过该批样本的到达间隔，将持续出现"评估队列丢弃"告警 —
 这是显式承载上限而非缺陷; 处置: 降低采样率 / 精简图组 / 提高 eval_workers。
 
 ## 6. 诊断指标 (2s 窗口, `数据平面指标`)
 
-`rx MB/s (消息/s) | feed N 批, 均 Xms (parse 均 | eval 均), 帧均, 产帧≈N/s
-| Lagged 丢弃 | 评估队列丢弃` + `缓冲降载` warn (storage_overflow 增量)。
+`rx MB/s (消息/s) | ingest N 批, 均 Xms, 帧均, 产帧≈N/s
+| eval M 批, 均 Yms, 消费帧数 | Lagged 丢弃 | 评估队列丢弃`，另有
+`缓冲降载` warn (storage_overflow 增量)。异步平面分别计时、分别取批数作分母；
+速率按实际报告间隔换算，产帧口径不叠加 fan-out 的消费/丢弃帧数。
 
 判读:
 - `评估队列丢弃 > 0` → 求值承载不足 (见 §5), 有状态算子已复位;
 - `缓冲降载` warn → 窗口超出原始层容量, 前端出现降载徽标;
-- `产帧≈` 与 TestData 名义速率的比值反映系统实际吞吐 (生成器截止驱动补齐,
-  单轮最多补 2 轮)。
+- `Lagged 丢弃 > 0` → 解析前真实丢失；TestData 时间轴保留对应空洞，不再发生
+  随丢包累计的整体时间压缩；数据本身无法恢复，仍需降低源速率或减少负载;
+- `产帧≈` 与 TestData 名义速率的比值反映系统实际吞吐。生成器约 5ms 固定批量，
+  保持截止相位补齐短时调度迟到；暂停期间不补账。
 
 ## 7. 关键位置索引
 
@@ -110,3 +120,22 @@ Transport (声明时钟: TestData=精确采样率 / 串口=波特率名义线速
 | WWB1 v2 | `cmd/display/src/waveform_binary.rs`, 前端 `src/lib/data/waveformProtocol.ts` |
 | 降载徽标 | `src/components/displays/waveform/WaveformChart.tsx` |
 | 合批上限/生成器补速 | `data_plane/src/data_plane/read_task.rs`, `transport_core/src/test_data.rs` |
+
+## 8. 性能基准
+
+完整基准矩阵、数据与未验证边界见 [波形链路性能审计](../performance/bench-audit-2026-09-04.md)。
+
+长期波形与完整摄入路径使用 Criterion 独立量化：
+
+```bash
+cd src-tauri
+cargo bench -p buffer_databuffer --bench waveform_pyramid_bench
+cargo bench -p data_plane --bench ingest_bench
+```
+
+- `waveform_pyramid_write`: 4 通道 L0 滚动覆盖 + 多层级联写入，以 JustFloat
+  20 B/帧折算吞吐；
+- `overview_3200k_to_2000`: 320 万帧历史的全局概览预算查询；
+- `detail_2s_700ksps_to_12000`: 700 kS/s 最近 2 秒主图预算查询；
+- `justfloat_4ch_64kb_parse_record_enqueue`: 64 KB 合批的解码、采样时钟、原始记录
+  与评估入队完整路径，持续门禁目标为 **>10 MB/s**。

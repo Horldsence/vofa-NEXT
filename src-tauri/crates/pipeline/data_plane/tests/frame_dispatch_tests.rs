@@ -8,6 +8,79 @@ use engine::CompiledGraph;
 use kind::{NodeDef, NodeKind, StrNumParams};
 use vofa_core::DataFrame;
 
+#[test]
+fn evaluation_waiting_on_inputs_does_not_lock_raw_recording() {
+    use std::time::{Duration, Instant};
+    let plane = AppState::new().data_plane;
+    let input_guard = plane.eval.input_values.write();
+    let worker_plane = plane.clone();
+    let worker = std::thread::spawn(move || {
+        let buffer = worker_plane.buffer_for("pt");
+        frame_dispatch::eval_frames(
+            &worker_plane.eval,
+            &worker_plane.global_nodes,
+            &buffer,
+            "pt",
+            &[DataFrame::with_timestamp(1, vec![1.0])],
+            frame_dispatch::EvalOptions {
+                workers: 1,
+                simd: false,
+            },
+        );
+    });
+    let deadline = Instant::now() + Duration::from_secs(2);
+    let mut reached_eval = false;
+    while Instant::now() < deadline {
+        if plane.source_frames.try_lock().is_none() {
+            reached_eval = true;
+            break;
+        }
+        std::thread::yield_now();
+    }
+    let buffer = plane.buffer_for("pt");
+    let raw_available = buffer.try_lock().is_some();
+    drop(input_guard);
+    worker.join().unwrap();
+    assert!(reached_eval, "评估线程应已拿到来源锁并等待输入锁");
+    assert!(raw_available, "慢评估不得持有原始记录锁");
+}
+
+#[test]
+fn history_is_only_recorded_for_computed_waveform_inputs() {
+    use testkit::{edge, make_math, make_protocol_source, make_sink};
+    for workers in [1, 4] {
+        let plane = AppState::new().data_plane;
+        plane.pipeline_config.write().eval_workers = workers;
+        let graph = CompiledGraph::compile(
+            "t".into(),
+            vec![
+                make_protocol_source("ps", "t", "pt", 1),
+                make_math("math", "t", kind::MathOp::Add, 1),
+                make_sink("wave", "t"),
+                make_sink("raw", "t"),
+                make_sink("gauge", "t"),
+            ],
+            vec![
+                edge("input", "ps", "ch0", "math", "in0"),
+                edge("history", "math", "result", "wave", "CH0"),
+                edge("raw", "ps", "ch0", "raw", "CH0"),
+                edge("latest", "math", "result", "gauge", "value"),
+            ],
+        )
+        .unwrap();
+        plane.eval.graphs.lock().insert("t".into(), graph);
+        let frames = [
+            DataFrame::with_timestamp(1_000, vec![2.0]),
+            DataFrame::with_timestamp(2_000, vec![3.0]),
+        ];
+        frame_dispatch::on_frames(&plane, "pt", &frames);
+        let window = plane.buffer_for("pt").lock().get_recent(2);
+        assert_eq!(window.derived.len(), 1);
+        assert_eq!(window.derived["wave"]["math"]["result"], vec![2.0, 3.0]);
+        assert_eq!(window.channels[0], vec![2.0, 3.0]);
+    }
+}
+
 /// 数值平面端到端: ProtocolSource 引用 pt 源, on_frames 后快照/缓冲应有值
 #[test]
 fn on_frames_triggers_numeric_plane() {

@@ -14,6 +14,17 @@ fn all_channels(count: usize) -> WaveformSeriesSelection {
     }
 }
 
+#[test]
+fn memory_estimate_includes_allocated_pyramid_columns() {
+    let mut buffer = DataBuffer::new(1_000, 4);
+    let raw = buffer.estimated_bytes();
+    assert_eq!(raw, 1_000 * (8 + 4 * 4));
+    for i in 0..16_u64 {
+        buffer.push_frame_at(i, &[1.0; 4]);
+    }
+    assert_eq!(buffer.estimated_bytes() - raw, 4_096 * 2 * (8 + 4 * 4));
+}
+
 /// 正弦 + 已知极值尖峰; L0 只装得下 1/5 历史, 预算窗口查询必须从金字塔层
 /// 取出真实包络: 尖峰不丢、时间覆盖完整 (不变量 2: 旧数据降质不消失)
 #[test]
@@ -132,4 +143,59 @@ fn overview_budget_serves_full_history_from_tiers() {
         "概览应覆盖 L0 之外的历史: {:?}",
         window.timestamps.first()
     );
+}
+
+/// 回归: 极值顺序不等于时间顺序时，旧实现会写出 (min_ts, max_ts) 的倒序 X 轴，
+/// 二分窗口与前端概览都会随滚动发生回跳。
+#[test]
+fn pyramid_timestamps_are_monotonic_for_reversed_extrema() {
+    let mut buf = DataBuffer::new(64, 2);
+    for i in 0..1_024_u64 {
+        let within_block = (i % 16) as f32;
+        // CH0 每块从高到低，min 的时刻晚于 max；CH1 方向相反。
+        buf.push_frame_at(i * 10, &[15.0 - within_block, within_block]);
+    }
+
+    let window = buf.snapshot_all_budget(128).into_min_max(128);
+    assert!(window.buffer_tier > 0, "测试必须命中金字塔层");
+    assert!(
+        window.timestamps.windows(2).all(|pair| pair[0] <= pair[1]),
+        "金字塔公共时间轴不得回跳: {:?}",
+        window.timestamps
+    );
+}
+
+/// 回归: 金字塔必须使用独立于任一通道极值位置的公共 X 轴。每个块的 min/max
+/// 共用块时间戳，避免把 CH0 的极值时刻借给其他通道而造成整体抖动或通道错位。
+#[test]
+fn pyramid_uses_one_shared_timestamp_pair_per_block() {
+    let mut buf = DataBuffer::new(64, 2);
+    for i in 0..32_u64 {
+        let within_block = (i % 16) as f32;
+        buf.push_frame_at(i * 100, &[15.0 - within_block, within_block]);
+    }
+
+    let window = buf.snapshot_all_budget(1_000).into_min_max(1_000);
+    assert_eq!(window.buffer_tier, 1);
+    assert_eq!(window.timestamps.len(), 4);
+    assert_eq!(window.timestamps[0], window.timestamps[1]);
+    assert_eq!(window.timestamps[2], window.timestamps[3]);
+    assert!(window.timestamps[1] < window.timestamps[2]);
+    assert_eq!(window.channels[0], vec![0.0, 15.0, 0.0, 15.0]);
+    assert_eq!(window.channels[1], vec![0.0, 15.0, 0.0, 15.0]);
+}
+
+/// 回归: 概览应选“满足预算的最细层”。倒序选择会在新高层刚创建时突然只返回
+/// 两个点，表现为概览条运行一段时间后塌缩/消失。
+#[test]
+fn overview_selects_finest_tier_that_fits_budget() {
+    let mut buf = DataBuffer::new(64, 1);
+    for i in 0..4_096_u64 {
+        buf.push_frame_at(i * 10, &[(i % 31) as f32]);
+    }
+
+    // L1: 512 条目 > 400；L2: 32 条目 <= 400；L3 刚生成仅 2 条目。
+    let window = buf.snapshot_all_budget(100).into_min_max(100);
+    assert_eq!(window.buffer_tier, 2, "应选择满足预算的最细层 L2");
+    assert!(window.timestamps.len() > 2, "概览不能塌缩到刚生成的最粗层");
 }

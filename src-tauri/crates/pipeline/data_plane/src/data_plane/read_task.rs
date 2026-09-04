@@ -71,6 +71,31 @@ fn nominal_bytes_per_sec(
     }
 }
 
+/// 统一记录广播 Lagged；TestData 的消息大小由生成器契约固定，可精确折算为
+/// 逻辑采样缺口。其他传输只保留消息丢失指标，不能凭消息数臆测字节数。
+fn record_lagged(
+    plane: &DataPlaneState,
+    node_id: &str,
+    live: Option<&transport_core::LiveNodeHandle>,
+    messages: u64,
+) {
+    plane.metrics.lagged.fetch_add(messages, Ordering::Relaxed);
+    note_test_data_gap(plane, node_id, live, messages);
+}
+
+fn note_test_data_gap(
+    plane: &DataPlaneState,
+    node_id: &str,
+    live: Option<&transport_core::LiveNodeHandle>,
+    messages: u64,
+) {
+    if let Some(vofa_core::TransportConfig::TestData(config)) =
+        live.and_then(|handle| handle.config_of(node_id))
+    {
+        plane.note_test_data_lagged(node_id, messages, config.sample_rate);
+    }
+}
+
 /// Transport 节点读任务
 pub(super) async fn read_task(
     app: AppHandle,
@@ -103,7 +128,7 @@ pub(super) async fn read_task(
             Ok(d) => d,
             Err(RecvError::Closed) => break,
             Err(RecvError::Lagged(n)) => {
-                plane.metrics.lagged.fetch_add(n, Ordering::Relaxed);
+                record_lagged(&plane, &node_id, live.as_ref(), n);
                 continue;
             }
         };
@@ -125,6 +150,7 @@ pub(super) async fn read_task(
         };
         let mut data = first;
         let mut coalesced = 1usize;
+        let mut lagged_after_batch = 0_u64;
         while coalesced < 1024 && data.len() < coalesce_cap {
             match rx.try_recv() {
                 Ok(mut next) => {
@@ -132,7 +158,12 @@ pub(super) async fn read_task(
                     coalesced += 1;
                 }
                 Err(TryRecvError::Lagged(n)) => {
+                    // 缺口位于已经收集的 data 之后：先截断当前批次并解析左侧，
+                    // 再推进时钟。继续拼接会把缺口错误放到批首，还会跨丢失字节
+                    // 拼接协议帧。
                     plane.metrics.lagged.fetch_add(n, Ordering::Relaxed);
+                    lagged_after_batch = lagged_after_batch.saturating_add(n);
+                    break;
                 }
                 Err(_) => break,
             }
@@ -163,9 +194,9 @@ pub(super) async fn read_task(
                 }
             }
             // 已解析未评估的队列批同样清空: 波形冻结在停止时刻, 不拖尾
-            dropped += eval_worker::clear_downstream_queues(&plane, &node_id);
-            if dropped > 0 {
-                log::debug!("测试数据停止生成, 丢弃排队积压 {dropped} 条: {node_id}");
+            let dropped_frames = eval_worker::clear_downstream_queues(&plane, &node_id);
+            if dropped > 0 || dropped_frames > 0 {
+                log::debug!("测试数据停止生成, 丢弃广播 {dropped} 条、评估队列 {dropped_frames} 帧: {node_id}");
             }
         }
         was_generating = generating.unwrap_or(false);
@@ -195,6 +226,9 @@ pub(super) async fn read_task(
             live.as_ref(),
         )
         .await;
+        if lagged_after_batch > 0 {
+            note_test_data_gap(&plane, &node_id, live.as_ref(), lagged_after_batch);
+        }
         let service_time = t_feed.elapsed();
         let cfg = *plane.pipeline_config.read();
         let queued = rx.len();
@@ -239,6 +273,10 @@ pub(super) async fn read_task(
         }
         acc_bytes += data.len() as u64;
         acc_frames += summary.frames;
+        plane
+            .metrics
+            .frames_ingested
+            .fetch_add(summary.frames, Ordering::Relaxed);
 
         // 统计节流 emit (100ms 窗口)
         if last_stats.elapsed().as_millis() >= STATS_THROTTLE_MS {

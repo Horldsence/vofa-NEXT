@@ -37,16 +37,19 @@ use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use buffer_databuffer::DataBuffer;
+use buffer_databuffer::DerivedWriter;
 use data_bus::TopicKey;
 use engine::{CompiledGraph, SourceFramesMap};
 use kind::NodeKind;
 use parking_lot::Mutex;
 
 use crate::eval_state::GraphEvalState;
-use crate::graph_eval::{graph_triggered_by, EvalBreakdown, PutBack, SlotBufs, TakeGuard};
+use crate::graph_eval::{
+    graph_requires_full_batch, graph_triggered_by, records_waveform_history, EvalBreakdown,
+    PutBack, SlotBufs, TakeGuard,
+};
 
-use barrier::{SpinBarrier, StageSlot};
+use barrier::{PanicSignal, SpinBarrier, StageSlot};
 use plan::{
     build_plans, new_slot_bufs, ns_since, split_states, BatchCtx, ParallelPlans, WorkerState,
     EVAL_CHUNK,
@@ -56,13 +59,13 @@ use worker::{drain_worker, push_static_derived, run_bucket_chunk};
 
 /// 并发批处理入口 — `eval_workers ≥ 2` 时由 `on_frames_detached` 调入
 ///
-/// `buffer` / `source_frames` 已由调用方持锁 (guard 解引用传递)。
+/// `source_frames` 已由调用方持锁；派生写句柄不持有原始缓冲锁。
 pub(crate) fn process_source_batch_parallel(
     eval_state: &GraphEvalState,
     source_frames: &mut SourceFramesMap,
     source_id: &str,
     frames: &[vofa_core::DataFrame],
-    buffer: &DataBuffer,
+    derived: &DerivedWriter,
     eval_workers: usize,
     simd: bool,
     breakdown: &mut EvalBreakdown,
@@ -120,6 +123,15 @@ pub(crate) fn process_source_batch_parallel(
     }
 
     // —— 静态图: 每批评估一次 (输入批内不变; 无状态节点, 全表传参无副作用)
+    let frames = if !static_list.is_empty()
+        || graph_list
+            .iter()
+            .any(|graph| graph_requires_full_batch(graph))
+    {
+        frames
+    } else {
+        &frames[frames.len() - 1..]
+    };
     let mut static_bufs: Vec<SlotBufs> = static_list
         .iter()
         .map(|g| new_slot_bufs(g.compiled()))
@@ -146,11 +158,11 @@ pub(crate) fn process_source_batch_parallel(
     // 静态图派生边 (正本槽位, buffer 派生索引) — 逐帧重复 push 常值保持时间轴对齐
     let mut static_edges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); static_list.len()];
     for (g, edges) in static_list.iter().zip(&mut static_edges) {
-        for e in g.edges() {
+        for e in g.edges().filter(|edge| records_waveform_history(g, edge)) {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
                 edges.push((
                     slot,
-                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                    derived.port_index_of(&e.target, &e.source, &e.source_handle),
                 ));
             }
         }
@@ -159,11 +171,11 @@ pub(crate) fn process_source_batch_parallel(
     // —— 动态图派生边预计算 + 单元→桶 LPT 装箱 + 读路径归桶
     let mut derived_edges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); graph_list.len()];
     for (gi, g) in graph_list.iter().enumerate() {
-        for e in g.edges() {
+        for e in g.edges().filter(|edge| records_waveform_history(g, edge)) {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
                 derived_edges[gi].push((
                     slot,
-                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                    derived.port_index_of(&e.target, &e.source, &e.source_handle),
                 ));
             }
         }
@@ -249,8 +261,8 @@ pub(crate) fn process_source_batch_parallel(
                 breakdown.graph_eval_ns += ns_since(t);
 
                 let t = std::time::Instant::now();
-                drain_worker(&lead_plan, &mut lead, buffer, &mut analyzers, breakdown);
-                push_static_derived(&static_edges, &static_bufs, frames, (cs, ce), buffer);
+                drain_worker(&lead_plan, &mut lead, derived, &mut analyzers, breakdown);
+                push_static_derived(&static_edges, &static_bufs, frames, (cs, ce), derived);
                 breakdown.derived_ns += ns_since(t);
 
                 if last_publish.elapsed() >= publish_interval {
@@ -271,6 +283,7 @@ pub(crate) fn process_source_batch_parallel(
             let chunks_ref = &chunks;
             let ctx_ref = &ctx;
             std::thread::scope(|scope| {
+                let _panic_signal = PanicSignal(&broken);
                 for b in 1..plan_arcs.len() {
                     let plan = Arc::clone(&plan_arcs[b]);
                     let swap_slot = Arc::clone(&swap_slots[b - 1]);
@@ -281,6 +294,7 @@ pub(crate) fn process_source_batch_parallel(
                     let broken = &broken;
                     let panic_slot = Arc::clone(&panic_slot);
                     scope.spawn(move || {
+                        let _panic_signal = PanicSignal(broken);
                         let mut ws = ws;
                         for &(cs, ce) in chunks_ref {
                             let done = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -304,8 +318,8 @@ pub(crate) fn process_source_batch_parallel(
                                 let mut g = swap_slot.lock();
                                 g.swap_from(&mut ws);
                             }
-                            eval_barrier.wait();
-                            drain_barrier.wait();
+                            eval_barrier.wait(broken);
+                            drain_barrier.wait(broken);
                             if broken.load(Ordering::Relaxed) {
                                 break;
                             }
@@ -321,18 +335,16 @@ pub(crate) fn process_source_batch_parallel(
                     run_bucket_chunk(&lead_plan, &mut lead, &ctx, (cs, ce));
                     breakdown.graph_eval_ns += ns_since(t);
 
-                    eval_barrier.wait();
+                    eval_barrier.wait(&broken);
                     if broken.load(Ordering::Relaxed) {
                         break;
                     }
 
                     let t = std::time::Instant::now();
-                    drain_worker(&lead_plan, &mut lead, buffer, &mut analyzers, breakdown);
+                    drain_worker(&lead_plan, &mut lead, derived, &mut analyzers, breakdown);
                     for (b, slot) in swap_slots.iter().enumerate() {
                         let mut g = slot.lock();
-                        for (buf_idx, ts, value) in g.staged_derived.drain(..) {
-                            buffer.push_derived_ts_idx(buf_idx, ts, value);
-                        }
+                        derived.append(g.staged_derived.drain(..));
                         for (si, value) in g.staged_spectra.drain(..) {
                             let (_, sink, _) = &plan_arcs[b + 1].spectra[si as usize];
                             if let Some(analyzer) = analyzers.get_mut(sink) {
@@ -340,7 +352,7 @@ pub(crate) fn process_source_batch_parallel(
                             }
                         }
                     }
-                    push_static_derived(&static_edges, &static_bufs, frames, (cs, ce), buffer);
+                    push_static_derived(&static_edges, &static_bufs, frames, (cs, ce), derived);
                     breakdown.derived_ns += ns_since(t);
 
                     // 中途快照发布: 消费 worker 物化增量 + 协调者本桶/静态图
@@ -367,7 +379,7 @@ pub(crate) fn process_source_batch_parallel(
                         last_publish = std::time::Instant::now();
                     }
 
-                    drain_barrier.wait();
+                    drain_barrier.wait(&broken);
                     if broken.load(Ordering::Relaxed) {
                         break;
                     }
@@ -376,7 +388,7 @@ pub(crate) fn process_source_batch_parallel(
         }
     }));
 
-    drop(chunk_result); // Err payload 已由 panic_slot 传递并续传
+    let chunk_error = chunk_result.err();
 
     // worker 归还箱: 回收桶状态 (panic 的桶用空状态占位, 保持索引对齐)
     let mut all_ws: Vec<WorkerState> = vec![lead];
@@ -397,7 +409,7 @@ pub(crate) fn process_source_batch_parallel(
     *filters.get_mut() = filters_all;
     *iffts.get_mut() = iffts_all;
     *triggers.get_mut() = triggers_all;
-    let panic_payload = panic_slot.lock().take();
+    let panic_payload = chunk_error.or_else(|| panic_slot.lock().take());
     if let Some(panic_payload) = panic_payload {
         std::panic::resume_unwind(panic_payload);
     }

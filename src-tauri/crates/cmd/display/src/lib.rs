@@ -5,5 +5,7 @@ mod snapshot;
 mod stream;
 mod waveform_binary;
 
+pub use waveform_binary::encode_waveform_window;
+
 pub use protocol::{DisplayEvent, DisplayRequest, RawDataOrigin, SubscriptionInfo};
 pub use stream::{ack_data, get_data_health, subscribe_data, unsubscribe_data};

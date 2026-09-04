@@ -12,6 +12,17 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc, watch, Notify};
 use vofa_core::{TestDataConfig, TestSignal};
 
+/// TestData 每条广播消息覆盖的目标采样时长。数据平面使用同一换算规则把
+/// `broadcast::Lagged(消息数)` 还原成丢失帧数。
+const MESSAGE_SAMPLE_SECONDS: f64 = 0.005;
+
+#[doc(hidden)]
+pub fn samples_per_message(sample_rate: f32) -> u64 {
+    (f64::from(sample_rate.max(1.0)) * MESSAGE_SAMPLE_SECONDS)
+        .ceil()
+        .max(1.0) as u64
+}
+
 #[derive(Clone)]
 pub struct TestDataRuntime {
     pub config: TestDataConfig,
@@ -61,19 +72,22 @@ pub fn spawn(
         // 采样时钟只由已生成样本数推进，批次调度抖动和热更新不会重置相位。
         let mut sample_time_sec = 0.0_f64;
         let mut previous_sample_dt = None;
-        // 截止驱动节拍: sleep 到 deadline, 落后则补齐欠账 (单轮封顶 2 轮) —
-        // 调度抖动/下游短毛刺不降低有效采样率; 持续欠账说明系统承载不足,
-        // 由下游广播 Lagged 显式可观测, 生成器不无限积压
+        // 截止驱动节拍：保持绝对相位，短时调度迟到不改变名义采样率。
+        // 每轮仍为固定大小消息；不按欠账分配大批内存。
         let mut next_deadline = tokio::time::Instant::now();
         loop {
+            if cancel_gen.load(Ordering::Relaxed) {
+                break;
+            }
             if running_gen.load(Ordering::Relaxed) {
                 let runtime = runtime_rx.borrow().clone();
                 let channels = runtime.config.channels.max(1);
                 let sample_rate = runtime.config.sample_rate.max(1.0);
                 let signal = runtime.config.signal;
-                // 每条消息至少覆盖 500µs，限制广播调度开销。每轮重算使
+                // 每条消息覆盖约 5ms，避开毫秒级定时器对亚毫秒节拍的限速。
+                // 每轮重算使
                 // sample_rate/channels/signal 与协议一样可在连接期间热更新。
-                let samples_per_msg = (f64::from(sample_rate) * 0.0005).ceil().max(1.0) as u64;
+                let samples_per_msg = samples_per_message(sample_rate);
                 let msg_interval =
                     Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
                 let sample_dt = 1.0_f64 / f64::from(sample_rate);
@@ -86,14 +100,8 @@ pub fn spawn(
                 }
                 tokio::select! {
                     () = tokio::time::sleep_until(next_deadline) => {
-                        // 截止节拍: 每轮恒定批量 (线缆帧大小确定, 协议测试依赖);
-                        // 落后超过一个间隔则重整相位 — 不追账 (追账会成倍改变
-                        // 消息大小; 持续欠账 = 系统承载不足, 由下游 Lagged 可观测)
+                        // 每轮恒定批量；保留截止时间使迟到批次逐轮补齐。
                         next_deadline += msg_interval;
-                        let now = tokio::time::Instant::now();
-                        if next_deadline < now {
-                            next_deadline = now + msg_interval;
-                        }
                         let mut data = Vec::new();
                         for _ in 0..samples_per_msg {
                             data.extend_from_slice(&generate_link_bytes(
@@ -132,6 +140,8 @@ pub fn spawn(
                         if cancel_gen.load(Ordering::Relaxed) { break; }
                     }
                 }
+                // 暂停时间不属于采集时间，恢复时不补发整个暂停期间的样本。
+                next_deadline = tokio::time::Instant::now();
             }
         }
         log::debug!("测试数据生成器退出");

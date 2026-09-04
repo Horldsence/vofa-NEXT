@@ -483,24 +483,31 @@ impl DataBuffer {
         if !beyond_l0 && raw_count <= budget.saturating_mul(4) {
             return self.snapshot_range(start, end, latest, selection);
         }
-        // 自底向上找"覆盖窗口起点且条目数 ≤ 4×budget"的最小层;
-        // 没有任何层覆盖起点 (数据比最粗层还老) → 用最粗层尽力而为
-        let mut fallback: Option<usize> = None;
+        // 自底向上找"覆盖窗口起点且条目数 ≤ 4×budget"的最小层；没有层能
+        // 严格覆盖时，回退到实际保留了最早时间的层。
+        let mut fallback: Option<(usize, u64)> = None;
         for k in 0..self.tiers.len() {
-            let tier_fits = self.tiers[k]
-                .oldest_ts()
-                .is_some_and(|oldest| oldest <= from_ts);
+            if self.tiers[k].entry_count() == 0 {
+                continue;
+            }
+            let Some(oldest) = self.tiers[k].oldest_ts() else {
+                continue;
+            };
+            let tier_fits = oldest <= from_ts;
             let (lo, hi) = self.tiers[k].range_bounds(from_ts, to_ts);
             if tier_fits && hi.saturating_sub(lo) <= budget.saturating_mul(4) {
                 return self.snapshot_tier(k, from_ts, to_ts, latest, selection);
             }
-            if fallback.is_none() {
-                fallback = Some(k);
+            // 块时间戳取块末，因此请求恰好从数据起点开始时，所有层的 oldest
+            // 都可能略晚于 from_ts。无完整覆盖层时选择实际最早的层；固定容量
+            // 环发生覆盖后，它通常会自然落到跨度更大的高层。
+            if fallback.is_none_or(|(_, fallback_oldest)| oldest < fallback_oldest) {
+                fallback = Some((k, oldest));
             }
         }
         fallback.map_or_else(
             || self.snapshot_range(start, end, latest, selection),
-            |k| self.snapshot_tier(k, from_ts, to_ts, latest, selection),
+            |(k, _)| self.snapshot_tier(k, from_ts, to_ts, latest, selection),
         )
     }
 
@@ -511,12 +518,21 @@ impl DataBuffer {
             .get(self.timestamps.len().saturating_sub(1))
             .copied()
             .unwrap_or(0);
-        for k in (0..self.tiers.len()).rev() {
-            if self.tiers[k].entry_count() <= budget.saturating_mul(4) {
+        // 从细到粗选择第一个满足预算的层。倒序会总命中刚生成、只有两个点的
+        // 最粗层，概览随运行时间突然塌缩或看似消失。
+        for k in 0..self.tiers.len() {
+            let entries = self.tiers[k].entry_count();
+            if entries > 0 && entries <= budget.saturating_mul(4) {
                 return self.snapshot_tier_all(k, latest);
             }
         }
-        self.snapshot_all()
+        self.tiers
+            .iter()
+            .rposition(|tier| tier.entry_count() > 0)
+            .map_or_else(
+                || self.snapshot_all(),
+                |k| self.snapshot_tier_all(k, latest),
+            )
     }
 
     /// 从第 `tier_ix` 层取窗口区间快照 (min-max 交错条目即真实包络)
@@ -530,15 +546,9 @@ impl DataBuffer {
     ) -> WindowSnapshot {
         let tier = &self.tiers[tier_ix];
         let (lo, hi) = tier.range_bounds(from_ts, to_ts);
-        let timestamps: Vec<u64> = tier
-            .series
-            .first()
-            .map(|s| {
-                (lo..hi)
-                    .filter_map(|i| s.ts.get(i).copied())
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let timestamps: Vec<u64> = (lo..hi)
+            .filter_map(|i| tier.timestamps.get(i).copied())
+            .collect();
         let mut series = Vec::new();
         let mut seen_channels = HashSet::new();
         for &channel in &selection.channels {
@@ -598,11 +608,7 @@ impl DataBuffer {
     /// 从第 `tier_ix` 层取全历史快照
     fn snapshot_tier_all(&self, tier_ix: usize, latest: u64) -> WindowSnapshot {
         let tier = &self.tiers[tier_ix];
-        let from = tier
-            .series
-            .first()
-            .and_then(|s| s.ts.get(0).copied())
-            .unwrap_or(0);
+        let from = tier.timestamps.get(0).copied().unwrap_or(0);
         self.snapshot_tier(
             tier_ix,
             from,

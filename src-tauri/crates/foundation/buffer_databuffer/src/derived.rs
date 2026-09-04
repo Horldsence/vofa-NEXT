@@ -32,6 +32,8 @@ pub struct DerivedStore {
     index: HashMap<(String, String, String), usize>,
     /// 版本号 (锁内维护; DataBuffer 缓存用于免锁变化检测)
     version: u64,
+    /// 结构变更世代，防止旧求值批次的索引指向清空后新建的序列。
+    generation: u64,
 }
 
 impl DerivedStore {
@@ -74,7 +76,7 @@ impl DerivedStore {
         }
     }
 
-    /// 按升序时间戳序列对齐取派生值 (合并线性走查, O(n+m));
+    /// 按升序时间戳序列对齐取派生值；连续点常数推进，跨历史缺口指数查找。
     /// 未命中的位置 (求值落后/丢批缺口) 返回 NaN — 显示为断线而非错位
     pub fn values_at_timestamps(&self, idx: usize, timestamps: &[u64]) -> Vec<f32> {
         let Some(entry) = self.entries.get(idx) else {
@@ -84,8 +86,24 @@ impl DerivedStore {
         let mut ptr = 0_usize;
         let len = entry.timestamps.len();
         for &ts in timestamps {
-            while ptr < len && entry.timestamps.get(ptr).is_some_and(|t| *t < ts) {
-                ptr += 1;
+            if ptr < len && entry.timestamps.get(ptr).is_some_and(|t| *t < ts) {
+                // 先指数扩展再二分；最近小窗口不扫描整个历史，密集窗口也不
+                // 为每个相邻点付出 log(容量) 次比较。逻辑索引兼容环形回绕。
+                let mut step = 1_usize;
+                let mut hi = ptr.saturating_add(step).min(len);
+                while hi < len && entry.timestamps.get(hi).is_some_and(|t| *t < ts) {
+                    ptr = hi + 1;
+                    step = step.saturating_mul(2);
+                    hi = ptr.saturating_add(step).min(len);
+                }
+                while ptr < hi {
+                    let mid = ptr + (hi - ptr) / 2;
+                    if entry.timestamps.get(mid).is_some_and(|t| *t < ts) {
+                        ptr = mid + 1;
+                    } else {
+                        hi = mid;
+                    }
+                }
             }
             if ptr < len && entry.timestamps.get(ptr) == Some(&ts) {
                 out.push(entry.rb.get(ptr).copied().unwrap_or(f32::NAN));
@@ -118,6 +136,7 @@ impl DerivedStore {
 
     /// 容量调整 (保留最近数据)
     pub fn resize(&mut self, max_points: usize) {
+        self.generation = self.generation.wrapping_add(1);
         for e in &mut self.entries {
             e.timestamps.resize(max_points);
             e.rb.resize(max_points);
@@ -125,6 +144,7 @@ impl DerivedStore {
     }
 
     pub fn clear(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
         self.entries.clear();
         self.index.clear();
         self.version = self.version.wrapping_add(1);
@@ -132,6 +152,7 @@ impl DerivedStore {
 
     /// 移除指定 sink 的派生缓冲区 (widget 删除时调用)
     pub fn remove_sink(&mut self, sink_id: &str) {
+        self.generation = self.generation.wrapping_add(1);
         self.entries.retain(|e| e.sink != sink_id);
         // retain 后下标移位, 重建索引映射
         self.index = self
@@ -157,9 +178,69 @@ pub fn shared_derived_store() -> SharedDerivedStore {
     Arc::new(Mutex::new(DerivedStore::default()))
 }
 
+/// 求值平面持有的轻量派生写句柄。
+///
+/// 句柄只共享派生存储与版本号，不持有 [`DataBuffer`] 的原始数据锁。评估 worker
+/// 因此可以在整批图求值期间写派生序列，而不会阻塞记录平面追加原始波形。
+#[derive(Clone)]
+pub struct DerivedWriter {
+    store: SharedDerivedStore,
+    version: Arc<std::sync::atomic::AtomicU64>,
+    max_points: usize,
+    generation: u64,
+}
+
+impl DerivedWriter {
+    /// 注册或查找一个派生序列。
+    pub fn port_index_of(&self, sink_id: &str, source_id: &str, source_handle: &str) -> usize {
+        let mut store = self.store.lock();
+        if store.generation != self.generation {
+            return usize::MAX;
+        }
+        store.derived_port_index_of(sink_id, source_id, source_handle, self.max_points)
+    }
+
+    /// 批量追加派生样本，只获取一次派生存储锁。
+    ///
+    /// 输入三元组为 `(派生索引, 时间戳, 值)`；保持迭代顺序写入，使同一序列
+    /// 的时间轴语义与逐点写入完全一致。
+    pub fn append<I>(&self, samples: I)
+    where
+        I: IntoIterator<Item = (usize, u64, f32)>,
+    {
+        let mut samples = samples.into_iter().peekable();
+        if samples.peek().is_none() {
+            return;
+        }
+        let mut store = self.store.lock();
+        if store.generation != self.generation {
+            return;
+        }
+        for (index, timestamp, value) in samples {
+            store.push_derived_ts_idx(index, timestamp, value);
+        }
+        self.version.store(store.version(), Ordering::Relaxed);
+    }
+
+    /// 追加一个派生样本（低频命令/测试兼容入口）。
+    pub fn push(&self, index: usize, timestamp: u64, value: f32) {
+        self.append(std::iter::once((index, timestamp, value)));
+    }
+}
+
 use crate::DataBuffer;
 
 impl DataBuffer {
+    /// 获取与原始数据外层锁解耦的派生写句柄。
+    pub fn derived_writer(&self) -> DerivedWriter {
+        DerivedWriter {
+            store: Arc::clone(&self.derived),
+            version: Arc::clone(&self.derived_version),
+            max_points: self.max_points,
+            generation: self.derived.lock().generation,
+        }
+    }
+
     /// 读取派生通道最近 N 个值 (测试/显示消费端; 越界返回空)
     pub fn get_derived(&self, idx: usize, count: usize) -> Vec<f32> {
         self.derived
@@ -181,20 +262,13 @@ impl DataBuffer {
         source_id: &str,
         source_handle: &str,
     ) -> usize {
-        self.derived.lock().derived_port_index_of(
-            sink_id,
-            source_id,
-            source_handle,
-            self.max_points,
-        )
+        self.derived_writer()
+            .port_index_of(sink_id, source_id, source_handle)
     }
 
     /// 按索引推入带显式时间戳的派生数据 (求值平面; 与原始通道锁分离)
     pub fn push_derived_ts_idx(&self, idx: usize, timestamp: u64, value: f32) {
-        let mut store = self.derived.lock();
-        store.push_derived_ts_idx(idx, timestamp, value);
-        self.derived_version
-            .store(store.version(), Ordering::Relaxed);
+        self.derived_writer().push(idx, timestamp, value);
     }
 
     /// 移除指定 sink 的派生缓冲区 (widget 删除时调用)

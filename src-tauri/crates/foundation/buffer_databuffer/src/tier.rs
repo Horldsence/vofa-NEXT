@@ -5,8 +5,10 @@
 //! L0 环覆盖不住的窗口由更高层提供**真实 min-max 包络** — 旧数据"降质不消失",
 //! 任意缩放级别的查询都是该分辨率下的真包络, 而不是抽点/缝合的近似。
 //!
-//! 层条目布局: 每通道每块一对交错条目 (min_ts, max_ts) / (min, max),
-//! 通道间块边界对齐; `pushed` 为逻辑块计数 (环形覆盖不改写计数)。
+//! 层条目布局: 每块使用一对相同的公共时间戳 (块末时间), 每通道保存
+//! `(min, max)` 两个值。公共时间轴因此始终单调且通道间严格对齐; 不能把某一
+//! 通道各自的极值时刻借给其他通道作为 X 坐标。`pushed` 为逻辑块计数
+//! (环形覆盖不改写计数)。
 
 use buffer_ring::RingBuffer;
 
@@ -23,8 +25,6 @@ const TIER_CAPACITY_ENTRIES: usize = 4_096;
 /// 单层单通道序列 — 每块一对交错条目
 #[derive(Clone)]
 pub struct TierSeries {
-    /// 交错时间戳 (块内 min 先于 max; 块间按时间升序)
-    pub(crate) ts: RingBuffer<u64>,
     /// 交错值 (min, max)
     pub(crate) val: RingBuffer<f32>,
 }
@@ -32,15 +32,12 @@ pub struct TierSeries {
 impl TierSeries {
     fn new() -> Self {
         Self {
-            ts: RingBuffer::new(TIER_CAPACITY_ENTRIES.saturating_mul(2)),
             val: RingBuffer::new(TIER_CAPACITY_ENTRIES.saturating_mul(2)),
         }
     }
 
-    fn push_pair(&mut self, min_ts: u64, min: f32, max_ts: u64, max: f32) {
-        self.ts.push(min_ts);
+    fn push_pair(&mut self, min: f32, max: f32) {
         self.val.push(min);
-        self.ts.push(max_ts);
         self.val.push(max);
     }
 }
@@ -48,14 +45,24 @@ impl TierSeries {
 /// 单个金字塔层
 #[derive(Clone)]
 pub struct Tier {
+    /// 所有通道共享的单调时间轴。每块写入两次块末时间, 对应各通道的 min/max。
+    pub(crate) timestamps: RingBuffer<u64>,
     pub(crate) series: Vec<TierSeries>,
     /// 已折叠进本层的块数 (逻辑计数)
     pushed: u64,
 }
 
 impl Tier {
+    /// 已分配的数值列与公共时间轴容量，不含 Vec 元数据和分配器开销。
+    pub(crate) const fn estimated_bytes(&self) -> usize {
+        TIER_CAPACITY_ENTRIES
+            .saturating_mul(2)
+            .saturating_mul(8 + 4 * self.series.len())
+    }
+
     fn new(channels: usize) -> Self {
         Self {
+            timestamps: RingBuffer::new(TIER_CAPACITY_ENTRIES.saturating_mul(2)),
             series: (0..channels).map(|_| TierSeries::new()).collect(),
             pushed: 0,
         }
@@ -63,26 +70,23 @@ impl Tier {
 
     /// 本层最旧条目的时间戳 (空层返回 None) — 窗口覆盖判定用
     pub fn oldest_ts(&self) -> Option<u64> {
-        self.series.first().and_then(|s| s.ts.get(0).copied())
+        self.timestamps.get(0).copied()
     }
 
     /// 层内当前条目数 (各通道对齐, 取通道 0)
-    pub fn entry_count(&self) -> usize {
-        self.series.first().map_or(0, |s| s.val.len())
+    pub const fn entry_count(&self) -> usize {
+        self.timestamps.len()
     }
 
     /// 时间戳环上 [from_ts, to_ts] 的条目区间 (二分; 各通道对齐, 取通道 0)
     pub fn range_bounds(&self, from_ts: u64, to_ts: u64) -> (usize, usize) {
-        let Some(s) = self.series.first() else {
-            return (0, 0);
-        };
-        let len = s.ts.len();
+        let len = self.timestamps.len();
         // lower bound: 首个 >= from_ts
         let mut lo = 0_usize;
         let mut hi = len;
         while lo < hi {
             let mid = usize::midpoint(lo, hi);
-            if s.ts.get(mid).is_some_and(|t| *t < from_ts) {
+            if self.timestamps.get(mid).is_some_and(|t| *t < from_ts) {
                 lo = mid + 1;
             } else {
                 hi = mid;
@@ -93,7 +97,7 @@ impl Tier {
         hi = len;
         while upper < hi {
             let mid = usize::midpoint(upper, hi);
-            if s.ts.get(mid).is_some_and(|t| *t <= to_ts) {
+            if self.timestamps.get(mid).is_some_and(|t| *t <= to_ts) {
                 upper = mid + 1;
             } else {
                 hi = mid;
@@ -103,8 +107,11 @@ impl Tier {
     }
 }
 
-/// 一个待写入层条目的块摘要 (每通道: min 时间戳/值 + max 时间戳/值)
-type Block = Vec<(u64, f32, u64, f32)>;
+/// 一个待写入层条目的块摘要。时间戳取块末样本, 各通道共享；值为真实 min/max。
+struct Block {
+    timestamp: u64,
+    values: Vec<(f32, f32)>,
+}
 
 impl DataBuffer {
     /// 记录路径逐样本追加后调用: L0 凑满一个块则级联折叠 (摊销 O(1))
@@ -114,15 +121,17 @@ impl DataBuffer {
             return;
         }
         let mut block = self.fold_block_from_raw();
-        let mut level = 1_usize;
+        let mut level = 0_usize;
         loop {
             self.ensure_tier(level);
             {
                 let tier = &mut self.tiers[level];
                 tier.pushed += 1;
+                tier.timestamps.push(block.timestamp);
+                tier.timestamps.push(block.timestamp);
                 for (ch, entry) in tier.series.iter_mut().enumerate() {
-                    if let Some(&(min_ts, min, max_ts, max)) = block.get(ch) {
-                        entry.push_pair(min_ts, min, max_ts, max);
+                    if let Some(&(min, max)) = block.values.get(ch) {
+                        entry.push_pair(min, max);
                     }
                 }
             }
@@ -147,69 +156,79 @@ impl DataBuffer {
         #[allow(clippy::cast_possible_truncation)] // DECIMATION=16, 32 位平台也无截断
         let take = (DECIMATION as usize).min(n);
         let start = n - take;
-        (0..self.num_channels)
-            .map(|ch| self.min_max_over_range(ch, start..n))
-            .collect()
+        Block {
+            timestamp: self
+                .timestamps
+                .get(n.saturating_sub(1))
+                .copied()
+                .unwrap_or(0),
+            values: (0..self.num_channels)
+                .map(|ch| self.min_max_over_range(ch, start..n))
+                .collect(),
+        }
     }
 
     /// 从某层最近 `DECIMATION` 个条目合成一个上层块摘要
     fn fold_block_from_tier(tier: &Tier) -> Block {
-        tier.series
-            .iter()
-            .map(|series| {
-                #[allow(clippy::cast_possible_truncation)] // DECIMATION=16, 无截断
-                let take = (DECIMATION as usize * 2).min(series.val.len());
-                let start = series.val.len() - take;
-                let mut min: Option<(u64, f32)> = None;
-                let mut max: Option<(u64, f32)> = None;
-                for i in start..series.val.len() {
-                    let (Some(ts), Some(v)) =
-                        (series.ts.get(i).copied(), series.val.get(i).copied())
-                    else {
-                        continue;
-                    };
-                    if !v.is_finite() {
-                        continue;
+        Block {
+            timestamp: tier
+                .timestamps
+                .get(tier.timestamps.len().saturating_sub(1))
+                .copied()
+                .unwrap_or(0),
+            values: tier
+                .series
+                .iter()
+                .map(|series| {
+                    #[allow(clippy::cast_possible_truncation)] // DECIMATION=16, 无截断
+                    let take = (DECIMATION as usize * 2).min(series.val.len());
+                    let start = series.val.len() - take;
+                    let mut min: Option<f32> = None;
+                    let mut max: Option<f32> = None;
+                    for i in start..series.val.len() {
+                        let Some(v) = series.val.get(i).copied() else {
+                            continue;
+                        };
+                        if !v.is_finite() {
+                            continue;
+                        }
+                        if min.is_none_or(|m| v < m) {
+                            min = Some(v);
+                        }
+                        if max.is_none_or(|m| v > m) {
+                            max = Some(v);
+                        }
                     }
-                    if min.is_none_or(|(_, m)| v < m) {
-                        min = Some((ts, v));
+                    match (min, max) {
+                        (Some(min), Some(max)) => (min, max),
+                        // 全 NaN 块保持时间轴占位
+                        _ => (f32::NAN, f32::NAN),
                     }
-                    if max.is_none_or(|(_, m)| v > m) {
-                        max = Some((ts, v));
-                    }
-                }
-                match (min, max) {
-                    (Some((min_ts, min)), Some((max_ts, max))) => (min_ts, min, max_ts, max),
-                    // 全 NaN 块保持时间轴占位
-                    _ => (0, f32::NAN, 0, f32::NAN),
-                }
-            })
-            .collect()
+                })
+                .collect(),
+        }
     }
 
     /// 区间 [start, end) 内的 min/max (有限值; 全 NaN 返回占位)
-    fn min_max_over_range(&self, ch: usize, range: std::ops::Range<usize>) -> (u64, f32, u64, f32) {
+    fn min_max_over_range(&self, ch: usize, range: std::ops::Range<usize>) -> (f32, f32) {
         let n = self.timestamps.len();
-        let mut min: Option<(u64, f32)> = None;
-        let mut max: Option<(u64, f32)> = None;
+        let mut min: Option<f32> = None;
+        let mut max: Option<f32> = None;
         for i in range {
-            let Some(ts) = self.timestamps.get(i).copied() else {
-                continue;
-            };
             let v = self.channel_value(ch, i, n);
             if !v.is_finite() {
                 continue;
             }
-            if min.is_none_or(|(_, m)| v < m) {
-                min = Some((ts, v));
+            if min.is_none_or(|m| v < m) {
+                min = Some(v);
             }
-            if max.is_none_or(|(_, m)| v > m) {
-                max = Some((ts, v));
+            if max.is_none_or(|m| v > m) {
+                max = Some(v);
             }
         }
         match (min, max) {
-            (Some((min_ts, min)), Some((max_ts, max))) => (min_ts, min, max_ts, max),
-            _ => (0, f32::NAN, 0, f32::NAN),
+            (Some(min), Some(max)) => (min, max),
+            _ => (f32::NAN, f32::NAN),
         }
     }
 }

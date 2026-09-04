@@ -31,3 +31,8 @@ log = { workspace = true }
 [dev-dependencies]
 serde_json = { workspace = true }
 engine = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "waveform_wire"
+harness = false

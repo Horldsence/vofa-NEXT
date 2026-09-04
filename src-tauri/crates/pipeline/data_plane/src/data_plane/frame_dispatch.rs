@@ -87,7 +87,10 @@ pub fn eval_frames(
     if frames.is_empty() {
         return 0;
     }
-    let mut buf = buffer.lock();
+    let started = std::time::Instant::now();
+    // 只在取得轻量派生写句柄时短暂锁原始缓冲。图求值随后只锁独立的
+    // DerivedStore，绝不能在整批期间占住记录平面的 DataBuffer 外层锁。
+    let derived = buffer.lock().derived_writer();
     let mut sf = eval.source_frames.lock();
     let mut breakdown = EvalBreakdown::default();
 
@@ -97,15 +100,16 @@ pub fn eval_frames(
             &mut sf,
             source_id,
             frames,
-            &buf,
+            &derived,
             options.workers,
             options.simd,
             &mut breakdown,
         );
     } else {
-        process_source_batch(eval, &mut sf, source_id, frames, &mut buf, &mut breakdown);
+        process_source_batch(eval, &mut sf, source_id, frames, &derived, &mut breakdown);
     }
-    breakdown.push_frame_ns + breakdown.graph_eval_ns + breakdown.derived_ns + breakdown.spectrum_ns
+    // 服务耗时包含锁等待和未采样的工作，不把内部抽样分解当成整批耗时。
+    u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX)
 }
 
 /// 兼容入口 — 记录 + 求值一次完成 (测试 / 同步 flush 路径; 运行时两平面分离)

@@ -13,4 +13,9 @@ serde = { workspace = true }
 vofa_core = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 serde_json = { workspace = true }
+
+[[bench]]
+name = "waveform_pyramid_bench"
+harness = false

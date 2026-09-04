@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use buffer_databuffer::DataBuffer;
+use buffer_databuffer::DerivedWriter;
 use dsp_fft::SpectrumAnalyzer;
 
 use crate::graph_eval::{EvalBreakdown, SlotBufs};
@@ -154,14 +154,12 @@ pub(super) fn run_bucket_chunk(
 pub(super) fn drain_worker(
     plan: &BucketPlan,
     ws: &mut WorkerState,
-    buffer: &DataBuffer,
+    derived: &DerivedWriter,
     analyzers: &mut HashMap<String, SpectrumAnalyzer>,
     breakdown: &mut EvalBreakdown,
 ) {
     let t = std::time::Instant::now();
-    for (buf_idx, ts, value) in ws.staged_derived.drain(..) {
-        buffer.push_derived_ts_idx(buf_idx, ts, value);
-    }
+    derived.append(ws.staged_derived.drain(..));
     breakdown.derived_ns += ns_since(t);
     let t = std::time::Instant::now();
     for (si, value) in ws.staged_spectra.drain(..) {
@@ -200,16 +198,18 @@ pub(super) fn push_static_derived(
     static_bufs: &[SlotBufs],
     frames: &[vofa_core::DataFrame],
     chunk: (usize, usize),
-    buffer: &DataBuffer,
+    derived: &DerivedWriter,
 ) {
+    let mut staged = Vec::new();
     for frame in &frames[chunk.0..chunk.1] {
         for (gi, edges) in static_edges.iter().enumerate() {
             let bufs = &static_bufs[gi];
             for (slot, buf_idx) in edges {
                 if bufs.1[*slot] {
-                    buffer.push_derived_ts_idx(*buf_idx, frame.timestamp, bufs.0[*slot]);
+                    staged.push((*buf_idx, frame.timestamp, bufs.0[*slot]));
                 }
             }
         }
     }
+    derived.append(staged);
 }

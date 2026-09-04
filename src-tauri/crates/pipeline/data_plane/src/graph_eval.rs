@@ -9,7 +9,8 @@
 //!   取代旧 force_eval 空帧机制
 
 use crate::eval_state::GraphEvalState;
-use buffer_databuffer::DataBuffer;
+use buffer_databuffer::DerivedWriter;
+use buffer_graph::Edge;
 use data_bus::TopicKey;
 use engine::{CompiledGraph, SourceFramesMap};
 use kind::NodeKind;
@@ -156,6 +157,44 @@ pub(crate) fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
         }
     }
     !has_source
+}
+
+/// 只有 Waveform 的 `CH<n>` 输入边需要持久化派生历史。
+///
+/// 旧路径把图内每条边（包括 Math 的中间输入、Gauge/Label 等只读快照的边）
+/// 都复制进派生环，令一次求值产生数倍无消费者写放大。Waveform 端口契约由
+/// 前端 `WidgetPorts` 固定为大写 `CH0..CHn`，这里严格校验整个后缀为数字。
+fn numbered_handle<'a>(handle: &'a str, prefix: &str) -> Option<&'a str> {
+    handle
+        .strip_prefix(prefix)
+        .filter(|suffix| !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()))
+}
+
+pub(crate) fn records_waveform_history(graph: &CompiledGraph, edge: &Edge) -> bool {
+    if numbered_handle(&edge.target_handle, "CH").is_none() {
+        return false;
+    }
+    // JustFloat/FireWater 的标准 ch<n> 已由原始 DataBuffer 保存，前端也直接从
+    // channels[n] 读取；再写一份派生环既无消费者又把内存/CPU 放大一倍。
+    !(numbered_handle(&edge.source_handle, "ch").is_some()
+        && matches!(
+            graph.value_def(&edge.source).map(|node| &node.kind),
+            Some(NodeKind::ProtocolSource { .. })
+        ))
+}
+
+/// 指定来源是否存在必须逐帧执行的数值图。
+///
+/// 仅 `ProtocolSource → Sink` 的图只需要批尾最新值；原始 ch<n> 波形历史已经
+/// 在记录平面完整入库。将这类常见纯波形/仪表图压缩为每批一次求值，避免为了
+/// 刷新 latest-value 快照重复遍历几十万帧。
+pub(crate) fn graph_requires_full_batch(graph: &CompiledGraph) -> bool {
+    graph
+        .value_nodes()
+        .any(|node| !matches!(node.kind, NodeKind::ProtocolSource { .. } | NodeKind::Sink))
+        || graph
+            .edges()
+            .any(|edge| records_waveform_history(graph, &edge))
 }
 
 /// 事件驱动快照评估 — 以 source_frames 现状评估所有图并发布 output_snapshot
@@ -329,7 +368,7 @@ pub fn process_source_batch(
     source_frames: &mut SourceFramesMap,
     source_id: &str,
     frames: &[DataFrame],
-    buffer: &mut DataBuffer,
+    derived: &DerivedWriter,
     breakdown: &mut EvalBreakdown,
 ) {
     use std::sync::atomic::Ordering;
@@ -364,6 +403,17 @@ pub fn process_source_batch(
             graph_list.push(g);
         }
     }
+
+    // 判定与求值共用同一图锁，防止热重编译在判定后加入有状态算子而漏帧。
+    let frames = if !static_list.is_empty()
+        || graph_list
+            .iter()
+            .any(|graph| graph_requires_full_batch(graph))
+    {
+        frames
+    } else {
+        &frames[frames.len() - 1..]
+    };
 
     // 槽位缓冲: 每 graph 一组, 批内跨帧复用
     let mut slot_bufs: Vec<SlotBufs> = graph_list
@@ -409,12 +459,12 @@ pub fn process_source_batch(
     // 槽位解析不到 (图结构不含该端口) 的边本批跳过
     let mut derived_edges: Vec<(usize, usize, usize)> = Vec::new();
     for (gi, g) in graph_list.iter().enumerate() {
-        for e in g.edges() {
+        for e in g.edges().filter(|edge| records_waveform_history(g, edge)) {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
                 derived_edges.push((
                     gi,
                     slot,
-                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                    derived.port_index_of(&e.target, &e.source, &e.source_handle),
                 ));
             }
         }
@@ -454,11 +504,11 @@ pub fn process_source_batch(
 
     let mut static_edges: Vec<Vec<(usize, usize)>> = vec![Vec::new(); static_list.len()];
     for (g, edges) in static_list.iter().zip(&mut static_edges) {
-        for e in g.edges() {
+        for e in g.edges().filter(|edge| records_waveform_history(g, edge)) {
             if let Some(slot) = g.compiled().slot_of(&e.source, &e.source_handle) {
                 edges.push((
                     slot,
-                    buffer.derived_port_index_of(&e.target, &e.source, &e.source_handle),
+                    derived.port_index_of(&e.target, &e.source, &e.source_handle),
                 ));
             }
         }
@@ -476,6 +526,7 @@ pub fn process_source_batch(
     // 帧时间戳由字节平面采样时钟权威给定 (单一时钟域, 见 ProtocolNodeState::
     // restamp_frames_at_rate); 数值平面不再做任何时间戳加工 — 到达节奏绝不参与
     // 显示时间轴。
+    let mut staged_derived = Vec::new();
     for (i, frame) in frames.iter().enumerate() {
         let timing_sampled = u64::try_from(i).unwrap_or(0) % TIMING_SAMPLE_PERIOD == 0;
         let frame_ts = frame.timestamp;
@@ -545,7 +596,7 @@ pub fn process_source_batch(
         for &(gi, slot, buf_idx) in &derived_edges {
             let (slots, written, ..) = &slot_bufs[gi];
             if written[slot] {
-                buffer.push_derived_ts_idx(buf_idx, frame_ts, slots[slot]);
+                staged_derived.push((buf_idx, frame_ts, slots[slot]));
             }
         }
         // 静态图派生值逐帧重复 push (输出批内不变 — 常值重复写入与逐帧评估等价,
@@ -554,7 +605,7 @@ pub fn process_source_batch(
             let (slots, written, ..) = &static_bufs[gi];
             for (slot, buf_idx) in edges {
                 if written[*slot] {
-                    buffer.push_derived_ts_idx(*buf_idx, frame_ts, slots[*slot]);
+                    staged_derived.push((*buf_idx, frame_ts, slots[*slot]));
                 }
             }
         }
@@ -610,6 +661,9 @@ pub fn process_source_batch(
             last_publish = std::time::Instant::now();
         }
     }
+
+    // 单批只获取一次派生锁；原始 DataBuffer 外层锁从未参与本循环。
+    derived.append(staged_derived);
 
     // 6. 批尾最终发布 (保证批尾帧的值一定可见) —
     //    图重编译后旧快照含过期节点 → 先清空再物化, 保证过期键不回流

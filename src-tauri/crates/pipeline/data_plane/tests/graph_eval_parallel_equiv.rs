@@ -82,10 +82,10 @@ fn dynamic_graph() -> CompiledGraph {
         edge("e9", "slen", "result", "m4", "in0"),
         edge("e10", "ps1", "ch2", "m4", "in1"),
         edge("e11", "m2", "result", "trig", "trigger"),
-        edge("e12", "m2", "result", "sinkA", "value"),
-        edge("e13", "m3", "result", "sinkB", "value"),
-        edge("e14", "m4", "result", "sinkC", "value"),
-        edge("e15", "trig", "value", "sinkD", "value"),
+        edge("e12", "m2", "result", "sinkA", "CH0"),
+        edge("e13", "m3", "result", "sinkB", "CH0"),
+        edge("e14", "m4", "result", "sinkC", "CH0"),
+        edge("e15", "trig", "value", "sinkD", "CH0"),
     ];
     CompiledGraph::compile("t1".into(), nodes, edges).unwrap()
 }
@@ -101,7 +101,7 @@ fn static_graph() -> CompiledGraph {
     let edges = vec![
         edge("s1", "knobA", "value", "mS", "in0"),
         edge("s2", "knobB", "value", "mS", "in1"),
-        edge("s3", "mS", "result", "sinkS", "value"),
+        edge("s3", "mS", "result", "sinkS", "CH0"),
     ];
     CompiledGraph::compile("t2".into(), nodes, edges).unwrap()
 }

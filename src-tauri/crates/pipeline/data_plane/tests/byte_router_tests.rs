@@ -995,6 +995,143 @@ async fn run_stream_pressure_case(protocol: ProtocolConfig, channels: usize) {
     );
 }
 
+/// 手工持续压力门禁：64 MB JustFloat 字节流（4 通道，20 B/帧）必须以 >10 MB/s
+/// 穿过完整解析/记录路径；同时让概览线程持续读取金字塔，验证 L0 滚动覆盖后
+/// 主图与全局概览的公共时间轴都不回跳、不塌缩。
+///
+/// 运行：`cargo test --release -p data_plane --test byte_router_tests
+/// sustained_justfloat_over_10mbps_keeps_waveform_timeline_stable -- --ignored --nocapture`
+#[tokio::test]
+#[ignore = "manual sustained throughput gate; run with --release"]
+#[allow(clippy::cast_precision_loss)] // 有界测试规模的吞吐与相位计算
+async fn sustained_justfloat_over_10mbps_keeps_waveform_timeline_stable() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    const CHANNELS: usize = 4;
+    const FRAMES_PER_CHUNK: usize = 3_200;
+    const CHUNKS: usize = 1_000;
+    const BYTES_PER_FRAME: usize = CHANNELS * 4 + 4;
+
+    let protocol = ProtocolConfig::JustFloat {
+        channels: Some(CHANNELS),
+    };
+    let plane = setup_plane(
+        vec![
+            node(
+                "tp",
+                NodeKind::Transport {
+                    config: TransportConfig::TestData(vofa_core::TestDataConfig {
+                        channels: CHANNELS,
+                        sample_rate: 700_000.0,
+                        signal: vofa_core::TestSignal::Sine,
+                    }),
+                },
+            ),
+            node(
+                "pt",
+                NodeKind::Protocol {
+                    config: protocol,
+                    convert_to: None,
+                    schema: None,
+                },
+            ),
+        ],
+        vec![edge("tp", "rx", "pt", "in")],
+    );
+
+    let mut chunk = Vec::with_capacity(FRAMES_PER_CHUNK * BYTES_PER_FRAME);
+    for frame in 0..FRAMES_PER_CHUNK {
+        let phase = frame as f32 * 0.017;
+        for channel in 0..CHANNELS {
+            let value = (channel as f32)
+                .mul_add(0.7, phase)
+                .sin()
+                .mul_add(125.0, 128.0);
+            chunk.extend_from_slice(&value.to_le_bytes());
+        }
+        chunk.extend_from_slice(&[0x00, 0x00, 0x80, 0x7f]);
+    }
+    assert_eq!(chunk.len(), FRAMES_PER_CHUNK * BYTES_PER_FRAME);
+
+    // 与真实 UI 同时存在的全局概览订阅：采集期间周期性做预算快照与 min-max。
+    let stop_overview = Arc::new(AtomicBool::new(false));
+    let overview_stop = stop_overview.clone();
+    let overview_plane = plane.clone();
+    let overview = tokio::task::spawn_blocking(move || {
+        while !overview_stop.load(Ordering::Relaxed) {
+            let snapshot = {
+                let buffer = overview_plane.buffer_for("pt");
+                let buffer = buffer.lock();
+                buffer.snapshot_all_budget(2_000)
+            };
+            let window = snapshot.into_min_max(2_000);
+            assert!(
+                window.timestamps.windows(2).all(|pair| pair[0] <= pair[1]),
+                "压力期间概览时间轴发生回跳"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
+
+    let mut cache = DecoderFeedCache::new();
+    let started = Instant::now();
+    let mut parsed_frames = 0_u64;
+    for _ in 0..CHUNKS {
+        parsed_frames += route_bytes(&plane, None, "tp", &chunk, 1_024, &mut cache, None)
+            .await
+            .frames;
+    }
+    let elapsed = started.elapsed();
+    stop_overview.store(true, Ordering::Relaxed);
+    overview.await.expect("概览压力线程不应失败");
+
+    let total_bytes = chunk.len() * CHUNKS;
+    let throughput_mbps = total_bytes as f64 / elapsed.as_secs_f64() / 1_000_000.0;
+    eprintln!(
+        "持续压力: {:.1} MB / {:.3}s = {:.1} MB/s, 解析 {} 帧",
+        total_bytes as f64 / 1_000_000.0,
+        elapsed.as_secs_f64(),
+        throughput_mbps,
+        parsed_frames
+    );
+    assert_eq!(parsed_frames, (FRAMES_PER_CHUNK * CHUNKS) as u64);
+    assert!(
+        throughput_mbps > 10.0,
+        "完整解析/记录路径吞吐仅 {throughput_mbps:.1} MB/s，未达到 10 MB/s 门禁"
+    );
+
+    let buffer = plane.buffer_for("pt");
+    let buffer = buffer.lock();
+    assert!(buffer.storage_overflow() > 0, "压力量必须触发 L0 滚动覆盖");
+
+    let overview = buffer.snapshot_all_budget(2_000).into_min_max(2_000);
+    assert!(overview.buffer_tier > 0, "全局概览必须由金字塔层服务");
+    assert!(overview.timestamps.len() > 2, "全局概览不得塌缩/消失");
+    assert!(
+        overview
+            .timestamps
+            .windows(2)
+            .all(|pair| pair[0] <= pair[1]),
+        "最终概览时间轴发生回跳"
+    );
+
+    let selection = buffer_databuffer::WaveformSeriesSelection {
+        channels: (0..CHANNELS).collect(),
+        derived: vec![],
+    };
+    let detail = buffer
+        .snapshot_window_budget(-2_000.0, 0.0, &selection, 12_000)
+        .into_min_max(12_000);
+    assert!(detail.buffer_tier > 0, "高密度 2s 主图应走预算金字塔层");
+    assert!(detail.timestamps.len() > 2, "主图窗口不得塌缩/消失");
+    assert!(
+        detail.timestamps.windows(2).all(|pair| pair[0] <= pair[1]),
+        "最终主图时间轴发生回跳"
+    );
+}
+
 /// 评估队列有界: 持续过载时丢最旧整批, 排空后缓冲保留最新 8 批
 /// (摄入/评估解耦后的显式降级语义 — 丢最旧保最新, 波形尾部始终可见)
 #[tokio::test]

@@ -230,7 +230,11 @@ async fn test_data_generator_config_hot_update() {
         .await
         .expect("初始生成数据")
         .unwrap();
-    assert_eq!(first.len(), 6, "2 通道 + 4 字节计数器");
+    assert_eq!(
+        first.len() as u64,
+        6 * transport_core::test_data::samples_per_message(1_000.0),
+        "每帧 2 通道 + 4 字节计数器，消息帧数遵循统一节拍"
+    );
 
     mgr.update_link(
         "a",
@@ -256,7 +260,7 @@ async fn test_data_generator_config_hot_update() {
             .await
             .expect("热更新后数据")
             .unwrap();
-        if batch.len() >= 9 && batch.len().is_multiple_of(9) {
+        if batch.len() as u64 == 9 * transport_core::test_data::samples_per_message(700_000.0) {
             saw_updated = true;
             break;
         }

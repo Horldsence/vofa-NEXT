@@ -81,10 +81,10 @@ fn mixed_graph() -> CompiledGraph {
         edge("e9", "slen", "result", "m4", "in0"),
         edge("e10", "ps1", "ch2", "m4", "in1"),
         edge("e11", "m3", "result", "trig", "trigger"),
-        edge("e12", "m2", "result", "sinkA", "value"),
-        edge("e13", "m3", "result", "sinkB", "value"),
-        edge("e14", "m4", "result", "sinkC", "value"),
-        edge("e15", "trig", "value", "sinkD", "value"),
+        edge("e12", "m2", "result", "sinkA", "CH0"),
+        edge("e13", "m3", "result", "sinkB", "CH0"),
+        edge("e14", "m4", "result", "sinkC", "CH0"),
+        edge("e15", "trig", "value", "sinkD", "CH0"),
     ];
     CompiledGraph::compile("t1".into(), nodes, edges).unwrap()
 }
@@ -103,8 +103,8 @@ fn transcendent_graph() -> CompiledGraph {
         edge("g1", "ps3", "ch0", "t_sin", "in0"),
         edge("g2", "t_sin", "result", "t_cos", "in0"),
         edge("g3", "ps3", "ch1", "t_log", "in0"),
-        edge("g4", "t_cos", "result", "sinkT1", "value"),
-        edge("g5", "t_log", "result", "sinkT2", "value"),
+        edge("g4", "t_cos", "result", "sinkT1", "CH0"),
+        edge("g5", "t_log", "result", "sinkT2", "CH0"),
     ];
     CompiledGraph::compile("t3".into(), nodes, edges).unwrap()
 }
@@ -132,9 +132,9 @@ fn edge_graph() -> CompiledGraph {
         edge("h7", "ps5", "ch2", "x_max", "in1"),
         edge("h8", "ps5", "ch1", "x_avg", "in0"),
         edge("h9", "ps5", "ch3", "x_avg", "in1"),
-        edge("h10", "x_div", "result", "sinkX1", "value"),
-        edge("h11", "x_sqrt", "result", "sinkX2", "value"),
-        edge("h12", "x_min", "result", "sinkX3", "value"),
+        edge("h10", "x_div", "result", "sinkX1", "CH0"),
+        edge("h11", "x_sqrt", "result", "sinkX2", "CH0"),
+        edge("h12", "x_min", "result", "sinkX3", "CH0"),
     ];
     CompiledGraph::compile("t5".into(), nodes, edges).unwrap()
 }

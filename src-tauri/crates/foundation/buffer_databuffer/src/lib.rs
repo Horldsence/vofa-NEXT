@@ -14,6 +14,7 @@ pub mod tier;
 mod window;
 
 pub use data_buffer::DataBuffer;
+pub use derived::DerivedWriter;
 pub use window::{
     DerivedSeriesSelector, WaveformSampling, WaveformSeriesSelection, WaveformWindow,
     WindowSnapshot,

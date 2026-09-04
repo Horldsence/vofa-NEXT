@@ -593,10 +593,33 @@ impl AdaptiveController {
         input_bytes: usize,
         limits: RuntimeLimits,
     ) {
-        let elapsed_us = u64::try_from(self.last_observed.elapsed().as_micros())
-            .unwrap_or(u64::MAX)
-            .max(1);
-        self.last_observed = std::time::Instant::now();
+        self.observe_at(
+            std::time::Instant::now(),
+            queue_fill,
+            queue_age,
+            service_time,
+            input_bytes,
+            limits,
+        );
+    }
+
+    /// 单一观察时刻同时用于速率、扩缩容与基准测试，避免测试回拨后再读时钟。
+    fn observe_at(
+        &mut self,
+        now: std::time::Instant,
+        queue_fill: f64,
+        queue_age: Duration,
+        service_time: Duration,
+        input_bytes: usize,
+        limits: RuntimeLimits,
+    ) {
+        let elapsed_us = u64::try_from(
+            now.saturating_duration_since(self.last_observed)
+                .as_micros(),
+        )
+        .unwrap_or(u64::MAX)
+        .max(1);
+        self.last_observed = now;
         let current_rate = u64::try_from(input_bytes)
             .unwrap_or(u64::MAX)
             .saturating_mul(1_000_000)
@@ -622,10 +645,10 @@ impl AdaptiveController {
                 self.high_streak = 0;
             }
         } else if queue_fill < 0.1 && queue_age < Duration::from_millis(2) {
-            let since = self.low_since.get_or_insert_with(std::time::Instant::now);
-            if since.elapsed() >= Duration::from_secs(2) && self.workers > 1 {
+            let since = self.low_since.get_or_insert(now);
+            if now.saturating_duration_since(*since) >= Duration::from_secs(2) && self.workers > 1 {
                 self.workers -= 1;
-                self.low_since = Some(std::time::Instant::now());
+                self.low_since = Some(now);
             }
         } else {
             self.high_streak = 0;
@@ -813,10 +836,12 @@ mod tests {
         service_ms: u64,
         input_bytes: usize,
     ) {
-        controller.last_observed = std::time::Instant::now()
+        let now = std::time::Instant::now();
+        controller.last_observed = now
             .checked_sub(Duration::from_millis(dt_ms))
             .expect("时钟早于当前时刻至少 dt, 系统时钟异常");
-        controller.observe(
+        controller.observe_at(
+            now,
             queue_fill,
             Duration::from_millis(queue_age_ms),
             Duration::from_millis(service_ms),

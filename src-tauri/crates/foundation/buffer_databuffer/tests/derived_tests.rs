@@ -1,8 +1,61 @@
 #![allow(clippy::float_cmp, clippy::cast_precision_loss)] // 测试数值断言: 精确比较 + 小整数转 f32 无精度问题
 use buffer_databuffer::{DataBuffer, WaveformWindow};
 
+#[test]
+fn detached_writer_updates_live_version_but_not_frozen_clone() {
+    let mut buffer = DataBuffer::new(32, 1);
+    buffer.push_frame_at(1_000, &[1.0]);
+    let writer = buffer.derived_writer();
+    let index = writer.port_index_of("wave", "math", "result");
+    let frozen = buffer.clone();
+    let before = buffer.version();
+    writer.append([(index, 1_000, 9.0)]);
+    assert!(buffer.version() > before);
+    assert_eq!(buffer.get_derived(index, 1), vec![9.0]);
+    assert!(frozen.get_derived(index, 1).is_empty());
+    assert_eq!(frozen.version(), before);
+}
+
+#[test]
+fn stale_writer_cannot_write_into_reused_indices_after_clear() {
+    let buffer = DataBuffer::new(32, 1);
+    let old_writer = buffer.derived_writer();
+    let old_index = old_writer.port_index_of("old", "math", "result");
+    buffer.clear_derived();
+    let new_index = buffer.derived_port_index_of("new", "math", "result");
+    assert_eq!(old_index, new_index);
+    old_writer.append([(old_index, 1_000, 99.0)]);
+    assert!(buffer.get_derived(new_index, 10).is_empty());
+    assert_eq!(
+        old_writer.port_index_of("old", "math", "result"),
+        usize::MAX
+    );
+}
+
 fn derived_values<'a>(window: &'a WaveformWindow, sink: &str, source: &str) -> &'a Vec<f32> {
     &window.derived[sink][source][""]
+}
+
+#[test]
+fn recent_derived_query_preserves_duplicates_and_gaps_after_wrap() {
+    let mut buffer = DataBuffer::new(1_000, 1);
+    let writer = buffer.derived_writer();
+    let idx = writer.port_index_of("wave", "math", "");
+    for i in 0..3_000_u64 {
+        let timestamp = i / 2;
+        buffer.push_frame_at(timestamp, &[i as f32]);
+        if !(2_990..2_994).contains(&i) {
+            writer.push(idx, timestamp, i as f32);
+        }
+    }
+    let window = buffer.get_recent(12);
+    let values = derived_values(&window, "wave", "math");
+    assert_eq!(&values[..2], &[2_988.0, 2_989.0]);
+    assert!(values[2..6].iter().all(|v| v.is_nan()));
+    assert_eq!(
+        &values[6..],
+        &[2_994.0, 2_995.0, 2_996.0, 2_997.0, 2_998.0, 2_999.0]
+    );
 }
 
 #[test]

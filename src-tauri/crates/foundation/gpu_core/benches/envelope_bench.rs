@@ -54,5 +54,13 @@ fn bench_envelope(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_envelope);
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .output_directory(std::path::Path::new("../../../target/criterion/envelope"))
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2))
+        .sample_size(20);
+    targets = bench_envelope
+}
 criterion_main!(benches);

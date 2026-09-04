@@ -91,6 +91,8 @@ pub struct ProtocolNodeState {
     /// 来源采样时钟。线缆协议按读取批次解析时，同批样本原本共享到达时间；
     /// 这里按来源提供的精确采样率或线速估算恢复逐样本时间戳。
     sample_clock: Option<SampleClock>,
+    /// TestData 广播 Lagged 后，下一批之前必须跨过的逻辑缺口（微秒）。
+    pending_exact_gap_us: f64,
 }
 
 /// 采样时钟域 (数据平面不变量 1: 每源单一权威时钟, 流内不切换不混叠)
@@ -147,6 +149,26 @@ impl ProtocolNodeState {
             detection_notified: false,
             last_detected_pushed: None,
             sample_clock: None,
+            pending_exact_gap_us: 0.0,
+        }
+    }
+
+    /// 记录 TestData 在解析前丢失的帧。下一批时间戳跨过该时长，避免把缺口
+    /// 两侧静默拼接后造成整组波形随持续丢包逐渐漂移。
+    #[allow(clippy::cast_precision_loss)] // 丢帧计数换算为逻辑微秒；远低于 f64 精确整数上限
+    fn note_exact_frame_gap(&mut self, frames: u64, sample_rate: f64) {
+        if frames == 0 || !sample_rate.is_finite() || sample_rate <= 0.0 {
+            return;
+        }
+        if matches!(
+            self.sample_clock,
+            Some(SampleClock::Source {
+                basis: SampleClockBasis::ExactRate,
+                anchored: false,
+                ..
+            })
+        ) {
+            self.pending_exact_gap_us += frames as f64 * 1_000_000.0 / sample_rate;
         }
     }
 
@@ -249,8 +271,12 @@ impl ProtocolNodeState {
                 let mut ts = *next_us;
                 if *anchored {
                     *anchored = false;
+                    // 首批左侧没有已显示样本；此前的缺口已由批尾到达锚点吸收。
+                    self.pending_exact_gap_us = 0.0;
                     let span = step_us * (n - 1).min(100_000_000) as f64;
                     ts -= span;
+                } else if basis_now == SampleClockBasis::ExactRate {
+                    ts += std::mem::take(&mut self.pending_exact_gap_us);
                 }
                 for frame in frames.iter_mut() {
                     frame.timestamp = ts.max(0.0).round() as u64;
@@ -517,6 +543,51 @@ impl DataPlaneState {
         }
     }
 
+    /// 把 TestData 广播层的丢消息换算为所有下游协议源的逻辑采样缺口。
+    /// 丢包发生在解析前，若不推进时钟，后续真实样本会被压到前一段末尾。
+    pub(super) fn note_test_data_lagged(
+        &self,
+        transport_id: &str,
+        lost_messages: u64,
+        sample_rate: f32,
+    ) {
+        let lost_frames = lost_messages
+            .saturating_mul(transport_core::test_data::samples_per_message(sample_rate));
+        if lost_frames == 0 {
+            return;
+        }
+        let targets = {
+            let plan = self.byte_plan.lock();
+            let nodes = self.global_nodes.lock();
+            let mut pending = VecDeque::from([transport_id.to_string()]);
+            let mut visited = std::collections::HashSet::new();
+            let mut targets = std::collections::HashSet::new();
+            while let Some(source) = pending.pop_front() {
+                if !visited.insert(source.clone()) {
+                    continue;
+                }
+                for route in plan.routes_for(&source) {
+                    if matches!(
+                        nodes.get(&route.target).map(|node| &node.kind),
+                        Some(NodeKind::Protocol { .. })
+                    ) {
+                        targets.insert(route.target.clone());
+                    }
+                    pending.push_back(route.target.clone());
+                }
+            }
+            targets
+        };
+        let states = self.protocol_states.lock();
+        for target in targets {
+            if let Some(state) = states.get(&target) {
+                state
+                    .lock()
+                    .note_exact_frame_gap(lost_frames, f64::from(sample_rate));
+            }
+        }
+    }
+
     /// 容量自洽 (不变量 2): 按来源名义帧率整备缓冲容量
     ///
     /// L0 目标容量 = 帧率 × 目标窗口秒数, 受内存预算半额折算的点数封顶
@@ -578,10 +649,29 @@ impl DataPlaneState {
                 options,
             );
             self.metrics.eval_ns.fetch_add(eval_ns, Ordering::Relaxed);
+            self.metrics.eval_batches.fetch_add(1, Ordering::Relaxed);
             self.metrics.frames_evaled.fetch_add(
                 u64::try_from(frames.len()).unwrap_or(u64::MAX),
                 Ordering::Relaxed,
             );
+            self.metrics
+                .eval_completed_total
+                .fetch_add(frames.len() as u64, Ordering::Relaxed);
+        }
+    }
+
+    /// 非破坏性诊断快照：累计值不随日志窗口清零，队列值不含执行中的批次。
+    pub fn eval_diagnostics(&self) -> EvalDiagnostics {
+        let queues = self.frame_queues.lock();
+        EvalDiagnostics {
+            queued_batches: queues.values().map(VecDeque::len).sum(),
+            queued_frames: queues
+                .values()
+                .flat_map(|q| q.iter())
+                .map(|b| b.len())
+                .sum(),
+            completed_frames: self.metrics.eval_completed_total.load(Ordering::Relaxed),
+            dropped_frames: self.metrics.eval_dropped_total.load(Ordering::Relaxed),
         }
     }
 
@@ -751,6 +841,15 @@ impl DataPlaneState {
 }
 
 /// 流水线诊断指标 — 各 Transport 读任务共享, 每 2s 输出一次 (有活动时)。
+#[derive(Debug, Clone, Copy)]
+pub struct EvalDiagnostics {
+    pub queued_batches: usize,
+    pub queued_frames: usize,
+    pub completed_frames: u64,
+    pub dropped_frames: u64,
+}
+
+/// 日志窗口计数与独立的进程生命周期累计计数。
 #[derive(Default)]
 pub struct DataPlaneMetrics {
     /// 收到的消息数 (按广播消息逐条计数) / 字节数 (合批后)
@@ -758,14 +857,21 @@ pub struct DataPlaneMetrics {
     rx_bytes: AtomicU64,
     /// broadcast Lagged 丢弃的消息数
     lagged: AtomicU64,
-    /// 字节路由累计耗时 ns (含协议解析与数值平面) / 批次数
+    /// 字节路由累计耗时 ns (协议解析 + 原始记录，不含异步求值) / 批次数
     feed_ns: AtomicU64,
     feed_batches: AtomicU64,
-    /// 数值平面评估累计耗时 ns / 帧数 (parse 均 = (feed_ns - eval_ns) / 批)
+    /// 记录平面实际接收并入库的协议帧数（去重代表源口径）
+    frames_ingested: AtomicU64,
+    /// 数值平面累计耗时 / 批数 / 消费帧数，与摄入平面独立统计
     eval_ns: AtomicU64,
+    eval_batches: AtomicU64,
     frames_evaled: AtomicU64,
     /// 评估队列溢出丢弃的帧数 (摄入/评估解耦后的显式降级计数)
     eval_dropped: AtomicU64,
+    eval_completed_total: AtomicU64,
+    eval_dropped_total: AtomicU64,
+    /// 多读任务共享报告时钟，避免把实际超过 2 秒的窗口当成固定 2 秒。
+    last_report: Mutex<Option<std::time::Instant>>,
     /// 上次报告时各源缓冲 storage_overflow 总和 (增量输出)
     last_overflow_reported: AtomicU64,
 }
@@ -774,6 +880,7 @@ impl DataPlaneMetrics {
     /// 评估队列溢出时累计丢弃帧数 (eval worker 调用)
     pub fn add_eval_dropped(&self, frames: u64) {
         self.eval_dropped.fetch_add(frames, Ordering::Relaxed);
+        self.eval_dropped_total.fetch_add(frames, Ordering::Relaxed);
     }
 
     #[allow(
@@ -782,33 +889,43 @@ impl DataPlaneMetrics {
         clippy::cast_sign_loss
     )] // 诊断日志近似换算 (MB/s / ms), 数值精度不影响行为
     fn report(&self) {
+        let mut last_report = self.last_report.lock();
+        let now = std::time::Instant::now();
+        let elapsed = last_report.map_or(METRICS_REPORT_INTERVAL, |last| now.duration_since(last));
+        if elapsed < METRICS_REPORT_INTERVAL {
+            return;
+        }
+        *last_report = Some(now);
         let rx_msgs = self.rx_msgs.swap(0, Ordering::Relaxed);
         let lagged = self.lagged.swap(0, Ordering::Relaxed);
         let eval_dropped = self.eval_dropped.swap(0, Ordering::Relaxed);
         if rx_msgs == 0 && lagged == 0 && eval_dropped == 0 {
             return;
         }
-        let secs = METRICS_REPORT_INTERVAL.as_secs_f64();
+        let secs = elapsed.as_secs_f64();
         let batches = self.feed_batches.swap(0, Ordering::Relaxed).max(1);
         let feed_ns = self.feed_ns.swap(0, Ordering::Relaxed);
         let eval_ns = self.eval_ns.swap(0, Ordering::Relaxed);
+        let eval_batches = self.eval_batches.swap(0, Ordering::Relaxed);
+        let frames_ingested = self.frames_ingested.swap(0, Ordering::Relaxed);
         let frames = self.frames_evaled.swap(0, Ordering::Relaxed);
-        // feed 含解析与数值平面两段, 拆开报告便于定位瓶颈段;
-        // 产帧估算 = 已求值 + 求值丢弃 (记录平面不受丢弃影响, 不变量 3)
-        let parse_ns = feed_ns.saturating_sub(eval_ns);
-        let produced_per_sec = (frames.saturating_add(eval_dropped)) as f64 / secs;
+        // 异步的两个平面不能相减，也不能共用批数作分母。产帧率只取实际
+        // 摄入帧数，避免 fan-out 的已求值/丢弃计数把同一批数据成倍重复统计。
+        let produced_per_sec = frames_ingested as f64 / secs;
+        let eval_avg_ms = eval_ns as f64 / eval_batches.max(1) as f64 / 1e6;
         let msg = format!(
-            "数据平面指标: rx {:.1}MB/s ({} 消息/s) | feed {} 批, 均 {:.2}ms \
-             (parse 均 {:.2}ms | eval 均 {:.2}ms), 帧均 {}/批, 产帧≈{:.0}/s \
+            "数据平面指标: rx {:.1}MB/s ({} 消息/s) | ingest {} 批, 均 {:.2}ms, \
+             帧均 {}/批, 产帧≈{:.0}/s | eval {} 批, 均 {:.2}ms, 消费 {} 帧 \
              | Lagged 丢弃 {} 条, 评估队列丢弃 {} 帧",
             self.rx_bytes.swap(0, Ordering::Relaxed) as f64 / secs / 1e6,
             (rx_msgs as f64 / secs) as u64,
             batches,
             feed_ns as f64 / batches as f64 / 1e6,
-            parse_ns as f64 / batches as f64 / 1e6,
-            eval_ns as f64 / batches as f64 / 1e6,
-            frames / batches,
+            frames_ingested / batches,
             produced_per_sec,
+            eval_batches,
+            eval_avg_ms,
+            frames,
             lagged,
             eval_dropped,
         );
@@ -817,5 +934,60 @@ impl DataPlaneMetrics {
         } else {
             log::debug!("{msg}");
         }
+    }
+}
+
+#[cfg(test)]
+mod sample_clock_tests {
+    use super::{ProtocolNodeState, SampleClockBasis};
+    use schema_types::ProtocolConfig;
+    use vofa_core::DataFrame;
+
+    fn frames(count: usize) -> Vec<DataFrame> {
+        (0..count)
+            .map(|_| DataFrame::with_timestamp(0, vec![1.0]))
+            .collect()
+    }
+
+    #[test]
+    fn exact_clock_preserves_an_explicit_lagged_gap() {
+        let mut state =
+            ProtocolNodeState::new(&ProtocolConfig::JustFloat { channels: Some(1) }, None, None);
+        let hint = Some((SampleClockBasis::ExactRate, 1_000.0, 0));
+        let mut first = frames(2);
+        state.restamp_frames(hint, 10_000, &mut first);
+        assert_eq!(
+            first
+                .iter()
+                .map(|frame| frame.timestamp)
+                .collect::<Vec<_>>(),
+            vec![9_000, 10_000]
+        );
+
+        // 三帧在解析前丢失；下一帧与上一帧应相隔四个采样周期。
+        state.note_exact_frame_gap(3, 1_000.0);
+        let mut second = frames(2);
+        state.restamp_frames(hint, 99_000, &mut second);
+        assert_eq!(
+            second
+                .iter()
+                .map(|frame| frame.timestamp)
+                .collect::<Vec<_>>(),
+            vec![14_000, 15_000]
+        );
+    }
+
+    #[test]
+    fn gap_before_first_visible_batch_is_absorbed_by_arrival_anchor() {
+        let mut state =
+            ProtocolNodeState::new(&ProtocolConfig::JustFloat { channels: Some(1) }, None, None);
+        state.note_exact_frame_gap(500, 1_000.0);
+        let mut first = frames(2);
+        state.restamp_frames(
+            Some((SampleClockBasis::ExactRate, 1_000.0, 0)),
+            10_000,
+            &mut first,
+        );
+        assert_eq!(first[1].timestamp, 10_000);
     }
 }

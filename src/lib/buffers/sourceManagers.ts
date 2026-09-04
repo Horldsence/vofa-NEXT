@@ -22,7 +22,7 @@ interface WaveformSourceEntry {
 const waveformSources = new Map<string, WaveformSourceEntry>();
 
 /// 概览流推送间隔 — 缩略图/概览 10fps 足够;
-/// 后端每次推送要对整个环形缓冲做 min-max, 频率直接决定采集锁竞争强度
+/// 后端按金字塔预算层生成 min-max；频率仍会影响快照拷贝与 IPC 开销
 const OVERVIEW_INTERVAL_MS = 100;
 const OVERVIEW_MAX_POINTS = 2000;
 
