@@ -106,6 +106,15 @@ release: Release
 options: Options
 widgetName: Widget Name
 nodeRenameHint: Double-click the title bar to rename
+nodeSize: Node Size
+nodeWidth: W
+nodeHeight: H
+sizeAuto: auto
+resetSize: Reset size
+nodeSizeMinHint: min {w} × {h}
+propertiesClose: Close properties panel
+nodeProperties: Properties
+nodePropertiesEmpty: No node selected — click a node on the canvas to inspect it
 currentValue: Current Value
 labelText: Label Text
 optionValue: Return Value
@@ -763,6 +772,11 @@ strReverse: Reverse
 strReverseDesc: Reverse by character
 strFormat: Format
 strFormatDesc: Format numbers via template ({N} = input N, {N:.2} with precision)
+strSettings: String Settings
+strFormatTmpl: Format Template
+strInlineFallbackHint: Fallback used while the port is unconnected (upstream wins when connected)
+textInputPlaceholder: Placeholder
+textOutSettings: Send Settings
 strParse: Parse Number
 strParseDesc: Scan first number from text (decimal / 0x hex), miss returns 0
 strEncodeHex: Encode HEX
@@ -1179,6 +1193,7 @@ dataTabCommand: Command Sender
 dataTabFrameDecoder: Frame Decoder
 dataTabTrigger: Trigger
 menuPanelOpenOperationHistory: Open Operation History
+menuPanelOpenNodeProperties: Open Properties
 operationHistoryTitle: Operation History
 opHistoryInitial: Initial state
 opHistoryEmpty: No operations recorded yet.
@@ -1192,6 +1207,7 @@ opUpdateWidgetParams: Adjust widget parameters
 opConnectNodes: Connect edges
 opDeleteEdges: Delete edges
 opMoveNodes: Move nodes
+opResizeNodes: Resize widget
 opRemoveNodes: Delete nodes
 opAddTransportNode: Add transport node
 opAddProtocolNode: Add protocol node

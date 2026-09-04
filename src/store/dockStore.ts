@@ -215,22 +215,70 @@ interface DockState {
   dropOnRootEdge: (edge: SnapEdge) => void;
   /// 与 appStore 的 Tab 列表对账: 剔除已删除的 Tab, 安置新增 Tab, 裁剪空卡片
   reconcile: (kind: CardKind, existingTabIds: string[]) => void;
+  /// 节点属性面板专属停靠 — tab 尚不属于任何卡片时, 在画布卡右侧拆分一张
+  /// 较小的新卡承载它; 已有归属 (含用户手动拖动过的安排) 则不动
+  dockPropertiesTab: (tabId: string) => void;
+}
+
+/// 在 target 卡片右侧插入 newLeaf (row 轴向同级条带), 新卡份额 = min(30%, target 一半)。
+/// target 不在树中 / 轴向不匹配时逐层下探; 返回原树表示未命中。
+function insertRightOfCard(node: DockNode, targetCardId: string, newLeaf: DockNode): DockNode {
+  if (node.type === 'card') return node;
+  const idx = node.children.findIndex((c) => c.type === 'card' && c.cardId === targetCardId);
+  if (idx >= 0 && node.dir === 'row') {
+    const targetSize = node.sizes[idx] ?? 100 / node.children.length;
+    const newSize = Math.min(30, targetSize / 2);
+    const children = node.children.slice();
+    children.splice(idx + 1, 0, newLeaf);
+    const sizes = node.sizes.slice();
+    sizes[idx] = targetSize - newSize;
+    sizes.splice(idx + 1, 0, newSize);
+    return { ...node, children, sizes };
+  }
+  const children = node.children.map((c) => insertRightOfCard(c, targetCardId, newLeaf));
+  if (children.every((c, i) => c === node.children[i])) return node;
+  return { ...node, children };
 }
 
 const defaultCards: Record<string, DockCard> = {
   'control-main': { id: 'control-main', kind: 'control', tabIds: [], activeTabId: null },
-  'data-main': { id: 'data-main', kind: 'data', tabIds: [], activeTabId: null },
+  // data-main 预置两个 fixed tab — reconcile 会裁剪空数据卡 (有同 kind 兄弟时),
+  // 且「无家可归 tab 安置进第一张该 kind 卡片 (插入序)」, 空卡会让布局塌陷,
+  // 属性专属卡 (properties-main) 也不应收容其他数据 tab
+  'data-main': {
+    id: 'data-main',
+    kind: 'data',
+    tabIds: ['compile-errors-fixed', 'compile-results-fixed'],
+    activeTabId: 'compile-results-fixed',
+  },
+  // 节点属性面板专属卡 — 承载固定的 node-properties-fixed tab (较小, 常驻右上)
+  'properties-main': {
+    id: 'properties-main',
+    kind: 'data',
+    tabIds: ['node-properties-fixed'],
+    activeTabId: 'node-properties-fixed',
+  },
 };
 
+/// 默认布局: 上方左侧画布 | 右侧属性面板 (较小), 下方数据面板
 const defaultRoot: DockNode = {
   id: 'split-root',
   type: 'split',
   dir: 'col',
   children: [
-    { id: 'node-control', type: 'card', cardId: 'control-main' },
+    {
+      id: 'split-top',
+      type: 'split',
+      dir: 'row',
+      children: [
+        { id: 'node-control', type: 'card', cardId: 'control-main' },
+        { id: 'node-props', type: 'card', cardId: 'properties-main' },
+      ],
+      sizes: [72, 28],
+    },
     { id: 'node-data', type: 'card', cardId: 'data-main' },
   ],
-  sizes: [45, 55],
+  sizes: [55, 45],
 };
 
 /// 从拖拽状态构建结果: 摘出 Tab 生成新卡片 / 摘除整卡, 返回新的 root+cards+待插入节点
@@ -282,7 +330,7 @@ function extractDraggedNode(state: Pick<DockState, 'root' | 'cards' | 'draggingT
 
 export const useDockStore = create<DockState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       root: defaultRoot,
       cards: defaultCards,
       focusedCardId: null,
@@ -463,6 +511,28 @@ export const useDockStore = create<DockState>()(
           if (!changed) return state;
           return { root, cards };
         }),
+
+      dockPropertiesTab: (tabId) => {
+        const state = get();
+        if (Object.values(state.cards).some((c) => c.kind === 'data' && c.tabIds.includes(tabId))) {
+          return;
+        }
+        const controlCard = Object.values(state.cards).find((c) => c.kind === 'control');
+        if (!controlCard) return; // 无画布卡 (异常态) → 交给 reconcile 兜底安置
+        const cardId = nextId('card');
+        const leaf: DockNode = { id: nextId('node'), type: 'card', cardId };
+        const root = insertRightOfCard(state.root, controlCard.id, leaf);
+        if (root === state.root) return;
+        set({
+          root,
+          cards: {
+            ...state.cards,
+            [cardId]: { id: cardId, kind: 'data', tabIds: [tabId], activeTabId: tabId },
+          },
+          focusedCardId: cardId,
+        });
+        mirrorActiveTab('data', tabId);
+      },
     }),
     {
       name: 'vofa-dock',

@@ -11,6 +11,7 @@
 
 import { useAppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
+import { NODE_PROPERTIES_TAB_ID } from '../../types';
 import { transitionStore } from './transitionStore';
 
 /// 执行 trigger (打开/轮转 store 动作), 随后激活目标 Tab 所在的 data 卡片。
@@ -23,5 +24,15 @@ export function openDataPanelAndReveal(trigger: () => void): void {
     const cards = useDockStore.getState().cards;
     const card = Object.values(cards).find((c) => c.kind === 'data' && c.tabIds.includes(tabId));
     if (card) useDockStore.getState().setActiveTab(card.id, tabId);
+  });
+}
+
+/// 打开/激活节点属性面板 — 创建 tab 时同步在画布右侧拆分专属小卡
+/// (dockPropertiesTab 对已有归属的 tab 是 no-op, 尊重用户手动安排)。
+/// 选中画布节点与数据面板菜单/侧边栏入口共用此路径。
+export function openNodePropertiesPanel(): void {
+  openDataPanelAndReveal(() => {
+    useAppStore.getState().addNodePropertiesTab();
+    useDockStore.getState().dockPropertiesTab(NODE_PROPERTIES_TAB_ID);
   });
 }

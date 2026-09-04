@@ -185,14 +185,11 @@ const ProtocolProperties = memo(function ProtocolProperties({ node }: { node: No
   );
 });
 
-/// 全局节点属性面板 — NodeEditor 右侧, 选中 Transport/Protocol 节点时显示
+/// 全局节点属性内容 — 停靠属性面板 (NodePropertiesPanel) 的 body,
+/// 选中 Transport/Protocol 节点时显示; 面板标题/滚动容器由停靠面板提供
 export const GlobalNodeProperties = memo(function GlobalNodeProperties({ node }: { node: Node }) {
-  const lang = useAppStore((s) => s.lang);
   return (
-    <div className="absolute top-2 right-2 bottom-2 w-[260px] z-20 bg-bg-sidebar border border-border rounded-md shadow-lg overflow-y-auto p-3">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">
-        {node.type === 'transport' ? t(lang, 'dataInterface') : t(lang, 'protocolEngine')}
-      </div>
+    <div>
       {node.type === 'transport' ? <TransportProperties node={node} /> : <ProtocolProperties node={node} />}
     </div>
   );

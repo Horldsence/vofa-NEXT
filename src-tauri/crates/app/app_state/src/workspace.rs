@@ -22,10 +22,29 @@ use std::sync::Arc;
 pub const WORKSPACE_FILE_NAME: &str = "workspace.json";
 
 /// 画布坐标 — 与前端 React Flow `node.position` 同形。
+///
+/// `width`/`height` 是用户显式调整后的节点尺寸 (None = 随内容自适应)。
+/// serde 默认值保证旧 `workspace.json` (仅 x/y) 与旧命令载荷完全兼容。
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Position {
     pub x: f64,
     pub y: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f64>,
+}
+
+impl Position {
+    /// 仅坐标 (尺寸未显式调整, 随内容自适应)。
+    pub const fn new(x: f64, y: f64) -> Self {
+        Self {
+            x,
+            y,
+            width: None,
+            height: None,
+        }
+    }
 }
 
 /// widget 配置记录 — 前端 `WidgetConfig` 的后端透传存储。
@@ -198,5 +217,38 @@ pub fn prune_positions(ws: &WorkspaceState, source_graphs: &crate::SourceGraphs)
     ws.positions.retain(|id, _| alive.contains(id));
     if ws.positions.len() != before {
         ws.dirty = true;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 旧版 workspace.json 的位置条目只有 x/y — 必须继续可反序列化 (None 兜底)。
+    #[test]
+    fn position_deserializes_legacy_xy_only_json() {
+        let p: Position = serde_json::from_str(r#"{"x": 12.5, "y": -3}"#).expect("旧格式应可解析");
+        assert_eq!(p, Position::new(12.5, -3.0));
+        assert_eq!(p.width, None);
+        assert_eq!(p.height, None);
+    }
+
+    /// 未调整尺寸时序列化省略 width/height (不膨胀 workspace.json);
+    /// 显式尺寸回环无损。
+    #[test]
+    fn position_size_roundtrip() {
+        let auto = serde_json::to_value(Position::new(1.0, 2.0)).expect("序列化应成功");
+        assert_eq!(auto, serde_json::json!({"x": 1.0, "y": 2.0}));
+
+        let sized: Position =
+            serde_json::from_str(r#"{"x": 1.0, "y": 2.0, "width": 320, "height": 240}"#)
+                .expect("带尺寸格式应可解析");
+        assert_eq!(sized.width, Some(320.0));
+        assert_eq!(sized.height, Some(240.0));
+        let back = serde_json::to_value(sized).expect("序列化应成功");
+        assert_eq!(
+            back,
+            serde_json::json!({"x": 1.0, "y": 2.0, "width": 320.0, "height": 240.0})
+        );
     }
 }

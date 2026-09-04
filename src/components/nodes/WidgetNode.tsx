@@ -1,9 +1,10 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Handle, Position, useUpdateNodeInternals, type NodeProps, type Edge } from '@xyflow/react';
+import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps, type Edge } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
 import { t } from '../../i18n';
 import { X, Settings2 } from 'lucide-react';
+import { widgetMinSize } from '../../lib/utils/widgetSize';
 import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import { CanvasErrorTooltip, useCanvasNodeError } from '../ui/CanvasErrorTooltip';
 import { getWidgetPorts, type WidgetPort } from './WidgetPorts';
@@ -111,7 +112,7 @@ const RawDataConnHint = memo(function RawDataConnHint({ nodeId }: { nodeId: stri
 });
 
 /// 控件节点 — 包装实际控件, 添加 React Flow Handle
-export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
+export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeProps) {
   const widget = data.widget as WidgetConfig | undefined;
   const removeWidget = useAppStore((s) => s.removeWidget);
   const updateWidget = useAppStore((s) => s.updateWidget);
@@ -333,7 +334,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
   return (
     <CanvasErrorTooltip message={errorMessage}>
       <div
-        className="nowheel widget-card-acrylic rounded-md min-w-[160px] max-w-[240px] text-[11px] relative [&.selected]:border-accent"
+        className="nowheel widget-card-acrylic rounded-md w-full h-full min-w-[140px] min-h-[48px] text-[11px] relative flex flex-col [&.selected]:border-accent"
         style={
           errorMessage
             ? { boxShadow: '0 0 0 2px #ef4444' }
@@ -344,6 +345,16 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
         onDoubleClick={widgetToTab(widget) ? handleOpenWindow : undefined}
         title={widgetToTab(widget) ? t(lang, 'nodeOpenWindowHint') : undefined}
       >
+      {/* 拖拽调整大小 — 选中时显示 8 向手柄; 双击手柄不得冒泡成「打开数据窗口」 */}
+      <div className="contents" onDoubleClick={(e) => e.stopPropagation()}>
+        <NodeResizer
+          isVisible={!!selected}
+          minWidth={widgetMinSize(widget.kind).minW}
+          minHeight={widgetMinSize(widget.kind).minH}
+          lineClassName="!border-accent"
+          handleClassName="!w-[7px] !h-[7px] !border-accent !bg-bg-sidebar"
+        />
+      </div>
       <div
         className="node-drag-handle flex items-center justify-between px-1.5 py-1 border-b border-border text-[10px] font-semibold uppercase tracking-[0.4px] cursor-grab active:cursor-grabbing"
         style={{ color: categoryColor }}
@@ -408,7 +419,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data }: NodeProps) {
           <X size={10} />
         </button>
       </div>
-      <div className="flex flex-row w-full min-h-[32px]">
+      <div className="flex flex-row w-full flex-1 min-h-[32px]">
         {/* 输入端口 (左侧) — 融入普通文档流 */}
         <div className="flex flex-col justify-center gap-0.5 py-1 -ml-1.5 z-10">
           {effectivePorts.inputs.map((port) => (

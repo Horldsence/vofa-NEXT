@@ -1,5 +1,6 @@
 import { t } from '../../i18n';
 import type { DataTab, WidgetConfig } from '../../types';
+import { NODE_PROPERTIES_TAB_ID } from '../../types';
 import { useAppStore } from '../appStore';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import type { AppSlice } from './types';
@@ -19,6 +20,8 @@ export interface DataTabSlice {
   addCompileResultsTab: () => void;
   /// 新增 — 操作历史面板 (撤销/重做记录, 恒定单例)
   addOperationHistoryTab: () => void;
+  /// 新增 — 节点属性面板 (选中画布节点后自动激活, 恒定单例)
+  addNodePropertiesTab: () => void;
   /// 新增 — 由控件 id 构造对应窗口 Tab (已存在则激活, 否则新建并激活)
   addWidgetTab: (widget: WidgetConfig) => void;
 }
@@ -28,6 +31,9 @@ export const createDataTabSlice: AppSlice<DataTabSlice> = (set, get) => {
     dataTabs: [
       { id: 'compile-errors-fixed', type: 'compile-errors', name: 'Compile Errors', closable: false },
       { id: 'compile-results-fixed', type: 'compile-results', name: 'Compile Results', closable: false },
+      // 节点属性面板 — 默认布局 (dockStore defaultRoot) 的专属卡片承载此 tab;
+      // id 稳定, 用户关闭后再次选中节点由 addNodePropertiesTab 按同 id 重建
+      { id: NODE_PROPERTIES_TAB_ID, type: 'node-properties', name: 'Properties', closable: true },
     ],
     activeDataTabId: 'compile-results-fixed',
 
@@ -145,6 +151,26 @@ export const createDataTabSlice: AppSlice<DataTabSlice> = (set, get) => {
       });
     },
 
+    addNodePropertiesTab: () => {
+      const existing = get().dataTabs.find((t: DataTab) => t.type === 'node-properties');
+      if (existing) {
+        set({ activeDataTabId: existing.id });
+        return;
+      }
+      // id 固定 — 默认布局的专属卡片 (dockStore / quickstart buildDock) 按 id 预置此 tab,
+      // 关闭后重建仍落回同一张卡 (选中节点等入口还会经 dockPropertiesTab 右侧停靠)
+      const tab: DataTab = {
+        id: NODE_PROPERTIES_TAB_ID,
+        type: 'node-properties',
+        name: t(get().lang, 'nodeProperties'),
+        closable: true,
+      };
+      set({
+        dataTabs: [...get().dataTabs, tab],
+        activeDataTabId: tab.id,
+      });
+    },
+
     addWidgetTab: (widget) => {
       const tab = widgetToTab(widget);
       if (!tab) return;
@@ -190,7 +216,7 @@ export interface DataPanelEntry {
 
 export function getAvailableDataPanelEntries(
   state: Pick<AppStore, 'dataTabs' | 'widgets' | 'lang'>,
-  actions: Pick<AppStore, 'addCompileErrorsTab' | 'addCompileResultsTab' | 'addCanTab' | 'addLogicTab' | 'addOperationHistoryTab' | 'addDataTab' | 'setActiveDataTab' | 'addWidgetTab'>,
+  actions: Pick<AppStore, 'addCompileErrorsTab' | 'addCompileResultsTab' | 'addCanTab' | 'addLogicTab' | 'addOperationHistoryTab' | 'addNodePropertiesTab' | 'addDataTab' | 'setActiveDataTab' | 'addWidgetTab'>,
 ): DataPanelEntry[] {
   const widgetKinds = new Set(state.widgets.map((w) => w.kind));
   // 同一 kind 可有多个 widget (例如多个 Waveform) — 取首个派生 Tab 用作打开目标
@@ -240,6 +266,15 @@ export function getAvailableDataPanelEntries(
       available: true,
       open: () => {
         actions.addOperationHistoryTab();
+      },
+      group: 'standalone',
+    },
+    {
+      type: 'node-properties',
+      labelKey: 'menuPanelOpenNodeProperties',
+      available: true,
+      open: () => {
+        actions.addNodePropertiesTab();
       },
       group: 'standalone',
     },
@@ -325,6 +360,8 @@ function standaloneOpener(type: DataTab['type']): ((app: DataTabSlice) => void) 
       return (app) => app.addLogicTab();
     case 'operation-history':
       return (app) => app.addOperationHistoryTab();
+    case 'node-properties':
+      return (app) => app.addNodePropertiesTab();
     default:
       return null;
   }

@@ -1,68 +1,23 @@
-import { memo, useEffect, useState } from 'react';
+import { memo } from 'react';
 import type { Node } from '@xyflow/react';
-import { ArrowDown, ArrowUp, Code2, Plus, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Code2, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { useAppStore } from '../../store/appStore';
-import type { ChoiceOption, WidgetBinding, WidgetConfig } from '../../types';
+import type {
+  ChoiceOption,
+  FilterPresetKind,
+  SpectrumOutput,
+  WidgetBinding,
+  WidgetConfig,
+  WindowType,
+} from '../../types';
+import { STR_OP_PORTS } from '../../types';
 import { t } from '../../i18n';
 import { snapControlValue, validateNumericRange } from '../../lib/utils/numericControl';
 import { widgetInputValue } from '../../lib/utils/createWidget';
+import { clampWidgetSize, widgetMinSize } from '../../lib/utils/widgetSize';
 import { sendBindingValue } from '../controls/binding';
-
-function TextField({ value, label, onCommit }: { value: string; label: string; onCommit: (value: string) => void }) {
-  const lang = useAppStore((s) => s.lang);
-  const [draft, setDraft] = useState(value);
-  const [invalid, setInvalid] = useState(false);
-  useEffect(() => { setDraft(value); setInvalid(false); }, [value]);
-  const commit = () => {
-    const next = draft.trim();
-    if (next === '') {
-      setInvalid(true);
-      return;
-    }
-    setInvalid(false);
-    setDraft(next);
-    if (next !== value) onCommit(next);
-  };
-  return (
-    <label className="block mb-2">
-      <span className="block text-xs text-text-secondary mb-1">{label}</span>
-      <input className={`form-input ${invalid ? 'border-red' : ''}`} value={draft}
-        onChange={(event) => { setDraft(event.target.value); setInvalid(false); }} onBlur={commit}
-        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }}
-        aria-invalid={invalid} />
-      {invalid && <span className="block mt-1 text-[10px] text-red">{t(lang, 'requiredValue')}</span>}
-    </label>
-  );
-}
-
-function NumberField({ value, label, onCommit, error }: {
-  value: number; label: string; onCommit: (value: number) => boolean; error?: string;
-}) {
-  const [draft, setDraft] = useState(String(value));
-  const [invalid, setInvalid] = useState(false);
-  useEffect(() => { setDraft(String(value)); setInvalid(false); }, [value]);
-  const commit = () => {
-    if (draft.trim() === '') {
-      setInvalid(true);
-      return;
-    }
-    const parsed = Number(draft);
-    const ok = Number.isFinite(parsed) && (parsed === value || onCommit(parsed));
-    setInvalid(!ok);
-    if (ok) setDraft(String(parsed));
-  };
-  return (
-    <label className="block mb-2">
-      <span className="block text-xs text-text-secondary mb-1">{label}</span>
-      <input type="number" className={`form-input font-mono ${invalid ? 'border-red' : ''}`} value={draft}
-        onChange={(event) => { setDraft(event.target.value); setInvalid(false); }} onBlur={commit}
-        onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }}
-        aria-invalid={invalid} />
-      {invalid && <span className="block mt-1 text-[10px] text-red">{error ?? 'Invalid value'}</span>}
-    </label>
-  );
-}
+import { NumberField, OptionalNumberField, SelectField, TextField } from '../ui/fields';
 
 type InputWidget = Extract<WidgetConfig, { kind: 'Knob' | 'Slider' | 'Button' | 'Radio' | 'Checkbox' }>;
 
@@ -213,6 +168,196 @@ function ChoiceEditor({ widget, update }: { widget: ChoiceWidget; update: (widge
   );
 }
 
+/// 节点尺寸编辑 — 宽/高 (空 = 随内容自适应) + 重置按钮;
+/// 保存到 rfNode 显式尺寸并随位置持久化到后端 (graph slice setWidgetNodeSize)
+function SizeEditor({ nodeId, kind }: { nodeId: string; kind: WidgetConfig['kind'] }) {
+  const lang = useAppStore((s) => s.lang);
+  const width = useAppStore((s) => s.rfNodes.find((n) => n.id === nodeId)?.width ?? null);
+  const height = useAppStore((s) => s.rfNodes.find((n) => n.id === nodeId)?.height ?? null);
+  const setWidgetNodeSize = useAppStore((s) => s.setWidgetNodeSize);
+  const commitSize = (patch: { width?: number | null; height?: number | null }) => {
+    const next = clampWidgetSize(kind, {
+      width: patch.width !== undefined ? (patch.width ?? undefined) : (width ?? undefined),
+      height: patch.height !== undefined ? (patch.height ?? undefined) : (height ?? undefined),
+    });
+    setWidgetNodeSize(nodeId, next);
+  };
+  const limits = widgetMinSize(kind);
+  return (
+    <section className="mt-3 pt-3 border-t border-border">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{t(lang, 'nodeSize')}</div>
+      <div className="flex gap-2">
+        <OptionalNumberField label={t(lang, 'nodeWidth')} value={width} placeholder={t(lang, 'sizeAuto')}
+          onCommit={(w) => commitSize({ width: w })} />
+        <OptionalNumberField label={t(lang, 'nodeHeight')} value={height} placeholder={t(lang, 'sizeAuto')}
+          onCommit={(h) => commitSize({ height: h })} />
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-text-secondary">
+          {t(lang, 'nodeSizeMinHint').replace('{w}', String(limits.minW)).replace('{h}', String(limits.minH))}
+        </span>
+        <button type="button" onClick={() => setWidgetNodeSize(nodeId, {})}
+          className="inline-flex items-center gap-1 text-[10px] text-text-secondary hover:text-text-primary rounded px-1.5 py-1 hover:bg-bg-hover transition-colors">
+          <RotateCcw size={10} /> {t(lang, 'resetSize')}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+// ============ 自节点体内搬出的设置节 (FFT / Filter / Str / TextOut) ============
+// 控件卡片只保留显示与值交互, 全部配置在这里编辑 (updateWidget → 图重编译)。
+
+/// FFT 频域求解器参数 — 原节点内折叠面板的全部字段
+function FftSettings({ widget, update }: {
+  widget: Extract<WidgetConfig, { kind: 'FFT' }>;
+  update: (next: Extract<WidgetConfig, { kind: 'FFT' }>) => void;
+}) {
+  const lang = useAppStore((s) => s.lang);
+  const { windowSize, windowType, output, sampleRate } = widget.params;
+  const patch = (p: Partial<typeof widget.params>) =>
+    update({ kind: 'FFT', params: { ...widget.params, ...p } });
+  return (
+    <section className="mt-3 pt-3 border-t border-border">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{t(lang, 'fftSettings')}</div>
+      <SelectField label={t(lang, 'spectrumWindowSize')} value={String(windowSize)}
+        options={[256, 512, 1024, 2048, 4096].map((sz) => ({ value: String(sz), label: String(sz) }))}
+        onChange={(v) => patch({ windowSize: Number(v) })} />
+      <SelectField label={t(lang, 'spectrumWindowType')} value={windowType}
+        options={([
+          ['Rect', 'windowRect'],
+          ['Hann', 'windowHann'],
+          ['Hamming', 'windowHamming'],
+          ['Blackman', 'windowBlackman'],
+        ] as [WindowType, string][]).map(([value, key]) => ({ value, label: t(lang, key) }))}
+        onChange={(v) => patch({ windowType: v as WindowType })} />
+      <SelectField label={t(lang, 'spectrumOutputMode')} value={output}
+        options={([
+          ['Magnitude', 'spectrumMagnitude'],
+          ['Power', 'spectrumPower'],
+          ['PSD', 'spectrumPSD'],
+          ['Decibel', 'spectrumDecibel'],
+        ] as [SpectrumOutput, string][]).map(([value, key]) => ({ value, label: t(lang, key) }))}
+        onChange={(v) => patch({ output: v as SpectrumOutput })} />
+      <NumberField label={`${t(lang, 'filterSampleRate')} (Hz)`} value={sampleRate}
+        onCommit={(v) => { if (v > 0) { patch({ sampleRate: v }); return true; } return false; }}
+        error={t(lang, 'invalidStep')} />
+    </section>
+  );
+}
+
+/// 滤波器参数 — 原节点内折叠面板的全部字段
+function FilterSettings({ widget, update }: {
+  widget: Extract<WidgetConfig, { kind: 'Filter' }>;
+  update: (next: Extract<WidgetConfig, { kind: 'Filter' }>) => void;
+}) {
+  const lang = useAppStore((s) => s.lang);
+  const { preset, cutoff, low, high, sampleRate } = widget.params;
+  const patch = (p: Partial<typeof widget.params>) =>
+    update({ kind: 'Filter', params: { ...widget.params, ...p } });
+  return (
+    <section className="mt-3 pt-3 border-t border-border">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{t(lang, 'filterSettings')}</div>
+      <SelectField label={t(lang, 'filterPreset')} value={preset}
+        options={([
+          ['Lowpass', 'filterLowpass'],
+          ['Highpass', 'filterHighpass'],
+          ['Bandpass', 'filterBandpass'],
+          ['Bandstop', 'filterBandstop'],
+        ] as [FilterPresetKind, string][]).map(([value, key]) => ({ value, label: t(lang, key) }))}
+        onChange={(v) => patch({ preset: v as FilterPresetKind })} />
+      {(preset === 'Lowpass' || preset === 'Highpass') && (
+        <NumberField label={`${t(lang, 'filterCutoff')} (Hz)`} value={cutoff}
+          onCommit={(v) => { if (v > 0) { patch({ cutoff: v }); return true; } return false; }}
+          error={t(lang, 'invalidStep')} />
+      )}
+      {(preset === 'Bandpass' || preset === 'Bandstop') && (
+        <>
+          <NumberField label={`${t(lang, 'filterLow')} (Hz)`} value={low}
+            onCommit={(v) => { if (v > 0) { patch({ low: v }); return true; } return false; }}
+            error={t(lang, 'invalidStep')} />
+          <NumberField label={`${t(lang, 'filterHigh')} (Hz)`} value={high}
+            onCommit={(v) => { if (v > 0) { patch({ high: v }); return true; } return false; }}
+            error={t(lang, 'invalidStep')} />
+        </>
+      )}
+      <NumberField label={`${t(lang, 'filterSampleRate')} (Hz)`} value={sampleRate}
+        onCommit={(v) => { if (v > 0) { patch({ sampleRate: v }); return true; } return false; }}
+        error={t(lang, 'invalidStep')} />
+    </section>
+  );
+}
+
+/// 字符串操作参数 — tmpl 模板 (format) 与 pos/len/size 内联回退值。
+/// 数值框是「端口未连接时的回退值」; 端口已连接时后端取上游值 (节点内原为禁用态, 面板中始终可编辑)。
+function StrSettings({ widget, update }: {
+  widget: Extract<WidgetConfig, { kind: 'Str' }>;
+  update: (next: Extract<WidgetConfig, { kind: 'Str' }>) => void;
+}) {
+  const lang = useAppStore((s) => s.lang);
+  const { id, op, tmpl, pos, len, size } = widget.params;
+  const meta = STR_OP_PORTS[op];
+  const patch = (p: Partial<typeof widget.params>) =>
+    update({ kind: 'Str', params: { ...widget.params, ...p } });
+  const INLINE_LABEL: Record<string, string> = { pos: 'strPortPos', len: 'strPortLen', size: 'strPortSize' };
+  const VALUES = { pos, len, size } as const;
+  return (
+    <section className="mt-3 pt-3 border-t border-border">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{t(lang, 'strSettings')}</div>
+      {op === 'format' && (
+        <TextField label={t(lang, 'strFormatTmpl')} value={tmpl ?? ''}
+          onCommit={(next) => patch({ tmpl: next })} />
+      )}
+      {meta.inlineNumPorts.map((portId) => (
+        <NumberField key={portId} label={t(lang, INLINE_LABEL[portId] ?? portId)}
+          value={VALUES[portId as 'pos' | 'len' | 'size']}
+          onCommit={(v) => { if (v >= 0) { patch({ [portId]: Math.round(v) }); return true; } return false; }}
+          error={t(lang, 'invalidStep')} />
+      ))}
+      <div className="text-[10px] text-text-secondary">{t(lang, 'strInlineFallbackHint')}</div>
+      <div className="mt-1 text-[10px] text-text-muted break-all">id: {id}</div>
+    </section>
+  );
+}
+
+/// 文本下发参数 — 目标串口 / 换行 / 限速 (节点内只保留预览与发送按钮)
+function TextOutSettings({ widget, update }: {
+  widget: Extract<WidgetConfig, { kind: 'TextOut' }>;
+  update: (next: Extract<WidgetConfig, { kind: 'TextOut' }>) => void;
+}) {
+  const lang = useAppStore((s) => s.lang);
+  const nodes = useAppStore((s) => s.rfNodes);
+  const { targetTransport, newline, minIntervalMs } = widget.params;
+  const patch = (p: Partial<typeof widget.params>) =>
+    update({ kind: 'TextOut', params: { ...widget.params, ...p } });
+  const transports = nodes.filter((n) => n.type === 'transport');
+  return (
+    <section className="mt-3 pt-3 border-t border-border">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{t(lang, 'textOutSettings')}</div>
+      <SelectField label={t(lang, 'textOutTarget')} value={targetTransport}
+        options={[
+          { value: '', label: t(lang, 'textOutNoTarget') },
+          ...transports.map((n) => ({
+            value: n.id,
+            label: typeof n.data?.label === 'string' && n.data.label ? n.data.label : n.id,
+          })),
+        ]}
+        onChange={(v) => patch({ targetTransport: v })} />
+      <SelectField label={t(lang, 'textOutNewline')} value={newline}
+        options={([
+          ['none', 'textOutNlNone'],
+          ['lf', 'textOutNlLf'],
+          ['crlf', 'textOutNlCrlf'],
+          ['cr', 'textOutNlCr'],
+        ] as [typeof newline, string][]).map(([value, key]) => ({ value, label: t(lang, key) }))}
+        onChange={(v) => patch({ newline: v as typeof newline })} />
+      <NumberField label={`${t(lang, 'textOutInterval')} (ms)`} value={minIntervalMs}
+        onCommit={(v) => { if (v >= 0) { patch({ minIntervalMs: Math.round(v) }); return true; } return false; }}
+        error={t(lang, 'invalidStep')} />
+    </section>
+  );
+}
+
 export const WidgetProperties = memo(function WidgetProperties({ node }: { node: Node }) {
   const lang = useAppStore((s) => s.lang);
   const widget = useAppStore((s) => s.widgets.find((item) => item.params.id === node.id));
@@ -222,8 +367,7 @@ export const WidgetProperties = memo(function WidgetProperties({ node }: { node:
   if (!widget) return null;
   const update = (next: WidgetConfig) => updateWidget(widget.params.id, next);
   return (
-    <div className="absolute top-2 right-2 bottom-2 w-[300px] z-20 bg-bg-sidebar border border-border rounded-md shadow-lg overflow-y-auto p-3">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{widget.kind}</div>
+    <>
       <TextField label={t(lang, 'widgetName')} value={widget.params.label}
         onCommit={(label) => update({ ...widget, params: { ...widget.params, label } } as WidgetConfig)} />
       {(widget.kind === 'Knob' || widget.kind === 'Slider') && (() => {
@@ -260,8 +404,15 @@ export const WidgetProperties = memo(function WidgetProperties({ node }: { node:
       </>}
       {widget.kind === 'Label' && <TextField label={t(lang, 'labelText')} value={widget.params.text}
         onCommit={(text) => update({ kind: 'Label', params: { ...widget.params, text } })} />}
+      {widget.kind === 'TextInput' && <TextField label={t(lang, 'textInputPlaceholder')} value={widget.params.placeholder}
+        onCommit={(placeholder) => update({ kind: 'TextInput', params: { ...widget.params, placeholder } })} />}
       {widget.kind === 'Custom' && <button type="button" className="w-full h-8 mt-2 bg-bg-button text-text-inverse rounded inline-flex items-center justify-center gap-1.5"
         onClick={() => openCustomEditor(widget.params.id)}><Code2 size={14} /> {t(lang, 'customWidgetEditor')}</button>}
-    </div>
+      {widget.kind === 'FFT' && <FftSettings widget={widget} update={update} />}
+      {widget.kind === 'Filter' && <FilterSettings widget={widget} update={update} />}
+      {widget.kind === 'Str' && <StrSettings widget={widget} update={update} />}
+      {widget.kind === 'TextOut' && <TextOutSettings widget={widget} update={update} />}
+      <SizeEditor nodeId={widget.params.id} kind={widget.kind} />
+    </>
   );
 });

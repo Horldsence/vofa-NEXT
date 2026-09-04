@@ -3,7 +3,6 @@ import { Send } from 'lucide-react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
-import { isGlobalNode } from '../../../store/appStoreHelpers';
 import { api } from '../../../lib/tauri/tauri';
 import { t } from '../../../i18n';
 
@@ -12,13 +11,6 @@ interface TextOutWidgetProps {
   onRemove: () => void;
 }
 
-const NEWLINE_OPTIONS: { value: 'none' | 'lf' | 'crlf' | 'cr'; key: string }[] = [
-  { value: 'none', key: 'textOutNlNone' },
-  { value: 'lf', key: 'textOutNlLf' },
-  { value: 'crlf', key: 'textOutNlCrlf' },
-  { value: 'cr', key: 'textOutNlCr' },
-];
-
 /// 文本下发控件 (TextOut) — 动态发送回传
 ///
 /// 数据流:
@@ -26,74 +18,36 @@ const NEWLINE_OPTIONS: { value: 'none' | 'lf' | 'crlf' | 'cr'; key: string }[] =
 ///   → graph_string_outputs[id].text (通用字符串发布) → 发送 ticker 按 minIntervalMs
 ///   变化限速发往目标 Transport.tx; Send 按钮强制立即发送一次 (send_text_out_now)。
 ///
-/// 本组件提供配置 (目标 / 换行 / 间隔)、实时预览与手动发送。
+/// 配置 (目标 / 换行 / 限速) 在节点属性面板编辑; 卡片内只保留
+/// 目标只读提示、待发文本实时预览与手动发送。
 export const TextOutWidget = memo(function TextOutWidget({ widget }: TextOutWidgetProps) {
-  const { id, targetTransport, newline, minIntervalMs } = widget.params;
+  const { id, targetTransport } = widget.params;
   const lang = useAppStore((s) => s.lang);
-  const updateWidget = useAppStore((s) => s.updateWidget);
   const rfNodes = useAppStore((s) => s.rfNodes);
   // 实时预览: 通用字符串发布视图 (graph 求值与前端提交合并, 键 = node id)
   const preview = useAppStore((s) => s.customTextOutputs[id]?.text ?? '');
 
-  const transports = rfNodes.filter((n) => isGlobalNode(n) && n.type === 'transport');
-
-  const patch = (p: Partial<typeof widget.params>) =>
-    updateWidget(id, { kind: 'TextOut', params: { ...widget.params, ...p } });
+  const targetNode = rfNodes.find((n) => n.id === targetTransport);
+  const targetLabel =
+    targetNode && typeof targetNode.data?.label === 'string' && targetNode.data.label
+      ? targetNode.data.label
+      : null;
 
   return (
     <WidgetCard badge={t(lang, 'textOut')} badgeColor="orange">
       <div className="flex flex-col gap-1.5">
-        {/* 目标 Transport */}
-        <select
-          className="form-select"
-          value={targetTransport}
-          onChange={(e) => patch({ targetTransport: e.target.value })}
+        {/* 目标只读提示 (配置在属性面板) */}
+        <div
+          className={`px-1.5 py-0.5 text-[10px] font-mono truncate rounded-sm ${
+            targetLabel ? 'text-text-secondary bg-bg-subtle' : 'text-text-disabled italic'
+          }`}
           title={t(lang, 'textOutTarget')}
         >
-          <option value="">{t(lang, 'textOutNoTarget')}</option>
-          {transports.map((n) => {
-            const label =
-              typeof n.data?.label === 'string' && n.data.label ? n.data.label : n.id;
-            return (
-              <option key={n.id} value={n.id}>
-                {label}
-              </option>
-            );
-          })}
-        </select>
-
-        {/* 发送参数行: 换行 + 最小间隔 */}
-        <div className="flex items-center gap-1">
-          <select
-            className="form-select flex-1 min-w-0 text-[10px]"
-            value={newline}
-            onChange={(e) => patch({ newline: e.target.value as typeof newline })}
-            title={t(lang, 'textOutNewline')}
-          >
-            {NEWLINE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {t(lang, o.key)}
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={0}
-            step={10}
-            value={minIntervalMs}
-            onChange={(e) => {
-              const n = parseInt(e.target.value, 10);
-              if (!Number.isFinite(n) || n < 0) return;
-              patch({ minIntervalMs: n });
-            }}
-            title={t(lang, 'textOutInterval')}
-            className="w-14 px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono text-right focus:outline-none focus:border-accent"
-          />
-          <span className="text-[9px] text-text-secondary flex-shrink-0">ms</span>
+          → {targetLabel ?? t(lang, 'textOutNoTarget')}
         </div>
 
         {/* 待发文本实时预览 + 手动发送 */}
-        <div className="flex items-stretch gap-1 border-t border-dashed border-border pt-1.5 mt-0.5">
+        <div className="flex items-stretch gap-1">
           <div
             className="flex-1 px-1.5 py-1 bg-bg-input border border-border rounded-sm text-xs font-mono text-text-primary break-all whitespace-pre-wrap max-h-[60px] overflow-auto"
             title={preview}

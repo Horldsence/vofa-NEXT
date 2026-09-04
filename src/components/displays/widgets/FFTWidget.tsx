@@ -1,8 +1,6 @@
-import { memo, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { memo } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
-import { chipClass } from '../../ui/chip';
-import type { WidgetConfig, WindowType, SpectrumOutput } from '../../../types';
+import type { WidgetConfig, SpectrumOutput } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { useNumericInput } from '../../../lib/hooks/useNumericPort';
 import { t } from '../../../i18n';
@@ -13,24 +11,13 @@ interface FFTWidgetProps {
   onEdit?: () => void;
 }
 
-/// 窗口大小选项 (2 的幂)
-const WINDOW_SIZE_OPTIONS = [256, 512, 1024, 2048, 4096];
-
-/// 窗函数选项
-const WINDOW_TYPE_OPTIONS: { value: WindowType; labelKey: string }[] = [
-  { value: 'Rect', labelKey: 'windowRect' },
-  { value: 'Hann', labelKey: 'windowHann' },
-  { value: 'Hamming', labelKey: 'windowHamming' },
-  { value: 'Blackman', labelKey: 'windowBlackman' },
-];
-
-/// 输出模式选项
-const OUTPUT_OPTIONS: { value: SpectrumOutput; labelKey: string }[] = [
-  { value: 'Magnitude', labelKey: 'spectrumMagnitude' },
-  { value: 'Power', labelKey: 'spectrumPower' },
-  { value: 'PSD', labelKey: 'spectrumPSD' },
-  { value: 'Decibel', labelKey: 'spectrumDecibel' },
-];
+/// 输出模式选项 (badge 摘要用; 编辑入口在节点属性面板)
+const OUTPUT_LABEL: Record<SpectrumOutput, string> = {
+  Magnitude: 'spectrumMagnitude',
+  Power: 'spectrumPower',
+  PSD: 'spectrumPSD',
+  Decibel: 'spectrumDecibel',
+};
 
 /// FFT 频域求解器 — 输入时域信号 in0, 输出频谱到专用频谱数据通道
 ///
@@ -39,31 +26,16 @@ const OUTPUT_OPTIONS: { value: SpectrumOutput; labelKey: string }[] = [
 ///   2. 后端 SpectrumAnalyzer 维护滑动窗口, 30 FPS 触发 FFT
 ///   3. 结果以本 widget id 为 key 存入 spectrumResults
 ///   4. 下游「频谱」展示控件选择本求解器 id 作为数据源读取并绘制
+///
+/// 设置 (windowSize/windowType/output/sampleRate) 在节点属性面板编辑,
+/// 卡片内只保留主峰频率与输入值显示。
 export const FFTWidget = memo(function FFTWidget({ widget, onEdit }: FFTWidgetProps) {
-  const { windowSize, windowType, output, sampleRate, id } = widget.params;
+  const { windowSize, output, id } = widget.params;
   const result = useAppStore((s) => s.spectrumResults[id]);
-  const updateWidget = useAppStore((s) => s.updateWidget);
   const lang = useAppStore((s) => s.lang);
-  const [showSettings, setShowSettings] = useState(false);
 
   // 输入端口值 (时域) — 用于显示
   const inputValue = useNumericInput(id, 'in0').latest?.value ?? 0;
-
-  const handleChange = <K extends 'windowSize' | 'windowType' | 'output' | 'sampleRate'>(
-    field: K,
-    value: FFTWidgetProps['widget']['params'][K]
-  ) => {
-    updateWidget(id, {
-      kind: 'FFT',
-      params: { ...widget.params, [field]: value },
-    });
-  };
-
-  const handleSampleRateChange = (value: string) => {
-    const num = parseFloat(value);
-    if (!Number.isFinite(num) || num <= 0) return;
-    handleChange('sampleRate', num);
-  };
 
   // 主峰 (频率, 幅值) — 展示求解器已产出频谱时给出可读反馈
   const peak = (() => {
@@ -76,7 +48,7 @@ export const FFTWidget = memo(function FFTWidget({ widget, onEdit }: FFTWidgetPr
     return { freq: frequencies[idx] ?? 0, value: values[idx] };
   })();
 
-  const badge = `${windowSize} · ${t(lang, OUTPUT_OPTIONS.find((o) => o.value === output)?.labelKey ?? 'spectrumMagnitude')}`;
+  const badge = `${windowSize} · ${t(lang, OUTPUT_LABEL[output] ?? 'spectrumMagnitude')}`;
 
   return (
     <WidgetCard badge={badge} badgeColor="purple" className="border-[#ba68c8]" onEdit={onEdit}>
@@ -96,72 +68,6 @@ export const FFTWidget = memo(function FFTWidget({ widget, onEdit }: FFTWidgetPr
           <span className="text-text-secondary">in</span>
           <span className="text-text-primary font-mono">{inputValue.toFixed(3)}</span>
         </div>
-        <button
-          className="flex items-center justify-center gap-1 bg-transparent border border-border text-text-secondary px-1.5 py-0.5 rounded-sm text-[10px] cursor-pointer mt-0.5 hover:bg-bg-hover hover:text-text-primary transition-colors"
-          onClick={() => setShowSettings((v) => !v)}
-          title={t(lang, 'settings')}
-        >
-          {showSettings ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-          <span>{t(lang, 'fftSettings')}</span>
-        </button>
-        {showSettings && (
-          <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim rounded-sm border border-border">
-            <div className="grid grid-cols-[60px_1fr] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'spectrumWindowSize')}</label>
-              <div className="flex flex-wrap gap-0.5">
-                {WINDOW_SIZE_OPTIONS.map((sz) => (
-                  <button
-                    key={sz}
-                    className={chipClass(windowSize === sz)}
-                    onClick={() => handleChange('windowSize', sz)}
-                  >
-                    {sz}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'spectrumWindowType')}</label>
-              <div className="flex flex-wrap gap-0.5">
-                {WINDOW_TYPE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={chipClass(windowType === opt.value)}
-                    onClick={() => handleChange('windowType', opt.value)}
-                  >
-                    {t(lang, opt.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-[60px_1fr] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'spectrumOutputMode')}</label>
-              <div className="flex flex-wrap gap-0.5">
-                {OUTPUT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={chipClass(output === opt.value)}
-                    onClick={() => handleChange('output', opt.value)}
-                  >
-                    {t(lang, opt.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'filterSampleRate')}</label>
-              <input
-                type="number"
-                value={sampleRate}
-                onChange={(e) => handleSampleRateChange(e.target.value)}
-                min={1}
-                step={1}
-                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
-              />
-              <span className="text-text-secondary text-[10px]">Hz</span>
-            </div>
-          </div>
-        )}
       </div>
     </WidgetCard>
   );

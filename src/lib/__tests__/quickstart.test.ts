@@ -56,8 +56,12 @@ describe('快速开始模板', () => {
       expect(snap.controlTabs?.[0]?.id).toBe('default');
       expect(snap.dataTabs?.some((t) => t.id === 'waveform-fixed')).toBe(true);
       expect(snap.dockCards?.['control-main']?.tabIds).toContain('default');
+      // 属性面板 tab 由专属卡承载, 其余数据 tab 进 data-main
+      expect(snap.dockCards?.['properties-main']?.tabIds).toEqual(['node-properties-fixed']);
       expect(snap.dockCards?.['data-main']?.tabIds).toEqual(
-        expect.arrayContaining(snap.dataTabs?.map((t) => t.id) ?? [])
+        expect.arrayContaining(
+          (snap.dataTabs?.map((t) => t.id) ?? []).filter((id) => id !== 'node-properties-fixed')
+        )
       );
     }
   });

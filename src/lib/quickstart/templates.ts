@@ -8,6 +8,7 @@
 
 import { type Node, type Edge } from '@xyflow/react';
 import { createWidget } from '../utils/createWidget';
+import { WIDGET_DEFAULT_WIDTH } from '../utils/widgetSize';
 import { ALL_BACKUP_SECTIONS, type AppSnapshot } from '../tauri/appExport';
 import { schemaFromProtocolConfig } from '../utils/protocolSchema';
 import { rawDataPortId } from '../utils/nodeDef';
@@ -38,7 +39,7 @@ function widget(
 
 /// 控件节点
 function wnode(id: string, w: WidgetConfig, x: number, y: number): Node {
-  return { id, type: 'widget', position: { x, y }, data: { widget: w, tabId: TAB } };
+  return { id, type: 'widget', position: { x, y }, width: WIDGET_DEFAULT_WIDTH, data: { widget: w, tabId: TAB } };
 }
 
 /// 边
@@ -88,6 +89,14 @@ const WAVEFORM_FIXED: DataTab = {
   closable: false,
 };
 
+/// 节点属性面板 Tab — 默认布局的专属卡承载 (与 dockStore defaultRoot 同形)
+const NODE_PROPERTIES_FIXED: DataTab = {
+  id: 'node-properties-fixed',
+  type: 'node-properties',
+  name: 'Properties',
+  closable: true,
+};
+
 /// 部分控件会派生一个数据 Tab (Waveform/Spectrum/RawData)
 function derivedDataTab(w: WidgetConfig): DataTab | null {
   switch (w.kind) {
@@ -102,7 +111,8 @@ function derivedDataTab(w: WidgetConfig): DataTab | null {
   }
 }
 
-/// 默认 Dock 布局: 上控件卡 / 下数据卡
+/// 默认 Dock 布局: 上方左侧画布 | 右侧属性面板 (较小), 下方数据面板
+/// (与 dockStore defaultRoot 同形 — 两处需保持一致)
 function buildDock(
   controlTabIds: string[],
   dataTabIds: string[],
@@ -115,11 +125,19 @@ function buildDock(
       tabIds: controlTabIds,
       activeTabId: controlTabIds[0] ?? null,
     },
+    // data-main 先于 properties-main — reconcile 安置无家可归 tab 时取「第一张
+    // 该 kind 卡片」(插入序), 属性专属卡不应收容其他数据 tab
     'data-main': {
       id: 'data-main',
       kind: 'data',
       tabIds: dataTabIds,
       activeTabId: activeDataTabId ?? dataTabIds[0] ?? null,
+    },
+    'properties-main': {
+      id: 'properties-main',
+      kind: 'data',
+      tabIds: ['node-properties-fixed'],
+      activeTabId: 'node-properties-fixed',
     },
   };
   const root: DockNode = {
@@ -127,10 +145,19 @@ function buildDock(
     type: 'split',
     dir: 'col',
     children: [
-      { id: 'node-control', type: 'card', cardId: 'control-main' },
+      {
+        id: 'split-top',
+        type: 'split',
+        dir: 'row',
+        children: [
+          { id: 'node-control', type: 'card', cardId: 'control-main' },
+          { id: 'node-props', type: 'card', cardId: 'properties-main' },
+        ],
+        sizes: [72, 28],
+      },
       { id: 'node-data', type: 'card', cardId: 'data-main' },
     ],
-    sizes: [45, 55],
+    sizes: [55, 45],
   };
   return { dockRoot: root, dockCards: cards };
 }
@@ -161,11 +188,12 @@ function buildSnapshot(opts: {
     if (t && !derivedTabs.some((x) => x.id === t.id)) derivedTabs.push(t);
   }
   const extraTabs = opts.extraDataTabs ?? [];
-  const dataTabs: DataTab[] = [WAVEFORM_FIXED, ...derivedTabs, ...extraTabs];
+  const dataTabs: DataTab[] = [WAVEFORM_FIXED, NODE_PROPERTIES_FIXED, ...derivedTabs, ...extraTabs];
   const activeDataTabId = TEMPLATE_DEFAULT_ACTIVE_DATA_TAB;
   const { dockRoot, dockCards } = buildDock(
     [TAB],
-    dataTabs.map((t) => t.id),
+    // 属性面板 tab 由专属卡 (properties-main) 承载, 不进数据卡
+    dataTabs.map((t) => t.id).filter((id) => id !== NODE_PROPERTIES_FIXED.id),
     activeDataTabId
   );
 

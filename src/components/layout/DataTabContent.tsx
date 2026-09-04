@@ -15,6 +15,7 @@ import {
   AlertTriangle as AlertTriangleIcon,
   ListTree as ListTreeIcon,
   History as HistoryIcon,
+  Settings2 as SettingsIcon,
 } from 'lucide-react';
 import { WaveformChart } from '../displays/waveform/WaveformChart';
 import { RawDataView } from '../displays/rawdata/RawDataView';
@@ -27,6 +28,7 @@ import { LogicView } from '../displays/logic/LogicView';
 import { CompileErrorsView } from '../displays/compileErrors/CompileErrorsView';
 import { CompileResultsView } from '../displays/compileResults/CompileResultsView';
 import { OperationHistoryView } from '../displays/history/OperationHistoryView';
+import { NodePropertiesPanel } from '../nodes/NodePropertiesPanel';
 import { FrameDecoder } from '../displays/decoder/FrameDecoder';
 import { Trigger } from '../controls/Trigger';
 import { TableView } from '../displays/widgets/TableView';
@@ -245,6 +247,11 @@ const operationHistoryTabContent = (
     <OperationHistoryView />
   </div>
 );
+const nodePropertiesTabContent = (
+  <div className="flex h-full w-full">
+    <NodePropertiesPanel />
+  </div>
+);
 
 /// 单个数据 Tab 的内容渲染器 — 由 DockCardFrame 挂载, 可被多个卡片各自实例化
 /// 波形 Tab 的 axisConfig / measurements 按 widgetId 存于 waveformScopeStore,
@@ -440,6 +447,8 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       return compileResultsTabContent;
     case 'operation-history':
       return operationHistoryTabContent;
+    case 'node-properties':
+      return nodePropertiesTabContent;
     case 'table-view': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'TableView'
@@ -503,6 +512,8 @@ export function DataTabIcon({ type, size = 12 }: { type: string; size?: number }
       return <ListTreeIcon size={size} />;
     case 'operation-history':
       return <HistoryIcon size={size} />;
+    case 'node-properties':
+      return <SettingsIcon size={size} />;
     default:
       return null;
   }

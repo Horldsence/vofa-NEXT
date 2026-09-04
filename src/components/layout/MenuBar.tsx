@@ -7,7 +7,7 @@ import { useAppStore } from '../../store/appStore';
 import { useHistoryStore } from '../../store/historyStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { getAvailableDataPanelEntries, type DataPanelEntry } from '../../store/slices/dataTabs';
-import { openDataPanelAndReveal } from '../../lib/utils/revealDataTab';
+import { openDataPanelAndReveal, openNodePropertiesPanel } from '../../lib/utils/revealDataTab';
 import { t, type Lang } from '../../i18n';
 
 const APP_GITHUB = 'https://github.com/Horldsence/vofa-NEXT';
@@ -92,7 +92,14 @@ function buildMenus(lang: Lang, historyFlags: { canUndo: boolean; canRedo: boole
     id: `panel-${e.type}`,
     label: e.available ? L(e.labelKey) : `${L(e.labelKey)} (${L('panelOpenNoWidget')})`,
     disabled: !e.available,
-    onClick: () => openDataPanelAndReveal(e.open),
+    onClick: () => {
+      // 属性面板: 创建时同步在画布右侧拆分专属小卡 (非并入数据卡)
+      if (e.type === 'node-properties') {
+        openNodePropertiesPanel();
+        return;
+      }
+      openDataPanelAndReveal(e.open);
+    },
   });
   const standalone = entries.filter((e) => e.group === 'standalone').map(entryToMenu);
   const derived = entries.filter((e) => e.group === 'derived').map(entryToMenu);

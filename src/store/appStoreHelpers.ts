@@ -31,6 +31,7 @@ import {
   normalizeWidgetConfig,
   widgetInputValue,
 } from '../lib/utils/createWidget';
+import { WIDGET_DEFAULT_WIDTH } from '../lib/utils/widgetSize';
 import type {
   DataTab,
   WidgetConfig,
@@ -245,7 +246,12 @@ async function doSyncTabGraphOnce(
   const positions: Record<string, PositionPayload> = {};
   for (const n of state.rfNodes) {
     if (!tabNodeIds.has(n.id)) continue;
-    positions[n.id] = { x: n.position.x, y: n.position.y };
+    positions[n.id] = {
+      x: n.position.x,
+      y: n.position.y,
+      ...(n.width != null ? { width: n.width } : {}),
+      ...(n.height != null ? { height: n.height } : {}),
+    };
   }
 
   try {
@@ -468,10 +474,17 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
           cur?.kind !== widget.kind || !jsonDeepEqual(cur.params, widget.params);
         const posChanged =
           pos != null && (existing.position.x !== pos.x || existing.position.y !== pos.y);
-        if (configChanged || posChanged) {
+        const sizeChanged =
+          pos != null &&
+          ((pos.width ?? null) !== (existing.width ?? null) ||
+            (pos.height ?? null) !== (existing.height ?? null));
+        if (configChanged || posChanged || sizeChanged) {
           nodeUpdates.set(rec.id, {
             ...existing,
             position: pos ?? existing.position,
+            ...(pos?.width != null || pos?.height != null
+              ? { width: pos.width ?? existing.width, height: pos.height ?? existing.height }
+              : {}),
             data: { ...existing.data, widget },
           });
           widgetUpdates.set(rec.id, widget);
@@ -482,6 +495,8 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
           id: rec.id,
           type: 'widget',
           position: pos ?? { x: 240 + Math.random() * 100, y: 80 + Math.random() * 80 },
+          width: pos?.width ?? WIDGET_DEFAULT_WIDTH,
+          ...(pos?.height != null ? { height: pos.height } : {}),
           data: { widget, tabId: event.tab_id },
         });
         addedWidgetConfigs.push(widget);
@@ -506,14 +521,23 @@ export function adoptSourceGraph(event: GraphSourceEventPayload): void {
     if (node) addedGlobalNodes.push(node);
   }
 
-  // 3. 位置跟随 — 已存在节点的画布位置按事件位置表更新
+  // 3. 位置跟随 — 已存在节点的画布位置按事件位置表更新 (含显式尺寸)
   const posUpdates = new Map<string, Node>();
   if (positions) {
     for (const n of state.rfNodes) {
       if (nodeUpdates.has(n.id)) continue; // 配置更新已携带最新位置
       const pos = positions[n.id];
-      if (!pos || (n.position.x === pos.x && n.position.y === pos.y)) continue;
-      posUpdates.set(n.id, { ...n, position: pos });
+      if (!pos) continue;
+      const sizeChanged =
+        (pos.width ?? null) !== (n.width ?? null) || (pos.height ?? null) !== (n.height ?? null);
+      if (!sizeChanged && n.position.x === pos.x && n.position.y === pos.y) continue;
+      posUpdates.set(n.id, {
+        ...n,
+        position: pos,
+        ...(pos.width != null || pos.height != null
+          ? { width: pos.width ?? n.width, height: pos.height ?? n.height }
+          : {}),
+      });
     }
   }
 
@@ -765,10 +789,15 @@ export async function hydrateWorkspaceFromBackend(): Promise<boolean> {
       // 未知 kind 落为占位控件 — 画布是后端状态的投影, 不因前端不认识而丢弃
       const widget = widgetOrPlaceholder(rec);
       widgets.push(widget);
+      const pos = snap.positions[rec.id];
       widgetNodes.push({
         id: rec.id,
         type: 'widget',
-        position: snap.positions[rec.id] ?? { x: 240, y: 80 },
+        position: pos ?? { x: 240, y: 80 },
+        // 显式宽度统一兜底 (旧工作区无尺寸记录) — 布局确定可复现;
+        // height 缺省 = 随内容自适应
+        width: pos?.width ?? WIDGET_DEFAULT_WIDTH,
+        ...(pos?.height != null ? { height: pos.height } : {}),
         data: { widget, tabId: g.tab_id },
       });
     }
@@ -804,6 +833,8 @@ export async function hydrateWorkspaceFromBackend(): Promise<boolean> {
   for (const ft of [
     { id: 'compile-errors-fixed', type: 'compile-errors', name: 'Compile Errors', closable: false },
     { id: 'compile-results-fixed', type: 'compile-results', name: 'Compile Results', closable: false },
+    // 旧工作区快照无属性面板 tab — 兜底补入 (默认布局卡片按 id 承载它)
+    { id: 'node-properties-fixed', type: 'node-properties', name: 'Properties', closable: true },
   ] as DataTab[]) {
     if (!dataTabs.some((t) => t.id === ft.id)) dataTabs.push(ft);
   }

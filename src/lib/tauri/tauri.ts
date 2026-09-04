@@ -43,10 +43,14 @@ export interface SourceNodeHintPayload {
   raw_data?: boolean;
 }
 
-/// 画布坐标 — 与后端 `app_state::Position` / React Flow `node.position` 同形
+/// 画布坐标 — 与后端 `app_state::Position` / React Flow `node.position` 同形。
+/// `width`/`height` 是用户显式调整后的节点尺寸 (缺省 = 随内容自适应),
+/// 旧工作区文件无此字段, 后端 serde default 兜底。
 export interface PositionPayload {
   x: number;
   y: number;
+  width?: number;
+  height?: number;
 }
 
 /// widget 配置记录 — 与后端 `app_state::WidgetRecord` 同形。

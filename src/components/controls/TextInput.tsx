@@ -3,10 +3,10 @@
 // 节点内文本框, 内容作为参数 text 经 update_tab_graph 同步到后端;
 // 后端每帧原样写入字符串平面 out_str[id]["str"] (唯一输出端口 str, string 域),
 // 供下游 Str/TextDisplay 等控件连线消费。不做串口发送, 无发送按钮。
+// 名称 (label) 与 placeholder 在节点属性面板编辑, 卡片内只留文本输入。
 
 import { memo } from 'react';
 import { useAppStore } from '../../store/appStore';
-import { t } from '../../i18n';
 import { WidgetCard } from '../ui/WidgetCard';
 import type { WidgetConfig } from '../../types';
 
@@ -19,16 +19,10 @@ interface TextInputProps {
 export const TextInput = memo(function TextInput({ widget, onRemove }: TextInputProps) {
   const { id, label, text, placeholder } = widget.params;
   const updateWidget = useAppStore((s) => s.updateWidget);
-  const lang = useAppStore((s) => s.lang);
 
   // 文本变化 → updateWidget → syncTabGraph (后端重编译即生效, 无需额外 IPC)
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     updateWidget(id, { kind: 'TextInput', params: { ...widget.params, text: e.target.value } });
-  };
-
-  // label 编辑 (与 Trigger 全局设置一致: 直接写回 params.label)
-  const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    updateWidget(id, { kind: 'TextInput', params: { ...widget.params, label: e.target.value } });
   };
 
   return (
@@ -41,15 +35,6 @@ export const TextInput = memo(function TextInput({ widget, onRemove }: TextInput
         spellCheck={false}
         onChange={handleChange}
       />
-      <div className="grid grid-cols-[40px_1fr] items-center gap-2">
-        <label className="text-[10px] text-text-secondary">{t(lang, 'cmdLabel')}</label>
-        <input
-          type="text"
-          value={label}
-          onChange={handleLabelChange}
-          className="text-xs w-full px-2 py-1 bg-bg-input text-text-primary border border-border rounded-sm focus:outline-none focus:border-accent transition-colors"
-        />
-      </div>
     </WidgetCard>
   );
 });

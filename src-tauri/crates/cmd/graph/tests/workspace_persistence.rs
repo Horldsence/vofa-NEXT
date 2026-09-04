@@ -65,7 +65,7 @@ async fn workspace_survives_save_and_restore_roundtrip() {
         .workspace
         .lock()
         .positions
-        .insert("w-gauge".into(), Position { x: 12.5, y: 40.0 });
+        .insert("w-gauge".into(), Position::new(12.5, 40.0));
     apply_tab_graph(
         &state,
         None,
@@ -80,10 +80,7 @@ async fn workspace_survives_save_and_restore_roundtrip() {
         }],
         HashMap::new(),
         Some(vec![gauge_record("w-gauge")]),
-        Some(HashMap::from([(
-            "m1".to_string(),
-            Position { x: 1.0, y: 2.0 },
-        )])),
+        Some(HashMap::from([("m1".to_string(), Position::new(1.0, 2.0))])),
         None,
     )
     .await
@@ -185,7 +182,7 @@ async fn remove_tab_graph_prunes_orphan_positions() {
         None,
         Some(HashMap::from([(
             "w-gauge".to_string(),
-            Position { x: 3.0, y: 4.0 },
+            Position::new(3.0, 4.0),
         )])),
         None,
     )

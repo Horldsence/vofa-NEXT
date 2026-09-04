@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, type CSSProperties } from 'react';
+import { memo, useEffect, useMemo, useRef, type CSSProperties } from 'react';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useAppStore } from '../../store/appStore';
 import {
@@ -9,6 +9,7 @@ import {
   type DropTarget,
   type SnapEdge,
 } from '../../store/dockStore';
+import { NODE_PROPERTIES_TAB_ID } from '../../types';
 import { DockCardFrame } from './DockCardFrame';
 
 /// 百分比矩形 (相对于中央区容器)
@@ -120,6 +121,17 @@ export const DockLayout = memo(function DockLayout() {
   const controlTabs = useAppStore((s) => s.controlTabs);
   const dataTabs = useAppStore((s) => s.dataTabs);
   const reconcile = useDockStore((s) => s.reconcile);
+
+  // 属性面板专属卡 — 旧持久化布局没有这张卡, tab 初始就在 dataTabs 里,
+  // 若不抢先安置会被下方 reconcile 塞进数据卡。启动时先按「画布右侧拆分
+  // 较小新卡」停靠 (已安置则 no-op, 尊重用户手动安排), 再跑常规 reconcile。
+  const didDockProperties = useRef(false);
+  const dockPropertiesTab = useDockStore((s) => s.dockPropertiesTab);
+  useEffect(() => {
+    if (didDockProperties.current) return;
+    didDockProperties.current = true;
+    dockPropertiesTab(NODE_PROPERTIES_TAB_ID);
+  }, [dockPropertiesTab]);
 
   useEffect(() => {
     reconcile('control', controlTabs.map((tab) => tab.id));

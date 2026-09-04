@@ -1,5 +1,4 @@
-import { memo, useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { memo } from 'react';
 import { WidgetCard } from '../../ui/WidgetCard';
 import type { WidgetConfig, FilterPresetKind } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
@@ -13,13 +12,13 @@ interface FilterWidgetProps {
   onEdit?: () => void;
 }
 
-/// 预设类型选项 (与 Rust FilterPreset 对应)
-const PRESET_OPTIONS: { value: FilterPresetKind; labelKey: string }[] = [
-  { value: 'Lowpass', labelKey: 'filterLowpass' },
-  { value: 'Highpass', labelKey: 'filterHighpass' },
-  { value: 'Bandpass', labelKey: 'filterBandpass' },
-  { value: 'Bandstop', labelKey: 'filterBandstop' },
-];
+/// 预设类型 badge 标签 (编辑入口在节点属性面板)
+const PRESET_LABEL: Record<FilterPresetKind, string> = {
+  Lowpass: 'filterLowpass',
+  Highpass: 'filterHighpass',
+  Bandpass: 'filterBandpass',
+  Bandstop: 'filterBandstop',
+};
 
 /// 滤波器控件 — 显示后端图评估的滤波结果
 ///
@@ -30,13 +29,12 @@ const PRESET_OPTIONS: { value: FilterPresetKind; labelKey: string }[] = [
 ///   2. 后端 graph_output_ticker 每 16ms 将所有节点输出快照推送至前端
 ///   3. 本组件直接读 graphOutputs[id].result 显示结果
 ///
-/// 配置变更 (preset/cutoff/sampleRate) → updateWidget → syncTabGraph
-/// → 后端重建 DigitalFilter (kind 变化触发状态重置, 符合滤波器语义)
+/// 配置变更 (preset/cutoff/sampleRate 等) 在节点属性面板编辑 → updateWidget
+/// → syncTabGraph → 后端重建 DigitalFilter (kind 变化触发状态重置, 符合滤波器语义)。
+/// 卡片内只保留结果 / 输入值显示。
 export const FilterWidget = memo(function FilterWidget({ widget, onEdit }: FilterWidgetProps) {
-  const { preset, cutoff, low, high, sampleRate, precision, id } = widget.params;
-  const updateWidget = useAppStore((s) => s.updateWidget);
+  const { preset, precision, id } = widget.params;
   const lang = useAppStore((s) => s.lang);
-  const [showSettings, setShowSettings] = useState(false);
 
   // 读取输入端口值 (用于显示)
   const input = useNumericInput(id, 'in0');
@@ -45,23 +43,7 @@ export const FilterWidget = memo(function FilterWidget({ widget, onEdit }: Filte
   const output = useNumericOutput(id, 'result');
   const result = output.latest?.value ?? 0;
 
-  const handlePresetChange = (newPreset: FilterPresetKind) => {
-    updateWidget(id, {
-      kind: 'Filter',
-      params: { ...widget.params, preset: newPreset },
-    });
-  };
-
-  const handleNumberChange = (field: 'cutoff' | 'low' | 'high' | 'sampleRate', value: string) => {
-    const num = parseFloat(value);
-    if (!Number.isFinite(num) || num <= 0) return;
-    updateWidget(id, {
-      kind: 'Filter',
-      params: { ...widget.params, [field]: num },
-    });
-  };
-
-  const presetLabel = t(lang, PRESET_OPTIONS.find((o) => o.value === preset)?.labelKey ?? 'filterLowpass');
+  const presetLabel = t(lang, PRESET_LABEL[preset] ?? 'filterLowpass');
 
   return (
     <WidgetCard badge={presetLabel} badgeColor="orange" className="border-[#ff8c42]" onEdit={onEdit}>
@@ -76,86 +58,6 @@ export const FilterWidget = memo(function FilterWidget({ widget, onEdit }: Filte
           <span className="text-text-primary font-mono">{inputValue.toFixed(precision)}</span>
         </div>
         <div className="text-center"><NumericPortStatus state={output} /></div>
-        <button
-          className="flex items-center justify-center gap-1 bg-transparent border border-border text-text-secondary px-1.5 py-0.5 rounded-sm text-[10px] cursor-pointer mt-0.5 hover:bg-bg-hover hover:text-text-primary transition-colors"
-          onClick={() => setShowSettings((v) => !v)}
-          title={t(lang, 'settings')}
-        >
-          {showSettings ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-          <span>{t(lang, 'filterSettings')}</span>
-        </button>
-        {showSettings && (
-          <div className="flex flex-col gap-1.5 p-1.5 bg-bg-scrim rounded-sm border border-border">
-            <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'filterPreset')}</label>
-              <div className="grid grid-cols-2 gap-0.5 col-span-2">
-                {PRESET_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={`px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-secondary text-[10px] cursor-pointer transition-colors hover:border-[#ff8c42] hover:text-[#ff8c42] ${preset === opt.value ? 'bg-[#ff8c42]/20 border-[#ff8c42] text-[#ff8c42]' : ''}`}
-                    onClick={() => handlePresetChange(opt.value)}
-                  >
-                    {t(lang, opt.labelKey)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {(preset === 'Lowpass' || preset === 'Highpass') && (
-              <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
-                <label className="text-text-secondary">{t(lang, 'filterCutoff')}</label>
-                <input
-                  type="number"
-                  value={cutoff}
-                  onChange={(e) => handleNumberChange('cutoff', e.target.value)}
-                  min={0}
-                  step={1}
-                  className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
-                />
-                <span className="text-text-secondary text-[10px]">Hz</span>
-              </div>
-            )}
-            {(preset === 'Bandpass' || preset === 'Bandstop') && (
-              <>
-                <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
-                  <label className="text-text-secondary">{t(lang, 'filterLow')}</label>
-                  <input
-                    type="number"
-                    value={low}
-                    onChange={(e) => handleNumberChange('low', e.target.value)}
-                    min={0}
-                    step={1}
-                    className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-text-secondary text-[10px]">Hz</span>
-                </div>
-                <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
-                  <label className="text-text-secondary">{t(lang, 'filterHigh')}</label>
-                  <input
-                    type="number"
-                    value={high}
-                    onChange={(e) => handleNumberChange('high', e.target.value)}
-                    min={0}
-                    step={1}
-                    className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
-                  />
-                  <span className="text-text-secondary text-[10px]">Hz</span>
-                </div>
-              </>
-            )}
-            <div className="grid grid-cols-[60px_1fr_auto] items-center gap-1.5 text-[10px]">
-              <label className="text-text-secondary">{t(lang, 'filterSampleRate')}</label>
-              <input
-                type="number"
-                value={sampleRate}
-                onChange={(e) => handleNumberChange('sampleRate', e.target.value)}
-                min={1}
-                step={1}
-                className="w-full px-1 py-0.5 bg-bg-input border border-border rounded-sm text-text-primary text-xs font-mono focus:outline-none focus:border-accent"
-              />
-              <span className="text-text-secondary text-[10px]">Hz</span>
-            </div>
-          </div>
-        )}
       </div>
     </WidgetCard>
   );

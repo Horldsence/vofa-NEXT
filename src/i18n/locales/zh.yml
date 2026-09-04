@@ -106,6 +106,15 @@ release: 释放
 options: 选项
 widgetName: 控件名称
 nodeRenameHint: 双击标题栏修改名称
+nodeSize: 节点尺寸
+nodeWidth: 宽
+nodeHeight: 高
+sizeAuto: 自适应
+resetSize: 重置大小
+nodeSizeMinHint: 最小 {w} × {h}
+propertiesClose: 关闭属性面板
+nodeProperties: 属性面板
+nodePropertiesEmpty: 未选中节点 — 点击画布中的节点查看属性
 currentValue: 当前值
 labelText: 标签正文
 optionValue: 返回值
@@ -763,6 +772,11 @@ strReverse: 反转
 strReverseDesc: 按字符反转字符串
 strFormat: 格式化
 strFormatDesc: 按模板格式化数值 ({N} 引用第 N 路, {N:.2} 定精度)
+strSettings: 字符串设置
+strFormatTmpl: 格式模板
+strInlineFallbackHint: 端口未连接时的回退值 (已连接时以上游为准)
+textInputPlaceholder: 占位提示
+textOutSettings: 发送设置
 strParse: 解析数值
 strParseDesc: 从文本扫描首个数字 (十进制 / 0x 十六进制), 未命中返回 0
 strEncodeHex: HEX 编码
@@ -1180,6 +1194,7 @@ dataTabCommand: 命令发送
 dataTabFrameDecoder: 帧解码
 dataTabTrigger: 触发器
 menuPanelOpenOperationHistory: 打开操作历史
+menuPanelOpenNodeProperties: 打开属性面板
 operationHistoryTitle: 操作历史
 opHistoryInitial: 初始状态
 opHistoryEmpty: 暂无操作记录。
@@ -1193,6 +1208,7 @@ opUpdateWidgetParams: 调整控件参数
 opConnectNodes: 添加连线
 opDeleteEdges: 删除连线
 opMoveNodes: 移动节点
+opResizeNodes: 调整控件大小
 opRemoveNodes: 删除节点
 opAddTransportNode: 添加传输节点
 opAddProtocolNode: 添加协议节点

@@ -54,6 +54,8 @@ export interface GraphSlice {
   removeGlobalNode: (nodeId: string) => void;
   /// 更新 Transport 节点配置 (节点 data + 全 tab 图同步)
   setTransportNodeConfig: (nodeId: string, config: TransportConfig) => void;
+  /// 设置控件节点显式尺寸 (属性面板数字输入; undefined = 恢复内容自适应)
+  setWidgetNodeSize: (nodeId: string, size: { width?: number; height?: number }) => void;
   /// 初始图种子: 设备(TestData) → 协议解析(JustFloat) → RawData — 新用户开箱即有完整数据通路
   seedInitialGraph: (rawDataWidgetId: string) => void;
 }
@@ -78,6 +80,24 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
     }
     if (touchesGlobal) return state.controlTabs.map((t) => t.id);
     return [...tabs];
+  };
+
+  /** 上报节点布局 (位置 + 显式尺寸) 到后端工作区 — 轻量路径, 不触发编译 */
+  const persistNodeLayouts = (nodeIds: string[]): void => {
+    const layouts: Record<string, { x: number; y: number; width?: number; height?: number }> = {};
+    for (const id of nodeIds) {
+      const node = get().rfNodes.find((n: Node) => n.id === id);
+      if (!node) continue;
+      layouts[id] = {
+        x: node.position.x,
+        y: node.position.y,
+        ...(node.width != null ? { width: node.width } : {}),
+        ...(node.height != null ? { height: node.height } : {}),
+      };
+    }
+    if (Object.keys(layouts).length) {
+      void api.setNodePositions(layouts).catch(() => { return undefined; });
+    }
   };
 
   return {
@@ -187,6 +207,29 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
         { coalesceKey: `transport.config.${nodeId}` }
       ),
 
+    setWidgetNodeSize: (nodeId, size) =>
+      withHistoryOp(
+        {
+          opKey: 'opResizeNodes',
+          target: (() => {
+            const ref = refOf(nodeId);
+            return ref ? { kind: 'node', node: ref } : { kind: 'nodes' };
+          })(),
+        },
+        () => {
+          set((s) => ({
+            rfNodes: s.rfNodes.map((n: Node) =>
+              n.id === nodeId
+                ? { ...n, width: size.width ?? undefined, height: size.height ?? undefined }
+                : n
+            ),
+          }));
+          persistNodeLayouts([nodeId]);
+        },
+        // 宽/高两字段连续提交 — 合并为一条
+        { coalesceKey: `node.size.${nodeId}` }
+      ),
+
     seedInitialGraph: (rawDataWidgetId) => {
       // 默认设备选 TestData — 新用户无硬件也能连接后立即看到数据
       const transport = createTransportNode('TestData', { x: 60, y: 100 });
@@ -200,10 +243,14 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
     onNodesChange: (changes) => {
       // 键盘 Delete 删除全局节点: 清理其边 + 关闭连接 + 全 tab 重同步
       // (X 按钮走 removeGlobalNode; 这里兜 React Flow 的 remove change)
-      // 撤销埋点: 仅记录 remove / position 两类 change, select/dimensions 不入历史;
-      // 拖动期间高频 position 批按时间窗合并为一条「移动节点」
+      // 撤销埋点: 仅记录 remove / position / resize 三类 change, select/测量 dimensions 不入历史;
+      // 拖动/缩放期间高频批按时间窗合并为一条
       const removing = changes.some((ch) => ch.type === 'remove');
       const moving = changes.some((ch) => ch.type === 'position');
+      // NodeResizer 结束批 (resizing=false) — 拖拽中的 resizing=true 批不入历史
+      const resizing = changes.some(
+        (ch) => ch.type === 'dimensions' && (ch as { resizing?: boolean }).resizing === false
+      );
       const applyChanges = () => {
         const removedGlobalIds: string[] = [];
         const removedTransportIds: string[] = [];
@@ -239,6 +286,17 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
             void api.setNodePositions(finalPos).catch(() => { return undefined; });
           }
         }
+        // 缩放结束 (NodeResizer onEnd 的 resizing=false 批) — 连同位置上报显式尺寸
+        if (resizing) {
+          void persistNodeLayouts(
+            changes
+              .filter(
+                (ch): ch is NodeChange & { id: string; type: 'dimensions' } =>
+                  ch.type === 'dimensions' && (ch as { resizing?: boolean }).resizing === false
+              )
+              .map((ch) => ch.id)
+          );
+        }
         // 同步清理被删节点的派生端口表
         if (removedGlobalIds.length) {
           get().removeDerived(removedGlobalIds);
@@ -249,7 +307,7 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
         }
         removedWidgetTabIds.forEach((tabId) => { void get().syncTabGraph(tabId); });
       };
-      if (removing || moving) {
+      if (removing || moving || resizing) {
         // 删除型批: 取首个被删节点作为徽章归属; 移动/混合删除为中性
         let target: HistoryTarget = { kind: 'nodes' };
         if (removing) {
@@ -258,11 +316,24 @@ export const createGraphSlice: AppSlice<GraphSlice> = (set, get) => {
           )?.id;
           const ref = refOf(removedId);
           if (ref) target = { kind: 'node', node: ref };
+        } else if (resizing) {
+          const resizedId = changes.find(
+            (ch): ch is NodeChange & { id: string } =>
+              ch.type === 'dimensions' && (ch as { resizing?: boolean }).resizing === false
+          )?.id;
+          const ref = refOf(resizedId);
+          if (ref) target = { kind: 'node', node: ref };
         }
         withHistoryOp(
-          removing ? { opKey: 'opRemoveNodes', target } : { opKey: 'opMoveNodes', target },
+          removing
+            ? { opKey: 'opRemoveNodes', target }
+            : resizing && !moving
+              ? { opKey: 'opResizeNodes', target }
+              : { opKey: 'opMoveNodes', target },
           applyChanges,
-          { coalesceKey: removing ? 'node.remove' : 'node.move' }
+          {
+            coalesceKey: removing ? 'node.remove' : resizing && !moving ? 'node.resize' : 'node.move',
+          }
         );
       } else {
         applyChanges();

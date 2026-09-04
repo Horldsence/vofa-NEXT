@@ -3,6 +3,7 @@ import type { WidgetConfig } from '../../types';
 import type { AppSlice } from './types';
 import { createWidget, normalizeWidgetConfig, widgetInputValue } from '../../lib/utils/createWidget';
 import { widgetToTab } from '../../lib/utils/widgetTab';
+import { WIDGET_DEFAULT_WIDTH } from '../../lib/utils/widgetSize';
 import { withHistoryOp, widgetKindLabelKey } from '../historyStore';
 import type { HistoryTarget } from '../historyStore';
 import type { AppStore } from '../appStore';
@@ -47,6 +48,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
               id: widget.params.id,
               type: 'widget',
               position: pos,
+              width: WIDGET_DEFAULT_WIDTH,
               data: { widget, tabId },
             };
             return {
@@ -79,6 +81,7 @@ export const createWidgetSlice: AppSlice<WidgetSlice> = (set, get) => {
               id: widget.params.id,
               type: 'widget',
               position: pos,
+              width: WIDGET_DEFAULT_WIDTH,
               data: { widget, tabId },
             };
             const newState: Partial<AppStore> = {

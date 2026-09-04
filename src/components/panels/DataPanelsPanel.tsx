@@ -25,6 +25,7 @@ import {
   BarChart3 as BarChart3Icon,
   History as HistoryIcon,
   type LucideIcon,
+  Settings2 as SettingsIcon,
 } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import {
@@ -32,7 +33,7 @@ import {
   cycleDataPanelTab,
   type DataPanelEntry,
 } from '../../store/slices/dataTabs';
-import { openDataPanelAndReveal } from '../../lib/utils/revealDataTab';
+import { openDataPanelAndReveal, openNodePropertiesPanel } from '../../lib/utils/revealDataTab';
 import { t } from '../../i18n';
 
 /// 数据面板条目图标 — 唯一对应表, 与 MenuBar 同源
@@ -53,6 +54,7 @@ const PANEL_ICONS: Record<DataPanelEntry['type'], LucideIcon> = {
   'compile-results': Layers,
   'table-view': BarChart3Icon,
   'operation-history': HistoryIcon,
+  'node-properties': SettingsIcon,
 };
 
 export function DataPanelsPanel() {
@@ -64,6 +66,7 @@ export function DataPanelsPanel() {
   const addCanTab = useAppStore((s) => s.addCanTab);
   const addLogicTab = useAppStore((s) => s.addLogicTab);
   const addOperationHistoryTab = useAppStore((s) => s.addOperationHistoryTab);
+  const addNodePropertiesTab = useAppStore((s) => s.addNodePropertiesTab);
   const addWidgetTab = useAppStore((s) => s.addWidgetTab);
 
   const panelEntries = getAvailableDataPanelEntries(
@@ -74,6 +77,7 @@ export function DataPanelsPanel() {
       addCanTab,
       addLogicTab,
       addOperationHistoryTab,
+      addNodePropertiesTab,
       addDataTab: useAppStore.getState().addDataTab,
       setActiveDataTab: useAppStore.getState().setActiveDataTab,
       addWidgetTab,
@@ -91,6 +95,11 @@ export function DataPanelsPanel() {
         entries={standalone}
         iconForType={PANEL_ICONS}
         onClick={(entry) => {
+          // 属性面板: 创建时同步在画布右侧拆分专属小卡 (非并入数据卡)
+          if (entry.type === 'node-properties') {
+            openNodePropertiesPanel();
+            return;
+          }
           // 已在该类型的 Tab 之间轮转 (通常只有一个, 但有兜底)
           openDataPanelAndReveal(() => cycleDataPanelTab(entry.type));
         }}

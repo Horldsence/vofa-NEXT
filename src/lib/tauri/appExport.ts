@@ -492,6 +492,8 @@ export async function applySnapshot(
       const fixedTabs: DataTab[] = [
         { id: 'compile-errors-fixed', type: 'compile-errors', name: 'Compile Errors', closable: false },
         { id: 'compile-results-fixed', type: 'compile-results', name: 'Compile Results', closable: false },
+        // 旧快照无属性面板 tab — 兜底补入 (默认布局卡片按 id 承载它)
+        { id: 'node-properties-fixed', type: 'node-properties', name: 'Properties', closable: true },
       ];
       const have = new Set(migrated.dataTabs.map((t) => t.id));
       const mergedDataTabs = [...migrated.dataTabs];

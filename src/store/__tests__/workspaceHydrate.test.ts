@@ -145,10 +145,39 @@ describe('hydrateWorkspaceFromBackend (启动水合)', () => {
     expect(ids).toContain('compile-errors-fixed');
     // 快照缺 compile-results-fixed → 兜底补入
     expect(ids).toContain('compile-results-fixed');
+    // 旧快照缺节点属性面板 tab → 兜底补入 (默认布局专属卡按 id 承载)
+    expect(ids).toContain('node-properties-fixed');
     // 未知 kind 的 widget 落为占位控件 (投影语义: 后端是存储权威, 不丢弃)
     const ghost = s.rfNodes.find((n) => n.id === 'w-ghost');
     expect((ghost?.data as { widget: { kind: string } }).widget.kind).toBe('FutureWidget');
     expect(s.widgets.some((w) => w.params.id === 'w-ghost')).toBe(true);
+  });
+
+  it('位置表携带的显式尺寸水合到节点; 无尺寸记录时宽度落默认值', async () => {
+    const withSize: WorkspaceSnapshotPayload = {
+      ...SNAPSHOT,
+      positions: {
+        'transport-1': { x: 33, y: 44 },
+        // 显式调整过大小的控件
+        'w-gauge': { x: 100, y: 120, width: 320, height: 240 },
+        // 旧工作区: 无尺寸记录
+        'w-ghost': { x: 20, y: 30 },
+      },
+    };
+    (tauriMock.invoke as unknown as { mockResolvedValue: (v: unknown) => void }).mockResolvedValue(withSize);
+    await hydrateWorkspaceFromBackend();
+
+    const s = useAppStore.getState();
+    const gauge = s.rfNodes.find((n) => n.id === 'w-gauge');
+    expect(gauge?.width).toBe(320);
+    expect(gauge?.height).toBe(240);
+    // 旧工作区兼容: 显式宽度统一兜底, 高度保持内容自适应
+    const ghost = s.rfNodes.find((n) => n.id === 'w-ghost');
+    expect(ghost?.width).toBe(200);
+    expect(ghost?.height).toBeUndefined();
+    // 全局节点不可缩放 — 不携带尺寸
+    const transport = s.rfNodes.find((n) => n.id === 'transport-1');
+    expect(transport?.width).toBeUndefined();
   });
 });
 

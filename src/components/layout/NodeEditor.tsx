@@ -22,9 +22,8 @@ import { isUnaryMathOp } from '../../types';
 import { WidgetNode } from '../nodes/WidgetNode';
 import { TransportNode } from '../nodes/TransportNode';
 import { ProtocolNode } from '../nodes/ProtocolNode';
-import { GlobalNodeProperties } from '../nodes/GlobalNodeProperties';
-import { WidgetProperties } from '../nodes/WidgetProperties';
 import { validateConnection } from '../../lib/utils/connectionRules';
+import { openNodePropertiesPanel } from '../../lib/utils/revealDataTab';
 import { Maximize, LayoutGrid } from 'lucide-react';
 
 interface NodeEditorProps {
@@ -142,7 +141,7 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
       });
   }, [rfEdges, tabNodeIds, tabErrorEdges, tabState]);
 
-  // 选中的全局节点 → 右侧属性面板
+  // 选中的节点 → 停靠属性面板 (全局节点优先, 与旧浮层面板行为一致)
   const selectedGlobalNode = useMemo(
     () => tabNodes.find((n) => n.selected && n.data.global === true),
     [tabNodes]
@@ -152,6 +151,16 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
     () => tabNodes.find((n) => n.selected && n.type === 'widget'),
     [tabNodes]
   );
+
+  const propertiesNode = selectedGlobalNode ?? selectedWidgetNode;
+
+  // 选中节点 → 自动打开并激活「节点属性」数据面板 tab (单例; 创建时在画布
+  // 右侧拆分专属小卡, 已有归属则只激活)
+  const propertiesNodeId = propertiesNode?.id ?? null;
+  useEffect(() => {
+    if (!propertiesNodeId) return;
+    openNodePropertiesPanel();
+  }, [propertiesNodeId]);
 
   // 从控件面板拖出控件 — 指针事件落点 (dockDrag 控制器命中 canvas 投放区后调用)
   const createFromDrop = useCallback(
@@ -283,9 +292,6 @@ function NodeEditorInner({ tabId }: NodeEditorProps) {
           )}
         </Panel>
       </ReactFlow>
-      {selectedGlobalNode
-        ? <GlobalNodeProperties node={selectedGlobalNode} />
-        : selectedWidgetNode && <WidgetProperties node={selectedWidgetNode} />}
     </div>
   );
 }
