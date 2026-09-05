@@ -8,6 +8,7 @@ import { getPortSampleStore } from '../../../lib/data/dataClient';
 import { RawDataBuffer } from '../../../lib/buffers/dataBuffer';
 import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
 import { acquireRawDataTransport, releaseRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
+import { useAppStore } from '../../../store/appStore';
 import type { RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
 
 interface RawDataChannelRef {
@@ -23,6 +24,61 @@ export function useRawNumericSamples(channel?: RawDataChannelRef) {
   );
   const snapshot = useSyncExternalStore(sampleStore.subscribe, sampleStore.getSnapshot, sampleStore.getSnapshot);
   return { snapshot, clearSamples: sampleStore.clear };
+}
+
+// ---- 字符串通道 ----
+
+export interface RawDataStringRow {
+  /// 前端接收时刻 (字符串平面为 latest-value 快照, 无逐次时间戳)
+  ts: number;
+  text: string;
+}
+
+/// 字符串历史行数上限 (环形, 淘汰最旧)
+const RAW_STRING_HISTORY_CAP = 1000;
+
+/// 字符串通道历史 — 订阅 store 字符串平面 (全局单订阅, rAF 合并, 值变化才推送),
+/// 按端口值变化累积历史行: latest-value 平面若逐 tick 记录会 30fps 刷屏,
+/// 故日志语义 = 值变化才记录。通道切换时重置历史与去重基线。
+export function useRawStringSamples(channel?: RawDataChannelRef) {
+  const sourceId = channel?.sourceId;
+  const port = channel?.sourceHandle ?? 'data';
+  const textMap = useAppStore((s) => s.customTextOutputs);
+  const [rows, setRows] = useState<RawDataStringRow[]>([]);
+  // 去重基线: seen=false 表示尚无基线 (首次出现/清空后) — 下一次快照无条件入列
+  const baselineRef = useRef<{ text: string; seen: boolean }>({ text: '', seen: false });
+
+  useEffect(() => {
+    baselineRef.current = { text: '', seen: false };
+    setRows([]);
+  }, [sourceId, port]);
+
+  useEffect(() => {
+    if (!sourceId) return;
+    const text = textMap[sourceId]?.[port];
+    if (text === undefined) return;
+    const baseline = baselineRef.current;
+    if (baseline.seen && baseline.text === text) return;
+    baselineRef.current = { text, seen: true };
+    const row: RawDataStringRow = { ts: Date.now(), text };
+    setRows((prev) =>
+      prev.length >= RAW_STRING_HISTORY_CAP
+        ? [...prev.slice(prev.length - RAW_STRING_HISTORY_CAP + 1), row]
+        : [...prev, row]
+    );
+  }, [textMap, sourceId, port]);
+
+  const clear = useCallback(() => {
+    // 当前值记为未入列基线: 下一次快照推送 (任意字符串输出变化) 时重新入列,
+    // 视图不会因清空而永久错过当前值
+    baselineRef.current = {
+      text: (sourceId ? textMap[sourceId]?.[port] : undefined) ?? '',
+      seen: false,
+    };
+    setRows([]);
+  }, [textMap, sourceId, port]);
+
+  return { rows, clear };
 }
 
 interface UseRawDataBufferOptions {

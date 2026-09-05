@@ -275,6 +275,7 @@ sendPanelMode: 发送面板
 sendPanelBottom: 底部
 sendPanelSeparate: 右侧
 rawDataEmpty: 暂无原始数据
+rawDataStringEmpty: 暂无字符串输出 (值变化时记录)
 rawDataDirectionAll: 全部
 rawDataDirectionRx: 接收
 rawDataDirectionTx: 发送

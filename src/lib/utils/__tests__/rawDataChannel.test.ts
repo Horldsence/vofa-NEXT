@@ -109,6 +109,61 @@ describe('classifyRawDataChannel', () => {
     expect(info).toEqual({ kind: 'decoder-node', transportId: null });
   });
 
+  it('Trigger 的 text 口 → string (字符串域输出口)', () => {
+    const TRIGGER_WIDGET = {
+      kind: 'Trigger',
+      params: { id: 'w-trigger', label: 'trigger' },
+    } as unknown as WidgetConfig;
+    const info = classifyRawDataChannel(
+      { sourceId: 'w-trigger', sourceHandle: 'text' },
+      [],
+      [],
+      [TRIGGER_WIDGET]
+    );
+    expect(info).toEqual({ kind: 'string', transportId: null });
+  });
+
+  it('TextInput 的 str 口 → string', () => {
+    const INPUT_WIDGET = {
+      kind: 'TextInput',
+      params: { id: 'w-input', label: 'input' },
+    } as unknown as WidgetConfig;
+    const info = classifyRawDataChannel(
+      { sourceId: 'w-input', sourceHandle: 'str' },
+      [],
+      [],
+      [INPUT_WIDGET]
+    );
+    expect(info).toEqual({ kind: 'string', transportId: null });
+  });
+
+  it('Str 字符串类 op (concat) 的 result 口 → string; 数值类 op (len) → numeric', () => {
+    const STR_CONCAT = {
+      kind: 'Str',
+      params: { id: 'w-str', label: 'str', op: 'concat' },
+    } as unknown as WidgetConfig;
+    const STR_LEN = {
+      kind: 'Str',
+      params: { id: 'w-str-len', label: 'str', op: 'len' },
+    } as unknown as WidgetConfig;
+    expect(
+      classifyRawDataChannel({ sourceId: 'w-str', sourceHandle: 'result' }, [], [], [STR_CONCAT])
+    ).toEqual({ kind: 'string', transportId: null });
+    expect(
+      classifyRawDataChannel({ sourceId: 'w-str-len', sourceHandle: 'result' }, [], [], [STR_LEN])
+    ).toEqual({ kind: 'numeric', transportId: null });
+  });
+
+  it('源 widget 不在 widgets 中 (未知源) → numeric', () => {
+    const info = classifyRawDataChannel(
+      { sourceId: 'w-unknown', sourceHandle: 'text' },
+      [],
+      [],
+      []
+    );
+    expect(info).toEqual({ kind: 'numeric', transportId: null });
+  });
+
   it('普通数值源 (widget 输出) → numeric', () => {
     const info = classifyRawDataChannel(
       { sourceId: 'w-math', sourceHandle: 'result' },

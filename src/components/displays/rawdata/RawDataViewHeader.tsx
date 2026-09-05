@@ -53,6 +53,9 @@ interface Props {
   showTimestamp: boolean;
   showSettings: boolean;
   isNum: boolean;
+  /// 字符串通道 — 分组/表示/方向为字节平面专用, 禁用; 统计区显示行数
+  isStr: boolean;
+  stringRowCount?: number;
   isFiltered: boolean;
   totalBytes: number;
   modeCount: number;
@@ -89,6 +92,8 @@ export function RawDataViewHeader({
   showTimestamp,
   showSettings,
   isNum,
+  isStr,
+  stringRowCount,
   isFiltered,
   totalBytes,
   modeCount,
@@ -120,7 +125,7 @@ export function RawDataViewHeader({
           {GROUPING_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              disabled={isNum}
+              disabled={isNum || isStr}
               className={`px-2 py-0.5 rounded-sm text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${grouping === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
               onClick={() => onGroupingChange(opt.value)}
             >
@@ -132,7 +137,7 @@ export function RawDataViewHeader({
           {REPR_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              disabled={isNum}
+              disabled={isNum || isStr}
               className={`px-2 py-0.5 rounded-sm text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${repr === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
               onClick={() => onReprChange(opt.value)}
             >
@@ -145,7 +150,7 @@ export function RawDataViewHeader({
           {DIRECTION_OPTIONS.map((opt) => (
             <button
               key={opt.value}
-              disabled={isNum}
+              disabled={isNum || isStr}
               title={t(lang, opt.label)}
               className={`px-2 py-0.5 rounded-sm text-xs font-medium transition-all duration-150 motion-safe:active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-40 ${directionFilter === opt.value ? 'bg-bg-button text-text-inverse' : 'text-text-secondary hover:text-text-primary'}`}
               onClick={() => onDirectionFilterChange(opt.value)}
@@ -216,25 +221,34 @@ export function RawDataViewHeader({
           </label>
         )}
 
-        <div className={`flex items-center gap-1 text-text-secondary text-xs font-mono ${isNum ? 'opacity-40' : ''}`}>
-          <span>{totalBytes.toLocaleString()} B</span>
-          {!isNum && isFiltered && (
-            <span className="text-text-disabled">
-              {modeCount.toLocaleString()} rows
-            </span>
-          )}
-          {droppedBytes > 0 && (
-            <span
-              className="text-yellow flex items-center gap-0.5 cursor-pointer hover:underline"
-              title={t(lang, 'rawDataDropped')}
-              onClick={onDroppedInfoOpen}
-              onKeyDown={activateOnKeyboard}
-              role="button"
-              tabIndex={0}
-            >
-              <FileWarning size={12} />
-              +{droppedBytes.toLocaleString()}
-            </span>
+        <div className="flex items-center gap-1 text-text-secondary text-xs font-mono">
+          {isStr ? (
+            // 字符串通道: 无字节统计, 显示历史行数
+            <span>{(stringRowCount ?? 0).toLocaleString()} rows</span>
+          ) : (
+            <>
+              <span className={isNum ? 'opacity-40' : ''}>
+                {totalBytes.toLocaleString()} B
+              </span>
+              {!isNum && isFiltered && (
+                <span className="text-text-disabled">
+                  {modeCount.toLocaleString()} rows
+                </span>
+              )}
+              {droppedBytes > 0 && (
+                <span
+                  className="text-yellow flex items-center gap-0.5 cursor-pointer hover:underline"
+                  title={t(lang, 'rawDataDropped')}
+                  onClick={onDroppedInfoOpen}
+                  onKeyDown={activateOnKeyboard}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <FileWarning size={12} />
+                  +{droppedBytes.toLocaleString()}
+                </span>
+              )}
+            </>
           )}
         </div>
 

@@ -4,8 +4,17 @@ import { formatTime } from './rawDataViewHelpers';
 import type { PortSampleStatus } from '../../../lib/data/sampleProtocol';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+/// 字符串通道行 (值变化历史) — 与数值行共用同一虚拟列表 (二选一)
+export interface RawDataStringRow {
+  /// 前端接收时刻 (字符串平面为 latest-value 快照, 无逐次时间戳)
+  ts: number;
+  text: string;
+}
+
 interface Props {
   numRows: { seq: number; ts: number; value: number }[];
+  /// 字符串通道行 — 有值时本组件切换为文本行渲染 (numRows 被忽略)
+  stringRows?: RawDataStringRow[];
   showTimestamp: boolean;
   lang: Lang;
   grouping: string;
@@ -20,8 +29,11 @@ interface Props {
   onScroll: () => void;
 }
 
+/// 数值/字符串通道共用的行列表 — 虚拟滚动 + 时间戳。
+/// 数值行定高 (20px); 字符串行为多行长文本自适应测量, 原生文本选中/复制。
 export function RawDataViewNumericContent({
   numRows,
+  stringRows,
   showTimestamp,
   lang,
   status,
@@ -32,12 +44,19 @@ export function RawDataViewNumericContent({
   scrollRef,
   onScroll,
 }: Props) {
+  const isString = stringRows !== undefined;
+  const rows = stringRows ?? numRows;
   const virtualizer = useVirtualizer({
-    count: numRows.length,
+    count: rows.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 20,
     overscan: 8,
-    getItemKey: (index) => numRows[index]?.seq ?? index,
+    // 字符串行高可变 (多行/长文本) — 按实际 DOM 测量; 数值行保持定高
+    ...(isString && {
+      measureElement: (el: HTMLElement) => el.getBoundingClientRect().height,
+    }),
+    getItemKey: (index) =>
+      isString ? `${rows[index]?.ts ?? 0}-${index}` : numRows[index]?.seq ?? index,
   });
   const labels =
     lang === 'zh'
@@ -59,15 +78,17 @@ export function RawDataViewNumericContent({
           evicted: 'History evicted',
           dropped: 'Ingress dropped',
         };
-  const emptyLabel = error ?? (status === 'channel_out_of_range'
-      ? labels.channel
-      : status === 'disconnected'
-        ? labels.disconnected
-        : status === 'overrun'
-          ? labels.overrun
-          : status === 'waiting'
-            ? labels.waiting
-            : t(lang, 'rawDataEmpty'));
+  const emptyLabel = isString
+    ? t(lang, 'rawDataStringEmpty')
+    : error ?? (status === 'channel_out_of_range'
+        ? labels.channel
+        : status === 'disconnected'
+          ? labels.disconnected
+          : status === 'overrun'
+            ? labels.overrun
+            : status === 'waiting'
+              ? labels.waiting
+              : t(lang, 'rawDataEmpty'));
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-hidden font-mono animate-rawdata-enter select-text">
       {(previewSkipped > 0 || retentionEvicted > 0 || ingressDropped > 0) && (
@@ -77,13 +98,34 @@ export function RawDataViewNumericContent({
         </div>
       )}
       <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-auto min-h-0">
-        {numRows.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="flex items-center justify-center h-32 text-text-secondary text-sm">
             {emptyLabel}
           </div>
         ) : (
           <div style={{ height: `${virtualizer.getTotalSize()}px`, position: 'relative' }}>
             {virtualizer.getVirtualItems().map((virtualRow) => {
+              if (isString) {
+                const s = stringRows[virtualRow.index];
+                return (
+                  <div
+                    key={virtualRow.key}
+                    data-index={virtualRow.index}
+                    ref={virtualizer.measureElement}
+                    className="absolute left-0 top-0 w-full flex items-start gap-2 px-2 text-xs font-mono"
+                    style={{ transform: `translateY(${virtualRow.start}px)` }}
+                  >
+                    {showTimestamp && (
+                      <span className="text-accent min-w-[92px] text-right shrink-0">
+                        {formatTime(s.ts)}
+                      </span>
+                    )}
+                    <span className="text-text-primary whitespace-pre-wrap break-all min-w-0">
+                      {s.text}
+                    </span>
+                  </div>
+                );
+              }
               const r = numRows[virtualRow.index];
               return (
                 <div
