@@ -90,6 +90,7 @@ export interface FFTConfig {
   label: string;
   /// FFT 窗口大小 (2 的幂, 256/512/1024/2048)
   windowSize: number;
+  hopSize: number;
   /// 窗函数类型
   windowType: WindowType;
   /// 输出模式
@@ -435,3 +436,17 @@ export interface ContextMenuSeparator {
 }
 
 export type ContextMenuEntry = ContextMenuItem | ContextMenuSeparator;
+
+// ============ 工作区运行控制 ============
+
+/// 工作区运行状态 — Rust 侧 ExecutionControl 的镜像 (workspace:run 事件 / 命令返回)
+export type RunState = 'stopped' | 'running' | 'paused';
+
+/// 运行控制动作 — start 从停止启动 / 从暂停恢复 (语义相同: 重建流序列)
+export type RunAction = 'start' | 'pause' | 'stop';
+
+/// 运行快照 — 状态 + epoch (每次切换推进, 旧 epoch 异步任务全部作废)
+export interface RunSnapshot {
+  state: RunState;
+  epoch: number;
+}

@@ -14,7 +14,7 @@ use tauri::AppHandle;
 use tokio::sync::broadcast;
 use vofa_core::{ConnectionState, TransportStats};
 
-use super::{byte_router, eval_worker, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
+use super::{byte_router, frame_dispatch, DataPlaneState, STATS_THROTTLE_MS};
 use crate::feed_parallel::FEED_PARALLEL_UNIT;
 
 pub(super) fn mark_downstream_disconnected(plane: &DataPlaneState, transport_id: &str) {
@@ -114,14 +114,9 @@ pub(super) async fn read_task(
     let mut controller = AdaptiveController::default();
     // 每帧平均字节数 (EMA) — 合批样本时长上限的折算输入
     let mut avg_bytes_per_frame = 16.0_f64;
-    // 启动时取一次轻量句柄: 每批的 TestData 开关查询 / 运行态配置 / rx 统计上报
+    // 启动时取一次轻量句柄: 每批的运行态配置 (采样时钟) / rx 统计上报
     // 都免 manager 全局锁 (逐批锁会与 open/close/其他传输串行化)
     let live = plane.transport.lock().await.live_handle(&node_id);
-    // TestData 生成停止边沿检测 (None = 非 TestData 节点, 永不触发)
-    let mut was_generating = live
-        .as_ref()
-        .and_then(transport_core::LiveNodeHandle::test_data_running_state)
-        .unwrap_or(false);
 
     loop {
         let first = match rx.recv().await {
@@ -177,30 +172,6 @@ pub(super) async fn read_task(
             .rx_bytes
             .fetch_add(data.len() as u64, Ordering::Relaxed);
 
-        // TestData 停止生成边沿: 排空广播积压 (已解析的当前批次正常处理,
-        // 其后的排队消息全部丢弃), 波形立即冻结在停止时刻, 不再拖尾滚动
-        let generating = live
-            .as_ref()
-            .and_then(transport_core::LiveNodeHandle::test_data_running_state);
-        if was_generating && generating == Some(false) {
-            let mut dropped = 0_u64;
-            loop {
-                match rx.try_recv() {
-                    Ok(_) => dropped += 1,
-                    Err(TryRecvError::Lagged(n)) => {
-                        plane.metrics.lagged.fetch_add(n, Ordering::Relaxed);
-                    }
-                    Err(_) => break,
-                }
-            }
-            // 已解析未评估的队列批同样清空: 波形冻结在停止时刻, 不拖尾
-            let dropped_frames = eval_worker::clear_downstream_queues(&plane, &node_id);
-            if dropped > 0 || dropped_frames > 0 {
-                log::debug!("测试数据停止生成, 丢弃广播 {dropped} 条、评估队列 {dropped_frames} 帧: {node_id}");
-            }
-        }
-        was_generating = generating.unwrap_or(false);
-
         // 按源原始字节收集 (不随解析积压丢失 — 收集在路由之前完成)
         plane.raw_collector_for(&node_id).lock().push_chunk(
             vofa_core::now_us(),
@@ -216,16 +187,30 @@ pub(super) async fn read_task(
                 .saturating_sub(1)
                 .saturating_mul(FEED_PARALLEL_UNIT),
         );
-        let summary = byte_router::route_bytes(
-            &plane,
-            Some(&app),
-            &node_id,
-            &data,
-            depth_hint,
-            &mut dec_cache,
-            live.as_ref(),
-        )
-        .await;
+        // 运行门控: 暂停/停止时丢弃字节 (广播通道容量有界, 积压自然转化为
+        // Lagged 计数) — 不积压暂停期间的数据; read_task 保持存活排空通道,
+        // 设备连接不受影响。快速路径先行免锁; 路由持 boundary 读锁并在锁内
+        // 复查票据 — 与运行状态切换 (写锁) 互斥: 切换不可能打断在途路由,
+        // 旧 epoch 的解析结果不会在切换后继续入队。
+        if plane.eval.execution.ticket().is_none() {
+            continue;
+        }
+        let summary = {
+            let _boundary = plane.eval.execution.boundary.read().await;
+            if plane.eval.execution.ticket().is_none() {
+                continue;
+            }
+            byte_router::route_bytes(
+                &plane,
+                Some(&app),
+                &node_id,
+                &data,
+                depth_hint,
+                &mut dec_cache,
+                live.as_ref(),
+            )
+            .await
+        };
         if lagged_after_batch > 0 {
             note_test_data_gap(&plane, &node_id, live.as_ref(), lagged_after_batch);
         }

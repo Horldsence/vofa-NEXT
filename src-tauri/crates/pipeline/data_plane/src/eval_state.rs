@@ -56,7 +56,7 @@ pub struct StringOutputSnapshot {
 
 /// 频谱分析结果批次 — 后端推送到前端 SpectrumChart
 ///
-/// 30 FPS 推送, key = SpectrumSink widget id, value = 最新一次 FFT 结果
+/// 30 FPS 推送, key = Fft widget id, value = 最新一次 FFT 结果
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpectrumBatch {
     /// sink widget id -> 频谱结果
@@ -83,6 +83,10 @@ pub struct StreamGroupState {
 /// 内部已用 Arc)。因此把数据平面需要的字段单独打包为 Arc, 从 AppState 克隆。
 #[derive(Clone)]
 pub struct GraphEvalState {
+    pub execution: Arc<crate::execution::ExecutionControl>,
+    /// 后台自动发送任务注册表 (Timer/OnChange) — 前端经 IPC 全量替换,
+    /// send_scheduler_ticker 消费; 手动发送不经过此表 (走统一内核命令)
+    pub send: Arc<Mutex<crate::execution::SendScheduler>>,
     /// 每端口真实样本 Topic。图求值仅发布 written=true 的槽位。
     pub data_bus: DataBus,
     pub graphs: Arc<Mutex<HashMap<String, CompiledGraph>>>,
@@ -127,12 +131,12 @@ pub struct GraphEvalState {
     /// 与 decoder_states 生命周期同步 (由 DecoderFeedCache::sync 增删),
     /// 独立于按 Transport 源的 raw_collectors (见 DataPlaneState)
     pub decoder_raw_collectors: Arc<Mutex<HashMap<String, Arc<Mutex<RawDataCollector>>>>>,
-    /// SpectrumSink 节点对应的频谱分析器
-    /// key: SpectrumSink widget id, value: SpectrumAnalyzer (含滑动窗口)
+    /// Fft 节点对应的频谱分析器
+    /// key: Fft widget id, value: SpectrumAnalyzer (含滑动窗口)
     /// 由 spectrum_ticker 在每 tick 开头与 graphs 同步 (增删)
     pub spectrum_analyzers: Arc<Mutex<HashMap<String, SpectrumAnalyzer>>>,
     /// 最新一次 FFT 结果 (供 30 FPS spectrum_ticker 推送)
-    /// key: SpectrumSink widget id, value: SpectrumResult
+    /// key: Fft widget id, value: SpectrumResult
     pub spectrum_snapshot: Arc<Mutex<HashMap<String, SpectrumResult>>>,
     /// Ifft 节点重建时域缓冲 (跨帧持久化, 环形播放)
     /// key: Ifft widget id, value: IfftState (含合成缓冲 + 播放位置)
@@ -169,6 +173,8 @@ pub fn build_graph_eval_state(
     ifft_states: Arc<Mutex<HashMap<String, IfftState>>>,
 ) -> GraphEvalState {
     GraphEvalState {
+        execution: Arc::new(crate::execution::ExecutionControl::default()),
+        send: Arc::new(Mutex::new(crate::execution::SendScheduler::default())),
         data_bus,
         graphs,
         graphs_version,

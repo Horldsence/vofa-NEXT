@@ -1,19 +1,7 @@
-//! 频谱分析 — 滑动窗口 + FFT + 多种输出模式
-//!
-//! 使用 `realfft` 库对实数信号进行 FFT, 返回前半部分频谱 (N/2+1 个 bin)。
-//!
-//! 输出模式:
-//! - Magnitude: 振幅谱 |X(k)| / N
-//! - Power: 功率谱 |X(k)|^2 / N^2
-//! - PSD: 功率谱密度 |X(k)|^2 / (N * fs * cg^2), cg=窗相干增益
-//! - Decibel: 10 * log10(Power + eps)
-
-use realfft::{RealFftPlanner, RealToComplex};
-use rustfft::num_complex::Complex32;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-
+//! Sample-driven FFT; display consumers receive only the most recent spectrum.
+use crate::{SpectrumFrame, StreamingFft, TransformConfig, TransformError};
 pub use dsp_window::WindowType;
+use serde::{Deserialize, Serialize};
 
 /// 频谱输出模式
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -38,189 +26,114 @@ pub struct SpectrumResult {
     pub values: Vec<f32>,
 }
 
-/// 频谱分析器 — 滑动窗口 + FFT
-///
-/// 使用方法:
-/// 1. 每帧调用 `push(value)` 推入新样本
-/// 2. 定期调用 `compute()` 计算 FFT (例如 30 FPS)
-///
-/// 内部维护一个长度为 window_size 的环形缓冲区,
-/// 计算时取出全部数据, 应用窗函数, 做 FFT, 转换为指定输出模式。
 pub struct SpectrumAnalyzer {
-    window_size: usize,
-    window_type: WindowType,
+    config: TransformConfig,
     output: SpectrumOutput,
-    sample_rate: f32,
-    /// 样本环形缓冲区 (长度 = window_size)
-    buffer: Vec<f32>,
-    /// 下一个写入位置 (覆盖式)
-    write_pos: usize,
-    /// 已积累的样本数 (>= window_size 后认为窗口已满)
-    samples_count: usize,
-    /// FFT planner (缓存, 避免每次重建)
-    /// `RealFftPlanner::plan_fft_forward` 返回 `Arc<dyn RealToComplex<f32>>`
-    r2c: Arc<dyn RealToComplex<f32>>,
-    /// FFT 输入缓冲 (加窗后的数据)
-    fft_input: Vec<f32>,
-    /// FFT 输出缓冲 (复数频谱)
-    fft_output: Vec<Complex32>,
-    /// 预计算的频率轴
+    stream: StreamingFft,
+    latest: Option<SpectrumFrame>,
+    samples: usize,
+    epoch: u64,
+    #[cfg(test)]
     frequencies: Vec<f32>,
 }
 
 impl SpectrumAnalyzer {
-    /// 创建新分析器
-    ///
-    /// - window_size: FFT 窗口大小 (建议 2 的幂, 如 256/512/1024/2048)
-    /// - sample_rate: 采样率 (Hz), 用于计算频率轴
-    #[allow(clippy::cast_precision_loss)]
-    pub fn new(
-        window_size: usize,
-        window_type: WindowType,
-        output: SpectrumOutput,
-        sample_rate: f32,
-    ) -> Self {
-        let n = window_size.max(2);
-        let mut planner = RealFftPlanner::<f32>::new();
-        let r2c = planner.plan_fft_forward(n);
-        let fft_input = r2c.make_input_vec();
-        let fft_output = r2c.make_output_vec();
-        let frequencies: Vec<f32> = (0..=n / 2)
-            .map(|k| k as f32 * sample_rate / n as f32)
-            .collect();
-        Self {
-            window_size: n,
-            window_type,
+    pub fn new(n: usize, window: WindowType, output: SpectrumOutput, sample_rate: f32) -> Self {
+        Self::with_config(
+            TransformConfig {
+                window_size: n.max(2),
+                hop_size: (n / 2).max(1),
+                window_type: window,
+                sample_rate,
+            },
             output,
-            sample_rate,
-            buffer: vec![0.0; n],
-            write_pos: 0,
-            samples_count: 0,
-            r2c,
-            fft_input,
-            fft_output,
-            frequencies,
-        }
+        )
+        .expect("validated FFT configuration")
     }
 
-    /// 推入一个样本 (覆盖最旧样本)
+    #[allow(clippy::cast_precision_loss)]
+    pub fn with_config(
+        config: TransformConfig,
+        output: SpectrumOutput,
+    ) -> Result<Self, TransformError> {
+        let stream = StreamingFft::new(config, 0)?;
+        Ok(Self {
+            config,
+            output,
+            stream,
+            latest: None,
+            samples: 0,
+            epoch: 0,
+            #[cfg(test)]
+            frequencies: (0..=config.window_size / 2)
+                .map(|k| k as f32 * config.sample_rate / config.window_size as f32)
+                .collect(),
+        })
+    }
+
     pub fn push(&mut self, value: f32) {
-        self.buffer[self.write_pos] = value;
-        self.write_pos = (self.write_pos + 1) % self.window_size;
-        if self.samples_count < self.window_size {
-            self.samples_count += 1;
-        }
+        self.push_with(value, |_| {});
     }
 
-    /// 批量推入
+    /// Consumers run synchronously for each completed frame; nothing queues behind UI refresh.
+    pub fn push_with(&mut self, value: f32, mut emit: impl FnMut(&SpectrumFrame)) {
+        self.samples = self.samples.saturating_add(1);
+        let latest = &mut self.latest;
+        self.stream
+            .push(&[value], |frame| {
+                emit(&frame);
+                *latest = Some(frame);
+            })
+            .expect("analyser stream is open");
+    }
+
     pub fn push_slice(&mut self, values: &[f32]) {
-        for &v in values {
-            self.push(v);
+        for &value in values {
+            self.push(value);
         }
     }
 
-    /// 是否积累了足够样本 (>= window_size)
     pub const fn is_ready(&self) -> bool {
-        self.samples_count >= self.window_size
+        self.samples >= self.config.window_size
     }
-
-    /// 当前窗口大小
     pub const fn window_size(&self) -> usize {
-        self.window_size
+        self.config.window_size
     }
-
-    /// 采样率
+    pub const fn hop_size(&self) -> usize {
+        self.config.hop_size
+    }
     pub const fn sample_rate(&self) -> f32 {
-        self.sample_rate
+        self.config.sample_rate
     }
-
-    /// 当前窗类型
     pub const fn window_type(&self) -> WindowType {
-        self.window_type
+        self.config.window_type
     }
-
-    /// 当前输出模式
     pub const fn output(&self) -> SpectrumOutput {
         self.output
     }
 
-    /// 计算频谱
-    ///
-    /// 若样本不足 (未填满窗口), 返回 None。
-    /// 否则取出窗口数据 (按时间顺序), 加窗, FFT, 转换为输出模式。
-    #[allow(clippy::cast_precision_loss, clippy::suboptimal_flops)]
     pub fn compute(&mut self) -> Option<SpectrumResult> {
         if !self.is_ready() {
             return None;
         }
-
-        // 从环形缓冲区读取数据 (时间顺序: 最旧→最新)
-        // write_pos 指向下一个写入位置, 即最旧数据
-        let start = self.write_pos;
-        for i in 0..self.window_size {
-            self.fft_input[i] = self.buffer[(start + i) % self.window_size];
-        }
-
-        // 应用窗函数 (in-place)
-        dsp_window::apply_window(&self.window_type, &mut self.fft_input);
-
-        // FFT — process 会读取 fft_input, 写入 fft_output
-        if self
-            .r2c
-            .process(&mut self.fft_input, &mut self.fft_output)
-            .is_err()
-        {
-            return None;
-        }
-
-        // 转换为输出模式
-        let n = self.window_size as f32;
-        let half_n = self.window_size / 2 + 1;
-        let cg = self.window_type.coherent_gain(self.window_size);
-        let cg_sq = cg * cg;
-        let fs = self.sample_rate;
-        let eps: f32 = 1e-12;
-
-        let values: Vec<f32> = self
-            .fft_output
-            .iter()
-            .take(half_n)
-            .map(|c| {
-                let mag = c.norm(); // |X(k)|
-                let power = mag * mag;
-                match self.output {
-                    SpectrumOutput::Magnitude => mag / n,
-                    SpectrumOutput::Power => power / (n * n),
-                    SpectrumOutput::PSD => power / (n * fs * cg_sq + eps),
-                    SpectrumOutput::Decibel => {
-                        let p = power / (n * n);
-                        10.0 * (p + eps).log10()
-                    }
-                }
-            })
-            .collect();
-
-        Some(SpectrumResult {
-            frequencies: self.frequencies.clone(),
-            values,
-        })
+        self.latest.take().map(|frame| frame.display(self.output))
     }
 
-    /// 修改输出模式 (无需重建 FFT planner)
     pub const fn set_output(&mut self, output: SpectrumOutput) {
         self.output = output;
     }
 
-    /// 修改窗类型 (无需重建 FFT planner)
-    pub const fn set_window_type(&mut self, window_type: WindowType) {
-        self.window_type = window_type;
+    pub fn set_window_type(&mut self, window_type: WindowType) {
+        self.config.window_type = window_type;
+        self.stream = StreamingFft::new(self.config, self.epoch + 1).expect("valid window overlap");
+        self.reset();
     }
 
-    /// 重置状态 (清空缓冲区)
     pub fn reset(&mut self) {
-        self.buffer.fill(0.0);
-        self.write_pos = 0;
-        self.samples_count = 0;
+        self.epoch = self.epoch.wrapping_add(1);
+        self.stream.reset(self.epoch);
+        self.samples = 0;
+        self.latest = None;
     }
 }
 

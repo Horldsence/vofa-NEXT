@@ -36,12 +36,16 @@ fn channels_detection_change(last_pushed: Option<usize>, current: Option<usize>)
 }
 
 /// 路由结果摘要 (统计 + 触发决策)
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct RouteSummary {
     /// 本次路由解析出的数据帧总数 (所有命中 Protocol 节点合计)
     pub frames: u64,
     /// 是否有 FrameDecoder 被喂入 (调用方据此做快照评估)
     pub decoders_fed: bool,
+    /// Transport.tx 实际写入成功次数 (发送落地统计; 0 = 未命中任何 tx 边)
+    pub tx_sends: u32,
+    /// Transport.tx 写入失败/锁忙次数 — 统一发送内核据此向调用方报错
+    pub tx_errors: u32,
 }
 
 /// 沿全局 BytePlan 推送字节 (事件驱动入口)
@@ -197,12 +201,17 @@ async fn dispatch_non_protocol(
         (NodeKind::Transport { .. }, TRANSPORT_TX_HANDLE) => {
             // 协议转换回注 / 命令发送落地 — try_lock 避免与 open 的长持锁互等
             match plane.transport.try_lock() {
-                Ok(m) => {
-                    if let Err(e) = m.send(target, data) {
+                Ok(m) => match m.send(target, data) {
+                    Ok(()) => summary.tx_sends += 1,
+                    Err(e) => {
+                        summary.tx_errors += 1;
                         log::debug!("字节路由发送失败 ({target}): {e}");
                     }
+                },
+                Err(_) => {
+                    summary.tx_errors += 1;
+                    log::warn!("传输注册表锁忙, 丢弃发往 {} 的 {} 字节", target, data.len());
                 }
-                Err(_) => log::warn!("传输注册表锁忙, 丢弃发往 {} 的 {} 字节", target, data.len()),
             }
         }
         _ => {

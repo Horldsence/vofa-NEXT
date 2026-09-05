@@ -12,7 +12,7 @@ pub(super) fn lower_filter(node: &NodeDef, config: &FilterConfig, ctx: &mut Lowe
     let out = ctx.f32_slots.alloc(&node.id, "result");
     ctx.push_op(CompiledOp::Filter {
         node_id: node.id.clone(),
-        config: config.clone(),
+        config: dsp_filter::filter_kind_from_config(config),
         input,
         out,
     });

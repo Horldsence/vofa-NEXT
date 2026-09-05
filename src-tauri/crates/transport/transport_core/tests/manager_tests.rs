@@ -27,9 +27,8 @@ async fn open_node(mgr: &mut TransportManager, id: &str) {
 #[tokio::test]
 async fn open_close_single_node() {
     let mut mgr = TransportManager::new();
-    assert!(!mgr.is_open("a"));
+    assert!(mgr.state("a").is_none());
     open_node(&mut mgr, "a").await;
-    assert!(mgr.is_open("a"));
     assert_eq!(mgr.state("a"), Some(ConnectionState::Connected));
     assert!(matches!(
         mgr.config("a"),
@@ -37,7 +36,6 @@ async fn open_close_single_node() {
     ));
 
     mgr.close("a");
-    assert!(!mgr.is_open("a"));
     assert!(mgr.state("a").is_none());
     assert!(mgr.config("a").is_none());
 }
@@ -61,21 +59,18 @@ async fn multiple_nodes_are_independent() {
     let sb = mgr.stats("b").unwrap();
     assert_eq!((sb.tx_bytes, sb.tx_frames), (2, 1));
 
-    mgr.record_rx("a", 10, 2);
+    // rx 统计经轻量句柄上报, 同样按节点隔离
+    let live_a = mgr.live_handle("a").unwrap();
+    live_a.record_rx(10, 2);
     assert_eq!(mgr.stats("a").unwrap().rx_bytes, 10);
     assert_eq!(mgr.stats("b").unwrap().rx_bytes, 0);
 
-    // TestData 运行开关互不影响
-    mgr.set_test_data_running("a", true);
-    assert!(mgr.is_test_data_running("a"));
-    assert!(!mgr.is_test_data_running("b"));
-
     // 关闭 a 不影响 b
     mgr.close("a");
-    assert!(!mgr.is_open("a"));
-    assert!(mgr.is_open("b"));
+    assert!(mgr.state("a").is_none());
+    assert!(mgr.state("b").is_some());
 
-    mgr.close_all();
+    mgr.close("b");
     assert!(mgr.list_open().is_empty());
 }
 
@@ -84,31 +79,12 @@ async fn reopen_same_id_replaces_connection() {
     let mut mgr = TransportManager::new();
     open_node(&mut mgr, "a").await;
     mgr.send("a", &[1, 2, 3]).unwrap();
-    mgr.set_test_data_running("a", true);
 
     // 重复 open 同 id: 先关闭旧连接, 状态/统计重置
     open_node(&mut mgr, "a").await;
-    assert!(mgr.is_open("a"));
     assert_eq!(mgr.list_open().len(), 1);
     let s = mgr.stats("a").unwrap();
     assert_eq!((s.tx_bytes, s.tx_frames), (0, 0));
-    assert!(!mgr.is_test_data_running("a"));
-}
-
-#[tokio::test]
-async fn test_data_running_state_distinguishes_non_testdata_nodes() {
-    let mut mgr = TransportManager::new();
-    open_node(&mut mgr, "a").await;
-
-    // TestData 节点: Some(false) → Some(true) → Some(false)
-    assert_eq!(mgr.test_data_running_state("a"), Some(false));
-    mgr.set_test_data_running("a", true);
-    assert_eq!(mgr.test_data_running_state("a"), Some(true));
-    mgr.set_test_data_running("a", false);
-    assert_eq!(mgr.test_data_running_state("a"), Some(false));
-
-    // 未打开节点: None
-    assert_eq!(mgr.test_data_running_state("nope"), None);
 }
 
 #[tokio::test]
@@ -121,7 +97,6 @@ async fn unknown_node_id_errors() {
     assert!(mgr.stats("nope").is_none());
     assert!(mgr.config("nope").is_none());
     assert!(mgr.subscribe("nope").is_none());
-    assert!(!mgr.is_open("nope"));
     // 关闭未知 id 不 panic
     mgr.close("nope");
 }
@@ -134,16 +109,18 @@ async fn subscribe_receives_test_data() {
     let mut rx_a = mgr.subscribe("a").unwrap();
     let mut rx_b = mgr.subscribe("b").unwrap();
 
-    // 只启动 a, b 不应有数据
-    mgr.set_test_data_running("a", true);
+    // 连接即生成: 打开后无需任何启停操作, 各节点独立持续产出数据流
     let data = tokio::time::timeout(Duration::from_secs(2), rx_a.recv())
         .await
         .expect("a 应产生数据")
         .unwrap();
     assert!(!data.is_empty());
 
-    let b_result = tokio::time::timeout(Duration::from_millis(300), rx_b.recv()).await;
-    assert!(b_result.is_err(), "b 未启动, 不应有数据");
+    let data_b = tokio::time::timeout(Duration::from_secs(2), rx_b.recv())
+        .await
+        .expect("b 应产生数据")
+        .unwrap();
+    assert!(!data_b.is_empty());
 
     // 关闭 a 后其后台任务退出, 通道最终关闭
     mgr.close("a");
@@ -155,13 +132,21 @@ async fn send_loops_back_to_subscribers() {
     open_node(&mut mgr, "a").await;
     let mut rx = mgr.subscribe("a").unwrap();
 
-    // 写入的字节统一回环到本节点接收广播 (transport→transport 路由链不断裂)
+    // 写入的字节统一回环到本节点接收广播 (transport→transport 路由链不断裂)。
+    // 连接即生成: 生成器批次与回环帧共享同一条广播, 逐条等到回环帧为止。
     mgr.send("a", &[0xDE, 0xAD]).unwrap();
-    let data = tokio::time::timeout(Duration::from_secs(1), rx.recv())
-        .await
-        .expect("写入应回环到接收广播")
-        .unwrap();
-    assert_eq!(data, vec![0xDE, 0xAD]);
+    let mut seen = false;
+    for _ in 0..200 {
+        match tokio::time::timeout(Duration::from_millis(50), rx.recv()).await {
+            Ok(Ok(data)) if data == [0xDE, 0xAD] => {
+                seen = true;
+                break;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(_)) | Err(_) => break,
+        }
+    }
+    assert!(seen, "写入应回环到接收广播");
 }
 
 #[tokio::test]
@@ -175,7 +160,6 @@ async fn test_data_protocol_hot_update() {
     .await
     .unwrap();
     let mut rx = mgr.subscribe("a").unwrap();
-    mgr.set_test_data_running("a", true);
 
     // JustFloat: 帧尾 00 00 80 7f
     let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
@@ -224,7 +208,6 @@ async fn test_data_generator_config_hot_update() {
     .await
     .unwrap();
     let mut rx = mgr.subscribe("a").unwrap();
-    mgr.set_test_data_running("a", true);
 
     let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
         .await
@@ -282,7 +265,6 @@ async fn test_data_schema_hot_update() {
     .await
     .unwrap();
     let mut rx = mgr.subscribe("a").unwrap();
-    mgr.set_test_data_running("a", true);
 
     // 初始: legacy JustFloat (帧尾 00 00 80 7f)
     let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())

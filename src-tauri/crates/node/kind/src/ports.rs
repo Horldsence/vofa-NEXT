@@ -37,6 +37,7 @@ pub enum PortDomain {
     Bytes,
     /// 字符串平面（`String`，事件驱动；与 graphOutputs 平行存在）
     String,
+    Spectrum,
 }
 
 /// 查询节点某个端口的域
@@ -52,6 +53,10 @@ pub enum PortDomain {
 ///   其余输出（"ch0".."chN" 或 port_names 命名端口）= F32；其余节点按现有语义全 F32
 pub fn port_domain(kind: &NodeKind, handle: &str, is_output: bool) -> PortDomain {
     match kind {
+        NodeKind::Fft { .. } if is_output && handle == "spectrum" => PortDomain::Spectrum,
+        NodeKind::Ifft | NodeKind::Sink if !is_output && handle == "spectrum" => {
+            PortDomain::Spectrum
+        }
         NodeKind::Transport { .. } => match (is_output, handle) {
             (true, TRANSPORT_RX_HANDLE) | (false, TRANSPORT_TX_HANDLE) => PortDomain::Bytes,
             _ => PortDomain::F32,

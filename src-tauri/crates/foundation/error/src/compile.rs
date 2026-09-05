@@ -25,6 +25,7 @@ pub enum PortDomain {
     F32,
     Bytes,
     String,
+    Spectrum,
 }
 
 impl PortDomain {
@@ -34,6 +35,7 @@ impl PortDomain {
             Self::F32 => "f32",
             Self::Bytes => "bytes",
             Self::String => "string",
+            Self::Spectrum => "spectrum",
         }
     }
 }

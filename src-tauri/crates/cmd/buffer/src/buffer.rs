@@ -290,8 +290,8 @@ pub async fn set_waveform_buffer_capacity(
 }
 /// 命令发送帧字节打包 — 后端单一权威 (`compute_frame_bytes` IPC)
 ///
-/// `frame`: 来自前端的 `CommandFrameDto` (snake_case 序列化)
-/// `inputs`: var_ref 端口的实时输入值 (按 port_name 索引, f64 表示;
+/// `frame`: 来自前端的 `CommandFrameDto` (camelCase 字段对齐前端 CommandFrame)
+/// `inputs`: var_ref 端口的实时输入值 (按端口名索引, f64 表示)
 ///
 /// 返回 `ComputedFrameDto { bytes: Vec<u8> | null, error: String | null, per_block }`。
 /// 错误时 `bytes` 为 null 并附带 `块 #N: ...` 形式错误信息。
@@ -303,6 +303,103 @@ pub async fn compute_command_frame_bytes(
     inputs: std::collections::HashMap<String, f64>,
 ) -> crate::ComputedFrameDto {
     crate::compute_frame_bytes(&frame, &inputs)
+}
+
+/// `send_command_frame` 结果 — 预览/手动/自动三路共用的统一发送内核输出
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandSendOutcome {
+    /// 权威字节 (与 UI 预览同内核产出; 编码失败时 bytes 为 null)
+    pub computed: crate::ComputedFrameDto,
+    /// 字节路由命中的下游边数 (0 = 未连线)
+    pub targets: usize,
+    /// 字节是否成功派发到下游 (编码失败 / 未运行 / 无路由 / tx 失败时为 false)
+    pub sent: bool,
+    /// 发送层错误 (编码错误之外: 未运行 / 无路由 / 设备写入失败)
+    pub error: Option<String>,
+}
+
+/// 手动发送命令帧 — 统一发送内核 (预览 / 手动 / 自动同一条路)
+///
+/// 流程: 运行态门控 → [`schema_engine::compute_frame_bytes`] 编码 (与预览、
+/// 后台自动发送同一内核) → 沿全局 BytePlan 字节边路由 (与自动发送同一送达路:
+/// Transport.tx 真实发送 / FrameDecoder.in 喂入 / Protocol.in 回环解析)。
+/// 任一环节失败直接返回错误, 不入队不重试。
+#[allow(clippy::implicit_hasher)]
+#[tauri::command]
+pub async fn send_command_frame(
+    state: State<'_, AppState>,
+    widget_id: String,
+    frame: crate::CommandFrameDto,
+    inputs: std::collections::HashMap<String, f64>,
+) -> Result<CommandSendOutcome> {
+    let plane = state.data_plane.clone();
+
+    let no_targets = |error: &'static str| CommandSendOutcome {
+        computed: crate::ComputedFrameDto {
+            bytes: None,
+            error: None,
+            per_block: Vec::new(),
+        },
+        targets: 0,
+        sent: false,
+        error: Some(error.to_string()),
+    };
+
+    // 运行态门控: 手动发送要求运行中 (与自动发送同门控), 失败直接返回
+    if plane.eval.execution.ticket().is_none() {
+        return Ok(no_targets(
+            "工作区未运行: 手动发送要求运行态, 请先启动工作区",
+        ));
+    }
+    let computed = crate::compute_frame_bytes(&frame, &inputs);
+    if computed.error.is_some() || computed.bytes.is_none() {
+        return Ok(CommandSendOutcome {
+            computed,
+            targets: 0,
+            sent: false,
+            error: None,
+        });
+    }
+    let bytes = computed.bytes.clone().unwrap_or_default();
+
+    let targets = plane.byte_plan.lock().routes_for(&widget_id).len();
+    if targets == 0 {
+        return Ok(no_targets("命令发送器未连线字节出口 (loopbackOut)"));
+    }
+
+    let mut cache = data_plane::DecoderFeedCache::new();
+    // boundary 读锁内复查运行态: 与切换互斥 — 校验通过后切换必须等发送完成,
+    // 旧 epoch 字节不会跨切换发出
+    let summary = {
+        let _boundary = plane.eval.execution.boundary.read().await;
+        if plane.eval.execution.ticket().is_none() {
+            return Ok(no_targets(
+                "工作区未运行: 手动发送要求运行态, 请先启动工作区",
+            ));
+        }
+        data_plane::byte_router::route_bytes(&plane, None, &widget_id, &bytes, 0, &mut cache, None)
+            .await
+    };
+    if summary.decoders_fed {
+        data_plane::frame_dispatch::refresh_snapshot(&plane);
+    }
+
+    let error = if summary.tx_errors > 0 {
+        Some(format!(
+            "设备写入失败: {} 成功 / {} 失败",
+            summary.tx_sends,
+            summary.tx_sends + summary.tx_errors
+        ))
+    } else {
+        None
+    };
+    Ok(CommandSendOutcome {
+        sent: summary.tx_errors == 0,
+        computed,
+        targets,
+        error,
+    })
 }
 
 #[cfg(test)]

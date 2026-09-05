@@ -9,6 +9,9 @@ import { activateOnKeyboard } from '../../../lib/utils/a11y';
 
 /// 各类别的图标底色 (静态类名, 保证 Tailwind 可扫描)
 const categoryTileClass: Record<WidgetCategory, string> = {
+  transport: 'bg-yellow/15 text-yellow group-hover:bg-yellow/25',
+  protocol: 'bg-accent/15 text-accent group-hover:bg-accent/25',
+  send: 'bg-purple/15 text-purple group-hover:bg-purple/25',
   input: 'bg-blue/15 text-blue group-hover:bg-blue/25',
   display: 'bg-green/15 text-green group-hover:bg-green/25',
   math: 'bg-orange/15 text-orange group-hover:bg-orange/25',

@@ -7,7 +7,6 @@ import {
   removeCommandFrame,
   updateCommandFrame,
   makeEmptyFrame,
-  computeFrameBytes,
 } from '../utils/commandFrames';
 import type { CommandConfig, LegacyCommandConfig } from '../../types';
 
@@ -130,36 +129,6 @@ describe('帧增删改', () => {
   });
 });
 
-describe('computeFrameBytes (按帧拼接字节流)', () => {
-  it('const_hex + var_ref + checksum + appendNewline', () => {
-    const frame = {
-      id: 'f1', label: 'F1', appendNewline: true, sendMode: 'manual' as const, timerMs: 100,
-      blocks: [
-        { id: 'b1', type: 'const_hex' as const, hex: 'AA 01' },
-        { id: 'b2', type: 'var_ref' as const, portName: 'speed', fieldType: 'uint16LE' as const },
-        { id: 'b3', type: 'checksum' as const, checksum: 'sum8' as const },
-      ],
-    };
-    const { bytes, error, perBlock } = computeFrameBytes(frame, { speed: 0x0203 });
-    expect(error).toBeNull();
-    // AA 01 + 03 02 (uint16LE) + sum8(AA+01+03+02=B0) + 0A
-    expect(Array.from(bytes!)).toEqual([0xaa, 0x01, 0x03, 0x02, 0xb0, 0x0a]);
-    expect(perBlock).toHaveLength(3);
-  });
-
-  it('var_ref 缺连入值时按 0 编码; 非法 HEX 产出错误', () => {
-    const frame = {
-      id: 'f1', label: 'F1', appendNewline: false, sendMode: 'manual' as const, timerMs: 100,
-      blocks: [{ id: 'b1', type: 'var_ref' as const, portName: 'x', fieldType: 'uint8' as const }],
-    };
-    expect(Array.from(computeFrameBytes(frame, {}).bytes!)).toEqual([0]);
-
-    const bad = {
-      id: 'f2', label: 'F2', appendNewline: false, sendMode: 'manual' as const, timerMs: 100,
-      blocks: [{ id: 'b1', type: 'const_hex' as const, hex: 'A' }],
-    };
-    const r = computeFrameBytes(bad, {});
-    expect(r.bytes).toBeNull();
-    expect(r.error).toBeTruthy();
-  });
-});
+// 注: 帧字节拼接 (computeFrameBytes) 已统一为 Rust 单一权威
+// (schema_engine::compute_frame_bytes, 见其 wire-shape/打包测试) —
+// 预览 / 手动发送 / 后台自动发送三路共用同一内核, 前端不再实现字节计算。

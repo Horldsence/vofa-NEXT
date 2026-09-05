@@ -60,14 +60,14 @@ async fn reconcile_closes_orphan_transport() {
         .lock()
         .insert("tp".into(), transport_node("tp", "t1"));
     open_test_data(&state, "tp", &plane).await;
-    assert!(state.transport.lock().await.is_open("tp"));
+    assert!(state.transport.lock().await.state("tp").is_some());
 
     // 模拟图重编译: tp 从全局节点表移除
     plane.global_nodes.lock().remove("tp");
     plane.reconcile().await;
 
     assert!(
-        !state.transport.lock().await.is_open("tp"),
+        state.transport.lock().await.state("tp").is_none(),
         "孤儿 Transport 连接应被关闭"
     );
     assert!(
@@ -90,7 +90,7 @@ async fn reconcile_keeps_node_referenced_by_other_tab() {
 
     plane.reconcile().await;
 
-    assert!(state.transport.lock().await.is_open("tp"));
+    assert!(state.transport.lock().await.state("tp").is_some());
     assert!(plane.raw_collectors.lock().contains_key("tp"));
 }
 

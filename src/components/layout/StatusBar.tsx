@@ -10,6 +10,7 @@ import { UpdateIndicator } from './UpdateIndicator';
 import { useSettingsStore } from '../../store/settingsStore';
 import { usePrimaryProtocolConfig, usePrimaryTransportConfig } from '../../lib/hooks/usePrimaryNodes';
 import CompileStatusIndicator from './CompileStatusIndicator';
+import { RunControls } from './RunControls';
 import { useLayoutStore } from '../../store/layoutStore';
 
 /// AI 对话面板开关 — 状态栏右侧常驻入口 (面板可见性持久化, 会话在后端不丢失)
@@ -165,6 +166,8 @@ export const StatusBar = memo(function StatusBar() {
 
   return (
     <div ref={rootRef} className="h-[24px] bg-bg-statusbar text-text-secondary flex items-center px-2 text-xs gap-3 shrink-0 overflow-hidden" onContextMenu={onContextMenu}>
+      <RunControls />
+      <div className="w-px h-3 bg-border-subtle mx-0.5 shrink-0" />
       <div className="flex items-center gap-1.5 h-full">
         <span className={clsx("w-2.5 h-2.5 rounded-full inline-block shrink-0", dotColorClass)} />
         <span className="whitespace-nowrap">{stateLabel[connectionState]}</span>

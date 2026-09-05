@@ -94,7 +94,13 @@ pub fn eval_frames(
     let mut sf = eval.source_frames.lock();
     let mut breakdown = EvalBreakdown::default();
 
-    if options.workers > 1 {
+    // Block feedback must advance sample by sample. Independent pure graphs retain parallel execution.
+    let has_reconstruction = eval
+        .graphs
+        .lock()
+        .values()
+        .any(|g| !g.ifft_node_ids().is_empty());
+    if options.workers > 1 && !has_reconstruction {
         crate::graph_eval_parallel::process_source_batch_parallel(
             eval,
             &mut sf,

@@ -5,7 +5,6 @@ import { createWidget } from '../../../lib/utils/widgetDefaults';
 import { t } from '../../../i18n';
 import {
   Square,
-  Sliders,
   LineChart,
   Code2,
   Plus,
@@ -94,7 +93,7 @@ export function WidgetPalette() {
   /// 刚展开的分组 — 其行播放入场动画, 动画结束清除
   const [enteringSection, setEnteringSection] = useState<SectionId | null>(null);
   /// 当前可视分组 (跳转条高亮)
-  const [activeSection, setActiveSection] = useState<SectionId>('input');
+  const [activeSection, setActiveSection] = useState<SectionId>('transport');
 
   const listRef = useRef<HTMLDivElement>(null);
   /// 进行中的跳转目标 (截断后的滚动偏移) — 平滑滚动到位或用户接管时结束;
@@ -111,7 +110,7 @@ export function WidgetPalette() {
   const isSearching = trimmedQuery.length > 0;
 
   const sections = useMemo<PaletteSection[]>(() => {
-    const inputItems = entriesForKinds(lang, ['Knob', 'Button', 'Radio', 'Checkbox', 'Slider', 'Command', 'FrameDecoder', 'Trigger', 'TextInput']);
+    const inputItems = entriesForKinds(lang, ['Knob', 'Button', 'Radio', 'Checkbox', 'Slider', 'Trigger', 'TextInput']);
 
     const displayItems = entriesForKinds(lang, ['Waveform', 'PieChart', 'Image', 'Gauge', 'Progress', 'LED', 'NumberDisplay', 'Label', 'Spectrum', 'Model3D', 'RawData', 'TextDisplay']);
 
@@ -164,7 +163,6 @@ export function WidgetPalette() {
       { key: 'str-format', kind: 'Str', op: 'format', icon: <Braces size={14} />, label: t(lang, 'strFormat'), title: `${t(lang, 'strFormat')} — ${t(lang, 'strFormatDesc')}` },
       { key: 'str-parse', kind: 'Str', op: 'parse', icon: <ListOrdered size={14} />, label: t(lang, 'strParse'), title: `${t(lang, 'strParse')} — ${t(lang, 'strParseDesc')}` },
       { key: 'str-encode-hex', kind: 'Str', op: 'encode_hex', icon: <Binary size={14} />, label: t(lang, 'strEncodeHex'), title: `${t(lang, 'strEncodeHex')} — ${t(lang, 'strEncodeHexDesc')}` },
-      { key: 'TextOut', kind: 'TextOut', icon: <Send size={14} />, label: t(lang, 'textOut'), title: `${t(lang, 'textOut')} — ${t(lang, 'textOutDesc')}` },
     ];
 
     const customItems: PaletteEntry[] = entriesForKinds(lang, ['Custom']).map((entry) => ({
@@ -204,14 +202,12 @@ export function WidgetPalette() {
     ];
 
     return [
-      { id: 'input', header: t(lang, 'catInput'), category: 'input', entries: inputItems },
-      { id: 'transport', header: t(lang, 'dataInterface'), category: 'input', entries: transportItems },
-      { id: 'protocol', header: t(lang, 'protocolEngine'), category: 'input', entries: protocolItems },
-      { id: 'display', header: t(lang, 'catDisplay'), category: 'display', entries: displayItems },
-      { id: 'math', header: t(lang, 'catMath'), category: 'math', entries: mathItems },
-      { id: 'filter', header: t(lang, 'filter'), category: 'math', entries: filterItems },
-      { id: 'fft', header: t(lang, 'fft'), category: 'math', entries: fftItems },
-      { id: 'string', header: t(lang, 'catString'), category: 'string', entries: strItems },
+      { id: 'transport', header: t(lang, 'catConnections'), category: 'transport', entries: transportItems },
+      { id: 'protocol', header: t(lang, 'catCodecs'), category: 'protocol', entries: [...protocolItems, ...entriesForKinds(lang, ['FrameDecoder'])] },
+      { id: 'send', header: t(lang, 'catSending'), category: 'send', entries: entriesForKinds(lang, ['Command', 'TextOut']) },
+      { id: 'math', header: t(lang, 'catSignalProcessing'), category: 'math', entries: [...mathItems, ...filterItems, ...fftItems] },
+      { id: 'string', header: t(lang, 'catTextProcessing'), category: 'string', entries: strItems },
+      { id: 'display', header: t(lang, 'catDisplayInteraction'), category: 'display', entries: [...displayItems, ...inputItems] },
       { id: 'custom', header: t(lang, 'catCustom'), category: 'custom', entries: customItems },
     ];
   }, [lang, openCustomEditor]);
@@ -219,12 +215,12 @@ export function WidgetPalette() {
   /// 顶部跳转条 — 算术/滤波器/频域合并为一个「算术」跳转入口
   const jumpTargets = useMemo<JumpTarget[]>(
     () => [
-      { id: 'input', label: t(lang, 'catInput'), color: WIDGET_CATEGORY_COLORS.input, icon: <Sliders size={14} /> },
-      { id: 'transport', label: t(lang, 'dataInterface'), color: WIDGET_CATEGORY_COLORS.input, icon: <Cable size={14} /> },
-      { id: 'protocol', label: t(lang, 'protocolEngine'), color: WIDGET_CATEGORY_COLORS.input, icon: <Binary size={14} /> },
-      { id: 'display', label: t(lang, 'catDisplay'), color: WIDGET_CATEGORY_COLORS.display, icon: <LineChart size={14} /> },
-      { id: 'math', label: t(lang, 'catMath'), color: WIDGET_CATEGORY_COLORS.math, icon: <Sigma size={14} /> },
-      { id: 'string', label: t(lang, 'catString'), color: WIDGET_CATEGORY_COLORS.string, icon: <Type size={14} /> },
+      { id: 'transport', label: t(lang, 'catConnections'), color: WIDGET_CATEGORY_COLORS.transport, icon: <Cable size={14} /> },
+      { id: 'protocol', label: t(lang, 'catCodecs'), color: WIDGET_CATEGORY_COLORS.protocol, icon: <Binary size={14} /> },
+      { id: 'send', label: t(lang, 'catSending'), color: WIDGET_CATEGORY_COLORS.send, icon: <Send size={14} /> },
+      { id: 'math', label: t(lang, 'catSignalProcessing'), color: WIDGET_CATEGORY_COLORS.math, icon: <Sigma size={14} /> },
+      { id: 'string', label: t(lang, 'catTextProcessing'), color: WIDGET_CATEGORY_COLORS.string, icon: <Type size={14} /> },
+      { id: 'display', label: t(lang, 'catDisplayInteraction'), color: WIDGET_CATEGORY_COLORS.display, icon: <LineChart size={14} /> },
       { id: 'custom', label: t(lang, 'catCustom'), color: WIDGET_CATEGORY_COLORS.custom, icon: <Code2 size={14} /> },
     ],
     [lang],

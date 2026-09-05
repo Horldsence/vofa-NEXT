@@ -143,7 +143,7 @@ pub struct SlotPlan {
     pub units: Vec<EvalUnit>,
     /// 正本槽位 i → 所属单元下标 (运行时按单元→桶分派派生边/端口批/频谱读)
     pub slot_unit: Vec<u32>,
-    /// SpectrumSink 输入槽位: (sink_node_id, 源值槽位; None = 无上游边, 与缺省 0.0 对应)
+    /// Fft 输入槽位: (sink_node_id, 源值槽位; None = 无上游边, 与缺省 0.0 对应)
     pub spectrum_slots: Vec<(String, Option<usize>)>,
     /// ProtocolSource 引用的全局 Protocol 节点 id 表 (去重, 编译期预排;
     /// 逐帧评估时每源一次字符串查找解析为帧引用, op 用下标直读)
@@ -207,10 +207,10 @@ pub fn lower_value_plane(g: &TypedGraph, mir: &ValueMir) -> SlotPlan {
         }
     }
 
-    // SpectrumSink 输入槽位 (不在 eval_order, 输入端口固定 "in0")
+    // Fft 输入槽位 (不在 eval_order, 输入端口固定 "in0")
     let mut spectrum_slots = Vec::new();
     for node in g.value_nodes() {
-        if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
+        if matches!(node.kind, NodeKind::Fft { .. }) {
             spectrum_slots.push((node.id.clone(), ctx.f32_in(&node.id, "in0")));
         }
     }

@@ -17,7 +17,7 @@ export interface PaletteEntry {
   title: string;
 }
 
-export type SectionId = 'input' | 'transport' | 'protocol' | 'display' | 'math' | 'filter' | 'fft' | 'string' | 'custom';
+export type SectionId = 'send' | 'input' | 'transport' | 'protocol' | 'display' | 'math' | 'filter' | 'fft' | 'string' | 'custom';
 
 export interface PaletteSection {
   id: SectionId;

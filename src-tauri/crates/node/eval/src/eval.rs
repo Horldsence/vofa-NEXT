@@ -93,13 +93,13 @@ impl CompiledEval {
         &self.plan.frame_sources
     }
 
-    /// SpectrumSink 输入槽位表: (sink_node_id, 源值槽位; None = 无上游边)
+    /// Fft 输入槽位表: (sink_node_id, 源值槽位; None = 无上游边)
     pub fn spectrum_slots(&self) -> &[(String, Option<usize>)] {
         &self.plan.spectrum_slots
     }
 
     /// 静态本地图判定 — 纯外部常量输入的纯函数图:
-    /// 无 SpectrumSink / TextOut, op 全部 ∈ {Input, TextInput, Custom, Math, Str}
+    /// 无 Fft / TextOut, op 全部 ∈ {Input, TextInput, Custom, Math, Str}
     /// (无 ProtocolSource/Filter/Ifft/Trigger/FrameDecoder — 逐帧评估是纯浪费,
     /// 每批评估一次输出值相同; 见 graph_eval 静态图优化)
     pub fn is_static_local(&self) -> bool {
@@ -356,12 +356,12 @@ impl CompiledEval {
                     let input_val = input.map_or(0.0, |s| slots[s]);
                     // 派生 owned FilterKind (避免与 filter_states 借用重叠),
                     // config 变化重建滤波器状态 (与原 kind 变更语义一致)。
-                    let new_kind = dsp_filter::filter_kind_from_config(config);
+                    let new_kind = config;
                     let need_rebuild = filter_states
                         .get(node_id)
-                        .is_none_or(|f| f.kind() != &new_kind);
+                        .is_none_or(|f| f.kind() != new_kind);
                     if need_rebuild {
-                        filter_states.insert(node_id.clone(), DigitalFilter::new(new_kind));
+                        filter_states.insert(node_id.clone(), DigitalFilter::new(new_kind.clone()));
                     }
                     let filter = filter_states.get_mut(node_id).unwrap();
                     slots[*out] = filter.process(input_val);
@@ -590,7 +590,7 @@ impl CompiledEval {
         }
     }
 
-    /// SpectrumSink 输入: (sink_id, value) 迭代, 仅 written 槽位
+    /// Fft 输入: (sink_id, value) 迭代, 仅 written 槽位
     pub fn spectrum_values<'a>(
         &'a self,
         slots: &'a [f32],

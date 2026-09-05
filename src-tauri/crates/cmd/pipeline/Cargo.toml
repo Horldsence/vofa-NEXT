@@ -1,6 +1,6 @@
 [package]
 name = "pipeline"
-description = "VOFA-NEXT 流水线参数 + 触发器匹配 Tauri 命令 (pipeline.rs + trigger.rs)"
+description = "VOFA-NEXT 流水线参数 + 工作区运行控制 + 发送任务注册 + 触发器匹配 Tauri 命令 (pipeline.rs + run.rs + trigger.rs)"
 version.workspace = true
 edition.workspace = true
 
@@ -13,5 +13,10 @@ log = { workspace = true }
 tauri = { version = "2", features = [] }
 vofa_core = { workspace = true }
 data_bus = { workspace = true }
+data_plane = { workspace = true }
+error = { workspace = true }
+notify_events = { workspace = true }
+schema_engine = { workspace = true }
+serde = { workspace = true }
 engine = { workspace = true }
 trigger = { workspace = true }

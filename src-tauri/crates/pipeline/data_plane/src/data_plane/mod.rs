@@ -507,6 +507,16 @@ impl DataPlaneState {
         })
     }
 
+    /// 清空全部源的评估队列 (工作区暂停/停止边沿用) — 不积压暂停期间的已解析帧,
+    /// 返回丢弃帧数。调用方持 `execution.boundary` 写锁时执行, 与在途评估批次互斥。
+    pub fn clear_all_eval_queues(&self) -> u64 {
+        let mut dropped = 0_u64;
+        for queue in self.frame_queues.lock().values_mut() {
+            dropped += queue.clear();
+        }
+        dropped
+    }
+
     /// 缓冲降载汇总 — 各源 storage_overflow 总和较上次报告的增量 (不变量 5:
     /// 丢弃显式化; 金字塔层对被覆盖部分提供包络, 波形不缺失)
     pub(crate) fn report_buffer_overflow_delta(&self) {

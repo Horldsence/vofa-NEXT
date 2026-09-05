@@ -44,14 +44,10 @@ export interface ConnectionSlice {
   connectionStates: Record<string, ConnectionState>;
   /// 传输统计 — 按 Transport 节点 id
   nodeStats: Record<string, NodeStats>;
-  /// TestData 生成开关 — 按 Transport 节点 id
-  testDataRunning: Record<string, boolean>;
   ports: PortInfo[];
   refreshPorts: () => Promise<void>;
   connectNode: (nodeId: string) => Promise<void>;
   disconnectNode: (nodeId: string) => Promise<void>;
-  startTestData: (nodeId: string) => Promise<void>;
-  stopTestData: (nodeId: string) => Promise<void>;
   sendData: (nodeId: string, data: number[]) => Promise<void>;
   sendAndCapture: (nodeId: string, protocolNode: string, data: number[]) => Promise<void>;
   sendText: (nodeId: string, text: string) => Promise<void>;
@@ -62,7 +58,6 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
   return {
     connectionStates: {},
     nodeStats: {},
-    testDataRunning: {},
     ports: [],
     refreshPorts: async () => {
       try {
@@ -115,7 +110,6 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
         await api.openTransport(nodeId, config, protocol, schema);
         set((s) => ({
           connectionStates: { ...s.connectionStates, [nodeId]: 'Connected' as ConnectionState },
-          testDataRunning: { ...s.testDataRunning, [nodeId]: false },
           nodeStats: { ...s.nodeStats, [nodeId]: { ...EMPTY_NODE_STATS } },
           rawDataVersion: Date.now(),
         }));
@@ -139,7 +133,6 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
       const downstreamId = downstreamProtocolOf(nodeId, get().rfEdges, get().rfNodes);
       set((s) => ({
         connectionStates: { ...s.connectionStates, [nodeId]: 'Disconnected' as ConnectionState },
-        testDataRunning: { ...s.testDataRunning, [nodeId]: false },
       }));
       clearRawDataTransportBuffers(nodeId);
       if (downstreamId) resetPortSampleStoresForSource(downstreamId);
@@ -158,26 +151,6 @@ export const createConnectionSlice: AppSlice<ConnectionSlice> = (set, get) => {
             actions: [{ label: t(lang, 'notifRetry'), run: () => { void get().disconnectNode(nodeId); } }],
           }
         );
-      }
-    },
-
-    startTestData: async (nodeId) => {
-      try {
-        await api.startTestData(nodeId);
-        set((s) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: true } }));
-      } catch (e) {
-        const lang = get().lang;
-        notify.error(t(lang, 'notifStartTestDataFailed'), nodeError(lang, e), { source: 'startTestData' });
-      }
-    },
-
-    stopTestData: async (nodeId) => {
-      try {
-        await api.stopTestData(nodeId);
-        set((s) => ({ testDataRunning: { ...s.testDataRunning, [nodeId]: false } }));
-      } catch (e) {
-        const lang = get().lang;
-        notify.error(t(lang, 'notifStopTestDataFailed'), nodeError(lang, e), { source: 'stopTestData' });
       }
     },
 

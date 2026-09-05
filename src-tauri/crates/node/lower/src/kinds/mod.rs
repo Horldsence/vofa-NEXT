@@ -67,7 +67,7 @@ pub fn lower_node(node: &NodeDef, ctx: &mut LowerCtx) {
         ),
         NodeKind::TextInput { text } => lower_text_input(node, text, ctx),
         NodeKind::Sink
-        | NodeKind::SpectrumSink { .. }
+        | NodeKind::Fft { .. }
         | NodeKind::Transport { .. }
         | NodeKind::Protocol { .. } => {}
     }

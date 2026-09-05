@@ -358,3 +358,32 @@ export interface TableViewConfig {
   /// 是否显示时间戳列
   showTimestamp: boolean;
 }
+
+/// 后台自动发送任务注册 — Command widget 每个非手动帧一条
+///
+/// 发送触发完全在 Rust 侧调度器 (send_scheduler_ticker): Timer 定时跳过错过
+/// 周期, OnChange 按最终编码字节去重/合并; 前端不再持有任何发送定时器。
+/// Manual 模式的帧不注册 (手动发送走 send_command_frame 统一内核)。
+export interface SendTaskRegistration {
+  widgetId: string;
+  frameId: string;
+  mode: 'timer' | 'onChange';
+  intervalMs: number;
+  frame: CommandFrame;
+}
+
+/// 统一发送内核结果 — 预览 / 手动 / 自动三路共享同一编码与路由后的输出
+export interface CommandSendOutcome {
+  /// 权威字节 (与 UI 预览同内核产出; 编码失败时 bytes 为 null)
+  computed: {
+    bytes: number[] | null;
+    error: string | null;
+    per_block: number[][];
+  };
+  /// 字节路由命中的下游边数 (0 = 未连线)
+  targets: number;
+  /// 字节是否成功派发
+  sent: boolean;
+  /// 发送层错误 (未运行 / 未连线 / 设备写入失败)
+  error: string | null;
+}

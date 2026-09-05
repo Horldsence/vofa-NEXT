@@ -8,19 +8,30 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 校验类型 — 与前端 `ChecksumKind` 一一对应 (snake_case 序列化)
+/// 校验类型 — 与前端 `ChecksumKind` (src/lib/utils/checksum.ts) 一一对应。
+///
+/// 序列化采用前端的字面拼写 (`crc16Modbus` / `crc16CCITT` 大小写混合形式);
+/// 全小写形式作为兼容别名同时接受。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
 pub enum ChecksumKind {
+    #[serde(rename = "none")]
     None,
+    #[serde(rename = "sum8")]
     Sum8,
+    #[serde(rename = "xor8")]
     Xor8,
+    #[serde(rename = "crc8")]
     Crc8,
+    #[serde(rename = "crc16Modbus", alias = "crc16modbus")]
     Crc16Modbus,
+    #[serde(rename = "crc16CCITT", alias = "crc16ccitt")]
     Crc16Ccitt,
+    #[serde(rename = "crc32")]
     Crc32,
+    #[serde(rename = "lrc")]
     Lrc,
     /// 自定义 JS 脚本: 后端不支持, 走兜底 (跳过校验) 并返回错误
+    #[serde(rename = "custom")]
     Custom,
 }
 

@@ -4,7 +4,7 @@
 //! 定义与执行分离: 本模块只定义操作集, 构建见 `lower` 模块,
 //! 执行见 [`crate::eval::CompiledEval::run`]。
 
-use dsp_filter::FilterConfig;
+use dsp_filter::FilterKind;
 use kind::{MathOp, NewlineMode, StrOp};
 use trigger::TriggerRuleDef;
 
@@ -39,7 +39,7 @@ pub enum CompiledOp {
     /// 比较 config 决定是否重建滤波器状态 (与原 kind 字段语义一致)。
     Filter {
         node_id: String,
-        config: FilterConfig,
+        config: FilterKind,
         input: Option<usize>,
         out: usize,
     },

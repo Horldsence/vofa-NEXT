@@ -1,4 +1,4 @@
-//! 槽位等价性 / SpectrumSink / Ifft 求值测试
+//! 槽位等价性 / Fft / Ifft 求值测试
 
 use std::collections::HashMap;
 
@@ -16,11 +16,11 @@ fn empty_frames() -> SourceFramesMap {
     SourceFramesMap::default()
 }
 
-// ============ SpectrumSink 节点测试 ============
+// ============ Fft 节点测试 ============
 
 #[test]
 fn test_collect_spectrum_inputs() {
-    // collect_spectrum_inputs 应返回 SpectrumSink 的输入值
+    // collect_spectrum_inputs 应返回 Fft 的输入值
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
         make_spectrum_sink(
@@ -54,7 +54,7 @@ fn test_collect_spectrum_inputs() {
 
 #[test]
 fn test_spectrum_sink_no_output_in_evaluate() {
-    // evaluate 不应包含 SpectrumSink 的输出
+    // evaluate 不应包含 Fft 的输出
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
         make_spectrum_sink(
@@ -89,8 +89,10 @@ fn test_spectrum_sink_no_output_in_evaluate() {
 // ============ Ifft 节点测试 ============
 
 #[test]
-fn test_ifft_node_reads_playback_buffer() {
-    // Ifft 节点输出应从 ifft_states 环形读取重建缓冲
+#[allow(clippy::cast_precision_loss, clippy::cast_possible_wrap)] // 测试常量 n=8, 截断无害
+fn test_ifft_node_consumes_reconstructed_samples_once() {
+    // Ifft 节点按序消费重建样本: 每个频谱块恰好产出 hop 个样本,
+    // 耗尽后输出 0 — 不再循环播放最新幅度谱 (循环路径已移除)
     let nodes = vec![NodeDef {
         id: "ifft1".to_string(),
         tab_id: "t1".to_string(),
@@ -100,30 +102,71 @@ fn test_ifft_node_reads_playback_buffer() {
 
     let mut ifft_states: HashMap<String, IfftState> = HashMap::new();
     let mut st = IfftState::default();
-    // DC 振幅谱: bin0=1, 其余 0 → 重建为常数 1 (n=8)
+    // DC 复谱: bin0 = N → 逆变换 /N 归一化后重建为常数 1 (n=8, Rect, hop=n)
     let n = 8;
     let magnitudes: Vec<f32> = {
         let mut v = vec![0.0f32; n / 2 + 1];
         v[0] = 1.0;
         v
     };
-    st.synth(&magnitudes, n);
+    st.accept(&dsp_fft::SpectrumFrame {
+        config: dsp_fft::TransformConfig {
+            window_size: n,
+            hop_size: n,
+            window_type: dsp_window::WindowType::Rect,
+            sample_rate: 1000.0,
+        },
+        epoch: 0,
+        sequence: 0,
+        start_sample: 0,
+        valid_samples: n as u64,
+        bins: magnitudes.iter().map(|&v| [v * n as f32, 0.0]).collect(),
+    })
+    .unwrap();
+    // 缓冲未取空时拒绝接受下一块 — "每块恰好消费一次"不被回绕静默吞掉
+    let rejected = st.accept(&dsp_fft::SpectrumFrame {
+        config: dsp_fft::TransformConfig {
+            window_size: n,
+            hop_size: n,
+            window_type: dsp_window::WindowType::Rect,
+            sample_rate: 1000.0,
+        },
+        epoch: 0,
+        sequence: 1,
+        start_sample: n as i64,
+        valid_samples: (n * 2) as u64,
+        bins: magnitudes.iter().map(|&v| [v * n as f32, 0.0]).collect(),
+    });
+    assert!(
+        rejected.is_err(),
+        "buffer not drained: accept must not overwrite pending samples"
+    );
     ifft_states.insert("ifft1".to_string(), st);
 
-    // 环形播放应持续输出 1.0
-    for _ in 0..(n * 3) {
-        let out = g.evaluate(
+    let evaluate = |ifft_states: &mut HashMap<String, IfftState>| {
+        g.evaluate(
             &empty_frames(),
             &empty_texts(),
             &HashMap::new(),
             &HashMap::new(),
             &mut HashMap::new(),
             &HashMap::new(),
-            &mut ifft_states,
+            ifft_states,
             &mut HashMap::new(),
             &mut StringValuesMap::default(),
-        );
-        assert_eq!(out.get("ifft1").and_then(|m| m.get("out0")), Some(&1.0));
+        )
+        .get("ifft1")
+        .and_then(|m| m.get("out0"))
+        .copied()
+    };
+
+    // hop 个样本逐点输出 1.0
+    for _ in 0..n {
+        assert_eq!(evaluate(&mut ifft_states), Some(1.0));
+    }
+    // 缓冲耗尽: 输出 0 (无循环播放), 后续任意次求值保持 0
+    for _ in 0..(n * 2) {
+        assert_eq!(evaluate(&mut ifft_states), Some(0.0));
     }
 }
 

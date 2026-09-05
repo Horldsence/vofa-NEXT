@@ -30,3 +30,7 @@ pub mod protocol_impl;
 pub use compile::compile_schema;
 pub use engine::SchemaEngine;
 pub use protocol_impl::_ensure_protocol_impl_used;
+
+pub mod command_frame;
+pub mod frame_checksum;
+pub mod frame_field;

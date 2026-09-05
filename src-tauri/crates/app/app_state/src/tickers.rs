@@ -6,7 +6,6 @@
 
 use data_plane::GraphEvalState;
 use data_plane::StreamGroupState;
-use dispatcher::{sync_ifft_buffers, sync_spectrum_analyzers};
 use dsp_fft::SpectrumResult;
 use std::collections::HashMap;
 use std::time::Duration;
@@ -85,9 +84,7 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
     loop {
         tokio::time::sleep(rate.current()).await;
         // 1. 同步 analyzers 与 graphs
-        sync_spectrum_analyzers(&state);
         // 1b. 同步 Ifft 节点重建缓冲与 graphs / 最新频谱
-        sync_ifft_buffers(&state);
 
         // 2. 对每个 analyzer 计算 FFT
         let mut analyzers = state.spectrum_analyzers.lock();
@@ -126,6 +123,146 @@ pub async fn spectrum_ticker(state: GraphEvalState) {
 #[allow(dead_code)]
 fn _force_import(_: StreamGroupState) {}
 
+/// 解析 Command widget 的 var_ref 输入值 — 与前端 `useNumericInputs` 同一语义:
+/// 源图边 `target == widget_id && targetHandle == 端口` → 上游 (node, handle ?? "value")
+/// → 输出快照最新值, 缺失时回退 0。
+///
+/// 输出快照只含 f32 数值平面输出 (Channel/Math/Input 等), 与前端端口样本源一致。
+pub fn resolve_widget_inputs(
+    source_graphs: &crate::SourceGraphs,
+    output_values: &engine::ValuesMap,
+    widget_id: &str,
+) -> HashMap<String, f64> {
+    let mut inputs: HashMap<String, f64> = HashMap::new();
+    let store = source_graphs.lock();
+    for graph in store.values() {
+        for edge in &graph.edges {
+            if edge.target != widget_id {
+                continue;
+            }
+            // 源图中的 handle 已在连线时解析为具体端口名 (默认 "value")
+            let value = output_values
+                .get(&edge.source)
+                .and_then(|ports| ports.get(&edge.source_handle))
+                .copied()
+                .unwrap_or(0.0);
+            inputs.insert(edge.target_handle.clone(), f64::from(value));
+        }
+    }
+    inputs
+}
+
+/// 后台自动发送调度循环 — Rust 侧唯一发送触发器 (取代前端 React 定时器)。
+///
+/// 每 tick: 门控 (仅运行态) → 逐任务用与预览/手动发送同一内核
+/// (`schema_engine::compute_frame_bytes`) 编码 → [`data_plane::SendSchedule`]
+/// 去重/合并/跳周期 → 持 boundary 读锁经字节路由下发 (与手动发送同一条路) →
+/// 簿记回写。票据在发送前校验 — 运行状态切换后旧 epoch 的待发任务直接作废。
+pub async fn send_scheduler_ticker(
+    app: tauri::AppHandle,
+    plane: data_plane::DataPlaneState,
+    source_graphs: crate::SourceGraphs,
+) {
+    use data_plane::execution::SendMode;
+    use schema_engine::command_frame::compute_frame_bytes;
+
+    let mut dec_cache = data_plane::DecoderFeedCache::new();
+    let mut tick: u64 = 0;
+    log::debug!("自动发送调度 ticker 已启动 (10ms tick)");
+
+    loop {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        tick = tick.wrapping_add(1);
+
+        // 周期清理: widget 已随图删除的遗留任务 (前端未及时注销的兜底)
+        if tick.is_multiple_of(500) {
+            let nodes = plane.global_nodes.lock();
+            plane
+                .eval
+                .send
+                .lock()
+                .retain_existing(|w| nodes.contains_key(w));
+        }
+
+        // 运行门控: 暂停/停止不触发任何自动发送
+        let Some(ticket) = plane.eval.execution.ticket() else {
+            continue;
+        };
+        if plane.eval.send.lock().is_empty() {
+            continue;
+        }
+        let now_ms = vofa_core::now_us() / 1_000;
+
+        // 阶段 1 (同步锁内): 快照输出值 → 同一内核编码 → 调度判定, 求出到期载荷
+        let mut due: Vec<(String, String, Vec<u8>)> = Vec::new(); // (task_key, widget_id, bytes)
+        {
+            let output_values = plane.eval.output_snapshot.lock().values.clone();
+            let mut send = plane.eval.send.lock();
+            for st in send.tasks_mut() {
+                if st.task.mode == SendMode::Manual {
+                    continue;
+                }
+                let inputs =
+                    resolve_widget_inputs(&source_graphs, &output_values, &st.task.widget_id);
+                let computed = compute_frame_bytes(&st.task.frame, &inputs);
+                let payload = if computed.error.is_some() {
+                    // 编码失败: 显式作废上一份成功字节 (SendSchedule::due 收到 None
+                    // 会复位基线), 不发送旧帧
+                    None
+                } else {
+                    computed.bytes.filter(|bytes| !bytes.is_empty())
+                };
+                if st.schedule.due(
+                    now_ms,
+                    st.task.mode,
+                    st.task.interval_ms,
+                    payload.as_deref(),
+                ) {
+                    if let Some(bytes) = payload {
+                        due.push((st.task.key(), st.task.widget_id.clone(), bytes));
+                    }
+                }
+            }
+        }
+        if due.is_empty() {
+            continue;
+        }
+
+        // 阶段 2 (锁外 IO): 逐条发送 — boundary 读锁内校验票据后路由,
+        // 与运行状态切换 (写锁) 互斥: 校验通过后切换必须等发送完成,
+        // 旧 epoch 的字节不可能跨越切换落地
+        for (task_key, widget_id, bytes) in due {
+            let _boundary = plane.eval.execution.boundary.read().await;
+            if !plane.eval.execution.accepts(ticket) {
+                break; // 切换后旧 epoch 任务作废
+            }
+            let summary = data_plane::byte_router::route_bytes(
+                &plane,
+                Some(&app),
+                &widget_id,
+                &bytes,
+                0,
+                &mut dec_cache,
+                None,
+            )
+            .await;
+            let result = if summary.tx_errors > 0 {
+                Err(format!(
+                    "发送失败 (目标不可达, {}/{} 成功)",
+                    summary.tx_sends,
+                    summary.tx_sends + summary.tx_errors
+                ))
+            } else {
+                Ok(())
+            };
+            let mut send = plane.eval.send.lock();
+            if let Some(st) = send.task_mut(&task_key) {
+                st.schedule.complete(&bytes, result);
+            }
+        }
+    }
+}
+
 /// TextOut 发送循环 — 图内字符串 (TextOut 节点) 限速写回目标 Transport 的 tx
 ///
 /// 数据来源: `graph_string_outputs[textout_id]["text"]` (通用 materialize_str 发布点写入);
@@ -152,6 +289,11 @@ pub async fn textout_sender_ticker(
 
     loop {
         tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // 运行门控: TextOut 自动发送只在运行态生效 (暂停不积压, 恢复按变化重发)
+        if state.execution.ticket().is_none() {
+            continue;
+        }
 
         // 锁内仅收集待发列表 (锁外执行 IO)
         // (textout node_id 状态键, 目标 transport id, 已含换行的 payload, min_interval_ms)
@@ -235,6 +377,67 @@ mod tests {
                 .insert(port.to_string(), value.to_string());
         }
         m
+    }
+
+    fn edge(
+        id: &str,
+        source: &str,
+        source_handle: &str,
+        target: &str,
+        target_handle: &str,
+    ) -> buffer_graph::Edge {
+        buffer_graph::Edge {
+            id: id.to_string(),
+            source: source.to_string(),
+            source_handle: source_handle.to_string(),
+            target: target.to_string(),
+            target_handle: target_handle.to_string(),
+        }
+    }
+
+    #[test]
+    #[allow(clippy::float_cmp)] // f32→f64 精确表示的整/半值, 无舍入
+    fn widget_inputs_resolve_from_source_graph_edges() {
+        let graphs: crate::SourceGraphs =
+            std::sync::Arc::new(parking_lot::Mutex::new(HashMap::from([(
+                "tab1".to_string(),
+                crate::TabSourceGraph {
+                    edges: vec![
+                        edge("e1", "src1", "ch0", "cmd1", "in1"),
+                        edge("e2", "src2", "value", "cmd1", "in2"),
+                        edge("e3", "src3", "ch1", "cmd2", "in1"),
+                    ],
+                    ..Default::default()
+                },
+            )])));
+        let mut outputs: engine::ValuesMap = HashMap::default();
+        outputs.insert(
+            "src1".to_string(),
+            rustc_hash::FxHashMap::from_iter([("ch0".to_string(), 1.5_f32)]),
+        );
+        outputs.insert(
+            "src2".to_string(),
+            rustc_hash::FxHashMap::from_iter([("value".to_string(), -2.0_f32)]),
+        );
+        outputs.insert(
+            "src3".to_string(),
+            rustc_hash::FxHashMap::from_iter([("ch1".to_string(), 7.0_f32)]),
+        );
+
+        let inputs = resolve_widget_inputs(&graphs, &outputs, "cmd1");
+        // 命中上游发布值
+        assert_eq!(inputs["in1"], 1.5);
+        // 无 handle 的上游输出按 "value" 端口解析 (与前端 numericPortRef 一致)
+        assert_eq!(inputs["in2"], -2.0);
+        // 其他 widget 的边不混入
+        assert!(!inputs.contains_key("missing"));
+        assert_eq!(inputs.len(), 2);
+        assert_ne!(inputs.get("in1"), Some(&7.0));
+
+        // 缺失上游发布值回退 0 (与前端 `?? 0` 一致)
+        let empty: engine::ValuesMap = HashMap::default();
+        let fallback = resolve_widget_inputs(&graphs, &empty, "cmd1");
+        assert_eq!(fallback["in1"], 0.0);
     }
 
     #[test]

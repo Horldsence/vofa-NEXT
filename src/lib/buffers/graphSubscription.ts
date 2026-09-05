@@ -16,7 +16,7 @@ export interface CustomInputBatch {
 }
 
 /// 频谱批次 — 与 Rust SpectrumBatch 对应
-/// 30 FPS 推送, key = SpectrumSink widget id, value = 最新一次 FFT 结果
+/// 30 FPS 推送, key = Fft widget id, value = 最新一次 FFT 结果
 export interface SpectrumBatch {
   /// sink widget id -> 频谱结果
   spectra: Record<string, SpectrumResult>;

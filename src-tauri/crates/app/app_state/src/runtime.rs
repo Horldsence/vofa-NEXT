@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::app_state::AppState;
 use crate::{collect_workspace_file, save_workspace};
-use crate::{spectrum_ticker, text_output_ticker, textout_sender_ticker};
+use crate::{send_scheduler_ticker, spectrum_ticker, text_output_ticker, textout_sender_ticker};
 
 /// setup 阶段启动全部后台任务: 工作区防抖落盘 / 文本输出 & TextOut & 频谱 ticker /
 /// 启动页兜底。
@@ -74,6 +74,21 @@ fn spawn_push_tickers(app: &AppHandle) {
     // 启动频谱分析 ticker (30 FFT 计算 + 推送 SpectrumBatch)
     let eval_state_for_spectrum = app.state::<AppState>().eval_state();
     tauri::async_runtime::spawn(spectrum_ticker(eval_state_for_spectrum));
+
+    // 启动后台自动发送调度 ticker (Timer/OnChange; 手动发送走统一内核命令)
+    let (app_handle_for_send, plane_for_send, graphs_for_send) = {
+        let state = app.state::<AppState>();
+        (
+            app.clone(),
+            state.data_plane.clone(),
+            std::sync::Arc::clone(&state.source_graphs),
+        )
+    };
+    tauri::async_runtime::spawn(send_scheduler_ticker(
+        app_handle_for_send,
+        plane_for_send,
+        graphs_for_send,
+    ));
 }
 
 /// 启动页兜底: 前端应在初始化完成后调用 close_splashscreen 关闭启动页;

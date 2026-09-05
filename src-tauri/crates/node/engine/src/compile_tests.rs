@@ -65,7 +65,7 @@ fn test_filter_in_eval_order() {
 
 #[test]
 fn test_spectrum_sink_not_in_eval_order() {
-    // SpectrumSink 不应在 eval_order 中 (无输出, 块运算)
+    // Fft 不应在 eval_order 中 (无输出, 块运算)
     let nodes = vec![
         make_protocol_source("ps1", "t1", "proto1", 1),
         make_spectrum_sink(
@@ -100,9 +100,9 @@ fn test_spectrum_sink_config() {
     let g = CompiledGraph::compile("t1".into(), nodes, vec![]).unwrap();
     let cfg = g.spectrum_sink_config("s1").expect("应能获取配置");
     assert_eq!(cfg.0, 512); // window_size
-    assert_eq!(cfg.1, WindowType::Blackman); // window_type
-    assert_eq!(cfg.2, SpectrumOutput::PSD); // output
-    assert!((cfg.3 - 2000.0).abs() < 1e-6); // sample_rate
+    assert_eq!(cfg.2, WindowType::Blackman); // window_type
+    assert_eq!(cfg.3, SpectrumOutput::PSD); // output
+    assert!((cfg.4 - 2000.0).abs() < 1e-6); // sample_rate
 
     // 不存在的节点应返回 None
     assert!(g.spectrum_sink_config("nonexistent").is_none());

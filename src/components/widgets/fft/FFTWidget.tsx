@@ -11,7 +11,7 @@ interface FFTWidgetProps {
 /// FFT 频域求解器 — 输入时域信号 in0, 输出频谱到专用频谱数据通道
 ///
 /// 数据流 (与旧 Spectrum 求解路径一致, 但求解器与展示分离):
-///   1. 本控件映射为后端 SpectrumSink 节点, 逐帧消费 in0 的时域值
+///   1. 本控件映射为后端 Fft 节点, 逐帧消费 in0 的时域值
 ///   2. 后端 SpectrumAnalyzer 维护滑动窗口, 30 FPS 触发 FFT
 ///   3. 结果以本 widget id 为 key 存入 spectrumResults
 ///   4. 下游「频谱」展示控件选择本求解器 id 作为数据源读取并绘制

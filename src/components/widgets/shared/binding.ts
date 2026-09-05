@@ -5,8 +5,12 @@ import { useAppStore } from '../../../store/appStore';
 /// - None: 不发送
 /// - Auto: 调用后端 encode_channel(channel, value) (protocolNode 取目标 Transport 下游的 Protocol 节点)
 /// - Manual: 使用模板 {value} 替换后以字符串发送
+///
+/// 发送要求工作区运行中 (统一发送门控): 未运行时静默跳过 — 拖动/点击是高频
+/// 路径, 不弹错误通知; 运行态开关见状态栏 RunControls。
 export function sendBindingValue(binding: WidgetBinding, value: number) {
   const state = useAppStore.getState();
+  if (state.runState !== 'running') return;
 
   switch (binding.mode) {
     case 'None':

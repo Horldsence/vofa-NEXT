@@ -23,10 +23,6 @@ connected: Connected
 disconnected: Disconnected
 notConnected: Not connected
 connError: Connection error
-startTestData: Start Generation
-stopTestData: Stop Generation
-testDataRunning: Running
-testDataStopped: Stopped
 
 # Port Config
 portName: Port
@@ -391,8 +387,6 @@ notifNodeGraphSyncFailed: Node graph sync failed
 notifTransportHotUpdateFailed: Connection hot-update failed
 notifReconnect: Reconnect
 notifPollChannelsFailed: Channel detection polling failed
-notifStartTestDataFailed: Failed to start test data
-notifStopTestDataFailed: Failed to stop test data
 notifRetry: Retry
 notifDismiss: Dismiss
 notifDismissAll: Dismiss All
@@ -745,6 +739,12 @@ customCancel: Cancel
 customEditorError: Code Error
 
 # Widget Category Tabs
+catConnections: "Connections"
+catCodecs: "Parsing & encoding"
+catSending: "Sending"
+catSignalProcessing: "Signal processing"
+catTextProcessing: "Text processing"
+catDisplayInteraction: "Display & interaction"
 catInput: Data
 catDisplay: Display
 catMath: Math
@@ -1504,3 +1504,12 @@ targetTransport: Target transport
 envelopeModeTitle: "Envelope mode: backend per-column min/max decimation (GPU-accelerated), frontend draws ribbon only (prototype)"
 envelopeMode: Envelope
 envelopeStats: "window {n} pts → {columns}-col envelope"
+
+# Workspace run control (status bar RunControls + unified send gating)
+runStateStopped: Stopped
+runStateRunning: Running
+runStatePaused: Paused
+runStartHint: Start workspace (data processing & auto-send begin; also resumes from pause)
+runPauseHint: Pause workspace (keeps connection, drops data while paused, no backlog)
+runStopHint: Stop workspace (clears execution state and pending send tasks)
+cmdSendRequiresRun: Workspace is not running — manual send requires running state, start it from the status bar

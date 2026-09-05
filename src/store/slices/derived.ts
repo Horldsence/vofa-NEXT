@@ -8,7 +8,7 @@
 
 import type { AppSlice } from './types';
 
-export type DerivedPortDomain = 'F32' | 'Bytes' | 'String';
+export type DerivedPortDomain = 'F32' | 'Bytes' | 'String' | 'Spectrum';
 
 export interface NodeDerivedPort {
   name: string;

@@ -248,10 +248,14 @@ fn main() {
                 }
             }
         });
-        let (_write, tx, cancel, running, notify, _watch) = transport_core::test_data::spawn(config(), TestDataLink { protocol: protocol(), schema: None }).unwrap();
-        let mut rx = tx.subscribe();
-        running.store(generator, Ordering::Relaxed);
-        notify.notify_one();
+        // 连接即生成: generator 场景 spawn 后数据流即持续产出;
+        // 非 generator 场景不启动生成器 (其 CPU 负载会污染注入基线), 由本地节拍合成 chunk。
+        let (mut rx, cancel) = if generator {
+            let (_write, tx, cancel, _watch) = transport_core::test_data::spawn(config(), TestDataLink { protocol: protocol(), schema: None }).unwrap();
+            (Some(tx.subscribe()), Some(cancel))
+        } else {
+            (None, None)
+        };
         let chunk: Vec<u8> = (0..3_500_u64).flat_map(|i| transport_core::test_data::generate_bytes(4, TestSignal::Sine, i as f64 / 700_000.0, &protocol(), i)).collect();
         let start = Instant::now();
         let mut cache = DecoderFeedCache::new();
@@ -273,7 +277,7 @@ fn main() {
                 last_ingest_stall = Instant::now();
                 ingest_stalls += 1;
             }
-            let data = if generator {
+            let data = if let Some(rx) = &mut rx {
                 match tokio::time::timeout(Duration::from_secs(2), rx.recv()).await.expect("生成器超时") {
                     Ok(data) => data,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => { lagged += n; continue; }
@@ -286,7 +290,7 @@ fn main() {
             };
             let call = Instant::now();
             plane.raw_collector_for("tp").lock().push_chunk(vofa_core::now_us(), buffer_raw::RawDataDirection::Rx, &data);
-            let result = route_bytes(&plane, None, "tp", &data, if generator { rx.len() } else { 0 }, &mut cache, None).await;
+            let result = route_bytes(&plane, None, "tp", &data, rx.as_ref().map_or(0, tokio::sync::broadcast::Receiver::len), &mut cache, None).await;
             latencies.push(call.elapsed().as_secs_f64() * 1_000.0);
             bytes += data.len() as u64;
             frames += result.frames as u64;
@@ -299,9 +303,9 @@ fn main() {
             }
         }
         let elapsed = start.elapsed().as_secs_f64();
-        cancel.store(true, Ordering::Relaxed);
-        running.store(false, Ordering::Relaxed);
-        notify.notify_one();
+        if let Some(cancel) = &cancel {
+            cancel.store(true, Ordering::Relaxed);
+        }
         let drain = Instant::now();
         loop {
             let diag = plane.eval_diagnostics();

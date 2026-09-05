@@ -152,8 +152,9 @@ pub fn make_spectrum_sink(
     NodeDef {
         id: id.to_string(),
         tab_id: tab_id.to_string(),
-        kind: NodeKind::SpectrumSink {
+        kind: NodeKind::Fft {
             window_size,
+            hop_size: (window_size / 2).max(1),
             window_type,
             output,
             sample_rate,

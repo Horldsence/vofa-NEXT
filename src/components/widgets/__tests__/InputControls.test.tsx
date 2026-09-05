@@ -127,6 +127,8 @@ describe('explicit bindings', () => {
   it('sends Auto values only through an existing connected compatible target', () => {
     const sendWidgetValue = vi.fn(() => Promise.resolve());
     useAppStore.setState({
+      // 统一发送门控: 控件值发送要求工作区运行中
+      runState: 'running',
       rfNodes: [
         { id: 'transport-1', type: 'transport', position: { x: 0, y: 0 }, data: {} },
         { id: 'protocol-1', type: 'protocol', position: { x: 0, y: 0 }, data: { config: { kind: 'JustFloat' } } },
@@ -143,6 +145,30 @@ describe('explicit bindings', () => {
     sendBindingValue(binding, 12);
     expect(sendWidgetValue).toHaveBeenCalledOnce();
     expect(sendWidgetValue).toHaveBeenCalledWith('transport-1', 'protocol-1', binding, 12);
+  });
+
+  it('skips sends while the workspace is not running (unified send gating)', () => {
+    const sendWidgetValue = vi.fn(() => Promise.resolve());
+    const sendText = vi.fn(() => Promise.resolve());
+    useAppStore.setState({
+      runState: 'paused',
+      rfNodes: [
+        { id: 'transport-1', type: 'transport', position: { x: 0, y: 0 }, data: {} },
+        { id: 'protocol-1', type: 'protocol', position: { x: 0, y: 0 }, data: { config: { kind: 'JustFloat' } } },
+      ],
+      rfEdges: [{ id: 'edge-1', source: 'transport-1', target: 'protocol-1' }],
+      sendWidgetValue,
+      sendText,
+    });
+    const binding = { mode: 'Auto', params: { transportId: 'transport-1', protocolId: 'protocol-1', channel: 2 } } as const;
+
+    sendBindingValue(binding, 12);
+    expect(sendWidgetValue).not.toHaveBeenCalled();
+
+    // 恢复运行态后同一调用正常发出
+    useAppStore.setState({ runState: 'running' });
+    sendBindingValue(binding, 12);
+    expect(sendWidgetValue).toHaveBeenCalledOnce();
   });
 
   it('does not send an incomplete Manual template', () => {

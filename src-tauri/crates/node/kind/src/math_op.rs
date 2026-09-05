@@ -30,42 +30,38 @@ impl MathOp {
     /// 与前端 computeMathResult 保持一致的语义
     #[allow(clippy::cast_precision_loss)]
     pub fn evaluate(&self, inputs: &[f32]) -> f32 {
-        // 过滤 NaN
-        let vals: Vec<f32> = inputs.iter().copied().filter(|v| !v.is_nan()).collect();
-        if vals.is_empty() {
+        let values = inputs.iter().copied().filter(|v| !v.is_nan());
+        let Some(first) = values.clone().next() else {
             return 0.0;
-        }
+        };
         match self {
-            Self::Add => vals.iter().sum(),
-            Self::Sub => vals.iter().copied().reduce(|a, b| a - b).unwrap_or(0.0),
-            Self::Mul => vals.iter().copied().reduce(|a, b| a * b).unwrap_or(1.0),
-            Self::Div => {
-                vals.iter()
-                    .copied()
-                    .skip(1)
-                    .fold(vals[0], |a, b| if b == 0.0 { 0.0 } else { a / b })
-            }
-            Self::Avg => vals.iter().sum::<f32>() / vals.len() as f32,
-            Self::Min => vals.iter().copied().fold(f32::INFINITY, f32::min),
-            Self::Max => vals.iter().copied().fold(f32::NEG_INFINITY, f32::max),
-            Self::Abs => vals[0].abs(),
-            Self::Neg => -vals[0],
-            Self::Square => vals[0] * vals[0],
+            Self::Add => values.sum(),
+            Self::Sub => values.reduce(|a, b| a - b).unwrap_or(0.0),
+            Self::Mul => values.reduce(|a, b| a * b).unwrap_or(1.0),
+            Self::Div => values
+                .skip(1)
+                .fold(first, |a, b| if b == 0.0 { 0.0 } else { a / b }),
+            Self::Avg => values.clone().sum::<f32>() / values.count() as f32,
+            Self::Min => values.fold(f32::INFINITY, f32::min),
+            Self::Max => values.fold(f32::NEG_INFINITY, f32::max),
+            Self::Abs => first.abs(),
+            Self::Neg => -first,
+            Self::Square => first * first,
             Self::Sqrt => {
-                if vals[0] < 0.0 {
+                if first < 0.0 {
                     0.0
                 } else {
-                    vals[0].sqrt()
+                    first.sqrt()
                 }
             }
-            Self::Sin => vals[0].sin(),
-            Self::Cos => vals[0].cos(),
-            Self::Tan => vals[0].tan(),
+            Self::Sin => first.sin(),
+            Self::Cos => first.cos(),
+            Self::Tan => first.tan(),
             Self::Log => {
-                if vals[0] <= 0.0 {
+                if first <= 0.0 {
                     0.0
                 } else {
-                    vals[0].ln()
+                    first.ln()
                 }
             }
         }

@@ -23,10 +23,6 @@ connected: 已连接
 disconnected: 已断开
 notConnected: 未连接
 connError: 连接错误
-startTestData: 开始生成
-stopTestData: 停止生成
-testDataRunning: 运行中
-testDataStopped: 已停止
 
 # 串口配置
 portName: 端口
@@ -391,8 +387,6 @@ notifNodeGraphSyncFailed: 节点图同步失败
 notifTransportHotUpdateFailed: 连接热更新失败
 notifReconnect: 重新连接
 notifPollChannelsFailed: 通道检测轮询失败
-notifStartTestDataFailed: 启动测试数据失败
-notifStopTestDataFailed: 停止测试数据失败
 notifRetry: 重试
 notifDismiss: 关闭
 notifDismissAll: 关闭全部
@@ -745,6 +739,12 @@ customCancel: 取消
 customEditorError: 代码错误
 
 # 控件分类 Tab
+catConnections: "连接设备"
+catCodecs: "解析与编码"
+catSending: "发送"
+catSignalProcessing: "信号处理"
+catTextProcessing: "文本处理"
+catDisplayInteraction: "显示与交互"
 catInput: 数据
 catDisplay: 显示
 catMath: 算术
@@ -1504,3 +1504,12 @@ targetTransport: 目标数据接口
 envelopeModeTitle: "包络模式: 后端逐列 min/max 降采样 (GPU 加速), 前端仅绘制缎带 (原型)"
 envelopeMode: 包络
 envelopeStats: "窗口 {n} 点 → {columns} 列包络"
+
+# 工作区运行控制 (状态栏 RunControls + 统一发送门控)
+runStateStopped: 已停止
+runStateRunning: 运行中
+runStatePaused: 已暂停
+runStartHint: 启动工作区 (数据处理与自动发送开始; 暂停后恢复)
+runPauseHint: 暂停工作区 (保持连接, 丢弃暂停期间数据, 不积压)
+runStopHint: 停止工作区 (清空执行状态与待发送任务)
+cmdSendRequiresRun: 工作区未运行 — 手动发送要求运行态, 请先在状态栏启动

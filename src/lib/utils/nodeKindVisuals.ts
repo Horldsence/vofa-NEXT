@@ -80,6 +80,9 @@ export const WIDGET_KIND_ICONS: Record<WidgetConfig['kind'], LucideIcon> = {
 
 /** 分类 → 徽章底/前景 token 类（与 PaletteRow 的 categoryTileClass 同款） */
 const CATEGORY_TILE_CLS: Record<WidgetCategory, string> = {
+  transport: 'bg-yellow/15 text-yellow',
+  protocol: 'bg-accent/15 text-accent',
+  send: 'bg-purple/15 text-purple',
   input: 'bg-blue/15 text-blue',
   display: 'bg-green/15 text-green',
   math: 'bg-orange/15 text-orange',
@@ -89,6 +92,9 @@ const CATEGORY_TILE_CLS: Record<WidgetCategory, string> = {
 
 /** 分类 → 纯色小圆点 token 类（连线双端点用） */
 const CATEGORY_DOT_CLS: Record<WidgetCategory, string> = {
+  transport: 'bg-yellow',
+  protocol: 'bg-accent',
+  send: 'bg-purple',
   input: 'bg-blue',
   display: 'bg-green',
   math: 'bg-orange',

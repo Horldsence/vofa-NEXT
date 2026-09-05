@@ -25,6 +25,7 @@ pub enum PortDomainView {
     F32,
     Bytes,
     String,
+    Spectrum,
 }
 
 impl From<PortDomain> for PortDomainView {
@@ -33,6 +34,7 @@ impl From<PortDomain> for PortDomainView {
             PortDomain::F32 => Self::F32,
             PortDomain::Bytes => Self::Bytes,
             PortDomain::String => Self::String,
+            PortDomain::Spectrum => Self::Spectrum,
         }
     }
 }
@@ -45,6 +47,7 @@ pub enum HirEdgeClassView {
     Byte,
     F32,
     Str,
+    Spectrum,
     RawDataMarker { source_domain: PortDomainView },
 }
 
@@ -54,6 +57,7 @@ impl From<EdgeClass> for HirEdgeClassView {
             EdgeClass::Byte => Self::Byte,
             EdgeClass::F32 => Self::F32,
             EdgeClass::Str => Self::Str,
+            EdgeClass::Spectrum => Self::Spectrum,
             EdgeClass::RawDataMarker(d) => Self::RawDataMarker {
                 source_domain: d.into(),
             },

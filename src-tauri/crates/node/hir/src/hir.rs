@@ -30,6 +30,7 @@ pub enum EdgeClass {
     F32,
     /// 字符串边 (两端端口域均为 String) — 值平面 (字符串槽位, 与 f32 共享拓扑序)
     Str,
+    Spectrum,
     /// RawData 关联通道标记边 (Sink 的 `src:` 动态端口): 边只是用户意图标记,
     /// 字节/数值都不经 evaluate 流入 — 按源端域归类参与对应平面拓扑,
     /// 字节路由的默认分支忽略 (RawData 视图走订阅旁路);
@@ -122,6 +123,7 @@ impl TypedGraph {
                 (PortDomain::Bytes, PortDomain::Bytes) => EdgeClass::Byte,
                 (PortDomain::F32, PortDomain::F32) => EdgeClass::F32,
                 (PortDomain::String, PortDomain::String) => EdgeClass::Str,
+                (PortDomain::Spectrum, PortDomain::Spectrum) => EdgeClass::Spectrum,
                 // RawData 关联通道边 (Sink 的 src:<source>:<handle> 动态端口):
                 // 按源端域归类放行 (取代旧 LOOPBACK_IN_HANDLE 字符串特判)
                 _ if is_raw_data_channel_target(&graph, tgt, &e.target_handle) => {

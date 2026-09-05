@@ -2,27 +2,24 @@ import { memo } from 'react';
 import type { Node } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import { Plug, PlugZap, Play, Square } from 'lucide-react';
+import { Plug, PlugZap } from 'lucide-react';
 import { TransportConfigForm } from '../panels/transport/TransportConfigForm';
 import { ProtocolConfigForm } from '../panels/protocol/ProtocolConfigForm';
 import { useConnectAction } from '../panels/transport/useConnectAction';
 import { isRawDataPreset } from '../../lib/utils/protocolSchema';
 import { downstreamProtocolOf, type ProtocolNodeData, type TransportNodeData } from '../../store/appStoreHelpers';
 
-/// Transport 节点属性 — 配置表单 + 连接/断开 + TestData 启停
+/// Transport 节点属性 — 配置表单 + 连接/断开
+/// (TestData 即特殊的串口: 连接即生成、断开即停止, 无独立启停控制)
 const TransportProperties = memo(function TransportProperties({ node }: { node: Node }) {
   const lang = useAppStore((s) => s.lang);
   const setTransportNodeConfig = useAppStore((s) => s.setTransportNodeConfig);
   const disconnectNode = useAppStore((s) => s.disconnectNode);
   const connectionState = useAppStore((s) => s.connectionStates[node.id] ?? 'Disconnected');
-  const testDataRunning = useAppStore((s) => s.testDataRunning[node.id] ?? false);
-  const startTestData = useAppStore((s) => s.startTestData);
-  const stopTestData = useAppStore((s) => s.stopTestData);
   const { state: connectState, formAction: connectAction, isPending: connectPending } = useConnectAction(node.id);
 
   const config = (node.data as unknown as TransportNodeData).config;
   const isConnected = connectionState === 'Connected';
-  const isTestData = config.kind === 'TestData';
 
   // TestData 提示: 下游 Protocol 节点协议名
   const downstreamId = useAppStore((s) => downstreamProtocolOf(node.id, s.rfEdges, s.rfNodes));
@@ -40,43 +37,6 @@ const TransportProperties = memo(function TransportProperties({ node }: { node: 
         lang={lang}
         protocolLabel={downstreamConfig?.kind}
       />
-
-      {/* TestData 开始/停止控制 */}
-      {isTestData && (
-        <div className="mb-3 p-2.5 bg-bg-input rounded border border-border">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-xs font-medium text-text-secondary">{t(lang, 'testData')}</span>
-            <span className={`text-xs ${isConnected ? 'text-text-secondary' : 'text-text-disabled'}`}>
-              {isConnected
-                ? testDataRunning
-                  ? t(lang, 'testDataRunning')
-                  : t(lang, 'testDataStopped')
-                : t(lang, 'notConnected')}
-            </span>
-          </div>
-          {testDataRunning ? (
-            <button
-              type="button"
-              onClick={() => { void stopTestData(node.id); }}
-              disabled={!isConnected}
-              className="w-full px-3 h-8 bg-bg-danger text-text-bright border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-danger-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-            >
-              <Square size={14} />
-              {t(lang, 'stopTestData')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => { void startTestData(node.id); }}
-              disabled={!isConnected}
-              className="w-full px-3 h-8 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm text-center transition-colors hover:bg-bg-button-hover inline-flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
-            >
-              <Play size={14} />
-              {t(lang, 'startTestData')}
-            </button>
-          )}
-        </div>
-      )}
 
       {/* 连接控制 */}
       <div className="mt-3 pt-2 border-t border-border" data-tour="connect">

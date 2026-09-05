@@ -12,8 +12,11 @@ app_state = { workspace = true }
 log = { workspace = true }
 tauri = { version = "2", features = [] }
 buffer_databuffer = { workspace = true }
+data_plane = { workspace = true }
 vofa_core = { workspace = true }
 window-vibrancy = "0.6"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
+
+schema_engine = { workspace = true }

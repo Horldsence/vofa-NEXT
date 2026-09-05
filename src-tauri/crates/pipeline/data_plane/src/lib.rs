@@ -27,9 +27,11 @@
 pub mod data_plane;
 pub mod decoder_feed;
 pub mod eval_state;
+pub mod execution;
 pub mod feed_parallel;
 pub mod graph_eval;
 pub mod graph_eval_parallel;
+pub mod run_control;
 
 pub use data_plane::byte_router::RouteSummary;
 pub use data_plane::{
@@ -45,8 +47,12 @@ pub use eval_state::{
     StreamGroupState, StringOutputSnapshot, DEFAULT_CAN_BUFFER_CAPACITY,
     DEFAULT_CAN_LOAD_STATS_WINDOW, DEFAULT_DECODED_BUFFER_CAPACITY, DEFAULT_LOGIC_BUFFER_CAPACITY,
 };
+pub use execution::{
+    RunAction, RunSnapshot, RunState, SendMode, SendScheduler, SendStatus, SendTask, SendTaskState,
+};
 pub use feed_parallel::{
     workers_needed, ParallelFeeder, ParallelTiming, FEED_PARALLEL_UNIT, MAX_FEED_WORKERS,
     MIN_WORKER_BYTES,
 };
 pub use graph_eval::{evaluate_snapshot_now, process_source_batch, EvalBreakdown};
+pub use run_control::{apply_run_action, StreamGroups};

@@ -73,8 +73,9 @@ pub enum NodeKind {
     Filter { config: FilterConfig },
     /// 频谱分析节点（块运算，不在 `eval_order`）
     /// 输入端口 "in0"，无输出端口（结果走 `spectrum_snapshot` 订阅旁路）
-    SpectrumSink {
+    Fft {
         window_size: usize,
+        hop_size: usize,
         window_type: WindowType,
         output: SpectrumOutput,
         sample_rate: f32,

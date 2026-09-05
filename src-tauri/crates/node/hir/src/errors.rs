@@ -17,5 +17,6 @@ pub const fn port_domain_event(d: kind::PortDomain) -> PortDomain {
         kind::PortDomain::F32 => PortDomain::F32,
         kind::PortDomain::Bytes => PortDomain::Bytes,
         kind::PortDomain::String => PortDomain::String,
+        kind::PortDomain::Spectrum => PortDomain::Spectrum,
     }
 }

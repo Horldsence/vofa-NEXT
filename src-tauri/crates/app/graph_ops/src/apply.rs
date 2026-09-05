@@ -219,6 +219,8 @@ pub async fn apply_tab_graph_parts(
     data_plane.sync_protocol_states();
     data_plane.reconcile().await;
     sync_decoders_now(&data_plane.eval.clone());
+    dispatcher::sync_spectrum_analyzers(&data_plane.eval);
+    dispatcher::sync_ifft_buffers(&data_plane.eval);
 
     // 8. 立即快照评估一次: 图结构/参数变更必须即时反映到输出,
     //    不能依赖 transport 数据流 — 无数据流时 manual Trigger 改 command、

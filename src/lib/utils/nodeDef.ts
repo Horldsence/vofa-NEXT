@@ -56,7 +56,7 @@ export type NodeKind =
   | { kind: 'TextOut'; params: { target_transport: string; newline: 'none' | 'lf' | 'crlf' | 'cr'; min_interval_ms: number } }
   | { kind: 'Custom'; params: { inputs: string[]; outputs: string[] } }
   | { kind: 'Filter'; params: { config: NodeFilterConfig } }
-  | { kind: 'SpectrumSink'; params: { window_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
+  | { kind: 'Fft'; params: { window_size: number; hop_size: number; window_type: WindowType; output: SpectrumOutput; sample_rate: number } }
   | { kind: 'Ifft' }
   | { kind: 'FrameDecoder'; params: { blocks: DecoderBlock[]; enable_valid: boolean; enable_frame_count: boolean; enable_last_timestamp: boolean; enable_fps: boolean; loopback: boolean } }
   | {
@@ -96,7 +96,7 @@ export interface NodeDef {
 /// - Str → Str { op, num: { pos, len, size } } (num = 数值端口未连接时的内联回退值)
 /// - Custom → Custom { inputs, outputs } (从代码解析)
 /// - Filter → Filter { kind: IIR { b, a } } (前端从 preset 计算 biquad 系数)
-/// - FFT → SpectrumSink { window_size, window_type, output, sample_rate } (频域求解器)
+/// - FFT → Fft { window_size, window_type, output, sample_rate } (频域求解器)
 /// - IFFT → Ifft (逆 FFT 求解器, 频域→时域)
 /// - Spectrum → Sink (纯展示, 从频谱数据通道读取 FFT 结果)
 /// - Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Model3D/Command → Sink
@@ -173,11 +173,12 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     }
 
     case 'FFT': {
-      // FFT 求解器 → 后端 SpectrumSink (消费时域样本, 输出频谱到专用频谱数据通道)
+      // FFT 求解器 → 后端 Fft (消费时域样本, 输出频谱到专用频谱数据通道)
       return {
-        kind: 'SpectrumSink',
+        kind: 'Fft',
         params: {
           window_size: widget.params.windowSize,
+          hop_size: widget.params.hopSize,
           window_type: widget.params.windowType,
           output: widget.params.output,
           sample_rate: widget.params.sampleRate,

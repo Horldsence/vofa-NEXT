@@ -46,57 +46,42 @@ impl TransportManager {
         // 同 id 重复 open: 先关闭旧连接 (Drop 会置 cancel 标志)
         self.handles.remove(node_id);
 
-        let (write_tx, data_tx, cancel, test_data_running, test_data_notify, test_data_protocol) =
-            match &config {
-                TransportConfig::Serial(c) => {
-                    let (w, d, c) = serial::serial::spawn(c.clone())?;
-                    (w, d, c, None, None, None)
-                }
-                TransportConfig::Udp(c) => {
-                    let (w, d, c) = net::udp::spawn(c.clone()).await?;
-                    (w, d, c, None, None, None)
-                }
-                TransportConfig::TcpClient(c) => {
-                    let (w, d, c) = net::tcp::spawn_client(c.clone()).await?;
-                    (w, d, c, None, None, None)
-                }
-                TransportConfig::TcpServer(c) => {
-                    let (w, d, c) = net::tcp::spawn_server(c.clone()).await?;
-                    (w, d, c, None, None, None)
-                }
-                TransportConfig::TestData(c) => {
-                    let (write_tx, data_tx, cancel, running, notify, protocol) =
-                        crate::test_data::spawn(c.clone(), link)?;
-                    (
-                        write_tx,
-                        data_tx,
-                        cancel,
-                        Some(running),
-                        Some(notify),
-                        Some(protocol),
-                    )
-                }
-                TransportConfig::Slcan(c) => {
-                    let (w, d, c) = can_bridge::slcan::spawn(c.clone())?;
-                    (w, d, c, None, None, None)
-                }
-                TransportConfig::CandleLight(c) => {
-                    let (w, d, c) = can_bridge::candle::spawn(c.clone()).await?;
-                    (w, d, c, None, None, None)
-                }
-            };
+        let (write_tx, data_tx, cancel, test_data_runtime) = match &config {
+            TransportConfig::Serial(c) => {
+                let (w, d, c) = serial::serial::spawn(c.clone())?;
+                (w, d, c, None)
+            }
+            TransportConfig::Udp(c) => {
+                let (w, d, c) = net::udp::spawn(c.clone()).await?;
+                (w, d, c, None)
+            }
+            TransportConfig::TcpClient(c) => {
+                let (w, d, c) = net::tcp::spawn_client(c.clone()).await?;
+                (w, d, c, None)
+            }
+            TransportConfig::TcpServer(c) => {
+                let (w, d, c) = net::tcp::spawn_server(c.clone()).await?;
+                (w, d, c, None)
+            }
+            TransportConfig::TestData(c) => {
+                // 连接即生成: 生成器随 open 立即产出字节流, 随 close 生灭
+                let (write_tx, data_tx, cancel, runtime) =
+                    crate::test_data::spawn(c.clone(), link)?;
+                (write_tx, data_tx, cancel, Some(runtime))
+            }
+            TransportConfig::Slcan(c) => {
+                let (w, d, c) = can_bridge::slcan::spawn(c.clone())?;
+                (w, d, c, None)
+            }
+            TransportConfig::CandleLight(c) => {
+                let (w, d, c) = can_bridge::candle::spawn(c.clone()).await?;
+                (w, d, c, None)
+            }
+        };
 
         self.handles.insert(
             node_id.to_string(),
-            TransportHandle::new(
-                write_tx,
-                data_tx,
-                cancel,
-                test_data_running,
-                test_data_notify,
-                test_data_protocol,
-                config.clone(),
-            ),
+            TransportHandle::new(write_tx, data_tx, cancel, test_data_runtime, config.clone()),
         );
 
         log::info!("连接已建立: 节点 {node_id} -> {config:?}");
@@ -107,11 +92,6 @@ impl TransportManager {
     pub fn close(&mut self, node_id: &str) {
         // 移除即触发 TransportHandle::Drop, 后台任务收到取消信号
         self.handles.remove(node_id);
-    }
-
-    /// 关闭所有节点的连接
-    pub fn close_all(&mut self) {
-        self.handles.clear();
     }
 
     /// 发送数据 — 未知 id 返回 Error::PortNotFound
@@ -145,45 +125,12 @@ impl TransportManager {
         self.handles.get(node_id).map(TransportHandle::config)
     }
 
-    /// 指定节点是否有打开的连接
-    pub fn is_open(&self, node_id: &str) -> bool {
-        self.handles.contains_key(node_id)
-    }
-
     /// 列出所有已打开连接的节点 ID
     pub fn list_open(&self) -> Vec<String> {
         self.handles.keys().cloned().collect()
     }
 
-    /// 更新指定节点的接收统计 (由外部调用, 当数据被消费时)
-    pub fn record_rx(&self, node_id: &str, bytes: usize, frames: u64) {
-        if let Some(h) = self.handles.get(node_id) {
-            h.record_rx(bytes, frames);
-        }
-    }
-
-    /// 设置指定节点的测试数据生成器运行状态 (仅 TestData 有效)
-    pub fn set_test_data_running(&self, node_id: &str, running: bool) {
-        if let Some(h) = self.handles.get(node_id) {
-            h.set_test_data_running(running);
-        }
-    }
-
-    /// 获取指定节点的测试数据生成器当前运行状态
-    pub fn is_test_data_running(&self, node_id: &str) -> bool {
-        self.handles
-            .get(node_id)
-            .is_some_and(super::handle::TransportHandle::is_test_data_running)
-    }
-
-    /// 指定节点的测试数据运行状态 (None = 非 TestData 节点或未打开)
-    pub fn test_data_running_state(&self, node_id: &str) -> Option<bool> {
-        self.handles
-            .get(node_id)
-            .and_then(super::handle::TransportHandle::test_data_running_state)
-    }
-
-    /// 取节点轻量句柄 — 读任务启动时调用一次, 之后每批的配置/开关查询与 rx 统计
+    /// 取节点轻量句柄 — 读任务启动时调用一次, 之后每批的配置查询与 rx 统计
     /// 上报都免 manager 全局锁 (不再与 open/close/其他传输串行化)
     pub fn live_handle(&self, node_id: &str) -> Option<LiveNodeHandle> {
         self.handles.get(node_id).map(|handle| handle.live(node_id))

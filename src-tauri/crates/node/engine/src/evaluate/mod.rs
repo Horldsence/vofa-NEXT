@@ -130,7 +130,7 @@ impl CompiledGraph {
     pub fn collect_spectrum_inputs(&self, computed: &ValuesMap) -> HashMap<String, f32> {
         let mut result = HashMap::new();
         for node in self.value_nodes() {
-            if matches!(node.kind, NodeKind::SpectrumSink { .. }) {
+            if matches!(node.kind, NodeKind::Fft { .. }) {
                 result.insert(
                     node.id.clone(),
                     self.resolve_input(&node.id, "in0", computed),

@@ -12,7 +12,7 @@ interface IFFTWidgetProps {
 ///
 /// 数据流 (全部图编译, 后端 Rust):
 ///   1. 本控件映射为后端 Ifft 节点, 输入端口 "spectrum" (频域) 在编译期
-///      解析出上游 FFT (SpectrumSink) 节点 id
+///      解析出上游 FFT (Fft) 节点 id
 ///   2. 后端 spectrum_ticker 每 33ms 读取该 FFT 的最新频谱, 用 IfftSynth
 ///      合成时域缓冲 (IfftState.buffer)
 ///   3. 本节点融入 eval_order, 逐帧从 IfftState 环形播放输出 out0 (时域),

@@ -1,5 +1,5 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import type { WidgetConfig, BlockType, CommandBlock, CommandConfig, CommandFrame } from '../../../types';
+import { useState, useMemo, useEffect } from 'react';
+import type { WidgetConfig, BlockType, CommandBlock, CommandConfig, CommandFrame, SendTaskRegistration } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { api } from '../../../lib/tauri/tauri';
 import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
@@ -8,7 +8,6 @@ import { bytesToHex } from '../../../lib/utils/commandParser';
 import {
   normalizeCommandConfig,
   commandInputPortNames,
-  computeFrameBytes,
   makeEmptyFrame,
   type ComputedFrame,
 } from '../../../lib/utils/commandFrames';
@@ -23,62 +22,20 @@ interface CommandSenderProps {
   widget: Extract<WidgetConfig, { kind: 'Command' }>;
 }
 
-type SendFrameFn = (frame: CommandFrame, bytes: Uint8Array) => Promise<boolean>;
+/// 预览字节刷新防抖 (ms) — 输入变化到预览更新的 IPC 间隔
+const PREVIEW_DEBOUNCE_MS = 120;
+/// 自动发送任务注册防抖 (ms) — 帧编辑连发合并
+const TASK_SYNC_DEBOUNCE_MS = 200;
 
-/// 单帧自动发送器 — timer / onChange 触发, 每帧独立运行 (不可见组件)
-function CommandFrameAutoSend({
-  frame,
-  graphInputs,
-  sendRef,
-}: {
-  frame: CommandFrame;
-  graphInputs: Record<string, number>;
-  sendRef: React.RefObject<SendFrameFn>;
-}) {
-  // 自动发送路径走后端 IPC — 后端单一权威 (cmd_buffer::compute_frame_bytes)。
-  // 本地 `computeFrameBytes` 仅作 UI 预览用途, 不参与发送控制流。
-  const computed = useMemo(() => computeFrameBytes(frame, graphInputs), [frame, graphInputs]);
-  const bytesRef = useRef<Uint8Array | null>(null);
-  // 重算后向后端拉取一次权威字节; 失败保留旧 bytes (沿用现有策略)
-  useEffect(() => {
-    let cancelled = false;
-    void api.computeFrameBytes(frame, graphInputs).then((res) => {
-      if (cancelled) return;
-      if (res.bytes) bytesRef.current = new Uint8Array(res.bytes);
-    });
-    return () => { cancelled = true; };
-    // 触发: graphInputs 或 frame 变化时重拉
-  }, [frame, graphInputs]);
+const EMPTY_COMPUTED: ComputedFrame = { bytes: null, error: null, perBlock: [] };
 
-  // 定时发送
-  useEffect(() => {
-    if (frame.sendMode !== 'timer') return;
-    const id = setInterval(() => {
-      const bytes = bytesRef.current;
-      if (bytes && bytes.length > 0) void sendRef.current(frame, bytes);
-    }, frame.timerMs);
-    return () => clearInterval(id);
-  }, [frame, sendRef]);
-
-  // 字节流变化时发送 (首次仅记录, 不立即发送)
-  const lastAutoSentHexRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (frame.sendMode !== 'onChange' || !computed.bytes || computed.error) {
-      lastAutoSentHexRef.current = null;
-      return;
-    }
-    const hex = bytesToHex(computed.bytes);
-    if (lastAutoSentHexRef.current === null) {
-      lastAutoSentHexRef.current = hex;
-      return;
-    }
-    if (hex !== lastAutoSentHexRef.current) {
-      lastAutoSentHexRef.current = hex;
-      void sendRef.current(frame, computed.bytes);
-    }
-  }, [frame, computed, sendRef]);
-
-  return null;
+function toComputedFrame(dto: { bytes: number[] | null; error: string | null; per_block: number[][] }): ComputedFrame {
+  return {
+    bytes: dto.bytes ? new Uint8Array(dto.bytes) : null,
+    error: dto.error,
+    // 每块的权威字节 (后端逐块返回 1 段; UI 按块渲染)
+    perBlock: dto.per_block.map((chunk) => [new Uint8Array(chunk)]),
+  };
 }
 
 /// 帧列表条 — tab 切换 + 新增/删除/双击改名
@@ -175,6 +132,11 @@ function CommandFrameTabBar({
 }
 
 /// 命令发送控件 — 多帧, 每帧独立的数据块拼接 / 触发方式
+///
+/// 三路发送共用一个 Rust 内核 (schema_engine::compute_frame_bytes + 字节路由):
+/// - 预览: 防抖拉取后端权威字节 (本组件不做字节计算)
+/// - 手动: send_command_frame (运行态门控 + 同一编码 + 同一路由)
+/// - 自动: 非 manual 帧注册到后端调度器 (send_scheduler_ticker), 前端无定时器
 export function CommandSender({ widget }: CommandSenderProps) {
   const params = widget.params;
   const { id } = params;
@@ -182,6 +144,8 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const sendAndCapture = useAppStore((s) => s.sendAndCapture);
   const rfEdges = useAppStore((s) => s.rfEdges);
   const lang = useAppStore((s) => s.lang);
+  const runState = useAppStore((s) => s.runState);
+  const canSend = runState === 'running';
 
   // 归一化后的配置 (旧版单帧配置现场包装, updateWidget 落盘时已归一化)
   const config = useMemo<CommandConfig>(() => normalizeCommandConfig(params), [params]);
@@ -213,8 +177,44 @@ export function CommandSender({ widget }: CommandSenderProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [dragId, setDragId] = useState<string | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-  const sendCountRef = useRef(0);
-  const dragIdRef = useRef<string | null>(null);
+
+  // 当前帧权威字节 (预览) — 与发送同一 Rust 内核, 防抖合并连续编辑
+  const [computed, setComputed] = useState<ComputedFrame>(EMPTY_COMPUTED);
+  const graphInputsKey = JSON.stringify(graphInputs);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void api.computeFrameBytes(activeFrame, JSON.parse(graphInputsKey) as Record<string, number>)
+        .then((res) => { setComputed(toComputedFrame(res)); })
+        .catch(() => { /* 纯浏览器 dev / IPC 瞬断: 保留上次预览 */ });
+    }, PREVIEW_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [activeFrame, graphInputsKey]);
+
+  // 自动发送任务注册 — 非 manual 帧全量同步到后端调度器。
+  // 发送任务是工作区图的后台作业, 不随面板卸载注销 (切页/关闭监视器不影响
+  // 已启动的数据链); widget 节点删除后由调度器周期清理兜底。
+  const autoTasks = useMemo<SendTaskRegistration[]>(
+    () => frames
+      .filter((f) => f.sendMode !== 'manual')
+      .map((f) => ({
+        widgetId: id,
+        frameId: f.id,
+        mode: f.sendMode === 'timer' ? 'timer' : 'onChange',
+        intervalMs: f.timerMs,
+        frame: f,
+      })),
+    [frames, id]
+  );
+  const autoTasksKey = JSON.stringify(autoTasks);
+  useEffect(() => {
+    const tasks = JSON.parse(autoTasksKey) as typeof autoTasks;
+    const timer = setTimeout(() => {
+      void api.setWidgetSendTasks(id, tasks).catch((e) => {
+        console.warn('自动发送任务注册失败:', e);
+      });
+    }, TASK_SYNC_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [id, autoTasksKey]);
 
   const toggleExpand = (blockId: string) => {
     setExpandedIds((prev) => {
@@ -225,26 +225,22 @@ export function CommandSender({ widget }: CommandSenderProps) {
     });
   };
 
-  // 当前帧字节拼接 (预览 / 手动发送)
-  const computed = useMemo<ComputedFrame>(
-    () => computeFrameBytes(activeFrame, graphInputs),
-    [activeFrame, graphInputs]
-  );
-
-  // 发送指定帧的字节 (手动 / timer / onChange 共用; 回环为发送器级)
-  const sendFrame = useCallback<SendFrameFn>(async (frame, bytes) => {
-    if (bytes.length === 0) return false;
-    if (!hasByteRoute) {
-      setError(t(lang, 'cmdNoByteRoute'));
-      return false;
+  // 手动发送 — 统一内核: 运行态门控 + 后端编码 + 字节边路由, 失败直接返回
+  const handleSend = async () => {
+    setError(null);
+    if (!canSend) {
+      setError(t(lang, 'cmdSendRequiresRun'));
+      return;
     }
     try {
-      // 走前端预计算的字节 (预览由本地 computeFrameBytes 计算) — 自动发送路径由
-      // CommandFrameAutoSend 后台拉取后端权威字节, 手动发送沿用预览字节 (已通过
-      // handleSend 路径内的后端校验, 见 onChange effect)。
-      const arr = Array.from(bytes);
-      // 沿字节边图路由注入 (含 Transport.tx 真实发送)
-      await api.injectBytes(id, arr);
+      const outcome = await api.sendCommandFrame(id, activeFrame, graphInputs);
+      setComputed(toComputedFrame(outcome.computed));
+      if (outcome.error) {
+        setError(outcome.error);
+        return;
+      }
+      if (!outcome.sent) return;
+      const bytes = outcome.computed.bytes ?? [];
       if (params.loopbackEnabled) {
         // 回环历史: 用第一个 Transport + 其下游 Protocol 做即时解析对照 (尽力而为)
         const st = useAppStore.getState();
@@ -254,30 +250,13 @@ export function CommandSender({ widget }: CommandSenderProps) {
             st.rfNodes.find((n) => n.type === 'protocol' && n.data?.global === true)?.id
           : undefined;
         if (transport && protocolId) {
-          await sendAndCapture(transport.id, protocolId, arr);
+          await sendAndCapture(transport.id, protocolId, bytes);
         }
       }
-      sendCountRef.current += 1;
-      setLastSent(`${new Date().toLocaleTimeString()} #${sendCountRef.current} [${frame.label}] [${bytes.length}B] ${bytesToHex(bytes)}`);
-      return true;
+      setLastSent(`${new Date().toLocaleTimeString()} [${activeFrame.label}] [${bytes.length}B] ${bytesToHex(new Uint8Array(bytes))}`);
     } catch (e) {
       setError((e as Error).message);
-      return false;
     }
-  }, [params.loopbackEnabled, sendAndCapture, hasByteRoute, id, lang]);
-
-  const sendFrameRef = useRef<SendFrameFn>(sendFrame);
-  useEffect(() => { sendFrameRef.current = sendFrame; }, [sendFrame]);
-
-  const handleSend = async () => {
-    setError(null);
-    // 手动发送走完后端 IPC 拿到权威字节 — 与自动发送路径同源 (避免双计算分歧)
-    const res = await api.computeFrameBytes(activeFrame, graphInputs);
-    if (!res.bytes || res.bytes.length === 0 || res.error) {
-      setError(res.error ?? t(lang, 'cmdErrorEmpty'));
-      return;
-    }
-    await sendFrame(activeFrame, new Uint8Array(res.bytes));
   };
 
   const updateParams = (changes: Partial<CommandConfig>) => {
@@ -337,14 +316,13 @@ export function CommandSender({ widget }: CommandSenderProps) {
     if (blockEl) {
       e.dataTransfer.setDragImage(blockEl, 12, 12);
     }
-    dragIdRef.current = blockId;
     setDragId(blockId);
   };
 
   const handleDragOver = (blockId: string) => (e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (dragIdRef.current && dragIdRef.current !== blockId) setOverId(blockId);
+    if (dragId && dragId !== blockId) setOverId(blockId);
   };
 
   const reorderBlocks = (fromId: string, toId: string) => {
@@ -360,16 +338,14 @@ export function CommandSender({ widget }: CommandSenderProps) {
 
   const handleDrop = (targetId: string) => (e: React.DragEvent) => {
     e.preventDefault();
-    const draggedId = e.dataTransfer.getData('text/plain') || dragIdRef.current;
+    const draggedId = e.dataTransfer.getData('text/plain') || dragId;
     if (!draggedId) return;
     reorderBlocks(draggedId, targetId);
-    dragIdRef.current = null;
     setDragId(null);
     setOverId(null);
   };
 
   const handleDragEnd = () => {
-    dragIdRef.current = null;
     setDragId(null);
     setOverId(null);
   };
@@ -411,18 +387,13 @@ export function CommandSender({ widget }: CommandSenderProps) {
           error={error}
           lastSent={lastSent}
           routeMissing={!hasByteRoute}
+          notRunning={!canSend}
           onSend={() => { void handleSend(); }}
           onUpdateParams={updateParams}
           onUpdateFrame={(changes) => updateFrame(activeFrame.id, changes)}
           lang={lang}
         />
       </div>
-      {/* 每帧独立的自动发送器 (timer/onChange) */}
-      {frames.map((f) =>
-        f.sendMode === 'manual' ? null : (
-          <CommandFrameAutoSend key={f.id} frame={f} graphInputs={graphInputs} sendRef={sendFrameRef} />
-        )
-      )}
     </div>
   );
 }

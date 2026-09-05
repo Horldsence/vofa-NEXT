@@ -12,7 +12,7 @@ import type { WidgetPropertiesProps } from '../registryTypes';
 /// FFT 参数 — 窗口大小 / 窗函数 / 输出模式 / 采样率
 export const FFTProperties = memo(function FFTProperties({ widget, update }: WidgetPropertiesProps<'FFT'>) {
   const lang = useAppStore((s) => s.lang);
-  const { windowSize, windowType, output, sampleRate } = widget.params;
+  const { windowSize, hopSize, windowType, output, sampleRate } = widget.params;
   const patch = (p: Partial<typeof widget.params>) =>
     update({ kind: 'FFT', params: { ...widget.params, ...p } });
   return (
@@ -20,7 +20,10 @@ export const FFTProperties = memo(function FFTProperties({ widget, update }: Wid
       <div className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary mb-2">{t(lang, 'fftSettings')}</div>
       <SelectField label={t(lang, 'spectrumWindowSize')} value={String(windowSize)}
         options={[256, 512, 1024, 2048, 4096].map((sz) => ({ value: String(sz), label: String(sz) }))}
-        onChange={(v) => patch({ windowSize: Number(v) })} />
+        onChange={(v) => patch({ windowSize: Number(v), hopSize: Number(v) / 2 })} />
+      <NumberField label={t(lang, 'fftHopSize')} value={hopSize}
+        onCommit={(v) => { if (Number.isInteger(v) && v > 0 && v <= windowSize) { patch({ hopSize: v }); return true; } return false; }}
+        error={t(lang, 'invalidStep')} />
       <SelectField label={t(lang, 'spectrumWindowType')} value={windowType}
         options={([
           ['Rect', 'windowRect'],

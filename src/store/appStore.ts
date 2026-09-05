@@ -12,6 +12,7 @@ import { createEventSlice, type EventSlice } from './slices/events';
 import { createDerivedSlice, type DerivedSlice } from './slices/derived';
 import { createCompileStatusSlice, type CompileStatusSlice } from './slices/compileStatus';
 import { createCompileHirSlice, type CompileHirSlice } from './slices/compileHir';
+import { createRunControlSlice, type RunControlSlice } from './slices/runControl';
 
 export type { SidebarView } from './slices/sidebar';
 export {
@@ -36,7 +37,8 @@ export type AppStore = SidebarSlice
   & EventSlice
   & DerivedSlice
   & CompileStatusSlice
-  & CompileHirSlice;
+  & CompileHirSlice
+  & RunControlSlice;
 
 export const useAppStore = create<AppStore>()((set, get) => ({
   ...createSidebarSlice(set, get),
@@ -52,4 +54,5 @@ export const useAppStore = create<AppStore>()((set, get) => ({
   ...createDerivedSlice(set, get),
   ...createCompileStatusSlice(set, get),
   ...createCompileHirSlice(set, get),
+  ...createRunControlSlice(set, get),
 }));

@@ -264,6 +264,9 @@ export interface TriggerConfig {
 
 /// 控件类别 — 用于 WidgetPalette 分组与颜色区分
 export type WidgetCategory =
+  | 'transport'
+  | 'protocol'
+  | 'send'
   | 'input'      // 数据类 (Knob/Button/Radio/Checkbox/Slider/Command)
   | 'display'    // 显示控件 (Waveform/PieChart/Image/Gauge/LED/NumberDisplay/Label/Spectrum/Model3D)
   | 'math'       // 算术控件 (Math/Filter — 加减乘除/数学函数/滤波)
@@ -323,8 +326,9 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'Radio':
     case 'Checkbox':
     case 'Slider':
-    case 'Command':
       return 'input';
+    case 'Command':
+      return 'send';
     case 'Waveform':
     case 'PieChart':
     case 'Image':
@@ -346,7 +350,7 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'Custom':
       return 'custom';
     case 'FrameDecoder':
-      return 'input';
+      return 'protocol';
     case 'Trigger':
       return 'input';
     case 'TextInput':
@@ -356,13 +360,15 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'Str':
       return 'string';
     case 'TextOut':
-      // 文本下发: 消费字符串域输出, 归入字符串组 (节点卡片与 Str 同色系)
-      return 'string';
+      return 'send';
   }
 }
 
 /// 各类别主题色 — WidgetPalette 分组着色与节点卡片着色共用
 export const WIDGET_CATEGORY_COLORS: Record<WidgetCategory, string> = {
+  transport: '#dcdcaa',
+  protocol: '#4ec9b0',
+  send: '#c586c0',
   input: '#4fc3f7',
   display: '#81c784',
   math: '#ffb74d',

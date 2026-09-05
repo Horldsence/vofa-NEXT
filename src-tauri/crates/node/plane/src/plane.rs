@@ -37,7 +37,7 @@ pub struct ValueMir {
 
 /// 节点是否有值平面输出 — 无输出者不进 eval_order:
 /// - Sink: 纯消费, 无输出
-/// - SpectrumSink: 块运算, 无输出端口, 由独立 30 FPS ticker 触发 FFT
+/// - Fft: 块运算, 无输出端口, 由独立 30 FPS ticker 触发 FFT
 /// - Transport/Protocol: 字节平面节点 (其定义只落在 byte_def, 此处天然不含)
 /// - 占位节点 (边端点缺失) 无定义, 不参与求值
 ///
@@ -46,7 +46,7 @@ pub struct ValueMir {
 fn has_value_output(w: &HirNode) -> bool {
     w.value_def
         .as_ref()
-        .is_some_and(|d| !matches!(d.kind, NodeKind::Sink | NodeKind::SpectrumSink { .. }))
+        .is_some_and(|d| !matches!(d.kind, NodeKind::Sink | NodeKind::Fft { .. }))
 }
 
 /// 平面投影 — 按节点/边谓词抽取子图 (节点权重 = 原图 NodeIndex, 供结果映射回原图)

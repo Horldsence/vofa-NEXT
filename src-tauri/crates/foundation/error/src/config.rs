@@ -51,6 +51,11 @@ pub enum ConfigError {
     #[error("Auto 绑定需要指定 protocol_node")]
     AutoBindingMissingProtocolNode,
 
+    /// 手动发送要求工作区处于运行态 (统一发送内核的门控;
+    /// 暂停/停止期间所有发送入口直接失败返回, 不入队不重试)
+    #[error("工作区未运行: 手动发送要求运行态, 请先启动工作区")]
+    WorkspaceNotRunning,
+
     #[error("URL {url} 解析失败: {source}")]
     UrlParse {
         url: String,

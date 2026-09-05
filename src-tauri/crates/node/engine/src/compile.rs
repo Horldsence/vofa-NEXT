@@ -31,7 +31,7 @@ pub struct CompiledGraph {
     hir: TypedGraph,
     /// 拓扑序 — 仅包含有 f32/String 输出的节点
     /// (ProtocolSource/Input/Math/Custom/Filter/FrameDecoder/Ifft/Str/Trigger/TextInput)
-    /// Sink/SpectrumSink/Transport/Protocol 不参与值平面评估
+    /// Sink/Fft/Transport/Protocol 不参与值平面评估
     pub(crate) eval_order: Vec<String>,
     /// 反向索引: target_node → (target_handle → (source_node, source_handle))
     /// 嵌套结构支持 &str 零分配查询 (evaluate_into 热路径)
@@ -48,8 +48,10 @@ pub struct CompiledGraph {
     custom_nodes: Vec<String>,
     spectrum_sinks: Vec<String>,
     filters: Vec<String>,
+    pub(crate) filter_kinds: HashMap<String, dsp_filter::FilterKind>,
     iffts: Vec<String>,
     decoders: Vec<String>,
+    spectrum_consumers: HashMap<String, Vec<String>>,
 }
 
 impl CompiledGraph {
@@ -77,19 +79,36 @@ impl CompiledGraph {
         let mut custom_nodes = Vec::new();
         let mut spectrum_sinks = Vec::new();
         let mut filters = Vec::new();
+        let mut filter_kinds = HashMap::new();
         let mut iffts = Vec::new();
         let mut decoders = Vec::new();
         for n in hir.value_nodes() {
             match &n.kind {
                 NodeKind::Custom { .. } => custom_nodes.push(n.id.clone()),
-                NodeKind::SpectrumSink { .. } => spectrum_sinks.push(n.id.clone()),
-                NodeKind::Filter { .. } => filters.push(n.id.clone()),
+                NodeKind::Fft { .. } => spectrum_sinks.push(n.id.clone()),
+                NodeKind::Filter { config } => {
+                    filters.push(n.id.clone());
+                    filter_kinds.insert(n.id.clone(), dsp_filter::filter_kind_from_config(config));
+                }
                 NodeKind::Ifft => iffts.push(n.id.clone()),
                 NodeKind::FrameDecoder { .. } => decoders.push(n.id.clone()),
                 _ => {}
             }
         }
 
+        let mut spectrum_consumers: HashMap<String, Vec<String>> = HashMap::new();
+        for e in hir.graph.edge_references() {
+            if e.weight().class == EdgeClass::Spectrum
+                && hir
+                    .value_def(hir.id_of(e.target()))
+                    .is_some_and(|n| matches!(n.kind, NodeKind::Ifft))
+            {
+                spectrum_consumers
+                    .entry(hir.id_of(e.source()).to_owned())
+                    .or_default()
+                    .push(hir.id_of(e.target()).to_owned());
+            }
+        }
         Ok(Self {
             tab_id,
             hir,
@@ -102,9 +121,17 @@ impl CompiledGraph {
             custom_nodes,
             spectrum_sinks,
             filters,
+            filter_kinds,
             iffts,
             decoders,
+            spectrum_consumers,
         })
+    }
+
+    pub fn spectrum_consumers(&self, source: &str) -> &[String] {
+        self.spectrum_consumers
+            .get(source)
+            .map_or(&[], Vec::as_slice)
     }
 
     /// HIR 边权重 → 原始 Edge (端点 id 从图端点取)
@@ -177,7 +204,7 @@ impl CompiledGraph {
         &self.custom_nodes
     }
 
-    /// 获取所有 SpectrumSink 节点 id
+    /// 获取所有 Fft 节点 id
     pub fn spectrum_sink_ids(&self) -> &[String] {
         &self.spectrum_sinks
     }
@@ -198,16 +225,21 @@ impl CompiledGraph {
         &self.decoders
     }
 
-    /// 解析 Ifft 节点的上游 FFT (SpectrumSink) 节点 id
+    /// 解析 Ifft 节点的上游 FFT (Fft) 节点 id
     ///
     /// 输入端口固定为 "spectrum" (频域), 编译期从 input_index 反查边:
     /// (source 节点的 "spectrum" 输出) → source 节点 id。
     /// 无上游边返回 None。
     pub fn ifft_source(&self, node_id: &str) -> Option<String> {
-        self.input_index
-            .get(node_id)
-            .and_then(|ports| ports.get("spectrum"))
-            .map(|(src, _)| src.clone())
+        self.hir
+            .graph
+            .edge_references()
+            .find(|e| {
+                e.weight().class == EdgeClass::Spectrum
+                    && self.hir.id_of(e.target()) == node_id
+                    && e.weight().target_handle == "spectrum"
+            })
+            .map(|e| self.hir.id_of(e.source()).to_owned())
     }
 
     /// 获取 FrameDecoder 节点的配置 (blocks + 附加端口开关 + loopback 标志)
@@ -243,21 +275,22 @@ impl CompiledGraph {
         }
     }
 
-    /// 获取 SpectrumSink 节点的配置 (window_size, window_type, output, sample_rate)
+    /// 获取 Fft 节点的配置 (window_size, window_type, output, sample_rate)
     /// 用于 state.rs 在节点变更时重建 SpectrumAnalyzer
     pub fn spectrum_sink_config(
         &self,
         node_id: &str,
-    ) -> Option<(usize, WindowType, SpectrumOutput, f32)> {
+    ) -> Option<(usize, usize, WindowType, SpectrumOutput, f32)> {
         let node = self.value_def(node_id)?;
-        if let NodeKind::SpectrumSink {
+        if let NodeKind::Fft {
             window_size,
+            hop_size,
             window_type,
             output,
             sample_rate,
         } = &node.kind
         {
-            Some((*window_size, *window_type, *output, *sample_rate))
+            Some((*window_size, *hop_size, *window_type, *output, *sample_rate))
         } else {
             None
         }

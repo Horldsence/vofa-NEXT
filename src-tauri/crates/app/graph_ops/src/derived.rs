@@ -18,6 +18,7 @@ pub enum DerivedPortDomain {
     F32,
     Bytes,
     String,
+    Spectrum,
 }
 
 impl From<PortDomain> for DerivedPortDomain {
@@ -26,6 +27,7 @@ impl From<PortDomain> for DerivedPortDomain {
             PortDomain::F32 => Self::F32,
             PortDomain::Bytes => Self::Bytes,
             PortDomain::String => Self::String,
+            PortDomain::Spectrum => Self::Spectrum,
         }
     }
 }
@@ -66,7 +68,7 @@ pub struct GraphDerived {
 /// - 全局 Protocol 节点:端口表由 `ProtocolSchema::port_names()` (custom) 或
 ///   `protocol_source_port_names(channels)` (preset, RawData → 单 `str` 字符串域) 决定;
 ///   `effective_channels` = 手动配置值或回退默认
-/// - widget 节点 (Input/Math/Str/Custom/Filter/SpectrumSink/Ifft/FrameDecoder/Trigger/
+/// - widget 节点 (Input/Math/Str/Custom/Filter/Fft/Ifft/FrameDecoder/Trigger/
 ///   TextInput/Sink/ProtocolSource): 由 [`kind_output_ports`] 按 [`PortDomain`] 表枚举
 /// - Transport 节点:不参与数值平面图渲染,跳过 (字节平面节点由 `BytePlan` 路由)
 pub fn compute_derived(nodes: &[NodeDef]) -> Vec<NodeDerived> {
@@ -202,9 +204,8 @@ fn kind_output_ports(kind: &NodeKind) -> Vec<NodeDerivedPort> {
         NodeKind::Math { .. } => vec![port("result", DerivedPortDomain::F32)],
         NodeKind::Str { op, .. } => vec![port("result", op.output_domain().into())],
         NodeKind::TextInput { .. } => vec![port("str", DerivedPortDomain::String)],
-        NodeKind::SpectrumSink { .. } => {
-            // 输出端口 "spectrum" 写入专用频谱数据通道, 不进入 f32 图 outputs
-            Vec::new()
+        NodeKind::Fft { .. } => {
+            vec![port("spectrum", DerivedPortDomain::Spectrum)]
         }
         NodeKind::Ifft => vec![port("out0", DerivedPortDomain::F32)],
         NodeKind::FrameDecoder { .. } => {

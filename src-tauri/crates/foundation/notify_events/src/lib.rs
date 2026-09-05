@@ -20,6 +20,8 @@ pub const PROTOCOL_CHANNELS_DETECTED_EVENT: &str = "protocol:channels-detected";
 pub const GRAPH_DERIVED_EVENT: &str = "graph:derived";
 /// `graph:compile` event name (编译队列状态广播 — pending / ok / error, 携 receipt_seq)
 pub const GRAPH_COMPILE_EVENT: &str = "graph:compile";
+/// `workspace:run` 事件名 — 工作区运行状态广播 (state + epoch, 启动/暂停/停止)
+pub const WORKSPACE_RUN_EVENT: &str = "workspace:run";
 
 /// `transport:state` payload — 连接状态变化 (携带来源 Transport 节点 id)
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -89,6 +91,11 @@ pub fn emit_graph_derived<P: Serialize + Clone>(app: &AppHandle, payload: &P) {
 /// emit `graph:compile` 事件 payload — 编译队列状态广播.
 pub fn emit_graph_compiled<P: Serialize + Clone>(app: &AppHandle, payload: &P) {
     let _ = app.emit(GRAPH_COMPILE_EVENT, payload.clone());
+}
+
+/// emit `workspace:run` 事件 payload — 工作区运行状态广播.
+pub fn emit_workspace_run<P: Serialize + Clone>(app: &AppHandle, payload: &P) {
+    let _ = app.emit(WORKSPACE_RUN_EVENT, payload.clone());
 }
 
 pub mod notify;

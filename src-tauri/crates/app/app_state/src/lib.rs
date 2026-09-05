@@ -16,7 +16,10 @@ mod workspace;
 pub use app_state::{AppState, WaveformSnapshot};
 pub use runtime::{flush_workspace_on_exit, spawn_background_tasks};
 pub use source_graph::{SourceGraphs, SourceNodeHint, TabSourceGraph};
-pub use tickers::{spectrum_ticker, text_output_ticker, textout_sender_ticker};
+pub use tickers::{
+    resolve_widget_inputs, send_scheduler_ticker, spectrum_ticker, text_output_ticker,
+    textout_sender_ticker,
+};
 pub use workspace::{
     collect_workspace_file, load_workspace, prune_positions, save_workspace, workspace_path,
     DataTabMeta, Position, TabGraphFile, TabMeta, WidgetRecord, WorkspaceFile, WorkspaceInner,

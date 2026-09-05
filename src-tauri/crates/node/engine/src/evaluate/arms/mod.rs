@@ -30,23 +30,23 @@ pub use text_input::TextInputArm;
 pub use textout::TextOutArm;
 pub use trigger::TriggerArm;
 
-/// 按 NodeKind variant 分派到对应 arm;Sink / SpectrumSink / Transport / Protocol
+/// 按 NodeKind variant 分派到对应 arm;Sink / Fft / Transport / Protocol
 /// 无值平面输出,返回 None 由主循环跳过 (TextOut 参与求值序: 透传写自身槽位)
-pub fn arm_for(kind: &NodeKind) -> Option<Box<dyn NodeArm>> {
+pub fn arm_for(kind: &NodeKind) -> Option<&'static dyn NodeArm> {
     match kind {
-        NodeKind::Input => Some(Box::new(InputArm)),
-        NodeKind::Math { .. } => Some(Box::new(MathArm)),
-        NodeKind::Custom { .. } => Some(Box::new(CustomArm)),
-        NodeKind::Filter { .. } => Some(Box::new(FilterArm)),
-        NodeKind::FrameDecoder { .. } => Some(Box::new(FrameDecoderArm)),
-        NodeKind::Ifft => Some(Box::new(IfftArm)),
-        NodeKind::Str { .. } => Some(Box::new(StrArm)),
-        NodeKind::Trigger { .. } => Some(Box::new(TriggerArm)),
-        NodeKind::ProtocolSource { .. } => Some(Box::new(ProtocolSourceArm)),
-        NodeKind::TextInput { .. } => Some(Box::new(TextInputArm)),
-        NodeKind::TextOut { .. } => Some(Box::new(TextOutArm)),
+        NodeKind::Input => Some(&InputArm),
+        NodeKind::Math { .. } => Some(&MathArm),
+        NodeKind::Custom { .. } => Some(&CustomArm),
+        NodeKind::Filter { .. } => Some(&FilterArm),
+        NodeKind::FrameDecoder { .. } => Some(&FrameDecoderArm),
+        NodeKind::Ifft => Some(&IfftArm),
+        NodeKind::Str { .. } => Some(&StrArm),
+        NodeKind::Trigger { .. } => Some(&TriggerArm),
+        NodeKind::ProtocolSource { .. } => Some(&ProtocolSourceArm),
+        NodeKind::TextInput { .. } => Some(&TextInputArm),
+        NodeKind::TextOut { .. } => Some(&TextOutArm),
         NodeKind::Sink
-        | NodeKind::SpectrumSink { .. }
+        | NodeKind::Fft { .. }
         | NodeKind::Transport { .. }
         | NodeKind::Protocol { .. } => None,
     }

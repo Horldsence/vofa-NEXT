@@ -126,6 +126,8 @@ dependencies = [
  "logic_types",
  "parking_lot",
  "protocol_engine",
+ "rustc-hash 2.1.3",
+ "schema_engine",
  "schema_types",
  "serde",
  "serde_json",
@@ -588,7 +590,9 @@ version = "0.1.2"
 dependencies = [
  "app_state",
  "buffer_databuffer",
+ "data_plane",
  "log",
+ "schema_engine",
  "serde",
  "serde_json",
  "tauri",
@@ -2470,6 +2474,7 @@ dependencies = [
  "buffer_graph",
  "criterion",
  "data_plane",
+ "dispatcher",
  "engine",
  "error",
  "kind",
@@ -4312,8 +4317,13 @@ version = "0.1.2"
 dependencies = [
  "app_state",
  "data_bus",
+ "data_plane",
  "engine",
+ "error",
  "log",
+ "notify_events",
+ "schema_engine",
+ "serde",
  "tauri",
  "trigger",
  "vofa_core",
@@ -5221,6 +5231,7 @@ dependencies = [
  "protocol_float",
  "schema_types",
  "serde",
+ "serde_json",
  "vofa_core",
 ]
 

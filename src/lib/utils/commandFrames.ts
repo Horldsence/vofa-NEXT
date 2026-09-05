@@ -2,9 +2,6 @@
 
 import { nanoid } from 'nanoid';
 import type { CommandConfig, CommandFrame, LegacyCommandConfig } from '../../types';
-import { computeChecksum } from './checksum';
-import { parseHex, packField } from './commandParser';
-import { concatChunks } from './commandParser';
 
 /// 归一化命令发送配置: 旧版单帧配置 (blocks 在顶层) 包装为 frames[0]
 /// 已是多帧配置时原样返回 (frames 为空时补一个空帧), 幂等
@@ -99,50 +96,6 @@ export interface ComputedFrame {
   perBlock: Uint8Array[][];
 }
 
-/// 按帧定义拼接字节流 (var_ref 块从 graphInputs 取值, checksum 对前序累计字节计算)
-export function computeFrameBytes(
-  frame: CommandFrame,
-  graphInputs: Record<string, number>
-): ComputedFrame {
-  try {
-    const chunks: Uint8Array[] = [];
-    const perBlock: Uint8Array[][] = [];
-    for (const block of frame.blocks) {
-      let chunk: Uint8Array;
-      switch (block.type) {
-        case 'const_hex':
-          chunk = parseHex(block.hex ?? '');
-          break;
-        case 'var_ref': {
-          const val = graphInputs[block.portName ?? 'value'] ?? 0;
-          chunk = packField(block.fieldType ?? 'uint16LE', String(val));
-          break;
-        }
-        case 'typed_const':
-          chunk = packField(block.fieldType ?? 'uint8', block.value ?? '0');
-          break;
-        case 'checksum': {
-          const prev = concatChunks(chunks);
-          chunk = new Uint8Array(computeChecksum(
-            prev,
-            (block.checksum ?? 'sum8'),
-            block.checksum === 'custom' ? block.customScript : undefined
-          ));
-          break;
-        }
-      }
-      chunks.push(chunk);
-      perBlock.push([chunk]);
-    }
-    let result = concatChunks(chunks);
-    if (frame.appendNewline) {
-      const withNl = new Uint8Array(result.length + 1);
-      withNl.set(result, 0);
-      withNl[result.length] = 0x0a;
-      result = withNl;
-    }
-    return { bytes: result, error: null, perBlock };
-  } catch (e) {
-    return { bytes: null, error: (e as Error).message, perBlock: [] };
-  }
-}
+/// 帧字节拼接已统一为 Rust 单一权威 (`schema_engine::compute_frame_bytes`):
+/// 预览 (compute_command_frame_bytes) / 手动发送 (send_command_frame) /
+/// 后台自动发送 (send_scheduler_ticker) 三路共用同一内核, 前端不做字节计算。

@@ -730,7 +730,6 @@ async fn manual_to_auto_switch_resets_detection_state() {
 /// 若出现 ~ms 级间隔, 说明采样时钟恢复在真实管线路径上失效 (波形阶梯的根因)
 #[tokio::test]
 async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
-    use std::sync::atomic::Ordering;
     use std::time::{Duration, Instant};
 
     let test_config = vofa_core::TestDataConfig {
@@ -751,16 +750,15 @@ async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
         vec![edge("tp", "rx", "pt", "in")],
     );
 
-    let (_write_tx, data_tx, _cancel, running, _notify, _runtime_tx) =
-        transport_core::test_data::spawn(
-            test_config,
-            TestDataLink {
-                protocol: ProtocolConfig::FireWater { channels: Some(4) },
-                schema: None,
-            },
-        )
-        .unwrap();
-    running.store(true, Ordering::Relaxed);
+    // 连接即生成: spawn 后数据流立即持续产出 (与真实 open_transport 行为一致)
+    let (_write_tx, data_tx, _cancel, _runtime_tx) = transport_core::test_data::spawn(
+        test_config,
+        TestDataLink {
+            protocol: ProtocolConfig::FireWater { channels: Some(4) },
+            schema: None,
+        },
+    )
+    .unwrap();
     let mut rx = data_tx.subscribe();
 
     // 与 read_task 相同的合批策略 (目标 64KB); 广播 Lagged 计数 (workspace
@@ -789,7 +787,6 @@ async fn test_data_700k_full_pipeline_has_per_sample_timestamps() {
         }
         route_bytes(&plane, None, "tp", &data, 0, &mut cache, None).await;
     }
-    running.store(false, Ordering::Relaxed);
 
     let buf = plane.buffer_for("pt");
     let b = buf.lock();
@@ -888,16 +885,15 @@ async fn run_stream_pressure_case(protocol: ProtocolConfig, channels: usize) {
         vec![edge("tp", "rx", "pt", "in")],
     );
 
-    let (_write_tx, data_tx, _cancel, running, _notify, _runtime_tx) =
-        transport_core::test_data::spawn(
-            test_config,
-            TestDataLink {
-                protocol,
-                schema: None,
-            },
-        )
-        .unwrap();
-    running.store(true, Ordering::Relaxed);
+    // 连接即生成: spawn 后数据流立即持续产出 (与真实 open_transport 行为一致)
+    let (_write_tx, data_tx, _cancel, _runtime_tx) = transport_core::test_data::spawn(
+        test_config,
+        TestDataLink {
+            protocol,
+            schema: None,
+        },
+    )
+    .unwrap();
     let mut rx = data_tx.subscribe();
 
     // 模拟应用真实流负载: 3 个订阅 (detail + 概览 + 主源), 16ms 节奏。
@@ -954,7 +950,6 @@ async fn run_stream_pressure_case(protocol: ProtocolConfig, channels: usize) {
             .await
             .frames;
     }
-    running.store(false, Ordering::Relaxed);
     stop_streams.store(true, Ordering::Relaxed);
     for handle in stream_handles {
         let _ = handle.await;

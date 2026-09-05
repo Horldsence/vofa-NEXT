@@ -24,6 +24,7 @@ buffer_graph = { workspace = true }
 buffer_raw = { workspace = true }
 engine = { workspace = true }
 kind = { workspace = true }
+schema_engine = { workspace = true }
 dsp_filter = { workspace = true }
 dsp_fft = { workspace = true }
 dsp_window = { workspace = true }
@@ -32,6 +33,7 @@ subscription = { workspace = true }
 
 # runtime
 parking_lot = "0.12"
+rustc-hash = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

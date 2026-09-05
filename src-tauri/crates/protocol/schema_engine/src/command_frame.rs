@@ -28,33 +28,38 @@ pub enum BlockKind {
 
 /// 单块数据 — `buffer` 端使用的紧凑表示
 ///
-/// 字段命名对齐前端 CommandBlock:
-/// - `hex` / `port_name` / `field_type` / `value` / `checksum` / `custom_script`
-/// - `id` 仅前端 UI 用, 后端不上行 (不参与计算)
+/// 字段命名与前端 CommandBlock 的 IPC 形状逐字对齐 (camelCase):
+/// - `hex` / `portName` / `fieldType` / `value` / `checksum` / `customScript`
+/// - `id` / `label` 仅前端 UI 用, 后端不上行 (不参与计算)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BlockDto {
     #[serde(rename = "const_hex")]
     ConstHex { hex: Option<String> },
     VarRef {
+        #[serde(rename = "portName")]
         port_name: Option<String>,
+        #[serde(rename = "fieldType")]
         field_type: Option<FieldType>,
     },
     TypedConst {
+        #[serde(rename = "fieldType")]
         field_type: Option<FieldType>,
         value: Option<String>,
     },
     Checksum {
         checksum: Option<ChecksumKind>,
+        #[serde(rename = "customScript")]
         #[serde(default)]
         custom_script: Option<String>,
     },
 }
 
-/// 命令帧 DTO — 与前端 `CommandFrame` 对齐 (snake_case)
+/// 命令帧 DTO — 与前端 `CommandFrame` 的 IPC 形状对齐 (camelCase 字段)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandFrameDto {
     pub blocks: Vec<BlockDto>,
+    #[serde(rename = "appendNewline")]
     #[serde(default)]
     pub append_newline: bool,
 }
@@ -225,5 +230,35 @@ mod tests {
         assert!(out.bytes.is_none());
         let err = out.error.unwrap();
         assert!(err.contains("块 #1"), "missing block index: {err}");
+    }
+
+    /// IPC 契约: 前端发送的 JSON 形状 (camelCase 字段 + `uint16LE` 拼写)
+    /// 必须原样反序列化 — 任何漂移都会造成预览/自动/手动三路字节不一致。
+    #[test]
+    fn frontend_wire_shape_deserializes() {
+        let json = serde_json::json!({
+            "blocks": [
+                { "type": "const_hex", "hex": "AA 55" },
+                { "type": "var_ref", "portName": "in1", "fieldType": "float32LE" },
+                { "type": "typed_const", "fieldType": "uint8", "value": "0x2a" },
+                { "type": "checksum", "checksum": "crc16Modbus" },
+                { "type": "checksum", "checksum": "crc16CCITT" }
+            ],
+            "appendNewline": true
+        });
+        let frame: CommandFrameDto = serde_json::from_value(json).expect("wire shape must parse");
+        assert!(
+            frame.append_newline,
+            "appendNewline must map to append_newline"
+        );
+        let inputs = HashMap::from([("in1".to_string(), 1.0_f64)]);
+        let out = compute_frame_bytes(&frame, &inputs);
+        assert!(out.error.is_none(), "{}", out.error.unwrap_or_default());
+        let bytes = out.bytes.unwrap();
+        // AA 55 + float32LE(1.0) + [0x2a] + crc16 modbus(2B) + crc16 ccitt(2B) + \n
+        assert_eq!(bytes.len(), 2 + 4 + 1 + 2 + 2 + 1);
+        assert_eq!(&bytes[2..6], &[0x00, 0x00, 0x80, 0x3f], "float32LE 1.0");
+        assert_eq!(bytes[6], 0x2a);
+        assert_eq!(*bytes.last().unwrap(), 0x0a);
     }
 }

@@ -29,12 +29,12 @@ export interface NodePortTable {
 /// 后端派生端口 (graph:derived 单一权威) 的前端形态
 export interface DerivedPort {
   name: string;
-  domain: 'F32' | 'Bytes' | 'String';
+  domain: 'F32' | 'Bytes' | 'String' | 'Spectrum';
 }
 
 /** 后端派生域 → 前端 DomainType (F32 即时域) */
 function derivedDomain(d: DerivedPort['domain']): DomainType {
-  return d === 'Bytes' ? 'bytes' : d === 'String' ? 'string' : 'time';
+  return d === 'Spectrum' ? 'freq' : d === 'Bytes' ? 'bytes' : d === 'String' ? 'string' : 'time';
 }
 
 /** Protocol 节点数值/字符串端口表 (derivedPorts 优先, protocolPortNames 兜底) */

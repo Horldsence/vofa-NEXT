@@ -185,7 +185,8 @@ export function createWidget(kind: WidgetConfig['kind']): WidgetConfig {
         params: {
           id,
           label: 'FFT',
-          windowSize: 512,
+          windowSize: 1024,
+          hopSize: 512,
           windowType: 'Hann',
           output: 'Magnitude',
           sampleRate: 1000,

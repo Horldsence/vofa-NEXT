@@ -203,7 +203,7 @@ pub(crate) fn graph_requires_full_batch(graph: &CompiledGraph) -> bool {
 /// 1. 对每个图调用 evaluate (传入 filter_states + decoder_states + trigger_states,
 ///    逐点滤波/解码/触发匹配状态跨帧持久化)
 /// 2. 合并所有图输出到 output_snapshot
-/// 3. 遍历所有图的 SpectrumSink, 从 output_snapshot 取输入值, push 到对应 analyzer
+/// 3. 遍历所有图的 Fft, 从 output_snapshot 取输入值, push 到对应 analyzer
 ///
 /// 调用时机: FrameDecoder 字节喂入后 / set_input_value / submit_custom_output
 /// (取代旧 evaluate_all_graphs_with 的空帧语义 — ProtocolSource 从缓存读最新值)
@@ -278,7 +278,7 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
     merge_str_map(combined_str, &mut str_map);
     *eval_state.graph_string_outputs.lock() = str_map;
 
-    // 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口
+    // 收集 Fft 输入值, push 到对应 analyzer 的滑动窗口
     // analyzer 的创建/删除由 spectrum_ticker 在每 tick 开头与 graphs 同步
     let mut analyzers = eval_state.spectrum_analyzers.lock();
     if !analyzers.is_empty() {
@@ -286,7 +286,15 @@ pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &Source
             let spectrum_inputs = graph.collect_spectrum_inputs(&combined);
             for (sink_id, value) in spectrum_inputs {
                 if let Some(analyzer) = analyzers.get_mut(&sink_id) {
-                    analyzer.push(value);
+                    analyzer.push_with(value, |frame| {
+                        for target in graph.spectrum_consumers(&sink_id) {
+                            if let Err(error) =
+                                ifft_states.entry(target.clone()).or_default().accept(frame)
+                            {
+                                log::warn!("IFFT {target}: {error}");
+                            }
+                        }
+                    });
                 }
             }
         }
@@ -347,6 +355,32 @@ pub fn reset_source_transient_state(eval_state: &GraphEvalState, source_id: &str
              后续输出从复位后状态重新连续"
         );
     }
+}
+
+/// 工作区级连续性状态复位 — 暂停恢复 / 启动 / 停止时调用。
+///
+/// 暂停期间字节被显式丢弃 (读任务门控), 字节流与样本时间轴在恢复点断裂;
+/// 全部跨帧有状态算子 (滤波延迟线 / IFFT 重叠相加 / 触发边沿 / 帧解码状态机 /
+/// FFT 滑窗) 一律清空, 恢复后从新流序列重新连续。各状态均为求值时懒建
+/// (或 ticker 每拍与 graphs 同步重建), 清空即复位, 不丢配置。
+pub fn reset_all_transient_state(eval_state: &GraphEvalState) {
+    let mut reset = 0_usize;
+    reset += clear_state_map(&eval_state.filter_states);
+    reset += clear_state_map(&eval_state.ifft_states);
+    reset += clear_state_map(&eval_state.trigger_states);
+    reset += clear_state_map(&eval_state.decoder_states);
+    reset += clear_state_map(&eval_state.spectrum_analyzers);
+    if reset > 0 {
+        log::info!("运行状态切换: 已复位全部连续性状态 {reset} 项 (滤波/IFFT/触发/解码/频谱窗)");
+    }
+}
+
+/// 清空一个状态 map 并返回清除条目数 (短促持锁, 不与其他锁嵌套)
+fn clear_state_map<T>(map: &std::sync::Arc<parking_lot::Mutex<HashMap<String, T>>>) -> usize {
+    let mut guard = map.lock();
+    let n = guard.len();
+    guard.clear();
+    n
 }
 
 /// 单源帧批处理 (热路径) — 一个源的一批帧一次性完成
@@ -614,7 +648,7 @@ pub fn process_source_batch(
                 u64::try_from(t.elapsed().as_nanos()).unwrap_or(u64::MAX) * TIMING_SAMPLE_PERIOD;
         }
 
-        // 4. 收集 SpectrumSink 输入值, push 到对应 analyzer 的滑动窗口 (仅 written 槽位)
+        // 4. 收集 Fft 输入值, push 到对应 analyzer 的滑动窗口 (仅 written 槽位)
         let t = if timing_sampled {
             Some(std::time::Instant::now())
         } else {
@@ -625,7 +659,15 @@ pub fn process_source_batch(
                 let (slots, written, ..) = &slot_bufs[gi];
                 for (sink_id, value) in g.compiled().spectrum_values(slots, written) {
                     if let Some(analyzer) = analyzers.get_mut(sink_id) {
-                        analyzer.push(value);
+                        analyzer.push_with(value, |frame| {
+                            for target in g.spectrum_consumers(sink_id) {
+                                if let Err(error) =
+                                    ifft_states.entry(target.clone()).or_default().accept(frame)
+                                {
+                                    log::warn!("IFFT {target}: {error}");
+                                }
+                            }
+                        });
                     }
                 }
             }

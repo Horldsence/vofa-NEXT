@@ -7,9 +7,7 @@ use schema_types::{ProtocolConfig, ProtocolSchema, TestDataLink};
 use serde::Serialize;
 use tauri::{AppHandle, State};
 use transport_core::TransportManager;
-use vofa_core::{
-    ConnectionState, Error, PortInfo, Result, TransportConfig, TransportStats, WidgetBinding,
-};
+use vofa_core::{ConnectionState, Error, PortInfo, Result, TransportConfig, WidgetBinding};
 
 /// 列出所有可用串口
 #[tauri::command]
@@ -92,6 +90,10 @@ pub async fn send_string(state: State<'_, AppState>, node_id: String, text: Stri
 /// 典型场景: 前端 Send 按钮在值未变化时也强制发送一次。
 #[tauri::command]
 pub async fn send_text_out_now(state: State<'_, AppState>, node_id: String) -> Result<()> {
+    // 统一发送门控: 手动发送要求工作区运行中 (与命令帧/自动发送同一纪律)
+    if state.data_plane.eval.execution.ticket().is_none() {
+        return Err(Error::Config(ConfigError::WorkspaceNotRunning));
+    }
     // 找到该 TextOut 的编译规格 (target_transport + newline 后缀; 图重编译间隙容错跳过)
     let spec = {
         let graphs = state.data_plane.eval.graphs.lock();
@@ -142,6 +144,10 @@ pub async fn send_widget_value(
     binding: WidgetBinding,
     value: f32,
 ) -> Result<()> {
+    // 统一发送门控: 控件值发送属于手动/值变化发送, 要求工作区运行中
+    if state.data_plane.eval.execution.ticket().is_none() {
+        return Err(Error::Config(ConfigError::WorkspaceNotRunning));
+    }
     let data = match binding {
         WidgetBinding::None => return Ok(()),
         WidgetBinding::Auto { channel, .. } => {
@@ -167,48 +173,6 @@ pub async fn send_widget_value(
             .into_bytes(),
     };
     send_raw(state, node_id, data).await
-}
-
-/// 获取连接状态 (未知节点返回 Disconnected)
-#[tauri::command]
-pub async fn get_connection_state(
-    state: State<'_, AppState>,
-    node_id: String,
-) -> Result<ConnectionState> {
-    let manager = state.transport.lock().await;
-    Ok(manager
-        .state(&node_id)
-        .unwrap_or(ConnectionState::Disconnected))
-}
-
-/// 获取传输统计 (未知节点返回全零)
-#[tauri::command]
-pub async fn get_stats(state: State<'_, AppState>, node_id: String) -> Result<TransportStats> {
-    let manager = state.transport.lock().await;
-    Ok(manager.stats(&node_id).unwrap_or_default())
-}
-
-/// 启动测试数据生成 (node_id = TestData Transport 节点 id)
-#[tauri::command]
-pub async fn start_test_data(state: State<'_, AppState>, node_id: String) -> Result<()> {
-    let manager = state.transport.lock().await;
-    manager.set_test_data_running(&node_id, true);
-    Ok(())
-}
-
-/// 停止测试数据生成
-#[tauri::command]
-pub async fn stop_test_data(state: State<'_, AppState>, node_id: String) -> Result<()> {
-    let manager = state.transport.lock().await;
-    manager.set_test_data_running(&node_id, false);
-    Ok(())
-}
-
-/// 获取测试数据生成状态
-#[tauri::command]
-pub async fn get_test_data_state(state: State<'_, AppState>, node_id: String) -> Result<bool> {
-    let manager = state.transport.lock().await;
-    Ok(manager.is_test_data_running(&node_id))
 }
 
 /// 运行时热更新传输节点的链路配置 (图连接/协议配置变化后由前端推送)

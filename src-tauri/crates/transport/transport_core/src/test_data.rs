@@ -9,14 +9,16 @@ use std::fmt::Write as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{broadcast, mpsc, watch, Notify};
+use tokio::sync::{broadcast, mpsc, watch};
 use vofa_core::{TestDataConfig, TestSignal};
 
 /// TestData 每条广播消息覆盖的目标采样时长。数据平面使用同一换算规则把
-/// `broadcast::Lagged(消息数)` 还原成丢失帧数。
+/// `broadcast::Lagged(消息数)` 还原成丢失帧数 (经 [`samples_per_message`] 折算)。
 const MESSAGE_SAMPLE_SECONDS: f64 = 0.005;
 
-#[doc(hidden)]
+/// 每条广播消息覆盖的采样数 — 生成器与数据平面共用的消息大小契约。
+/// 数据平面据此把 `broadcast::Lagged(消息数)` 折算为丢失帧数, 进而还原
+/// 采样时间戳缺口。修改消息节拍时必须保持两侧一致。
 pub fn samples_per_message(sample_rate: f32) -> u64 {
     (f64::from(sample_rate.max(1.0)) * MESSAGE_SAMPLE_SECONDS)
         .ceil()
@@ -30,6 +32,11 @@ pub struct TestDataRuntime {
 }
 
 /// 启动测试数据生成器
+///
+/// 连接即生成: 生成器随 spawn 立即持续产出字节流, 生命周期与传输连接一致
+/// (关闭连接 → cancel 置位 → 生成任务退出), 没有独立于连接之外的启停接口。
+/// 对外仅暴露与串口同构的收发面: 数据经 `broadcast` 字节流广播, 写入经
+/// `write_tx` 回环; 运行状态纯为内部实现细节。
 ///
 /// `link` 决定生成数据的线缆格式 (protocol 为 legacy 配置, schema 为帧 schema):
 /// - schema = Custom 且带 encode 块 → 按 schema 编码块生成
@@ -51,22 +58,16 @@ pub fn spawn(
     mpsc::Sender<Vec<u8>>,
     broadcast::Sender<Vec<u8>>,
     Arc<AtomicBool>,
-    Arc<AtomicBool>,
-    Arc<Notify>,
     watch::Sender<TestDataRuntime>,
 )> {
     let (data_tx, _) = broadcast::channel(vofa_core::INGEST_CHANNEL_CAPACITY);
     let (write_tx, mut write_rx) = mpsc::channel::<Vec<u8>>(64);
     let (runtime_tx, mut runtime_rx) = watch::channel(TestDataRuntime { config, link });
     let cancel = Arc::new(AtomicBool::new(false));
-    let running = Arc::new(AtomicBool::new(false));
-    let notify = Arc::new(Notify::new());
 
     // 测试数据生成任务
     let data_tx_gen = data_tx.clone();
     let cancel_gen = cancel.clone();
-    let running_gen = running.clone();
-    let notify_gen = notify.clone();
     tokio::spawn(async move {
         let mut sample_idx: u64 = 0;
         // 采样时钟只由已生成样本数推进，批次调度抖动和热更新不会重置相位。
@@ -76,78 +77,61 @@ pub fn spawn(
         // 每轮仍为固定大小消息；不按欠账分配大批内存。
         let mut next_deadline = tokio::time::Instant::now();
         loop {
+            let runtime = runtime_rx.borrow().clone();
+            let channels = runtime.config.channels.max(1);
+            let sample_rate = runtime.config.sample_rate.max(1.0);
+            let signal = runtime.config.signal;
+            // 每条消息覆盖约 5ms，避开毫秒级定时器对亚毫秒节拍的限速。
+            // 每轮重算使
+            // sample_rate/channels/signal 与协议一样可在连接期间热更新。
+            let samples_per_msg = samples_per_message(sample_rate);
+            let msg_interval =
+                Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
+            let sample_dt = 1.0_f64 / f64::from(sample_rate);
+            if let Some(previous_dt) = previous_sample_dt.replace(sample_dt) {
+                if (previous_dt - sample_dt).abs() > f64::EPSILON {
+                    // sample_time_sec 指向下一个样本；热更新后把该间隔替换为新间隔，
+                    // 但不改变已经生成的相位历史。
+                    sample_time_sec += sample_dt - previous_dt;
+                }
+            }
+            tokio::select! {
+                () = tokio::time::sleep_until(next_deadline) => {
+                    // 每轮恒定批量；保留截止时间使迟到批次逐轮补齐。
+                    next_deadline += msg_interval;
+                    let mut data = Vec::new();
+                    for _ in 0..samples_per_msg {
+                        data.extend_from_slice(&generate_link_bytes(
+                            channels,
+                            signal,
+                            sample_time_sec,
+                            &runtime.link,
+                            sample_idx,
+                        ));
+                        sample_idx += 1;
+                        sample_time_sec += sample_dt;
+                    }
+
+                    let _ = data_tx_gen.send(data);
+                }
+                changed = runtime_rx.changed() => {
+                    if changed.is_err() { break; }
+                }
+                data = write_rx.recv() => {
+                    // 写入由 TransportHandle::send 统一回环到 data_tx 广播,
+                    // 这里只需排空写入通道 (通道满会导致 send 报错)
+                    if data.is_none() { break; }
+                }
+                () = tokio::time::sleep(Duration::from_millis(100)) => {}
+            }
             if cancel_gen.load(Ordering::Relaxed) {
                 break;
-            }
-            if running_gen.load(Ordering::Relaxed) {
-                let runtime = runtime_rx.borrow().clone();
-                let channels = runtime.config.channels.max(1);
-                let sample_rate = runtime.config.sample_rate.max(1.0);
-                let signal = runtime.config.signal;
-                // 每条消息覆盖约 5ms，避开毫秒级定时器对亚毫秒节拍的限速。
-                // 每轮重算使
-                // sample_rate/channels/signal 与协议一样可在连接期间热更新。
-                let samples_per_msg = samples_per_message(sample_rate);
-                let msg_interval =
-                    Duration::from_secs_f64(samples_per_msg as f64 / f64::from(sample_rate));
-                let sample_dt = 1.0_f64 / f64::from(sample_rate);
-                if let Some(previous_dt) = previous_sample_dt.replace(sample_dt) {
-                    if (previous_dt - sample_dt).abs() > f64::EPSILON {
-                        // sample_time_sec 指向下一个样本；热更新后把该间隔替换为新间隔，
-                        // 但不改变已经生成的相位历史。
-                        sample_time_sec += sample_dt - previous_dt;
-                    }
-                }
-                tokio::select! {
-                    () = tokio::time::sleep_until(next_deadline) => {
-                        // 每轮恒定批量；保留截止时间使迟到批次逐轮补齐。
-                        next_deadline += msg_interval;
-                        let mut data = Vec::new();
-                        for _ in 0..samples_per_msg {
-                            data.extend_from_slice(&generate_link_bytes(
-                                channels,
-                                signal,
-                                sample_time_sec,
-                                &runtime.link,
-                                sample_idx,
-                            ));
-                            sample_idx += 1;
-                            sample_time_sec += sample_dt;
-                        }
-
-                        let _ = data_tx_gen.send(data);
-                    }
-                    changed = runtime_rx.changed() => {
-                        if changed.is_err() { break; }
-                    }
-                    () = notify_gen.notified() => {}
-                    data = write_rx.recv() => {
-                        // 写入由 TransportHandle::send 统一回环到 data_tx 广播,
-                        // 这里只需排空写入通道 (通道满会导致 send 报错)
-                        if data.is_none() { break; }
-                    }
-                    () = tokio::time::sleep(Duration::from_millis(100)) => {
-                        if cancel_gen.load(Ordering::Relaxed) { break; }
-                    }
-                }
-            } else {
-                tokio::select! {
-                    () = notify_gen.notified() => {}
-                    data = write_rx.recv() => {
-                        if data.is_none() { break; }
-                    }
-                    () = tokio::time::sleep(Duration::from_millis(100)) => {
-                        if cancel_gen.load(Ordering::Relaxed) { break; }
-                    }
-                }
-                // 暂停时间不属于采集时间，恢复时不补发整个暂停期间的样本。
-                next_deadline = tokio::time::Instant::now();
             }
         }
         log::debug!("测试数据生成器退出");
     });
 
-    Ok((write_tx, data_tx, cancel, running, notify, runtime_tx))
+    Ok((write_tx, data_tx, cancel, runtime_tx))
 }
 
 /// 按链路配置生成线缆格式的字节流
@@ -176,7 +160,8 @@ fn generate_link_bytes(
 
 /// 按协议类型生成线缆格式的字节流 (legacy 路径)
 ///
-/// `pub` 用于 `tests/` 集成测试验证字节格式; 协议层不应直接调用。
+/// `pub` 供 data_plane 基准测试构造合成线缆格式字节块 (crate 内测试直接走
+/// 本模块单元测试); 协议层不应直接调用。
 #[doc(hidden)]
 pub fn generate_bytes(
     channels: usize,
@@ -272,10 +257,7 @@ pub fn generate_bytes(
 
 /// 生成一帧通道浮点值 (与原实现保持一致)
 /// t 为生成器启动以来的真实流逝时间 (秒), 作为所有信号的时间基准
-///
-/// `pub` 用于 `tests/` 集成测试验证信号形状; 协议层不应直接调用。
-#[doc(hidden)]
-pub fn generate_frame(channels: usize, signal: TestSignal, t: f64) -> Vec<f32> {
+fn generate_frame(channels: usize, signal: TestSignal, t: f64) -> Vec<f32> {
     (0..channels)
         .map(|i| {
             let channel = i as f64;
@@ -351,4 +333,93 @@ pub fn generate_frame(channels: usize, signal: TestSignal, t: f64) -> Vec<f32> {
             }
         })
         .collect()
+}
+
+/// 字节格式 / 信号形状验证 — 覆盖每种 `ProtocolConfig` 变体
+/// (JustFloat 帧尾 / FireWater CSV / Slcan ASCII / CandleLight 二进制 /
+/// RawData 计数器 / LogicDecode 字节位) 与长时运行相位精度。
+#[cfg(test)]
+mod tests {
+    use super::{generate_bytes, generate_frame};
+    use logic_types::LogicDecoderConfig;
+    use schema_types::ProtocolConfig;
+    use vofa_core::{Parity, StopBits, TestSignal};
+
+    #[test]
+    fn justfloat_format() {
+        let protocol = ProtocolConfig::JustFloat { channels: Some(2) };
+        let data = generate_bytes(2, TestSignal::Sine, 0.0, &protocol, 0);
+        // 2 channels * 4 bytes + 4 byte tail
+        assert_eq!(data.len(), 12);
+        // 帧尾
+        assert_eq!(&data[8..12], &[0x00, 0x00, 0x80, 0x7f]);
+    }
+
+    #[test]
+    fn firewater_format() {
+        let protocol = ProtocolConfig::FireWater { channels: Some(2) };
+        let data = generate_bytes(2, TestSignal::Sine, 0.0, &protocol, 0);
+        let s = String::from_utf8(data).unwrap();
+        assert!(s.ends_with('\n'));
+        assert_eq!(s.matches(',').count(), 1);
+    }
+
+    #[test]
+    fn slcan_format() {
+        let protocol = ProtocolConfig::Slcan;
+        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
+        let s = String::from_utf8(data).unwrap();
+        assert!(s.starts_with('t'));
+        assert!(s.ends_with('\r'));
+        // t + 3 (id) + 1 (dlc) + 16 (8 bytes hex) + 1 (\r) = 22
+        assert_eq!(s.len(), 22);
+    }
+
+    #[test]
+    fn candle_format() {
+        let protocol = ProtocolConfig::CandleLight;
+        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
+        assert_eq!(data.len(), 24);
+        assert_eq!(data[0], 0x11); // RX cmd
+        assert_eq!(data[12], 8); // dlc
+    }
+
+    #[test]
+    fn rawdata_format() {
+        let protocol = ProtocolConfig::RawData;
+        let data = generate_bytes(4, TestSignal::Dc, 0.0, &protocol, 42);
+        // 4 channel bytes + 4 byte counter
+        assert_eq!(data.len(), 8);
+        assert_eq!(&data[4..8], &42u32.to_le_bytes());
+    }
+
+    #[test]
+    fn logic_decode_format() {
+        let protocol = ProtocolConfig::LogicDecode {
+            decoder: LogicDecoderConfig::Uart {
+                baud_rate: 115200,
+                data_bits: 8,
+                parity: Parity::None,
+                stop_bits: StopBits::One,
+                channel: 0,
+            },
+        };
+        let data = generate_bytes(8, TestSignal::Square, 0.0, &protocol, 0);
+        // 8 samples per tick
+        assert_eq!(data.len(), 8);
+        // 通道 0 应有方波翻转
+        assert_ne!(data[0] & 0x01, 0);
+    }
+
+    #[test]
+    fn high_rate_phase_keeps_f64_resolution_after_long_runtime() {
+        let sample_rate = 700_000.0_f64;
+        let first = generate_frame(1, TestSignal::Sine, 3_600.0)[0];
+        let second = generate_frame(1, TestSignal::Sine, 3_600.0 + 1.0 / sample_rate)[0];
+
+        assert!(
+            (second - first).abs() > f32::EPSILON,
+            "长时间运行后 700 kHz 相邻样本仍必须推进相位"
+        );
+    }
 }

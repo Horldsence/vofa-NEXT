@@ -26,6 +26,15 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
         // 尚未进入等待, 许可也会存储并在下次 notified() 立即返回
         notify.notified().await;
         while let Some((source, frames, gap)) = plane.pop_frame_batch() {
+            // boundary 读锁先行并跨越整个批次求值: 运行状态切换 (写锁) 等待
+            // 在途批次完成 — 旧 epoch 的求值结果不可能在切换后发布。
+            let _boundary = plane.eval.execution.boundary.read().await;
+            // 运行门控: 暂停/停止瞬间残留入队的批次直接丢弃 (切换路径已清空
+            // 队列, 此处兜底竞态窗口内入队的最后一批), 不在非运行态求值。
+            // 锁内复查 — 取锁与查票之间不会有切换插入。
+            if plane.eval.execution.ticket().is_none() {
+                continue;
+            }
             // 缺口 (队列溢出丢批) → 复位该源关联有状态算子 (不变量 5)
             if gap {
                 crate::graph_eval::reset_source_transient_state(&plane.eval, &source);
@@ -86,42 +95,4 @@ pub(super) async fn eval_worker(plane: DataPlaneState) {
             }
         }
     }
-}
-
-/// 清空某 Transport 下游所有 Protocol 节点的评估队列 (TestData 停止边沿用),
-/// 返回丢弃帧数。语义与"排空广播积压"一致: 停止后波形立即冻结, 不拖尾。
-pub(super) fn clear_downstream_queues(plane: &DataPlaneState, transport_id: &str) -> u64 {
-    use kind::NodeKind;
-
-    let mut dropped = 0_u64;
-    let mut pending = std::collections::VecDeque::from([transport_id.to_string()]);
-    let mut visited = std::collections::HashSet::new();
-    let mut targets = Vec::new();
-    {
-        let plan = plane.byte_plan.lock();
-        let nodes = plane.global_nodes.lock();
-        while let Some(source) = pending.pop_front() {
-            if !visited.insert(source.clone()) {
-                continue;
-            }
-            for route in plan.routes_for(&source) {
-                if matches!(
-                    nodes.get(&route.target).map(|node| &node.kind),
-                    Some(NodeKind::Protocol { .. })
-                ) {
-                    targets.push(route.target.clone());
-                }
-                pending.push_back(route.target.clone());
-            }
-        }
-    }
-    if !targets.is_empty() {
-        let mut queues = plane.frame_queues.lock();
-        for target in targets {
-            if let Some(queue) = queues.get_mut(&target) {
-                dropped += queue.clear();
-            }
-        }
-    }
-    dropped
 }

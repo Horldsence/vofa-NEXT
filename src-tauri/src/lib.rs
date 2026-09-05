@@ -98,11 +98,6 @@ pub fn run() {
             send_text_out_now,
             send_widget_value,
             send_and_capture,
-            get_connection_state,
-            get_stats,
-            start_test_data,
-            stop_test_data,
-            get_test_data_state,
             update_transport_protocol,
             // 协议
             set_protocol,
@@ -111,6 +106,11 @@ pub fn run() {
             // 流水线参数
             set_pipeline_config,
             get_pipeline_config,
+            // 工作区运行控制 + 后台发送任务注册
+            workspace_run,
+            get_workspace_run_state,
+            set_widget_send_tasks,
+            get_send_task_status,
             // 波形缓冲区
             subscribe_data,
             unsubscribe_data,
@@ -169,6 +169,8 @@ pub fn run() {
             match_trigger_command,
             // 命令帧字节打包 (CommandSender 发送路径)
             compute_command_frame_bytes,
+            // 命令帧手动发送 (统一发送内核: 与预览/自动同编码同路由)
+            send_command_frame,
             // 调试
             inspect_element,
             // 窗口

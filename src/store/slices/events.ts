@@ -1,4 +1,5 @@
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import type { RunState } from '../../types';
 import {
   subscribeSpectrum,
   subscribeStringOutputs,
@@ -259,6 +260,12 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
         adoptSourceGraph(parsed);
       });
 
+      // workspace:run — 工作区运行状态广播 (启动/暂停/停止, state + epoch);
+      // 切片内的动作调用以命令返回值为准, 此处只做幂等刷新 (含 AI/MCP 写入方)
+      const unlistenRun = await listen<{ state: RunState }>('workspace:run', (event) => {
+        set({ runState: event.payload.state });
+      });
+
       unlistenFns = [
         unlistenState,
         unlistenStats,
@@ -266,6 +273,7 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
         unlistenDerived,
         unlistenCompile,
         unlistenSource,
+        unlistenRun,
       ];
 
       const spectrumCoalescer = makeRafCoalescer<GraphStateSlice['spectrumResults']>(
@@ -333,6 +341,8 @@ export const createEventSlice: AppSlice<EventSlice> = (set, get) => {
         restored = false;
       }
       set({ workspaceReady: true, workspaceRestored: restored });
+      // 运行态水合 — 新建/重开项目后端默认 stopped, 这里取权威快照镜像
+      void get().hydrateRunState();
       if (!restored) {
         get().controlTabs.forEach((tab) => { void get().syncTabGraph(tab.id); });
       }

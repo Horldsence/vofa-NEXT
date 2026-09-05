@@ -8,6 +8,7 @@ edition.workspace = true
 workspace = true
 
 [dependencies]
+dispatcher = { workspace = true }
 app_state = { workspace = true }
 buffer_graph = { workspace = true }
 data_plane = { workspace = true }

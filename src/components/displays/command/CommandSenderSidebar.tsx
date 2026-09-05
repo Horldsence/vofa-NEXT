@@ -17,6 +17,8 @@ interface Props {
   lastSent: string | null;
   /// 无字节边路由 (loopbackOut 未连接) — 禁用发送并提示
   routeMissing: boolean;
+  /// 工作区未运行 — 手动发送要求运行态, 禁用发送并提示
+  notRunning: boolean;
   onSend: () => void;
   onUpdateParams: (changes: Partial<Props['params']>) => void;
   onUpdateFrame: (changes: Partial<CommandFrame>) => void;
@@ -30,6 +32,7 @@ export function CommandSenderSidebar({
   error,
   lastSent,
   routeMissing,
+  notRunning,
   onSend,
   onUpdateParams,
   onUpdateFrame,
@@ -37,6 +40,8 @@ export function CommandSenderSidebar({
 }: Props) {
   const sendMode = frame.sendMode ?? 'manual';
   const timerMs = frame.timerMs ?? 100;
+  const sendDisabled =
+    routeMissing || notRunning || !computed.bytes || computed.bytes.length === 0 || !!computed.error;
 
   return (
     <div className="w-[300px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-3">
@@ -72,12 +77,25 @@ export function CommandSenderSidebar({
       <button
         className="justify-center px-4 py-1.5 bg-bg-button text-text-inverse border-none rounded cursor-pointer text-sm transition-colors hover:bg-bg-button-hover font-semibold inline-flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-default"
         onClick={onSend}
-        disabled={routeMissing || !computed.bytes || computed.bytes.length === 0 || !!computed.error}
-        title={routeMissing ? t(lang, 'cmdNoByteRoute') : undefined}
+        disabled={sendDisabled}
+        title={
+          notRunning
+            ? t(lang, 'cmdSendRequiresRun')
+            : routeMissing
+              ? t(lang, 'cmdNoByteRoute')
+              : undefined
+        }
       >
         <Send size={12} />
         <span>{t(lang, 'cmdSend')}</span>
       </button>
+
+      {notRunning ? (
+        <div className="flex items-center gap-1 bg-yellow/10 border border-yellow/30 text-yellow px-1.5 py-1 rounded-sm text-xs">
+          <AlertTriangle size={11} />
+          <span>{t(lang, 'cmdSendRequiresRun')}</span>
+        </div>
+      ) : null}
 
       {routeMissing && (
         <div className="flex items-center gap-1 bg-yellow/10 border border-yellow/30 text-yellow px-1.5 py-1 rounded-sm text-xs">
