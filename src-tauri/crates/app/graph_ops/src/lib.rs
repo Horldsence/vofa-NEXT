@@ -21,6 +21,9 @@ mod derived;
 mod inject;
 mod source_graph;
 
+#[cfg(test)]
+mod apply_tests;
+
 pub use apply::{apply_remove_tab_graph, apply_tab_graph, apply_tab_graph_parts};
 pub use compile_queue::*;
 pub use derived::*;

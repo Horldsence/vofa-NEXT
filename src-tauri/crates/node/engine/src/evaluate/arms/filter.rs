@@ -26,7 +26,7 @@ impl NodeArm for FilterArm {
         let result = ctx
             .filter_states
             .get_mut(node_id)
-            .unwrap()
+            .expect("filter 状态已在上方缺失时插入")
             .process(input_val);
         set_port(node_out_entry(ctx.out, node_id), "result", result);
     }

@@ -15,3 +15,6 @@ vofa_core = { workspace = true }
 kind = { workspace = true }
 frame_decoder = { workspace = true }
 protocol_engine = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

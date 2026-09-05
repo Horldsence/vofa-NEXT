@@ -30,6 +30,8 @@ ESLint was introduced with the strict `recommended-type-checked` + `stylistic-ty
 
 Use two-space indentation and single-quoted imports in TypeScript. Use `PascalCase` for components and types, `camelCase` for functions and stores, and `useXxx` for hooks. Keep TypeScript strict and remove unused symbols. Rust follows `rustfmt`, `snake_case` modules/functions, and `PascalCase` types. The workspace denies Clippy `all`, `pedantic`, `nursery`, and `cargo` warnings; address warnings instead of casually suppressing them.
 
+Rust production source files are capped at **500 lines** (integration tests under `tests/`, benches, and `#[cfg(test)]` test-module files like `*_tests.rs` are exempt). When a file outgrows the limit, split it into submodules behind a `mod.rs` that re-exports the existing API; the CI `rust` job enforces this with a file-size guard (see `docs/architecture/crate-layers.md`).
+
 ## Testing Guidelines
 
 Vitest uses jsdom, Testing Library, and shared Tauri mocks from `src/test/setup.ts`. Name frontend tests `*.test.ts` or `*.test.tsx` and colocate them near the feature. Name Rust integration tests descriptively under `<crate>/tests/`. Add or update regression tests for behavioral changes; no fixed coverage threshold is configured.

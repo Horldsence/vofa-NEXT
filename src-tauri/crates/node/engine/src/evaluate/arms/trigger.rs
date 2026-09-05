@@ -37,7 +37,10 @@ impl NodeArm for TriggerArm {
                 TriggerState::new(rules.clone(), *default_miss, default_miss_text.clone()),
             );
         }
-        let state = ctx.trigger_states.get_mut(node_id).unwrap();
+        let state = ctx
+            .trigger_states
+            .get_mut(node_id)
+            .expect("trigger 状态已在上方缺失时重建插入");
         let tv = graph.resolve_input(node_id, "trigger", ctx.out);
         let result = if mode == "auto" {
             state.eval_auto(edge, tv)

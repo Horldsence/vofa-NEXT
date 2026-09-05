@@ -16,6 +16,9 @@ pub mod events;
 pub mod recorder;
 pub mod runner;
 
+#[cfg(test)]
+mod runner_tests;
+
 pub use events::{AiChatEvent, EventSink};
 pub use recorder::TurnRecorder;
 pub use runner::{

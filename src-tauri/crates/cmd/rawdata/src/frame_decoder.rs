@@ -51,7 +51,7 @@ pub async fn parse_frame_decoder_input(
             }
         },
         InputFormat::Ascii => parse_ascii(&input),
-        InputFormat::Auto => unreachable!(),
+        InputFormat::Auto => unreachable!("Auto 已在上方经 detect_format 展开为 Hex/Ascii"),
     };
 
     // 2. 创建临时 FrameParser (无状态, 仅用于一次性解析)
@@ -81,5 +81,124 @@ pub async fn parse_frame_decoder_input(
             consumed_bytes: 0,
             error: Some("无法解析: 未找到帧头或帧不完整".to_string()),
         }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kind::{DecoderBlockDef, FieldType};
+
+    /// 最小帧: Header("AA") + Field(uint8, "value") → 帧 [0xAA, 0x2A] 输出 value=42
+    fn blocks() -> Vec<DecoderBlockDef> {
+        vec![
+            DecoderBlockDef::Header {
+                id: "h".into(),
+                hex: "AA".into(),
+                match_id: None,
+            },
+            DecoderBlockDef::Field {
+                id: "f".into(),
+                field_type: FieldType::UInt8,
+                port_name: "value".into(),
+                length_ref: None,
+                match_id: None,
+            },
+        ]
+    }
+
+    #[tokio::test]
+    async fn hex_input_parses_outputs_and_consumed_bytes() {
+        let r = parse_frame_decoder_input(
+            blocks(),
+            "AA 2A".into(),
+            InputFormat::Hex,
+            true,
+            false,
+            false,
+            false,
+        )
+        .await
+        .expect("解析不报错");
+        assert_eq!(r.error, None);
+        assert_eq!(r.consumed_bytes, 2, "帧头 1 + 字段 1");
+        assert_eq!(r.outputs.get("value"), Some(&42.0));
+        assert!(r.valid, "无校验块 → 校验视为通过");
+    }
+
+    #[tokio::test]
+    async fn auto_format_detects_hex_and_parses() {
+        let r = parse_frame_decoder_input(
+            blocks(),
+            "AA 2A".into(),
+            InputFormat::Auto,
+            true,
+            false,
+            false,
+            false,
+        )
+        .await
+        .expect("解析不报错");
+        assert_eq!(r.error, None, "偶数长度十六进制应自动判定为 Hex");
+        assert_eq!(r.outputs.get("value"), Some(&42.0));
+    }
+
+    #[tokio::test]
+    async fn header_not_found_reports_parse_error() {
+        let r = parse_frame_decoder_input(
+            blocks(),
+            "BB 2A".into(),
+            InputFormat::Hex,
+            true,
+            false,
+            false,
+            false,
+        )
+        .await
+        .expect("不 panic, 错误进 error 字段");
+        assert_eq!(r.outputs.len(), 0);
+        assert_eq!(r.consumed_bytes, 0);
+        assert!(!r.valid);
+        assert!(
+            r.error.unwrap_or_default().contains("无法解析"),
+            "帧头找不到应报无法解析"
+        );
+    }
+
+    #[tokio::test]
+    async fn incomplete_frame_reports_parse_error() {
+        // 只有帧头没有字段数据 → 帧不完整
+        let r = parse_frame_decoder_input(
+            blocks(),
+            "AA".into(),
+            InputFormat::Hex,
+            true,
+            false,
+            false,
+            false,
+        )
+        .await
+        .expect("不 panic");
+        assert!(
+            r.error.unwrap_or_default().contains("无法解析"),
+            "帧不完整应报无法解析"
+        );
+    }
+
+    #[tokio::test]
+    async fn invalid_hex_reports_decode_error() {
+        let r = parse_frame_decoder_input(
+            blocks(),
+            "ZZ".into(),
+            InputFormat::Hex,
+            true,
+            false,
+            false,
+            false,
+        )
+        .await
+        .expect("不 panic");
+        assert!(r.error.is_some(), "hex 解析失败应返回 error 描述");
+        assert_eq!(r.consumed_bytes, 0);
     }
 }

@@ -216,6 +216,17 @@ graph TD
    分组内插入）。
 6. 跑 `pnpm check:layers` 确认 rank 规则未被破坏。
 
+## 源文件行数约定
+
+单文件（生产源码）不超过 **500 行**，超过即按职责拆子模块（目录化 +
+`mod.rs` 重导出保持公共 API 不变）。以下豁免：`tests/` 集成测试、
+`benches/` 基准、`*_tests.rs` / `src/tests/` 等 `#[cfg(test)]` 测试模块文件。
+CI 的 `rust` job 内置行数守卫（`lint.yml`），超限直接失败。
+拆分时注意：跨子模块共享的私有项需提 `pub(super)`/`pub`（clippy
+`redundant_pub_crate` 会在私有模块链内要求放宽到 `pub`）；目录化文件对
+父模块私有字段的访问依赖"子模块可见祖先私有项"规则，struct 定义保留在
+`mod.rs` 可实现零可见性改动。
+
 ## 历史备注
 
 - 2026-09 整理: 由 58 个平铺 crate 重组为 8 层目录；28 个 crate 去除与

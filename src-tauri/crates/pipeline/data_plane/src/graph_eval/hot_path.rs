@@ -1,22 +1,18 @@
-//! 数值平面评估 — 槽位热路径 (process_source_batch) + 事件驱动快照评估
-//!
-//! 两平面重构后:
-//! - 热路径按源触发: 某 Protocol 源来帧 → 仅评估"引用该源的 tab 图"与
-//!   "无 ProtocolSource 的纯本地图" (后者沿用旧单源行为: 任意来帧都评估);
-//!   每帧先把该帧写入 source_frames[source] (其他源保持缓存最新帧, latest-value 融合),
-//!   再走 CompiledEval::run 槽位评估 — 调用方式/槽位复用/批内锁粒度与旧版一致
-//! - 快照评估 (evaluate_snapshot_now): 字节/输入事件后以 source_frames 现状评估,
-//!   取代旧 force_eval 空帧机制
+//! 单源帧批处理热路径 — 700k fps 主循环, 移动时不得改动任何函数体
 
-use crate::eval_state::GraphEvalState;
+use std::collections::HashMap;
+use std::hash::BuildHasher;
+use std::sync::Arc;
+
 use buffer_databuffer::DerivedWriter;
-use buffer_graph::Edge;
 use data_bus::TopicKey;
 use engine::{CompiledGraph, SourceFramesMap};
 use kind::NodeKind;
-use std::collections::HashMap;
-use std::sync::Arc;
 use vofa_core::DataFrame;
+
+use crate::eval_state::GraphEvalState;
+
+use super::predicates::{graph_requires_full_batch, graph_triggered_by, records_waveform_history};
 
 /// 分段计时抽样周期 — Instant::now 本身在 700k fps 下占 5-7% 纯观测开销,
 /// 每 64 帧抽 1 帧计时 ×64 估算分段耗时 (观测用, 不影响行为)
@@ -32,71 +28,7 @@ pub struct EvalBreakdown {
 }
 
 /// 每 graph 一组槽位缓冲 (slots, written, str_slots, str_written), 批内跨帧复用
-pub(crate) type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
-
-/// `mem::take` + Drop 写回守卫 — 并发路径把共享表整表取出做零克隆共享,
-/// 任何退路 (含 panic 展开) 都把当前值原样放回, 不丢共享状态
-pub(crate) struct PutBack<'a, T> {
-    dst: &'a mut T,
-    val: Option<T>,
-}
-
-impl<'a, T: Default> PutBack<'a, T> {
-    pub(crate) fn take(dst: &'a mut T) -> Self {
-        Self {
-            val: Some(std::mem::take(dst)),
-            dst,
-        }
-    }
-
-    pub(crate) const fn get(&self) -> &T {
-        self.val.as_ref().expect("PutBack 值仅在 Drop 时移出")
-    }
-
-    pub(crate) const fn get_mut(&mut self) -> &mut T {
-        self.val.as_mut().expect("PutBack 值仅在 Drop 时移出")
-    }
-}
-
-impl<T> Drop for PutBack<'_, T> {
-    fn drop(&mut self) {
-        if let Some(v) = self.val.take() {
-            *self.dst = v;
-        }
-    }
-}
-
-/// 持锁版整表取出 — 锁 guard 与取出值一起持有, Drop 时原样写回
-/// (调用方无需再绑定 mut 锁 guard, 并发路径直接跨线程共享 `get()`)
-pub(crate) struct TakeGuard<'a, T> {
-    guard: parking_lot::MutexGuard<'a, T>,
-    val: Option<T>,
-}
-
-impl<'a, T: Default> TakeGuard<'a, T> {
-    pub(crate) fn take(mut guard: parking_lot::MutexGuard<'a, T>) -> Self {
-        Self {
-            val: Some(std::mem::take(&mut *guard)),
-            guard,
-        }
-    }
-
-    pub(crate) const fn get(&self) -> &T {
-        self.val.as_ref().expect("TakeGuard 值仅在 Drop 时移出")
-    }
-
-    pub(crate) const fn get_mut(&mut self) -> &mut T {
-        self.val.as_mut().expect("TakeGuard 值仅在 Drop 时移出")
-    }
-}
-
-impl<T> Drop for TakeGuard<'_, T> {
-    fn drop(&mut self) {
-        if let Some(v) = self.val.take() {
-            *self.guard = v;
-        }
-    }
-}
+pub type SlotBufs = (Vec<f32>, Vec<bool>, Vec<String>, Vec<bool>);
 
 struct PortSampleBatch {
     key: TopicKey,
@@ -109,9 +41,11 @@ struct PortSampleBatch {
 /// StringValuesMap (FxHash) 深合并进快照 map (std hasher) — 移动语义, 字符串零 clone
 ///
 /// 同 (node, port) 覆盖写; 两侧 hasher 不同 (FxHash vs SipHash) 故逐条目迁移
-pub(crate) fn merge_str_map(
+// dst 是快照侧 std-hasher map (graph_string_outputs 的值域), 内层不做 hasher 泛型
+#[allow(clippy::implicit_hasher)]
+pub fn merge_str_map<S: BuildHasher>(
     src: engine::StringValuesMap,
-    dst: &mut HashMap<String, HashMap<String, String>>,
+    dst: &mut HashMap<String, HashMap<String, String>, S>,
 ) {
     for (node_id, ports) in src {
         dst.entry(node_id).or_default().extend(ports);
@@ -139,248 +73,6 @@ fn publish_str_slots(
         g.compiled().materialize_str(&bufs.2, &bufs.3, &mut buf);
     }
     merge_str_map(buf, out);
-}
-
-/// 图是否被指定源触发:
-/// - 引用了该 Protocol 源 (ProtocolSource.node_id == source_id) → 触发
-/// - 不含任何 ProtocolSource (Input/Math/Custom 等纯本地图) → 任意源来帧都触发
-///   (沿用旧单源架构行为: 所有图每帧评估)
-/// - 引用了其他源 → 不触发 (该源来帧时才评估)
-pub(crate) fn graph_triggered_by(g: &CompiledGraph, source_id: &str) -> bool {
-    let mut has_source = false;
-    for n in g.value_nodes() {
-        if let NodeKind::ProtocolSource { node_id, .. } = &n.kind {
-            has_source = true;
-            if node_id == source_id {
-                return true;
-            }
-        }
-    }
-    !has_source
-}
-
-/// 只有 Waveform 的 `CH<n>` 输入边需要持久化派生历史。
-///
-/// 旧路径把图内每条边（包括 Math 的中间输入、Gauge/Label 等只读快照的边）
-/// 都复制进派生环，令一次求值产生数倍无消费者写放大。Waveform 端口契约由
-/// 前端 `WidgetPorts` 固定为大写 `CH0..CHn`，这里严格校验整个后缀为数字。
-fn numbered_handle<'a>(handle: &'a str, prefix: &str) -> Option<&'a str> {
-    handle
-        .strip_prefix(prefix)
-        .filter(|suffix| !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit()))
-}
-
-pub(crate) fn records_waveform_history(graph: &CompiledGraph, edge: &Edge) -> bool {
-    if numbered_handle(&edge.target_handle, "CH").is_none() {
-        return false;
-    }
-    // JustFloat/FireWater 的标准 ch<n> 已由原始 DataBuffer 保存，前端也直接从
-    // channels[n] 读取；再写一份派生环既无消费者又把内存/CPU 放大一倍。
-    !(numbered_handle(&edge.source_handle, "ch").is_some()
-        && matches!(
-            graph.value_def(&edge.source).map(|node| &node.kind),
-            Some(NodeKind::ProtocolSource { .. })
-        ))
-}
-
-/// 指定来源是否存在必须逐帧执行的数值图。
-///
-/// 仅 `ProtocolSource → Sink` 的图只需要批尾最新值；原始 ch<n> 波形历史已经
-/// 在记录平面完整入库。将这类常见纯波形/仪表图压缩为每批一次求值，避免为了
-/// 刷新 latest-value 快照重复遍历几十万帧。
-pub(crate) fn graph_requires_full_batch(graph: &CompiledGraph) -> bool {
-    graph
-        .value_nodes()
-        .any(|node| !matches!(node.kind, NodeKind::ProtocolSource { .. } | NodeKind::Sink))
-        || graph
-            .edges()
-            .any(|edge| records_waveform_history(graph, &edge))
-}
-
-/// 事件驱动快照评估 — 以 source_frames 现状评估所有图并发布 output_snapshot
-///
-/// 步骤:
-/// 1. 对每个图调用 evaluate (传入 filter_states + decoder_states + trigger_states,
-///    逐点滤波/解码/触发匹配状态跨帧持久化)
-/// 2. 合并所有图输出到 output_snapshot
-/// 3. 遍历所有图的 Fft, 从 output_snapshot 取输入值, push 到对应 analyzer
-///
-/// 调用时机: FrameDecoder 字节喂入后 / set_input_value / submit_custom_output
-/// (取代旧 evaluate_all_graphs_with 的空帧语义 — ProtocolSource 从缓存读最新值)
-pub fn evaluate_snapshot_now(eval_state: &GraphEvalState, source_frames: &SourceFramesMap) {
-    let input_values = eval_state.input_values.read();
-    let custom_outputs = eval_state.custom_outputs.read();
-    let source_texts = eval_state.source_texts.lock();
-    let graphs = eval_state.graphs.lock();
-    let mut filter_states = eval_state.filter_states.lock();
-    let decoder_states = eval_state.decoder_states.lock();
-    let mut ifft_states = eval_state.ifft_states.lock();
-    let mut trigger_states = eval_state.trigger_states.lock();
-
-    let mut combined: engine::ValuesMap = HashMap::default();
-    // 字符串输出: 各图求值结果累积于此, 求值后全量覆盖写进 graph_string_outputs
-    let mut combined_str = engine::StringValuesMap::default();
-    for (_, graph) in graphs.iter() {
-        let out = graph.evaluate(
-            source_frames,
-            &source_texts,
-            &input_values,
-            &custom_outputs,
-            &mut filter_states,
-            &decoder_states,
-            &mut ifft_states,
-            &mut trigger_states,
-            &mut combined_str,
-        );
-        for (k, v) in out {
-            combined.insert(k, v);
-        }
-    }
-
-    // 更新 output_snapshot (供 60 FPS ticker 推送)
-    {
-        let mut snap = eval_state.output_snapshot.lock();
-        snap.tick = snap.tick.wrapping_add(1);
-        // clone_from 复用旧快照的分配; combined 随后仍作为谱输入被读取
-        snap.values.clone_from(&combined);
-    }
-
-    // Input / Custom / FrameDecoder 等事件驱动求值不经过 process_source_batch，
-    // 过去只刷新 latest-value 快照，导致已迁移到 DataBus 的显示节点永远等不到
-    // 派生样本。只发布非 ProtocolSource 输出，避免把缓存的协议末值伪造成新采样。
-    let event_timestamp = vofa_core::now_us();
-    for (node_id, ports) in &combined {
-        let is_protocol_source = graphs.values().any(|graph| {
-            matches!(
-                graph.value_def(node_id).map(|node| &node.kind),
-                Some(NodeKind::ProtocolSource { .. })
-            )
-        });
-        if is_protocol_source {
-            continue;
-        }
-        for (port, value) in ports {
-            let key = TopicKey::new(node_id, port);
-            if eval_state.data_bus.is_active(&key) {
-                eval_state.data_bus.publish_samples(
-                    key,
-                    Arc::from([event_timestamp]),
-                    Arc::from([f64::from(*value)]),
-                );
-            }
-        }
-    }
-
-    // 更新后端字符串输出 (供 text_output_ticker 合并发布) —
-    // 全量覆盖写: combined_str 覆盖所有图, 先物化到本地 map 再整体 swap,
-    // 过期节点条目随 swap 清理 (同 snap.values 语义)
-    let mut str_map: HashMap<String, HashMap<String, String>> = HashMap::new();
-    merge_str_map(combined_str, &mut str_map);
-    *eval_state.graph_string_outputs.lock() = str_map;
-
-    // 收集 Fft 输入值, push 到对应 analyzer 的滑动窗口
-    // analyzer 的创建/删除由 spectrum_ticker 在每 tick 开头与 graphs 同步
-    let mut analyzers = eval_state.spectrum_analyzers.lock();
-    if !analyzers.is_empty() {
-        for (_, graph) in graphs.iter() {
-            let spectrum_inputs = graph.collect_spectrum_inputs(&combined);
-            for (sink_id, value) in spectrum_inputs {
-                if let Some(analyzer) = analyzers.get_mut(&sink_id) {
-                    analyzer.push_with(value, |frame| {
-                        for target in graph.spectrum_consumers(&sink_id) {
-                            if let Err(error) =
-                                ifft_states.entry(target.clone()).or_default().accept(frame)
-                            {
-                                log::warn!("IFFT {target}: {error}");
-                            }
-                        }
-                    });
-                }
-            }
-        }
-    }
-}
-
-/// 缺口后的有状态算子复位 (不变量 5) — 求值平面丢弃整批造成时间缺口,
-/// 滤波/触发/IFFT 状态失去连续性; 显式复位并告警, 而不是带着断裂状态
-/// 继续产出看似连续的近似值 (静默畸变)。
-pub fn reset_source_transient_state(eval_state: &GraphEvalState, source_id: &str) {
-    let graphs = eval_state.graphs.lock();
-    let mut filters: Vec<String> = Vec::new();
-    let mut iffts: Vec<String> = Vec::new();
-    let mut triggers: Vec<String> = Vec::new();
-    for g in graphs.values() {
-        if !graph_triggered_by(g, source_id) {
-            continue;
-        }
-        let compiled = g.compiled();
-        filters.extend(g.filter_node_ids().iter().cloned());
-        iffts.extend(g.ifft_node_ids().iter().cloned());
-        for node in g.value_nodes() {
-            if matches!(node.kind, NodeKind::Trigger { .. }) {
-                triggers.push(node.id.clone());
-            }
-        }
-        let _ = compiled;
-    }
-    drop(graphs);
-    let mut reset = 0_usize;
-    if !filters.is_empty() {
-        let mut states = eval_state.filter_states.lock();
-        for key in &filters {
-            if states.remove(key).is_some() {
-                reset += 1;
-            }
-        }
-    }
-    if !iffts.is_empty() {
-        let mut states = eval_state.ifft_states.lock();
-        for key in &iffts {
-            if states.remove(key).is_some() {
-                reset += 1;
-            }
-        }
-    }
-    if !triggers.is_empty() {
-        let mut states = eval_state.trigger_states.lock();
-        for key in &triggers {
-            if states.remove(key).is_some() {
-                reset += 1;
-            }
-        }
-    }
-    if reset > 0 {
-        log::warn!(
-            "求值缺口: 已复位源 {source_id} 关联的有状态算子 {reset} 项 (滤波/触发/IFFT), \
-             后续输出从复位后状态重新连续"
-        );
-    }
-}
-
-/// 工作区级连续性状态复位 — 暂停恢复 / 启动 / 停止时调用。
-///
-/// 暂停期间字节被显式丢弃 (读任务门控), 字节流与样本时间轴在恢复点断裂;
-/// 全部跨帧有状态算子 (滤波延迟线 / IFFT 重叠相加 / 触发边沿 / 帧解码状态机 /
-/// FFT 滑窗) 一律清空, 恢复后从新流序列重新连续。各状态均为求值时懒建
-/// (或 ticker 每拍与 graphs 同步重建), 清空即复位, 不丢配置。
-pub fn reset_all_transient_state(eval_state: &GraphEvalState) {
-    let mut reset = 0_usize;
-    reset += clear_state_map(&eval_state.filter_states);
-    reset += clear_state_map(&eval_state.ifft_states);
-    reset += clear_state_map(&eval_state.trigger_states);
-    reset += clear_state_map(&eval_state.decoder_states);
-    reset += clear_state_map(&eval_state.spectrum_analyzers);
-    if reset > 0 {
-        log::info!("运行状态切换: 已复位全部连续性状态 {reset} 项 (滤波/IFFT/触发/解码/频谱窗)");
-    }
-}
-
-/// 清空一个状态 map 并返回清除条目数 (短促持锁, 不与其他锁嵌套)
-fn clear_state_map<T>(map: &std::sync::Arc<parking_lot::Mutex<HashMap<String, T>>>) -> usize {
-    let mut guard = map.lock();
-    let n = guard.len();
-    guard.clear();
-    n
 }
 
 /// 单源帧批处理 (热路径) — 一个源的一批帧一次性完成

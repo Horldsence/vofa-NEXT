@@ -19,13 +19,10 @@ use vofa_core::PipelineConfig;
 
 /// 最大并行 worker 数 — 默认安全上限, 实际运行由 PipelineConfig::max_workers 提供
 /// (常量保留为默认值文档来源, 与 PipelineConfig::default() 保持同步, 见下方单测)
-#[allow(dead_code)]
 pub const MAX_FEED_WORKERS: usize = 8;
 /// 积压单位: parse mpsc 每 8 批升一级 — 默认值, 实际由 PipelineConfig::feed_parallel_unit 提供
-#[allow(dead_code)]
 pub const FEED_PARALLEL_UNIT: usize = 8;
 /// 每 worker 至少摊到 32KB 才值得并行 — 默认值, 实际由 PipelineConfig::min_worker_bytes_kb 提供
-#[allow(dead_code)]
 pub const MIN_WORKER_BYTES: usize = 32 * 1024;
 
 fn worker_limit(cfg: &PipelineConfig) -> usize {

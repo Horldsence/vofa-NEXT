@@ -753,6 +753,7 @@ dependencies = [
  "kind",
  "log",
  "logic_decoder",
+ "logic_types",
  "notify_events",
  "parking_lot",
  "protocol_can_bridge",
@@ -4830,6 +4831,7 @@ dependencies = [
  "protocol_engine",
  "serde",
  "tauri",
+ "tokio",
  "vofa_core",
 ]
 

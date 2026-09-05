@@ -1,185 +1,16 @@
-//! 编译期槽位评估表 ([`CompiledEval`]) — f32 热路径
-//!
-//! 结构: 包裹 `lower::SlotPlan` 的平坦操作序列 + 槽位读写 + 零字符串哈希。
-//!
-//! 逐帧评估时仅有的字符串查找是 ProtocolSource 的帧源解析
-//! (每源每帧一次, 编译期预排为 `frame_sources` 下标表)。
+//! 逐帧评估执行体 — run / run_unit_frame / run_ops (op 解释器)
 
 use std::collections::HashMap;
 
 use dsp_fft::IfftState;
 use dsp_filter::DigitalFilter;
-use rustc_hash::FxBuildHasher;
-use vofa_core::DataFrame;
-
 use frame_decoder::FrameParser;
 use kind::StrResult;
-use lower::{CompiledOp, SlotPlan};
+use lower::CompiledOp;
 use trigger::TriggerState;
+use vofa_core::DataFrame;
 
-use crate::eval_ports::{node_out_entry, set_port};
-use crate::eval_str::{node_out_str_entry, set_str_port};
-use crate::{StringValuesMap, ValuesMap};
-
-/// 多源最新帧缓存 — key = 全局 Protocol 节点 id, value = 该源最近一帧
-/// (latest-value 融合: 每个源独立缓存, 求值时按源读取)
-pub type SourceFramesMap = HashMap<String, DataFrame, FxBuildHasher>;
-
-/// 每源最新文本缓存 — key = 全局 Protocol 节点 id, value = 该源原始字节的
-/// UTF-8 lossy 解码文本 (RawData 协议写入, latest-value 融合, 仿 [`SourceFramesMap`])
-pub type SourceTextsMap = HashMap<String, String, FxBuildHasher>;
-
-/// 编译期槽位评估表 — 封装编译后端产物 (lowering 产物见 `lower::SlotPlan`),
-/// 逐帧评估纯数组读写
-pub struct CompiledEval {
-    /// lowering 产物: 双域槽位表 + 平坦操作序列 + 帧源表
-    plan: SlotPlan,
-}
-
-impl CompiledEval {
-    /// 封装值平面 lowering 产物 — 编译 facade 流水线的第 3 段装配点
-    pub const fn new(plan: SlotPlan) -> Self {
-        Self { plan }
-    }
-
-    /// 槽位数 (调用方据此分配 slots/written 缓冲并跨帧复用)
-    pub const fn slot_count(&self) -> usize {
-        self.plan.slot_names.len()
-    }
-
-    /// 字符串槽位数 (调用方据此分配 str_slots/str_written 缓冲并跨帧复用)
-    pub const fn str_slot_count(&self) -> usize {
-        self.plan.str_slot_names.len()
-    }
-
-    /// TextOut 发送规格表 (发送 ticker / 手动命令的消费入口)
-    pub fn textouts(&self) -> &[lower::TextOutSpec] {
-        &self.plan.textouts
-    }
-
-    /// 平坦操作序列只读视图 — 编译期结构断言/诊断用
-    pub fn ops(&self) -> &[CompiledOp] {
-        &self.plan.ops
-    }
-
-    /// (node_id, port) → 槽位 (派生边批首解析用)
-    pub fn slot_of(&self, node: &str, port: &str) -> Option<usize> {
-        self.plan
-            .slot_index
-            .get(&(node.to_string(), port.to_string()))
-            .copied()
-    }
-
-    /// (node_id, port) → 字符串槽位 (字符串输出发布解析用)
-    pub fn str_slot_of(&self, node: &str, port: &str) -> Option<usize> {
-        self.plan
-            .str_slot_index
-            .get(&(node.to_string(), port.to_string()))
-            .copied()
-    }
-
-    /// 评估单元表 (下标 0 = prelude; 写集互斥, 见 `lower::EvalUnit`)
-    pub fn units(&self) -> &[lower::EvalUnit] {
-        &self.plan.units
-    }
-
-    /// 正本槽位 i → 所属单元下标 (运行时按单元→桶分派读路径)
-    pub fn slot_unit(&self) -> &[u32] {
-        &self.plan.slot_unit
-    }
-
-    /// ProtocolSource 引用的全局 Protocol 节点 id 表 (并发路径解析触发源下标用)
-    pub fn frame_sources(&self) -> &[String] {
-        &self.plan.frame_sources
-    }
-
-    /// Fft 输入槽位表: (sink_node_id, 源值槽位; None = 无上游边)
-    pub fn spectrum_slots(&self) -> &[(String, Option<usize>)] {
-        &self.plan.spectrum_slots
-    }
-
-    /// 静态本地图判定 — 纯外部常量输入的纯函数图:
-    /// 无 Fft / TextOut, op 全部 ∈ {Input, TextInput, Custom, Math, Str}
-    /// (无 ProtocolSource/Filter/Ifft/Trigger/FrameDecoder — 逐帧评估是纯浪费,
-    /// 每批评估一次输出值相同; 见 graph_eval 静态图优化)
-    pub fn is_static_local(&self) -> bool {
-        self.plan.spectrum_slots.is_empty()
-            && self.plan.textouts.is_empty()
-            && self.plan.ops.iter().all(|op| {
-                matches!(
-                    op,
-                    CompiledOp::Input { .. }
-                        | CompiledOp::TextInput { .. }
-                        | CompiledOp::Custom { .. }
-                        | CompiledOp::Math { .. }
-                        | CompiledOp::Str { .. }
-                )
-            })
-    }
-
-    /// 帧源预解析 — 每源一次字符串查找; `override_frame` 覆盖指定源
-    /// 的帧引用 (并发路径: 触发源直接读批内帧切片, 不经共享缓存)
-    pub fn resolve_frames<'a>(
-        &'a self,
-        source_frames: &'a SourceFramesMap,
-        override_frame: Option<(usize, &'a DataFrame)>,
-    ) -> ResolvedFrames<'a> {
-        let n = self.plan.frame_sources.len();
-        let mut stack = [None; 8];
-        let mut heap: Vec<Option<&'a DataFrame>> = Vec::new();
-        if n <= 8 {
-            for (i, id) in self.plan.frame_sources.iter().enumerate() {
-                stack[i] = source_frames.get(id);
-            }
-        } else {
-            heap = self
-                .plan
-                .frame_sources
-                .iter()
-                .map(|id| source_frames.get(id))
-                .collect();
-        }
-        let mut resolved = ResolvedFrames {
-            stack,
-            heap,
-            len: n,
-        };
-        if let Some((idx, frame)) = override_frame {
-            resolved.set(idx, frame);
-        }
-        resolved
-    }
-}
-
-/// 预解析帧引用表 — 8 源以内走栈零分配, 超出落堆 (见 [`CompiledEval::resolve_frames`])
-pub struct ResolvedFrames<'a> {
-    stack: [Option<&'a DataFrame>; 8],
-    heap: Vec<Option<&'a DataFrame>>,
-    len: usize,
-}
-
-impl<'a> ResolvedFrames<'a> {
-    fn set(&mut self, idx: usize, frame: &'a DataFrame) {
-        if idx >= self.len {
-            return;
-        }
-        if self.heap.is_empty() {
-            self.stack[idx] = Some(frame);
-        } else {
-            self.heap[idx] = Some(frame);
-        }
-    }
-
-    /// op 直读视图 (长度 == frame_sources 数)
-    pub fn as_slice(&self) -> &[Option<&DataFrame>] {
-        let s: &[Option<&DataFrame>] = if self.heap.is_empty() {
-            &self.stack
-        } else {
-            &self.heap
-        };
-        &s[..self.len]
-    }
-}
+use super::{CompiledEval, SourceFramesMap, SourceTextsMap};
 
 impl CompiledEval {
     /// 逐帧评估全部 ops (现状入口, 调用方负责整表清零) — 内部走 [`Self::run_ops`]
@@ -363,7 +194,9 @@ impl CompiledEval {
                     if need_rebuild {
                         filter_states.insert(node_id.clone(), DigitalFilter::new(new_kind.clone()));
                     }
-                    let filter = filter_states.get_mut(node_id).unwrap();
+                    let filter = filter_states
+                        .get_mut(node_id)
+                        .expect("filter 状态已在上方缺失时插入");
                     slots[*out] = filter.process(input_val);
                     written[*out] = true;
                 }
@@ -501,7 +334,9 @@ impl CompiledEval {
                             ),
                         );
                     }
-                    let state = trigger_states.get_mut(node_id).unwrap();
+                    let state = trigger_states
+                        .get_mut(node_id)
+                        .expect("trigger 状态已在上方缺失时插入");
                     // manual: 每帧以 command 匹配; auto: 边沿检测, 未激活帧不产出
                     // 两种模式都先取 "trigger" 输入槽位值 (与 evaluate_into 一致):
                     // auto 用于边沿检测; manual 也要同步 prev (前端 useEffect 在非
@@ -555,92 +390,4 @@ impl CompiledEval {
             }
         }
     }
-
-    /// 快照物化: slots + written → ValuesMap (仅快照发布点调用, 非逐帧)
-    ///
-    /// 只覆盖写本帧已产出的端口, 不清理过期键 (与 evaluate_into 语义一致)
-    pub fn materialize(&self, slots: &[f32], written: &[bool], out: &mut ValuesMap) {
-        for (i, (node_id, port)) in self.plan.slot_names.iter().enumerate() {
-            if written[i] {
-                let m = node_out_entry(out, node_id);
-                set_port(m, port, slots[i]);
-            }
-        }
-    }
-
-    /// 数值槽位与 `(node_id, port)` 的稳定对应表。
-    pub fn slot_names(&self) -> &[(String, String)] {
-        &self.plan.slot_names
-    }
-
-    /// 字符串快照物化: str_slots + str_written → StringValuesMap (仅快照发布点调用)
-    ///
-    /// 只物化 written 置位的槽位, 不清理过期键 (与 materialize / evaluate_into 语义一致)
-    pub fn materialize_str(
-        &self,
-        str_slots: &[String],
-        str_written: &[bool],
-        out_str: &mut StringValuesMap,
-    ) {
-        for (i, (node_id, port)) in self.plan.str_slot_names.iter().enumerate() {
-            if str_written[i] {
-                let m = node_out_str_entry(out_str, node_id);
-                set_str_port(m, port, &str_slots[i]);
-            }
-        }
-    }
-
-    /// Fft 输入: (sink_id, value) 迭代, 仅 written 槽位
-    pub fn spectrum_values<'a>(
-        &'a self,
-        slots: &'a [f32],
-        written: &'a [bool],
-    ) -> impl Iterator<Item = (&'a str, f32)> + 'a {
-        self.plan
-            .spectrum_slots
-            .iter()
-            .filter_map(move |(sink, slot)| match slot {
-                Some(s) if written[*s] => Some((sink.as_str(), slots[*s])),
-                _ => None,
-            })
-    }
-
-    /// 单元快照物化 — 仅物化本单元写槽位中 written 置位者 (并发路径按
-    /// 单元→桶副本读取; 与全表 [`Self::materialize`] 产出相同的键值集)
-    pub fn materialize_unit(
-        &self,
-        unit: &lower::EvalUnit,
-        slots: &[f32],
-        written: &[bool],
-        out: &mut ValuesMap,
-    ) {
-        for &s in &unit.clear_slots {
-            let i = s as usize;
-            if written[i] {
-                let (node_id, port) = &self.plan.slot_names[i];
-                let m = node_out_entry(out, node_id);
-                set_port(m, port, slots[i]);
-            }
-        }
-    }
-
-    /// 单元字符串快照物化 (语义同 [`Self::materialize_str`] 的单元化版本)
-    pub fn materialize_str_unit(
-        &self,
-        unit: &lower::EvalUnit,
-        str_slots: &[String],
-        str_written: &[bool],
-        out_str: &mut StringValuesMap,
-    ) {
-        for &s in &unit.clear_str_slots {
-            let i = s as usize;
-            if str_written[i] {
-                let (node_id, port) = &self.plan.str_slot_names[i];
-                let m = node_out_str_entry(out_str, node_id);
-                set_str_port(m, port, &str_slots[i]);
-            }
-        }
-    }
 }
-
-// 测试模块已迁移至 src/equiv_tests.rs / src/eval_tests.rs (顶层 #[cfg(test)])

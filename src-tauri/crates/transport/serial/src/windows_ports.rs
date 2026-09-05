@@ -38,6 +38,8 @@ pub fn port_descriptions() -> HashMap<String, String> {
     let mut map = HashMap::new();
 
     for guid in [&GUID_DEVCLASS_PORTS, &GUID_DEVCLASS_MODEM] {
+        // SAFETY: 所有 SetupDi*/Reg* 调用的参数均为本模块分配的有效结构或返回的
+        // 句柄;info_set 失败/枚举错误都经返回值检查,句柄用后即毁,不跨线程共享。
         unsafe {
             let info_set = SetupDiGetClassDevsW(guid, std::ptr::null(), 0 as HWND, DIGCF_PRESENT);
             if info_set == INVALID_HANDLE_VALUE {
@@ -103,6 +105,10 @@ pub fn port_descriptions() -> HashMap<String, String> {
 }
 
 /// 从注册表键读取 UTF-16 字符串值
+///
+/// # Safety
+/// `hkey` 必须是经 `SetupDiOpenDevRegKey`(KEY_READ)打开的有效注册表键句柄,
+/// 调用方负责在读完后 `RegCloseKey`;不得与其他写操作并发使用同一句柄。
 unsafe fn read_reg_string(hkey: HKEY, value_name: &str) -> Option<String> {
     let name_wide: Vec<u16> = value_name.encode_utf16().chain(Some(0)).collect();
     let mut buf_len: u32 = 0;
@@ -147,6 +153,10 @@ unsafe fn read_reg_string(hkey: HKEY, value_name: &str) -> Option<String> {
 }
 
 /// 读取 SPDRP_DEVICEDESC 属性
+///
+/// # Safety
+/// `info_set` 必须是 `SetupDiGetClassDevsW` 返回的有效设备信息集句柄,
+/// `dev_info` 必须是经 `SetupDiEnumDeviceInfo` 成功填充的结构。
 unsafe fn read_device_description(
     info_set: isize,
     dev_info: &mut SP_DEVINFO_DATA,

@@ -16,7 +16,7 @@ pub fn node_out_str_entry<'a>(
     if out.get_mut(node_id).is_none() {
         out.insert(node_id.to_string(), HashMap::default());
     }
-    out.get_mut(node_id).unwrap()
+    out.get_mut(node_id).expect("键已在上方缺失时插入")
 }
 
 /// 写字符串端口值 — 键已存在时原位写 (复用缓冲,稳态低分配),不存在才插入

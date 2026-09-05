@@ -74,7 +74,10 @@ impl ProtocolEngine for JustFloatEngine {
             let mut channels = Vec::with_capacity(count);
             for i in 0..count {
                 let o = frame_start + i * 4;
-                channels.push(f32::from_le_bytes(self.buf[o..o + 4].try_into().unwrap()));
+                // 不变量: o+4 <= frame_start + payload_len = tail_pos < buf.len(),切片必完整
+                channels.push(f32::from_le_bytes(
+                    self.buf[o..o + 4].try_into().expect("通道切片在帧负载内"),
+                ));
             }
             if !channels.is_empty() {
                 frames.push(DataFrame::with_timestamp(ts, channels));
