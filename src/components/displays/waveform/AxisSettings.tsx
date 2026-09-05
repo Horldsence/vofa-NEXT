@@ -3,9 +3,9 @@ import { useAppStore } from '../../../store/appStore';
 import { t } from '../../../i18n';
 import {
   type ScopeAxisConfig,
-  type ScopeMeasurements,
   type ChannelAxisConfig,
 } from '../../../types';
+import type { MeasurementsBundle } from '../../../store/waveformScopeStore';
 import { AllTabContent } from '../widgets/AllTabContent';
 import { ChannelTabContent } from '../widgets/ChannelTabContent';
 import { AnimatedSwitch } from '../../ui/AnimatedSwitch';
@@ -16,8 +16,11 @@ interface ScopePanelProps {
   config: ScopeAxisConfig;
   onChange: (next: ScopeAxisConfig) => void;
   channelCount: number;
-  measurements?: ScopeMeasurements | null;
+  measurementBundle?: MeasurementsBundle | null;
+  measureChannel?: number | null;
+  autosetWarning?: string | null;
   onAutoSet?: () => void;
+  onMeasureChannel?: (channel: number | null) => void;
 }
 
 type TabId = 'all' | `ch${number}`;
@@ -29,8 +32,11 @@ export function AxisSettings({
   config,
   onChange,
   channelCount,
-  measurements,
+  measurementBundle,
+  measureChannel,
+  autosetWarning,
   onAutoSet,
+  onMeasureChannel,
 }: ScopePanelProps) {
   const lang = useAppStore((s) => s.lang);
   const [activeTab, setActiveTab] = useState<TabId>('all');
@@ -104,8 +110,11 @@ export function AxisSettings({
             <AllTabContent
               config={config}
               channels={channels}
-              measurements={measurements}
+              measurementBundle={measurementBundle}
+              measureChannel={measureChannel}
+              autosetWarning={autosetWarning}
               onAutoSet={onAutoSet}
+              onMeasureChannel={onMeasureChannel}
               lang={lang}
               patch={patch}
               patchChannel={patchChannel}

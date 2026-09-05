@@ -119,6 +119,7 @@ dependencies = [
  "dispatcher",
  "dsp_fft",
  "dsp_filter",
+ "dsp_measure",
  "dsp_window",
  "engine",
  "kind",
@@ -1646,6 +1647,14 @@ version = "0.1.2"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "dsp_measure"
+version = "0.1.2"
+dependencies = [
+ "dsp_fft",
+ "serde",
 ]
 
 [[package]]

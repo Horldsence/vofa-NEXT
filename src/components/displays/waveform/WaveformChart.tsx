@@ -12,7 +12,6 @@ import { writeTextToClipboard } from '../../../lib/utils/clipboard';
 import { save } from '@tauri-apps/plugin-dialog';
 import { t } from '../../../i18n';
 import type {
-  ScopeMeasurements,
   WaveformSeriesSelection,
   WaveformWindow,
   WidgetConfig,
@@ -21,7 +20,6 @@ import { getEffectiveChannel, type ScopeAxisConfig } from '../../../types';
 import {
   timeBaseToWindowSec,
   applyCoupling,
-  computeMeasurements,
 } from '../../../lib/utils/scopeUtils';
 import { WaveformTimeline } from './WaveformTimeline';
 import { WaveformEnvelopeChart } from './WaveformEnvelopeChart';
@@ -48,7 +46,6 @@ interface WaveformChartProps {
   buffer?: WaveformWindowCache;
   /// 当前视图溯源到的 Protocol 节点；detail 订阅以视图为粒度建立。
   sourceId?: string | null;
-  onMeasurements?: (key: string, measurements: ScopeMeasurements | null) => void;
 }
 
 function buildRawClipboardCsv(
@@ -96,7 +93,6 @@ export function WaveformChart({
   onConfigChange,
   buffer = waveformWindow,
   sourceId = null,
-  onMeasurements,
 }: WaveformChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const plotRef = useRef<uPlot | null>(null);
@@ -362,33 +358,6 @@ export function WaveformChart({
     return data;
   }, [widget.params.id, detailBuffer]);
 
-  const updateMeasurements = useCallback(() => {
-    if (!onMeasurements) return;
-    const win = detailBuffer.get();
-    const slot = seriesSlotsRef.current.find(
-      (candidate) => axisConfigRef.current.channels[candidate.cfgIdx]?.show ?? true,
-    );
-    const slotKey = slot?.input.kind === 'channel'
-      ? `channel:${slot.input.idx}`
-      : `derived:${slot?.input.sourceId ?? ''}:${slot?.input.sourceHandle ?? ''}`;
-    if (!slot || win.timestamps.length < 2) {
-      onMeasurements(`${detailBuffer.version}:${slotKey}:none`, null);
-      return;
-    }
-    const values = resolveInputArray(
-      slot.input,
-      widget.params.id,
-      win.timestamps.length,
-      win.channels,
-      win.derived,
-    );
-    const effective = getEffectiveChannel(axisConfigRef.current, slot.cfgIdx);
-    onMeasurements(
-      `${detailBuffer.version}:${slotKey}:${effective.coupling}`,
-      computeMeasurements(applyCoupling(values, effective.coupling), win.timestamps),
-    );
-  }, [detailBuffer, onMeasurements, widget.params.id]);
-
   // 配置变化 → 更新通道可见性 + 重新归一化数据
   // 关键: V/div 或 position 变化时, 必须重新 setData, 否则波形不会按新档位重绘
   // 仅监听会改变数据映射的字段, timeBase/hPosition/cursors 由其他 effect 处理
@@ -403,14 +372,12 @@ export function WaveformChart({
     // 重新归一化数据 (用新的 vPerDiv / position / sharedY / yUnit 重新计算)
     plot.setData(getDisplayData());
     plot.redraw();
-    updateMeasurements();
   }, [
     channelConfig,
     axisConfig.sharedY,
     axisConfig.yUnit,
     seriesSlots,
     getDisplayData,
-    updateMeasurements,
   ]);
 
   useUplotInit(
@@ -433,7 +400,6 @@ export function WaveformChart({
           if (v !== lastVersionRef.current) {
             lastVersionRef.current = v;
             plotRef.current.setData(getDisplayData());
-            updateMeasurements();
           }
         }
       });
@@ -442,7 +408,7 @@ export function WaveformChart({
       unsub();
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, [getDisplayData, detailBuffer, updateMeasurements]);
+  }, [getDisplayData, detailBuffer]);
 
   // 视图同步: timeBase/hPosition 变化时强制 setScale
   useEffect(() => {

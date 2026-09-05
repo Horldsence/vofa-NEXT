@@ -343,6 +343,11 @@ coupling: Coupling
 couplingDC: DC (Direct)
 couplingAC: AC (Alternating)
 couplingGND: GND (Ground)
+measureNoData: No measurement data for this channel yet
+envelopeApprox: envelope
+envelopeApproxHint: Long windows are served by pyramid envelope tiers — extrema exact, mean/RMS approximate
+autosetClampedWarning: Time base capped at {actual}; {requested} per div needed to show full cycles
+autosetSpanRiskWarning: Large DC offset differences — small-signal channels may be flattened on shared Y; switch to independent Y
 position: Position
 yUnit: Y-Axis Unit
 sharedY: Shared Y

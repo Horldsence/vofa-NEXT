@@ -1,7 +1,7 @@
 import { afterAll, bench, describe, expect } from 'vitest';
 import { decodeWaveformWindow } from '../waveformProtocol';
 import { normalizeWaveformWindow } from '../../buffers/dataBuffer';
-import { applyCoupling, computeMeasurements } from '../../utils/scopeUtils';
+import { applyCoupling } from '../../utils/scopeUtils';
 import type { WaveformWindowPayload } from '../../../types';
 
 // 固定 WWB1 v2 载荷，构造不计入测量。仅量化 JS CPU，不代表 WebView 绘制。
@@ -31,6 +31,6 @@ for (const [channels, points] of [[4, 2_000], [4, 12_000], [16, 12_000]]) {
     afterAll(() => { expect(result).toBeDefined(); });
     bench('WWB1 decode', () => { result = decodeWaveformWindow(binary); });
     bench('JSON parse + normalize', () => { result = normalizeWaveformWindow(JSON.parse(json) as WaveformWindowPayload); });
-    bench('all channels AC + measurements', () => { result = decoded.channels.map((c) => computeMeasurements(applyCoupling(c, 'AC'), decoded.timestamps)); });
+    bench('all channels AC coupling (渲染用; 测量已后端化)', () => { result = decoded.channels.map((c) => applyCoupling(c, 'AC')); });
   });
 }

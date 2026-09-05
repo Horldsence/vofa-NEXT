@@ -31,6 +31,7 @@ members = [
   "crates/foundation/dsp_window",
   "crates/foundation/dsp_filter",
   "crates/foundation/dsp_fft",
+  "crates/foundation/dsp_measure",
   "crates/foundation/subscription",
   "crates/foundation/gpu_core",
   "crates/foundation/notify_events",
@@ -215,6 +216,7 @@ subscription = { path = "crates/foundation/subscription" }
 dsp_window = { path = "crates/foundation/dsp_window" }
 dsp_filter = { path = "crates/foundation/dsp_filter" }
 dsp_fft = { path = "crates/foundation/dsp_fft" }
+dsp_measure = { path = "crates/foundation/dsp_measure" }
 # L1 protocol
 protocol_engine = { path = "crates/protocol/protocol_engine" }
 protocol_float = { path = "crates/protocol/protocol_float" }

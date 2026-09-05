@@ -140,15 +140,69 @@ export interface CursorConfig {
   c2: number;             // 第二条游标位置
 }
 
-/// 自动测量值
+/// 自动测量值 (后端计算 — 权威缓冲金字塔快照, 前端零数据计算)
 export interface ScopeMeasurements {
   vpp: number;
   vmin: number;
   vmax: number;
   vavg: number;
   vrms: number;
+  vrms_ac: number;        // 去直流 RMS — AC 耦合显示换算用 (后端附送, 避免前端重算)
+  duty: number | null;    // 占空比 [0,1], null=平直信号无法计算
   freq: number | null;    // Hz, null=无法计算
   period: number | null;  // 秒
+}
+
+/// 后端测量流单通道载荷 (镜像 Rust app_state::ChannelMeasurement)
+export interface ChannelMeasurementPayload {
+  channel: number;
+  vpp: number;
+  vmin: number;
+  vmax: number;
+  vavg: number;
+  vrms: number;
+  vrms_ac: number;
+  duty: number | null;
+  freq: number | null;
+  period: number | null;
+}
+
+/// 派生序列 (MATH/Filter) 测量载荷 (镜像 Rust app_state::DerivedMeasurement)
+export interface DerivedMeasurementPayload extends ChannelMeasurementPayload {
+  sink_id: string;
+  source_id: string;
+  source_handle: string;
+}
+
+/// 后端测量流载荷 (镜像 Rust app_state::SourceMeasurements)
+/// from_tier=true 表示快照来自金字塔层 (vavg/vrms 为包络中点近似, 极值仍精确)
+export interface SourceMeasurementsPayload {
+  source: string;
+  seq: number;
+  window_ms: number;
+  latest_timestamp_us: number;
+  from_tier: boolean;
+  tier_level: number;
+  channels: ChannelMeasurementPayload[];
+  derived: DerivedMeasurementPayload[];
+}
+
+/// 后端自动设置建议 (镜像 Rust dsp_measure::AutoSetSuggestion)
+export interface AutoSetChannelSuggestion {
+  v_per_div: number;
+  position: number;
+  period_sec: number | null;
+}
+
+export interface AutoSetSuggestion {
+  time_base_sec: number;
+  window_sec: number;
+  requested_window_sec: number;
+  clamped: boolean;           // 时基被钳到档位表上限 — 未完整显示目标周期数
+  shared_y_span_risk: boolean; // sharedY 下通道幅值/偏置差异过大
+  channels: AutoSetChannelSuggestion[];
+  h_position: number;
+  running: boolean;
 }
 
 /// 示波器风格波形图配置 — 替代旧 WaveformAxisConfig

@@ -121,6 +121,7 @@ pub fn run() {
             release_waveform_snapshot,
             get_waveform_raw_range,
             export_waveform_csv,
+            compute_waveform_autoset,
             clear_buffer,
             set_buffer_channels,
             get_buffer_info,

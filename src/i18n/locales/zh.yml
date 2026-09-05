@@ -343,6 +343,11 @@ coupling: 耦合
 couplingDC: DC 直流
 couplingAC: AC 交流
 couplingGND: GND 接地
+measureNoData: 当前通道暂无测量数据
+envelopeApprox: 包络近似
+envelopeApproxHint: 长窗口由金字塔包络层服务 — 极值精确, 均值/RMS 为近似值
+autosetClampedWarning: 时基已达上限 {actual}, 完整显示目标周期需 {requested}
+autosetSpanRiskWarning: 通道直流偏置差异较大 — 共用 Y 轴下小信号通道可能被压扁, 建议改用独立 Y
 position: 位置
 yUnit: Y 轴单位
 sharedY: 共用 Y

@@ -1,0 +1,11 @@
+[package]
+name = "dsp_measure"
+version.workspace = true
+edition.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
+dsp_fft = { workspace = true }

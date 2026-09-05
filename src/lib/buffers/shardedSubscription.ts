@@ -7,6 +7,7 @@ export type DisplayKind =
   | 'custom_inputs'
   | 'string_outputs'
   | 'spectrum'
+  | 'measurements'
   | 'waveform'
   | 'raw_data'
   | 'can_frames'

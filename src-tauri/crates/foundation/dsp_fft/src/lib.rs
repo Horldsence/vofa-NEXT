@@ -10,10 +10,12 @@
 //!
 //! Layer 1 — 依赖 `realfft` + `rustfft` + `dsp_window`。
 
+pub mod autocorr;
 pub mod ifft;
 pub mod spectrum;
 pub mod streaming;
 
+pub use autocorr::normalized_autocorrelation;
 pub use ifft::IfftState;
 pub use spectrum::{SpectrumAnalyzer, SpectrumOutput, SpectrumResult, WindowType};
 pub use streaming::{SpectrumFrame, StreamingFft, StreamingIfft, TransformConfig, TransformError};

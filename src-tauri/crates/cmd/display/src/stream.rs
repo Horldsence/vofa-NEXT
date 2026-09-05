@@ -248,6 +248,68 @@ fn spawn_envelope_stream(
     });
 }
 
+/// 后端测量流 — 权威缓冲金字塔快照上的统计/周期计算, version 门控 + 自适应速率
+///
+/// 数据路径唯一: `app_state::compute_source_measurements` 经
+/// `snapshot_window_budget` 取数 (原始或最小覆盖层), 不另建降采样路径。
+/// 提取 + FFT 自相关可达数十毫秒, 计算段 `block_in_place` 不占并发 worker;
+/// 结果含 Option 字段, JSON 推送 (不进 WWB1 二进制体系)。
+fn spawn_measurement_stream(
+    state: &AppState,
+    source: &str,
+    window_ms: f64,
+    derived: Vec<buffer_databuffer::DerivedSeriesSelector>,
+    on_event: Channel<InvokeResponseBody>,
+    interval: Duration,
+) {
+    let buffer = state.data_plane.buffer_for(source);
+    let source = source.to_string();
+    let channel_id = on_event.id();
+    let mut cancel = subscription::register_cancel(&state.subscriptions, channel_id);
+    let subscriptions = state.subscriptions.clone();
+    let mut rate = display_rate(
+        interval,
+        state.data_plane.eval.data_bus.limits().preview_fps_limit,
+    );
+    tokio::spawn(async move {
+        let mut seq: u64 = 0;
+        let mut last_version: u64 = 0;
+        loop {
+            tokio::select! {
+                _ = &mut cancel => break,
+                () = tokio::time::sleep(rate.current()) => {
+                    let version = { buffer.lock().version() };
+                    if version == last_version {
+                        rate.on_idle();
+                        continue;
+                    }
+                    last_version = version;
+                    seq = seq.wrapping_add(1);
+                    let measurement = tokio::task::block_in_place(|| {
+                        app_state::compute_source_measurements(
+                            &buffer,
+                            &source,
+                            window_ms,
+                            &derived,
+                            seq,
+                        )
+                    });
+                    let Some(measurement) = measurement else {
+                        rate.on_idle();
+                        continue;
+                    };
+                    if !send_json(&on_event, &DisplayEvent::Measurements(measurement)) {
+                        break;
+                    }
+                    rate.on_send();
+                }
+            }
+        }
+        subscription::remove_subscription(&subscriptions, channel_id);
+        log::debug!("测量订阅已结束: {channel_id}");
+    });
+}
+
 async fn can_bitrate(state: &AppState, node_id: &str, override_bps: Option<u32>) -> u32 {
     if let Some(value) = override_bps.filter(|value| *value > 0) {
         return value;
@@ -467,6 +529,13 @@ pub async fn subscribe_data(
                 on_event,
                 interval,
             );
+        }
+        DisplayRequest::Measurements {
+            source,
+            window_ms,
+            derived,
+        } => {
+            spawn_measurement_stream(&state, &source, window_ms, derived, on_event, interval);
         }
         DisplayRequest::Waveform {
             source,

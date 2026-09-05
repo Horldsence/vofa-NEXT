@@ -27,6 +27,7 @@ kind = { workspace = true }
 schema_engine = { workspace = true }
 dsp_filter = { workspace = true }
 dsp_fft = { workspace = true }
+dsp_measure = { workspace = true }
 dsp_window = { workspace = true }
 transport_core = { workspace = true }
 subscription = { workspace = true }

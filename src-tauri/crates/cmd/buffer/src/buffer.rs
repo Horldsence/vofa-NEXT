@@ -39,6 +39,35 @@ pub async fn get_waveform_window(
     Ok(window)
 }
 
+/// 自动设置建议 (按钮触发的一次性计算) — 权威缓冲原始层/金字塔快照上
+/// 周期检测 + 1-2-5 拟合, 全部在后端完成; 前端仅把建议合并进 axisConfig。
+///
+/// `channels` 为空表示全部通道; 计算含 FFT 自相关, 在阻塞线程执行。
+#[tauri::command]
+pub async fn compute_waveform_autoset(
+    state: State<'_, AppState>,
+    source: String,
+    channels: Vec<usize>,
+    derived: Vec<buffer_databuffer::DerivedSeriesSelector>,
+    shared_y: bool,
+    current_v_per_div: Vec<f64>,
+) -> Result<app_state::AutoSetSuggestion> {
+    let buf = state.data_plane.buffer_for(&source);
+    let suggestion = tokio::task::spawn_blocking(move || {
+        app_state::compute_autoset_suggestion(
+            &buf,
+            &channels,
+            &derived,
+            shared_y,
+            &current_v_per_div,
+        )
+    })
+    .await
+    .map_err(|error| snapshot_error(format!("自动设置计算任务失败: {error}")))?
+    .ok_or_else(|| snapshot_error("波形缓存为空, 无法自动设置"))?;
+    Ok(suggestion)
+}
+
 #[derive(Debug, Serialize)]
 pub struct WaveformSnapshotCreated {
     pub snapshot_id: String,

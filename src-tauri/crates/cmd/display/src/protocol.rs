@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use buffer_databuffer::WaveformSeriesSelection;
+use buffer_databuffer::{DerivedSeriesSelector, WaveformSeriesSelection};
 use buffer_raw::RawDataBatch;
 use can_types::{CanFrameBatch, CanFrameFilter, CanLoadSnapshot};
 use data_plane::{CustomInputBatch, GraphOutputSnapshot, StringOutputSnapshot};
@@ -36,6 +36,15 @@ pub enum DisplayRequest {
         end_ms: Option<f64>,
         #[serde(default)]
         selection: WaveformSeriesSelection,
+    },
+    /// 后端测量流 (统计 + 周期/频率, 权威缓冲金字塔快照上计算) — JSON 推送
+    Measurements {
+        source: String,
+        /// 测量窗口 (相对最新时间戳, 毫秒) — 随前端时基变化重订阅
+        window_ms: f64,
+        /// 参与测量的派生序列 (MATH/Filter 接入波形 sink 的输出)
+        #[serde(default)]
+        derived: Vec<DerivedSeriesSelector>,
     },
     /// 波形包络 (wgpu/CPU 逐列 min/max 降采样) — 二进制推送, 前端缎带绘制
     WaveformEnvelope {
@@ -85,6 +94,7 @@ pub enum DisplayEvent {
     CustomInputs(CustomInputBatch),
     StringOutputs(StringOutputSnapshot),
     Spectrum(HashMap<String, SpectrumResult>),
+    Measurements(app_state::SourceMeasurements),
     RawData(RawDataBatch),
     CanFrames(CanFrameBatch),
     LogicSamples(LogicSampleBatch),

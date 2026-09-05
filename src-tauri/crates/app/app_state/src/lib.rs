@@ -8,12 +8,17 @@
 //! 定义在 [`data_plane`], 本 crate 直接引用, 不做 re-export。
 
 mod app_state;
+mod measure;
 mod runtime;
 mod source_graph;
 mod tickers;
 mod workspace;
 
 pub use app_state::{AppState, WaveformSnapshot};
+pub use dsp_measure::AutoSetSuggestion;
+pub use measure::{
+    compute_autoset_suggestion, compute_source_measurements, ChannelMeasurement, SourceMeasurements,
+};
 pub use runtime::{flush_workspace_on_exit, spawn_background_tasks};
 pub use source_graph::{SourceGraphs, SourceNodeHint, TabSourceGraph};
 pub use tickers::{

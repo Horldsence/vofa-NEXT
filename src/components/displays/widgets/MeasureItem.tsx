@@ -27,3 +27,11 @@ export function formatFreq(hz: number): string {
   if (hz >= 1e3) return (hz / 1e3).toFixed(2) + 'k';
   return hz.toFixed(2);
 }
+
+/// 周期格式化 (s → ms/µs, 工程前缀)
+export function formatPeriod(sec: number): string {
+  if (sec >= 1) return sec.toFixed(2);
+  if (sec >= 1e-3) return (sec * 1e3).toFixed(2) + 'm';
+  if (sec >= 1e-6) return (sec * 1e6).toFixed(2) + 'µ';
+  return (sec * 1e9).toFixed(2) + 'n';
+}

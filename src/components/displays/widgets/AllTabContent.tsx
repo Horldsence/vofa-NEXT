@@ -6,15 +6,16 @@ import {
   formatTimeBase,
   formatVPerDiv,
   type ScopeAxisConfig,
-  type ScopeMeasurements,
   type ChannelAxisConfig,
   type Coupling,
   type SeriesRender,
 } from '../../../types';
+import type { MeasurementsBundle } from '../../../store/waveformScopeStore';
+import { toDisplayMeasurements } from '../../../lib/utils/measureDisplay';
 import { StepKnob } from './StepKnob';
 import { CompactChannelRow } from './CompactChannelRow';
 import { CurveRenderControls } from './CurveRenderControls';
-import { MeasureItem, formatFreq } from './MeasureItem';
+import { MeasureItem, formatFreq, formatPeriod } from './MeasureItem';
 import { AnimatedSwitch } from '../../ui/AnimatedSwitch';
 import { CHANNEL_TAB_COLORS, type RenderStepSelect } from '../common/scopeShared';
 
@@ -22,8 +23,11 @@ import { CHANNEL_TAB_COLORS, type RenderStepSelect } from '../common/scopeShared
 export function AllTabContent({
   config,
   channels,
-  measurements,
+  measurementBundle,
+  measureChannel,
+  autosetWarning,
   onAutoSet,
+  onMeasureChannel,
   lang,
   patch,
   patchChannel,
@@ -31,15 +35,36 @@ export function AllTabContent({
 }: {
   config: ScopeAxisConfig;
   channels: ChannelAxisConfig[];
-  measurements?: ScopeMeasurements | null;
+  measurementBundle?: MeasurementsBundle | null;
+  measureChannel?: number | null;
+  autosetWarning?: string | null;
   onAutoSet?: () => void;
+  onMeasureChannel?: (channel: number | null) => void;
   lang: Lang;
   patch: (p: Partial<ScopeAxisConfig>) => void;
   patchChannel: (idx: number, p: Partial<ChannelAxisConfig>) => void;
   renderStepSelect: RenderStepSelect;
 }) {
+  // 测量通道选择: null = 跟随第一个可见通道
+  const firstVisibleChannel = Math.max(0, channels.findIndex((ch) => ch.show));
+  const selChannel = Math.min(
+    measureChannel ?? firstVisibleChannel,
+    Math.max(0, channels.length - 1),
+  );
+  const rawChannelMeasurement =
+    measurementBundle?.channels.find((c) => c?.channel === selChannel) ?? null;
+  const selectedMeasurements = rawChannelMeasurement
+    ? toDisplayMeasurements(rawChannelMeasurement, channels[selChannel]?.coupling ?? 'DC')
+    : null;
+
   return (
     <div className="flex flex-col gap-1 px-2.5 py-2 text-text-primary text-xs">
+      {/* AutoSet 钳位/风险提示 (一次性, 由后端建议标志驱动) */}
+      {autosetWarning && (
+        <div className="px-1.5 py-1 rounded border text-[10px] leading-snug text-yellow bg-yellow/10 border-yellow/30">
+          {autosetWarning}
+        </div>
+      )}
       <div className="flex flex-row flex-wrap gap-1 pb-1.5 border-b border-border">
         <button
           className={`inline-flex items-center gap-1 px-2 h-7 border rounded text-xs cursor-pointer transition-all duration-150 ${config.running ? 'bg-green border-green text-black' : 'bg-red border-red text-black'}`}
@@ -147,20 +172,52 @@ export function AllTabContent({
       {/* 游标 */}
       <CursorSection config={config} patch={patch} lang={lang} />
 
-      {/* 测量值 */}
-      {measurements && (
+      {/* 测量值 — 后端在权威缓冲上计算 (前端零数据计算), 通道可选 */}
+      {measurementBundle && (
         <div className="flex flex-col gap-1 py-1.5 border-b border-border last:border-b-0">
-          <div className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'measure')}</div>
-          <div className="grid grid-cols-2 gap-y-0.5 gap-x-1.5">
-            <MeasureItem label="PP" value={measurements.vpp} unit={config.yUnit} />
-            <MeasureItem label="Max" value={measurements.vmax} unit={config.yUnit} />
-            <MeasureItem label="Min" value={measurements.vmin} unit={config.yUnit} />
-            <MeasureItem label="Avg" value={measurements.vavg} unit={config.yUnit} />
-            <MeasureItem label="RMS" value={measurements.vrms} unit={config.yUnit} />
-            {measurements.freq != null && (
-              <MeasureItem label="Freq" value={measurements.freq} unit="Hz" formatter={formatFreq} />
-            )}
+          <div className="flex items-center justify-between gap-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.5px] text-text-secondary flex items-center gap-1">{t(lang, 'measure')}</span>
+            <div className="flex items-center gap-1">
+              {measurementBundle.fromTier && (
+                <span
+                  className="text-[9px] px-1 rounded bg-bg-active text-text-secondary border border-border whitespace-nowrap"
+                  title={t(lang, 'envelopeApproxHint')}
+                >
+                  {t(lang, 'envelopeApprox')}
+                </span>
+              )}
+              <select
+                className="w-[64px] flex-none h-6 text-[10px] px-1 bg-bg-input text-text-primary border border-border rounded focus:outline-none focus:border-accent transition-colors"
+                value={selChannel}
+                onChange={(e) => onMeasureChannel?.(parseInt(e.target.value, 10))}
+                title={t(lang, 'measureChannelLabel')}
+              >
+                {channels.map((_, idx) => (
+                  <option key={idx} value={idx}>CH{idx}</option>
+                ))}
+              </select>
+            </div>
           </div>
+          {selectedMeasurements ? (
+            <div className="grid grid-cols-2 gap-y-0.5 gap-x-1.5">
+              <MeasureItem label="PP" value={selectedMeasurements.vpp} unit={config.yUnit} />
+              <MeasureItem label="Max" value={selectedMeasurements.vmax} unit={config.yUnit} />
+              <MeasureItem label="Min" value={selectedMeasurements.vmin} unit={config.yUnit} />
+              <MeasureItem label="Avg" value={selectedMeasurements.vavg} unit={config.yUnit} />
+              <MeasureItem label="RMS" value={selectedMeasurements.vrms} unit={config.yUnit} />
+              {selectedMeasurements.freq != null && (
+                <MeasureItem label="Freq" value={selectedMeasurements.freq} unit="Hz" formatter={formatFreq} />
+              )}
+              {selectedMeasurements.period != null && (
+                <MeasureItem label="Period" value={selectedMeasurements.period} unit="s" formatter={formatPeriod} />
+              )}
+              {selectedMeasurements.duty != null && (
+                <MeasureItem label="Duty" value={selectedMeasurements.duty * 100} unit="%" formatter={(v) => v.toFixed(1)} />
+              )}
+            </div>
+          ) : (
+            <div className="text-[10px] text-text-secondary">{t(lang, 'measureNoData')}</div>
+          )}
         </div>
       )}
     </div>

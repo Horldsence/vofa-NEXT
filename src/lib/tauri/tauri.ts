@@ -30,6 +30,8 @@ import type {
   WaveformWindow,
   WaveformWindowPayload,
   WaveformSeriesSelection,
+  AutoSetSuggestion,
+  SourceMeasurementsPayload,
 } from '../../types';
 import { normalizeWaveformWindow } from '../buffers/dataBuffer';
 import type { NodeDef, GraphEdge } from '../utils/nodeDef';
@@ -330,6 +332,38 @@ export const api = {
         void closeTauriChannel(channel, 'unsubscribe_data', channel.id),
     };
   },
+
+  /// 订阅后端测量流 — 统计/周期在权威缓冲金字塔快照上计算 (JSON 推送)
+  subscribeMeasurements: (
+    source: string,
+    windowMs: number,
+    derived: WaveformSeriesSelection['derived'],
+    onEvent: (m: SourceMeasurementsPayload) => void,
+    intervalMs?: number,
+  ) =>
+    subscribeDisplaySnapshot<SourceMeasurementsPayload>(
+      { kind: 'measurements', source, window_ms: windowMs, derived },
+      'measurements',
+      onEvent,
+      intervalMs,
+    ),
+
+  /// 计算自动设置建议 — 后端周期检测 + 1-2-5 拟合 (阻塞线程执行)。
+  /// 时基 = PERIODS_SHOWN(2) × 全部被测序列 (通道+派生) 中最慢的基波周期
+  computeWaveformAutoset: (
+    source: string,
+    channels: number[],
+    derived: WaveformSeriesSelection['derived'],
+    sharedY: boolean,
+    currentVPerDiv: number[],
+  ) =>
+    invoke<AutoSetSuggestion>('compute_waveform_autoset', {
+      source,
+      channels,
+      derived,
+      sharedY,
+      currentVPerDiv,
+    }),
 
   createWaveformSnapshot: (source: string) =>
     invoke<{ snapshot_id: string; overview: WaveformWindowPayload }>(

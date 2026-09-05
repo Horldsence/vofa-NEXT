@@ -45,6 +45,7 @@ const CRATE_TO_LAYER = {
   dsp_window: "foundation",
   dsp_filter: "foundation",
   dsp_fft: "foundation",
+  dsp_measure: "foundation",
   subscription: "foundation",
   gpu_core: "foundation",
   notify_events: "foundation",

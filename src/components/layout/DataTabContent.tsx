@@ -18,12 +18,14 @@ import { TableView } from '../displays/widgets/TableView';
 import { AxisSettings } from '../displays/waveform/AxisSettings';
 import { SuspenseFallback } from '../ui/SuspenseFallback';
 import { lazy, Suspense, memo, useCallback, useEffect, useMemo } from 'react';
-import type { WidgetConfig, ScopeMeasurements, ScopeAxisConfig, ProtocolConfig, LoopbackResult } from '../../types';
+import type { WidgetConfig, ScopeAxisConfig, ProtocolConfig, LoopbackResult } from '../../types';
+import { formatTimeBase, timeBaseToWindowMs } from '../../types';
 import { waveformWindow, type WaveformWindowCache } from '../../lib/buffers/dataBuffer';
-import { computeAutoSetConfig } from '../../lib/utils/scopeUtils';
+import { api } from '../../lib/tauri/tauri';
 import { computeConnectedInputs, type ConnectedInput } from '../displays/waveform/waveformSeries';
-import { useWaveformScopeStore, createPerWidgetState } from '../../store/waveformScopeStore';
+import { useWaveformScopeStore, createPerWidgetState, type MeasurementsBundle } from '../../store/waveformScopeStore';
 import { useWaveformSourceBuffer } from '../../lib/hooks/useWaveformSourceBuffer';
+import { useWaveformMeasurements } from '../../lib/hooks/useWaveformMeasurements';
 import { setWaveformOverviewActive } from '../../lib/buffers/sourceManagers';
 import { traceProtocolSource } from '../../store/appStoreHelpers';
 
@@ -39,26 +41,30 @@ const Model3DWidget = lazy(() => import('../widgets/model3d/Model3DWidget.lazy')
 interface WaveformTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'Waveform' }>;
   axisConfig: ScopeAxisConfig;
-  measurements: ScopeMeasurements | null;
+  measurementBundle: MeasurementsBundle | null;
+  measureChannel: number | null;
+  autosetWarning: string | null;
   channelCount: number;
   buffer: WaveformWindowCache;
   sourceId: string | null;
   onConfigChange: (next: ScopeAxisConfig) => void;
   onAutoSet: () => void;
-  onMeasurements: (key: string, measurements: ScopeMeasurements | null) => void;
+  onMeasureChannel: (channel: number | null) => void;
 }
 
 /// 波形分支 — 主图 + AxisSettings 侧栏
 const WaveformTabView = memo(function WaveformTabView({
   widget,
   axisConfig,
-  measurements,
+  measurementBundle,
+  measureChannel,
+  autosetWarning,
   channelCount,
   buffer,
   sourceId,
   onConfigChange,
   onAutoSet,
-  onMeasurements,
+  onMeasureChannel,
 }: WaveformTabViewProps) {
   return (
     <div className="flex h-full w-full">
@@ -69,7 +75,6 @@ const WaveformTabView = memo(function WaveformTabView({
           onConfigChange={onConfigChange}
           buffer={buffer}
           sourceId={sourceId}
-          onMeasurements={onMeasurements}
         />
       </div>
       <div className="w-[256px] shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto overflow-x-hidden">
@@ -77,8 +82,11 @@ const WaveformTabView = memo(function WaveformTabView({
           config={axisConfig}
           onChange={onConfigChange}
           channelCount={channelCount}
-          measurements={measurements}
+          measurementBundle={measurementBundle}
+          measureChannel={measureChannel}
+          autosetWarning={autosetWarning}
           onAutoSet={onAutoSet}
+          onMeasureChannel={onMeasureChannel}
         />
       </div>
     </div>
@@ -296,12 +304,38 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
 
   const ensureWidget = useWaveformScopeStore((s) => s.ensureWidget);
   const setConfig = useWaveformScopeStore((s) => s.setConfig);
-  const setMeasurements = useWaveformScopeStore((s) => s.setMeasurements);
+  const setMeasureChannel = useWaveformScopeStore((s) => s.setMeasureChannel);
+  const setAutosetWarning = useWaveformScopeStore((s) => s.setAutosetWarning);
   const pruneWidgets = useWaveformScopeStore((s) => s.pruneWidgets);
   const widgetState = useWaveformScopeStore((s) => s.states[wid]);
 
   // 波形 state 兜底 — memo 保持引用稳定, 避免每次渲染新建对象击穿 WaveformTabView memo
   const fallbackState = useMemo(() => createPerWidgetState(channelCount), [channelCount]);
+  const widgetScopeState = widgetState ?? fallbackState;
+
+  // 波形图的派生序列 (MATH/Filter 接入) — 与图上 series 同一语义, 参与
+  // 后端测量与 AutoSet 周期检测 (慢派生波形必须驱动时基)
+  const derivedSelectors = useMemo(() => {
+    if (!isWaveformTab || wid === 'default-waveform') return [];
+    return computeConnectedInputs(wid, channelCount, rfEdges)
+      .filter((i): i is Extract<ConnectedInput, { kind: 'derived' }> => i.kind === 'derived')
+      .map((i) => ({
+        sink_id: wid,
+        source_id: i.sourceId,
+        source_handle: i.sourceHandle,
+      }));
+  }, [isWaveformTab, wid, channelCount, rfEdges]);
+  const derivedSelectorsKey = JSON.stringify(derivedSelectors);
+
+  // 后端测量流 — 统计/周期在权威缓冲上计算, 随时基窗口重订阅。
+  // 测量与测试数据源彻底解耦: 只依赖 (sourceId, 当前时基窗口)。
+  useWaveformMeasurements({
+    sourceId: waveSourceId,
+    windowMs: timeBaseToWindowMs(widgetScopeState.config.timeBase),
+    derivedSelectors,
+    widgetId: wid,
+    channelCount,
+  });
 
   // 波形停止时暂停概览推送 (后端不再空转全缓冲 min-max), 恢复运行时重订阅
   const waveRunning = (widgetState ?? fallbackState).config.running;
@@ -325,26 +359,55 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
     [wid, channelCount, setConfig]
   );
 
-  const handleMeasurements = useCallback(
-    (key: string, measurements: ScopeMeasurements | null) =>
-      setMeasurements(wid, channelCount, key, measurements),
-    [wid, channelCount, setMeasurements],
+  const handleMeasureChannel = useCallback(
+    (channel: number | null) => setMeasureChannel(wid, channelCount, channel),
+    [wid, channelCount, setMeasureChannel]
   );
 
+  /// AutoSet — 后端周期检测 + 1-2-5 拟合 (原始层/金字塔快照), 前端仅合并建议。
+  /// 时间轴: 检测周期 × 4 个周期; 不可测时回退最近数据窗口拟合。
   const handleAutoSet = useCallback(() => {
-    const win = waveBuffer.get();
-    // 与主图/缩略图共用 computeConnectedInputs, 避免 "空则全通道" 回退分叉
-    const connected =
-      wid === 'default-waveform'
-        ? Array.from({ length: win.channel_count || channelCount }, (_, i) => i)
-        : computeConnectedInputs(wid, channelCount, rfEdges)
-            .filter((i): i is Extract<ConnectedInput, { kind: 'channel' }> => i.kind === 'channel')
-            .map((i) => i.idx);
+    if (!waveSourceId) return;
     // 读最新 config (不经 selector 依赖), 避免测量更新导致回调重建
-    const curConfig = useWaveformScopeStore.getState().states[wid]?.config ?? createPerWidgetState(channelCount).config;
-    const autoNext = computeAutoSetConfig(win, curConfig, connected);
-    setConfig(wid, channelCount, autoNext);
-  }, [wid, channelCount, rfEdges, setConfig, waveBuffer]);
+    const curConfig =
+      useWaveformScopeStore.getState().states[wid]?.config ??
+      createPerWidgetState(channelCount).config;
+    const currentVPerDiv = curConfig.channels.map((c) => c.vPerDiv);
+    const derived = JSON.parse(derivedSelectorsKey) as typeof derivedSelectors;
+    void api
+      .computeWaveformAutoset(waveSourceId, [], derived, curConfig.sharedY, currentVPerDiv)
+      .then((suggestion) => {
+        const nextChannels = curConfig.channels.slice();
+        suggestion.channels.forEach((fit, idx) => {
+          while (nextChannels.length <= idx) {
+            nextChannels.push({ vPerDiv: 1, position: 0, show: true, coupling: 'DC' });
+          }
+          nextChannels[idx] = {
+            ...nextChannels[idx],
+            vPerDiv: fit.v_per_div,
+            position: fit.position,
+          };
+        });
+        setConfig(wid, channelCount, {
+          ...curConfig,
+          timeBase: suggestion.time_base_sec,
+          channels: nextChannels,
+          hPosition: suggestion.h_position,
+          running: suggestion.running,
+        });
+        // 钳位/压扁风险提示 (一次性, 显示在面板顶部)
+        let warning: string | null = null;
+        if (suggestion.clamped) {
+          warning = t(lang, 'autosetClampedWarning')
+            .replace('{actual}', formatTimeBase(suggestion.time_base_sec))
+            .replace('{requested}', formatTimeBase(suggestion.requested_window_sec / 10));
+        } else if (suggestion.shared_y_span_risk) {
+          warning = t(lang, 'autosetSpanRiskWarning');
+        }
+        setAutosetWarning(wid, channelCount, warning);
+      })
+      .catch((e: unknown) => console.error('自动设置失败:', e));
+  }, [wid, channelCount, waveSourceId, derivedSelectorsKey, setConfig, setAutosetWarning, lang]);
 
   if (!tab) return null;
 
@@ -357,18 +420,20 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
   switch (tab.type) {
     case 'waveform':
     case 'waveform-extra': {
-      const st = widgetState ?? fallbackState;
+      const st = widgetScopeState;
       return (
         <WaveformTabView
           widget={waveWidget}
           axisConfig={st.config}
-          measurements={st.measurements}
+          measurementBundle={st.measurements}
+          measureChannel={st.measureChannel}
+          autosetWarning={st.autosetWarning}
           channelCount={channelCount}
           buffer={waveBuffer}
           sourceId={waveSourceId}
           onConfigChange={handleConfigChange}
           onAutoSet={handleAutoSet}
-          onMeasurements={handleMeasurements}
+          onMeasureChannel={handleMeasureChannel}
         />
       );
     }
