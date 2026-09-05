@@ -16,6 +16,34 @@ export interface ChoiceOption {
   value: number;
 }
 
+// ============ 显示量程/刻度 ============
+
+/// 显示控件的量程/刻度配置 (Gauge / Progress 共用)
+/// - manual: 直接使用 min/max, 刻度均分;
+/// - auto:   滑动窗口 (windowSec) 自适应, 1-2-5 取整; 无样本时回退 min/max;
+///   min/max 同时作为「捕获自动量程」的落点。
+export interface DisplayRangeConfig {
+  mode: 'manual' | 'auto';
+  min: number;
+  max: number;
+  /// auto 模式滑动窗口 (秒), 默认 10
+  windowSec: number;
+  /// 主刻度标签数 (含两端), 默认 5, 钳制 2..11
+  majorTicks: number;
+  /// 刻度/读数小数位; 'auto' = 由刻度间距推导
+  precision: 'auto' | number;
+}
+
+/// 显示量程默认值 (创建控件与归一化兜底共用)
+export const DEFAULT_DISPLAY_RANGE: DisplayRangeConfig = {
+  mode: 'manual',
+  min: 0,
+  max: 100,
+  windowSec: 10,
+  majorTicks: 5,
+  precision: 'auto',
+};
+
 export interface KnobConfig extends WidgetBaseConfig {
   min: number;
   max: number;
@@ -87,11 +115,27 @@ export interface ImageConfig {
 export interface GaugeConfig {
   id: string;
   label: string;
-  min: number;
-  max: number;
+  /// 量程/刻度配置 (手动或滑动窗口自适应)
+  range: DisplayRangeConfig;
   unit: string;          // 单位后缀, 如 'V' / 'A' / ''
   /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
   channel: number | null; // 绑定的输入通道 (null = 不绑定)
+}
+
+/// 进度条控件 — 横向/纵向条形显示单通道实时值占比
+export interface ProgressConfig {
+  id: string;
+  label: string;
+  /// 量程/刻度配置 (手动或滑动窗口自适应)
+  range: DisplayRangeConfig;
+  unit: string;
+  orientation: 'horizontal' | 'vertical';
+  /// 是否在条旁显示当前数值
+  showValue: boolean;
+  /// 填充色 HEX; '' = 主题默认色
+  color: string;
+  /** @deprecated 旧工作区兼容；新节点通过 value 输入边绑定。 */
+  channel: number | null;
 }
 
 /// LED 指示灯 — 阈值控制开关色
@@ -237,6 +281,7 @@ export type WidgetConfig =
   | { kind: 'PieChart'; params: PieChartConfig }
   | { kind: 'Image'; params: ImageConfig }
   | { kind: 'Gauge'; params: GaugeConfig }
+  | { kind: 'Progress'; params: ProgressConfig }
   | { kind: 'LED'; params: LEDConfig }
   | { kind: 'NumberDisplay'; params: NumberDisplayConfig }
   | { kind: 'Custom'; params: CustomConfig }
@@ -284,6 +329,7 @@ export function getWidgetCategory(kind: WidgetConfig['kind']): WidgetCategory {
     case 'PieChart':
     case 'Image':
     case 'Gauge':
+    case 'Progress':
     case 'LED':
     case 'NumberDisplay':
     case 'Label':

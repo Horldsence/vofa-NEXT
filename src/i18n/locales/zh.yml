@@ -88,6 +88,9 @@ image: 图像
 gauge: 仪表盘
 led: 指示灯
 numberDisplay: 大数字
+progressBar: 进度条
+math: 数学
+str: 字符串
 custom: 自定义 JS
 addWidget: 添加控件
 removeWidget: 删除
@@ -97,6 +100,37 @@ manual: 手动
 none: 无
 channel: 通道
 template: 模板
+unit: 单位
+fillColor: 填充色
+precision: 小数位
+ledThreshold: 阈值
+ledOnColor: 亮色
+ledOffColor: 灭色
+pieChartSegments: 扇区
+segmentName: 扇区名
+addSegment: 添加扇区
+imageWidth: 宽
+imageHeight: 高
+imageFormat: 像素格式
+formatRgb888: RGB888
+formatRgb565: RGB565
+formatGray8: GRAY8
+mathOp: 运算
+mathInputs: 输入数
+textDisplayFontSize: 字号
+textDisplayMonospace: 等宽字体
+displayRange: 显示量程
+rangeWindow: 自适应窗口 (秒)
+majorTicks: 主刻度数
+tickPrecision: 刻度精度
+precisionAuto: 自动
+captureRange: 捕获当前量程
+autoRangeLive: 当前自动量程
+autoRangeEmpty: 等待样本
+orientation: 方向
+orientationHorizontal: 横向
+orientationVertical: 纵向
+showValue: 显示数值
 minValue: 最小值
 maxValue: 最大值
 step: 步长

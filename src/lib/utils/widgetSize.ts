@@ -50,6 +50,7 @@ export const WIDGET_SIZE_LIMITS: Record<WidgetConfig['kind'], WidgetSizeLimits> 
   PieChart: { minW: 160, minH: 140 },
   Image: PLACEHOLDER_LIMITS,
   Gauge: { minW: 160, minH: 128 },
+  Progress: { minW: 140, minH: 80 },
   LED: { minW: 120, minH: 80 },
   NumberDisplay: { minW: 140, minH: 80 },
   RawData: PLACEHOLDER_LIMITS,

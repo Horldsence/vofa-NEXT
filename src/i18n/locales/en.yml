@@ -88,6 +88,9 @@ image: Image
 gauge: Gauge
 led: LED
 numberDisplay: Number Display
+progressBar: Progress Bar
+math: Math
+str: String
 custom: Custom JS
 addWidget: Add Widget
 removeWidget: Remove
@@ -120,6 +123,37 @@ labelText: Label Text
 optionValue: Return Value
 optionName: Option Name
 addOption: Add Option
+displayRange: Display Range
+rangeWindow: Auto Window (s)
+majorTicks: Major Ticks
+tickPrecision: Tick Precision
+precisionAuto: Auto
+captureRange: Capture Current Range
+autoRangeLive: Current Auto Range
+autoRangeEmpty: Waiting for samples
+orientation: Orientation
+orientationHorizontal: Horizontal
+orientationVertical: Vertical
+showValue: Show Value
+unit: Unit
+fillColor: Fill Color
+precision: Precision
+ledThreshold: Threshold
+ledOnColor: ON Color
+ledOffColor: OFF Color
+pieChartSegments: Segments
+segmentName: Segment
+addSegment: Add Segment
+imageWidth: Width
+imageHeight: Height
+imageFormat: Pixel Format
+formatRgb888: RGB888
+formatRgb565: RGB565
+formatGray8: GRAY8
+mathOp: Operation
+mathInputs: Inputs
+textDisplayFontSize: Font Size
+textDisplayMonospace: Monospace
 invalidRange: Minimum must be less than maximum
 invalidStep: Step must be greater than 0
 invalidValue: Enter a valid number

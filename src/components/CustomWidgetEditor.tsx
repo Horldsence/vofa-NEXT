@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { X, Play, Save, FileCode, AlertCircle, AlertTriangle, RotateCcw, HelpCircle } from 'lucide-react';
 import { CodeEditor } from './CodeEditor';
-import { CustomWidget, evalCustomWidgetDef } from './displays/widgets/CustomWidget';
+import { CustomWidget, evalCustomWidgetDef } from './widgets/custom/CustomWidget';
 import { CustomWidgetHelpModal } from './CustomWidgetHelpModal';
 import type { WidgetConfig } from '../types';
 import { useAppStore } from '../store/appStore';
@@ -307,8 +307,6 @@ export function CustomWidgetEditor({ widget, isOpen, onClose, onSave }: CustomWi
                 <CustomWidget
                   key={previewKey}
                   widget={previewWidget}
-                  onRemove={() => { return undefined; }}
-                  height={200}
                 />
               ) : (
                 <div className="flex flex-col items-center gap-2 p-8 text-text-secondary text-sm">

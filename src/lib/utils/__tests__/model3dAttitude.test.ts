@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeModel3DConfig } from '../createWidget';
+import { normalizeModel3DConfig } from '../widgetNormalize';
 import {
   model3dAttitudePortIds,
   resolveModel3DRotation,

@@ -1,5 +1,4 @@
 import { memo, useEffect, useRef, useState } from 'react';
-import { Settings2 } from 'lucide-react';
 import type { WidgetConfig, SpectrumOutput } from '../../../types';
 import { useAppStore } from '../../../store/appStore';
 import { t } from '../../../i18n';
@@ -7,8 +6,6 @@ import { getThemeColor } from '../waveform/wavechartFormatters';
 
 interface SpectrumChartProps {
   widget: Extract<WidgetConfig, { kind: 'Spectrum' }>;
-  onRemove: () => void;
-  onEdit?: () => void;
 }
 
 /// 频谱展示控件 — 纯展示, 不做任何求解
@@ -21,7 +18,7 @@ interface SpectrumChartProps {
 ///
 /// 与旧实现的区别: 本控件不再拥有 windowSize/windowType/output/sampleRate
 /// 等求解参数 — 这些已上移到 FFT 求解器, 本控件只负责展示。
-export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: SpectrumChartProps) {
+export const SpectrumChart = memo(function SpectrumChart({ widget }: SpectrumChartProps) {
   const { id } = widget.params;
   // 所有 FFT 求解器 (数据源候选)
   const widgets = useAppStore((s) => s.widgets);
@@ -256,15 +253,6 @@ export const SpectrumChart = memo(function SpectrumChart({ widget, onEdit }: Spe
         <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-accent/15 text-accent border border-accent/40 rounded-sm text-[10px] font-semibold pointer-events-none">
           {sourceWidget ? `${sourceWidget.params.label} · ${windowSize} · ${output}` : t(lang, 'spectrumNoSource')}
         </div>
-        {onEdit && (
-          <button
-            className="absolute top-2 right-2 opacity-0 transition-opacity duration-150 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-text-secondary hover:bg-bg-hover hover:text-text-primary bg-bg-scrim"
-            onClick={onEdit}
-            title={t(lang, 'settings')}
-          >
-            <Settings2 size={11} />
-          </button>
-        )}
       </div>
       {/* 侧栏: 设置面板 (固定宽, 纵向滚动, 直接展开) */}
       <div className="w-[240px] flex-shrink-0 border-l border-border bg-bg-sidebar overflow-y-auto flex flex-col gap-2 p-2.5">

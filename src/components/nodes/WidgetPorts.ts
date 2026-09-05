@@ -2,17 +2,42 @@
 /// 与 WidgetNode 解耦: WidgetNode 只消费 getWidgetPorts 的输出 (端口 id/label/domain)
 /// 端口表按 WidgetConfig.kind 分发; StrOp / Command 等动态端口表来自各 crate 已 export 的 helper
 
+import type { Edge } from '@xyflow/react';
 import type { WidgetConfig, DomainType } from '../../types';
+import { rawDataPortId } from '../../lib/utils/nodeDef';
 import { model3dAttitudePortIds } from '../../lib/utils/model3dAttitude';
 import { isUnaryMathOp, STR_OP_PORTS } from '../../types';
 import { commandInputPortNames } from '../../lib/utils/commandFrames';
-import { evalCustomWidgetDef } from '../displays/widgets/CustomWidget';
+import { evalCustomWidgetDef } from '../widgets/custom/CustomWidget';
 
 /// 端口定义 — domain 标注该端口承载的是时域还是频域信号
 export interface WidgetPort {
   id: string;
   label: string;
   domain: DomainType;
+}
+
+/// RawData 动态端口派生 — 每个已连接的 (source, sourceHandle) = 一个输入通道,
+/// label 取源端口 handle; 尚未连接时回退单个默认端口 (便于建立第一条连线)
+export function deriveRawDataPorts(
+  edges: Edge[],
+  nodeId: string
+): { inputs: WidgetPort[]; outputs: WidgetPort[] } {
+  const seen = new Set<string>();
+  const inputs: WidgetPort[] = [];
+  for (const e of edges) {
+    if (e.target !== nodeId) continue;
+    const handle = e.sourceHandle ?? 'data';
+    const key = rawDataPortId(e.source, e.sourceHandle);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const domain: DomainType = handle === 'rx' || handle === 'out' ? 'bytes' : 'time';
+    inputs.push({ id: key, label: handle, domain });
+  }
+  if (inputs.length === 0) {
+    return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
+  }
+  return { inputs, outputs: [] };
 }
 
 /// 获取模块的端口定义
@@ -29,6 +54,7 @@ export function getWidgetPorts(widget: WidgetConfig): {
       return { inputs: [], outputs: [{ id: 'value', label: 'value', domain: 'time' }] };
     case 'Label':
     case 'Gauge':
+    case 'Progress':
     case 'LED':
     case 'NumberDisplay':
       return { inputs: [{ id: 'value', label: 'value', domain: 'time' }], outputs: [] };

@@ -7,7 +7,7 @@
 //! 内置模板: 数学 / 滤波器 / 频谱分析 / CAN / 串口 / 综合演示 (TestData, 无硬件可跑)。
 
 import { type Node, type Edge } from '@xyflow/react';
-import { createWidget } from '../utils/createWidget';
+import { createWidget } from '../utils/widgetDefaults';
 import { WIDGET_DEFAULT_WIDTH } from '../utils/widgetSize';
 import { ALL_BACKUP_SECTIONS, type AppSnapshot } from '../tauri/appExport';
 import { schemaFromProtocolConfig } from '../utils/protocolSchema';

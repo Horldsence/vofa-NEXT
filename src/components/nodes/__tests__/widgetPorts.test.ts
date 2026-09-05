@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { getWidgetPorts } from '../WidgetPorts';
 import type { StrOp, WidgetConfig } from '../../../types';
 import { STR_OP_PORTS } from '../../../types';
-import { createWidget } from '../../../lib/utils/createWidget';
+import { createWidget } from '../../../lib/utils/widgetDefaults';
 
 /// Command 控件 (两帧, var_ref 端口有重复)
 const CMD_WIDGET: WidgetConfig = {

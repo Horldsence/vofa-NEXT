@@ -1,69 +1,19 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps, type Edge } from '@xyflow/react';
+import { Handle, NodeResizer, Position, useUpdateNodeInternals, type NodeProps } from '@xyflow/react';
 import { useAppStore } from '../../store/appStore';
 import { useDockStore } from '../../store/dockStore';
 import { t } from '../../i18n';
 import { X, Settings2 } from 'lucide-react';
 import { widgetMinSize } from '../../lib/utils/widgetSize';
-import { WidgetEmbeddedContext } from '../ui/WidgetCard';
 import { CanvasErrorTooltip, useCanvasNodeError } from '../ui/CanvasErrorTooltip';
-import { getWidgetPorts, type WidgetPort } from './WidgetPorts';
+import { getWidgetPorts, deriveRawDataPorts } from './WidgetPorts';
 import type { WidgetConfig, DomainType } from '../../types';
 import type { Lang } from '../../i18n';
 import { getWidgetCategory, WIDGET_CATEGORY_COLORS } from '../../types';
 import { rawDataPortId } from '../../lib/utils/nodeDef';
-import { resolveRawDataStatusTransport } from '../../lib/utils/rawDataChannel';
 import { widgetToTab } from '../../lib/utils/widgetTab';
-import { Knob } from '../controls/Knob';
-import { ButtonWidget } from '../controls/ButtonWidget';
-import { Radio } from '../controls/Radio';
-import { Checkbox } from '../controls/Checkbox';
-import { Slider } from '../controls/Slider';
-import { Label } from '../controls/Label';
-import { PieChart } from '../displays/widgets/PieChart';
-import { ImageViewer } from '../displays/widgets/ImageViewer';
-import { Gauge } from '../displays/widgets/Gauge';
-import { LED } from '../displays/widgets/LED';
-import { NumberDisplay } from '../displays/widgets/NumberDisplay';
-import { CustomWidget } from '../displays/widgets/CustomWidget';
-import { MathWidget } from '../displays/widgets/MathWidget';
-import { FilterWidget } from '../displays/widgets/FilterWidget';
-import { FFTWidget } from '../displays/widgets/FFTWidget';
-import { IFFTWidget } from '../displays/widgets/IFFTWidget';
-import { TextDisplay } from '../displays/widgets/TextDisplay';
-import { TextInput } from '../controls/TextInput';
-import { StrWidget } from '../displays/widgets/StrWidget';
-import { TextOutWidget } from '../displays/widgets/TextOutWidget';
-
-/// 端口 id 用 `src:<sourceId>:<sourceHandle>` (稳定, 不随源节点 label 变化),
-/// label 取源节点的输出端口名 (handle)。尚未连接任何边时回退到单个默认端口, 便于用户建立第一条连接。
-/// 域标注: 字节源端口 (Transport rx / Protocol out) 标 bytes (黄色), 其余标 time
-function deriveRawDataPorts(
-  edges: Edge[],
-  nodeId: string
-): { inputs: WidgetPort[]; outputs: WidgetPort[] } {
-  const seen = new Set<string>();
-  const inputs: WidgetPort[] = [];
-  for (const e of edges) {
-    // 目标是本节点即视为通道连接; 同一 (source, sourceHandle) 去重为一个端口
-    if (e.target !== nodeId) continue;
-    const handle = e.sourceHandle ?? 'data';
-    const key = rawDataPortId(e.source, e.sourceHandle);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const domain: DomainType = handle === 'rx' || handle === 'out' ? 'bytes' : 'time';
-    inputs.push({ id: key, label: handle, domain });
-  }
-  if (inputs.length === 0) {
-    return { inputs: [{ id: 'data', label: 'data', domain: 'time' }], outputs: [] };
-  }
-  return { inputs, outputs: [] };
-}
-
-/// 端口域颜色 — 频域紫色, 时域蓝色, 字节域黄色, 字符串域橙色 (仅作圆点/手柄描边, 不占文字宽度, 避免遮挡)
-function domainColor(domain: DomainType): string {
-  return domain === 'freq' ? '#ba68c8' : domain === 'bytes' ? '#e5c07b' : domain === 'string' ? '#ffa726' : '#75beff';
-}
+import { WIDGET_REGISTRY, widgetComponent } from '../widgets/registry';
+import { domainColor } from '../widgets/shared/portVisuals';
 
 /// 端口域标注文案 (悬停提示)
 function domainLabel(lang: Lang, domain: DomainType): string {
@@ -76,42 +26,8 @@ function domainLabel(lang: Lang, domain: DomainType): string {
         : t(lang, 'domainTime');
 }
 
-/// RawData 卡片的源连接状态提示 — 生效输入端口的 Transport 未连接时灰字提示,
-/// Error 红字 (无法正确使用); Connected 不显示 (绿点噪音)。
-/// 无连线 / FrameDecoder raw 口 (无固定连接语义) 也不显示。
-const RawDataConnHint = memo(function RawDataConnHint({ nodeId }: { nodeId: string }) {
-  const lang = useAppStore((s) => s.lang);
-  const selectedInput = useAppStore((s) => {
-    const w = s.widgets.find((w) => w.kind === 'RawData' && w.params.id === nodeId);
-    return w?.kind === 'RawData' ? w.params.selectedInput : undefined;
-  });
-  const rfNodes = useAppStore((s) => s.rfNodes);
-  const widgets = useAppStore((s) => s.widgets);
-  const rfEdges = useAppStore((s) => s.rfEdges);
-  const transportId = resolveRawDataStatusTransport(nodeId, selectedInput, rfEdges, rfNodes, widgets);
-  const connState = useAppStore((s) =>
-    transportId ? (s.connectionStates[transportId] ?? 'Disconnected') : null
-  );
-  if (!transportId || connState === 'Connected' || connState === null) return null;
-  const isError = connState === 'Error';
-  return (
-    <span
-      className={`flex items-center gap-1 text-[9px] ${
-        isError ? 'text-red' : 'text-text-secondary'
-      }`}
-      title={t(lang, isError ? 'connError' : 'notConnected')}
-    >
-      <span
-        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-          isError ? 'bg-red' : 'bg-text-muted'
-        }`}
-      />
-      {t(lang, isError ? 'connError' : 'notConnected')}
-    </span>
-  );
-});
-
-/// 控件节点 — 包装实际控件, 添加 React Flow Handle
+/// 控件节点 — 统一外壳 (标题栏/端口/缩放/删除) + 注册表分发内容组件。
+/// 控件本体是「纯内容」组件 (见 widgets/registryTypes.ts), 不含卡片 chrome。
 export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeProps) {
   const widget = data.widget as WidgetConfig | undefined;
   const removeWidget = useAppStore((s) => s.removeWidget);
@@ -127,7 +43,7 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
   const isCanvasHighlighted =
     !!canvasHighlight && canvasHighlight.nodeId === id && !errorMessage;
 
-  // 稳定回调 — memo 包装的嵌入控件 (Gauge/LED/...) 依赖同引用 props 才能跳过重渲染
+  // 稳定回调 — memo 包装的内容组件依赖同引用 props 才能跳过重渲染
   const onRemove = useCallback(() => removeWidget(id), [removeWidget, id]);
   const handleEditCustom = useCallback(() => openCustomEditor(id), [openCustomEditor, id]);
   const updateNodeInternals = useUpdateNodeInternals();
@@ -202,13 +118,12 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
     return <div className="p-2 text-red text-xs">Missing widget</div>;
   }
 
-  const ports = getWidgetPorts(widget);
   // RawData 输入端口动态派生自连接边 (每个已连接的 source = 一个通道端口), 其余控件用静态定义
-  const effectivePorts = widget.kind === 'RawData' ? deriveRawDataPorts(rfEdges, id) : ports;
+  const effectivePorts = widget.kind === 'RawData' ? deriveRawDataPorts(rfEdges, id) : getWidgetPorts(widget);
   // 按控件类别着色 (与 WidgetPalette 分组颜色一致)
+  const def = WIDGET_REGISTRY[widget.kind];
   const categoryColor = WIDGET_CATEGORY_COLORS[getWidgetCategory(widget.kind)];
-  // 支持代码编辑的控件 — 节点头部显示编辑入口 (替代内嵌卡片的悬浮 ⚙)
-  const editable = widget.kind === 'Custom';
+  const editable = def.customEditor != null;
   // 已连接的端口集合 — 用于 Handle 实色填充
   const connectedHandles = new Set<string>();
   for (const e of rfEdges) {
@@ -218,118 +133,8 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
     if (widget.kind === 'RawData' && e.target === id) connectedHandles.add(rawDataPortId(e.source, e.sourceHandle));
   }
 
-  const renderContent = () => {
-    switch (widget.kind) {
-      case 'Knob':
-        return <Knob widget={widget} onRemove={onRemove} />;
-      case 'Slider':
-        return <Slider widget={widget} onRemove={onRemove} />;
-      case 'Button':
-        return <ButtonWidget widget={widget} onRemove={onRemove} />;
-      case 'Radio':
-        return <Radio widget={widget} onRemove={onRemove} />;
-      case 'Checkbox':
-        return <Checkbox widget={widget} onRemove={onRemove} />;
-      case 'Label':
-        return <Label widget={widget} onRemove={onRemove} />;
-      case 'PieChart':
-        return <PieChart widget={widget} onRemove={onRemove} />;
-      case 'Image':
-        return <ImageViewer widget={widget} onRemove={onRemove} />;
-      case 'Gauge':
-        return <Gauge widget={widget} onRemove={onRemove} onEdit={handleEditCustom} />;
-      case 'LED':
-        return <LED widget={widget} onRemove={onRemove} onEdit={handleEditCustom} />;
-      case 'NumberDisplay':
-        return <NumberDisplay widget={widget} onRemove={onRemove} onEdit={handleEditCustom} />;
-      case 'Custom':
-        return (
-          <CustomWidget
-            widget={widget}
-            onRemove={onRemove}
-            onEdit={handleEditCustom}
-            height={140}
-          />
-        );
-      case 'Math':
-        return (
-          <MathWidget
-            widget={widget}
-            onRemove={onRemove}
-            onEdit={handleEditCustom}
-          />
-        );
-      case 'Filter':
-        return (
-          <FilterWidget
-            widget={widget}
-            onRemove={onRemove}
-            onEdit={handleEditCustom}
-          />
-        );
-      case 'FFT':
-        return (
-          <FFTWidget
-            widget={widget}
-            onRemove={onRemove}
-            onEdit={handleEditCustom}
-          />
-        );
-      case 'IFFT':
-        return (
-          <IFFTWidget
-            widget={widget}
-            onRemove={onRemove}
-            onEdit={handleEditCustom}
-          />
-        );
-      case 'TextDisplay':
-        return (
-          <TextDisplay
-            widget={widget}
-            onRemove={onRemove}
-          />
-        );
-      case 'TextInput':
-        return (
-          <TextInput
-            widget={widget}
-            onRemove={onRemove}
-          />
-        );
-      case 'Str':
-        return (
-          <StrWidget
-            widget={widget}
-            onRemove={onRemove}
-          />
-        );
-      case 'TextOut':
-        return (
-          <TextOutWidget
-            widget={widget}
-            onRemove={onRemove}
-          />
-        );
-      case 'Model3D':
-    case 'Spectrum':
-    case 'Waveform':
-    case 'Command':
-    case 'FrameDecoder':
-    case 'RawData':
-    case 'Trigger':
-        // 这些控件在节点内仅显示占位, 实际渲染在数据窗口 (双击节点可打开/激活窗口)
-        return (
-          <div className="flex flex-col items-center gap-1 px-2 py-3 text-text-secondary text-[10px] text-center">
-            <span>{widget.kind}</span>
-            <span className="text-blue text-[9px]">↗ {t(lang, 'nodeOpenWindowHint')}</span>
-            {widget.kind === 'RawData' && <RawDataConnHint nodeId={id} />}
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
+  // 注册表分发内容组件 — 所有 kind 一行查找 (含窗口型控件的占位组件)
+  const Content = widgetComponent(widget.kind);
 
   return (
     <CanvasErrorTooltip message={errorMessage}>
@@ -450,12 +255,10 @@ export const WidgetNode = memo(function WidgetNode({ id, data, selected }: NodeP
           ))}
         </div>
 
-        {/* 主内容区 */}
+        {/* 主内容区 — 注册表分发的纯内容组件 */}
         <div className="flex-1 p-2 flex flex-col justify-center min-w-0">
           <div className="flex flex-col gap-1.5">
-            <WidgetEmbeddedContext.Provider value={true}>
-              {renderContent()}
-            </WidgetEmbeddedContext.Provider>
+            <Content widget={widget} />
           </div>
         </div>
 

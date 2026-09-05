@@ -12,7 +12,7 @@ vi.mock('@xyflow/react', async (importOriginal) => {
 });
 
 import { WidgetNode } from '../WidgetNode';
-import { createWidget } from '../../../lib/utils/createWidget';
+import { createWidget } from '../../../lib/utils/widgetDefaults';
 import { useAppStore } from '../../../store/appStore';
 
 describe('WidgetNode title rename', () => {

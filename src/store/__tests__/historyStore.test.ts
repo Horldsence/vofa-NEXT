@@ -20,7 +20,7 @@ vi.hoisted(() => {
 
 import { useAppStore } from '../appStore';
 import { useHistoryStore } from '../historyStore';
-import { createWidget } from '../../lib/utils/createWidget';
+import { createWidget } from '../../lib/utils/widgetDefaults';
 import type { DataTab } from '../../types';
 
 const FIXED_DATA_TABS: DataTab[] = [

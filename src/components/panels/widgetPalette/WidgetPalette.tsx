@@ -1,40 +1,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAppStore } from '../../../store/appStore';
-import { createWidget } from '../../../lib/utils/createWidget';
+import { createWidget } from '../../../lib/utils/widgetDefaults';
 import { t } from '../../../i18n';
 import {
-  Gauge as KnobIcon,
   Square,
-  CheckSquare,
   Sliders,
-  Tag,
   LineChart,
-  PieChart as PieIcon,
-  Image as ImageIcon,
-  Radio as RadioIcon,
-  Gauge as GaugeIcon,
-  Lightbulb,
-  Hash,
   Code2,
   Plus,
   Minus,
   Divide,
   Sigma,
-  Activity,
   ArrowDownToLine,
   ArrowUpToLine,
   ArrowRightLeft,
   Ban,
-  Box,
   Send,
-  ScanText,
-  Zap,
   Cable,
   Binary,
   Search,
   X,
-  FileText,
   Type,
   Ruler,
   TextSearch,
@@ -54,6 +40,9 @@ import {
 } from 'lucide-react';
 import type { WidgetConfig, TransportConfig, MathOp, StrOp } from '../../../types';
 import { isUnaryMathOp, WIDGET_CATEGORY_COLORS } from '../../../types';
+import { WIDGET_REGISTRY } from '../../widgets/registry';
+import type { WidgetKind } from '../../widgets/registryTypes';
+import type { Lang } from '../../../i18n';
 import type { PaletteEntry, PaletteSection, SectionId } from './paletteModel';
 import { flattenSections, filterSections, sectionAnchors, sectionAtScroll, totalSizeOf, HEADER_SIZE, ROW_SIZE } from './paletteModel';
 import { JumpBar, type JumpTarget } from './JumpBar';
@@ -74,6 +63,21 @@ import { PaletteRow, SectionHeader } from './PaletteRow';
 /// 退场/入场动画时长 — 与 components.css 中 palette-row keyframes 一致
 const EXIT_MS = 150;
 const ENTER_MS = 200;
+
+/// 由注册表派生普通控件条目 — label/icon 单一权威在 widget def
+/// (op/preset 变体与全局节点条目仍在本文件手工列出)
+function entriesForKinds(lang: Lang, kinds: readonly WidgetKind[]): PaletteEntry[] {
+  return kinds.map((kind) => {
+    const def = WIDGET_REGISTRY[kind];
+    return {
+      key: kind,
+      kind,
+      icon: <def.icon size={14} />,
+      label: t(lang, def.labelKey),
+      title: t(lang, def.labelKey),
+    };
+  });
+}
 
 export function WidgetPalette() {
   const lang = useAppStore((s) => s.lang);
@@ -107,32 +111,9 @@ export function WidgetPalette() {
   const isSearching = trimmedQuery.length > 0;
 
   const sections = useMemo<PaletteSection[]>(() => {
-    const inputItems: PaletteEntry[] = [
-      { key: 'Knob', kind: 'Knob', icon: <KnobIcon />, label: t(lang, 'knob'), title: t(lang, 'knob') },
-      { key: 'Button', kind: 'Button', icon: <Square />, label: t(lang, 'button'), title: t(lang, 'button') },
-      { key: 'Radio', kind: 'Radio', icon: <RadioIcon />, label: t(lang, 'radio'), title: t(lang, 'radio') },
-      { key: 'Checkbox', kind: 'Checkbox', icon: <CheckSquare />, label: t(lang, 'checkbox'), title: t(lang, 'checkbox') },
-      { key: 'Slider', kind: 'Slider', icon: <Sliders />, label: t(lang, 'slider'), title: t(lang, 'slider') },
-      { key: 'Command', kind: 'Command', icon: <Send size={14} />, label: t(lang, 'command'), title: t(lang, 'command') },
-      { key: 'FrameDecoder', kind: 'FrameDecoder', icon: <ScanText size={14} />, label: t(lang, 'frameDecoder'), title: t(lang, 'frameDecoder') },
-      { key: 'Trigger', kind: 'Trigger', icon: <Zap size={14} />, label: t(lang, 'trigger'), title: t(lang, 'trigger') },
-      { key: 'TextInput', kind: 'TextInput', icon: <TextCursorInput size={14} />, label: t(lang, 'textInput'), title: t(lang, 'textInput') },
-    ];
+    const inputItems = entriesForKinds(lang, ['Knob', 'Button', 'Radio', 'Checkbox', 'Slider', 'Command', 'FrameDecoder', 'Trigger', 'TextInput']);
 
-    const displayItems: PaletteEntry[] = [
-      { key: 'Waveform', kind: 'Waveform', icon: <LineChart />, label: t(lang, 'waveform'), title: t(lang, 'waveform') },
-      { key: 'PieChart', kind: 'PieChart', icon: <PieIcon />, label: t(lang, 'pieChart'), title: t(lang, 'pieChart') },
-      { key: 'Image', kind: 'Image', icon: <ImageIcon />, label: t(lang, 'image'), title: t(lang, 'image') },
-      { key: 'Gauge', kind: 'Gauge', icon: <GaugeIcon />, label: t(lang, 'gauge'), title: t(lang, 'gauge') },
-      { key: 'LED', kind: 'LED', icon: <Lightbulb />, label: t(lang, 'led'), title: t(lang, 'led') },
-      { key: 'NumberDisplay', kind: 'NumberDisplay', icon: <Hash />, label: t(lang, 'numberDisplay'), title: t(lang, 'numberDisplay') },
-      { key: 'Label', kind: 'Label', icon: <Tag />, label: t(lang, 'label'), title: t(lang, 'label') },
-      { key: 'Spectrum', kind: 'Spectrum', icon: <Activity />, label: t(lang, 'spectrum'), title: t(lang, 'spectrum') },
-      { key: 'Model3D', kind: 'Model3D', icon: <Box />, label: t(lang, 'model3d'), title: t(lang, 'model3d') },
-      { key: 'RawData', kind: 'RawData', icon: <Activity size={14} />, label: t(lang, 'rawData'), title: t(lang, 'rawData') },
-      /// TextDisplay — 字符串展示控件 (与 Trigger.text 端口连接)
-      { key: 'TextDisplay', kind: 'TextDisplay', icon: <FileText size={14} />, label: t(lang, 'textDisplay'), title: t(lang, 'textDisplay') },
-    ];
+    const displayItems = entriesForKinds(lang, ['Waveform', 'PieChart', 'Image', 'Gauge', 'Progress', 'LED', 'NumberDisplay', 'Label', 'Spectrum', 'Model3D', 'RawData', 'TextDisplay']);
 
     /// 算术控件子项 — 每种 op 一个快捷入口
     const mathItems: PaletteEntry[] = [
@@ -162,10 +143,7 @@ export function WidgetPalette() {
     ];
 
     /// 频域求解子项 — FFT (时域→频域) / IFFT (频域→时域)
-    const fftItems: PaletteEntry[] = [
-      { key: 'FFT', kind: 'FFT', icon: <Activity />, label: t(lang, 'fft'), title: t(lang, 'fft') },
-      { key: 'IFFT', kind: 'IFFT', icon: <Activity />, label: t(lang, 'ifft'), title: t(lang, 'ifft') },
-    ];
+    const fftItems = entriesForKinds(lang, ['FFT', 'IFFT']);
 
     /// 字符串操作子项 — 每种 op 一个快捷入口 (端口表见 STR_OP_PORTS)
     const strItems: PaletteEntry[] = [
@@ -189,16 +167,10 @@ export function WidgetPalette() {
       { key: 'TextOut', kind: 'TextOut', icon: <Send size={14} />, label: t(lang, 'textOut'), title: `${t(lang, 'textOut')} — ${t(lang, 'textOutDesc')}` },
     ];
 
-    const customItems: PaletteEntry[] = [
-      {
-        key: 'Custom',
-        kind: 'Custom',
-        icon: <Code2 />,
-        label: t(lang, 'custom'),
-        title: t(lang, 'custom'),
-        onAdd: () => openCustomEditor(),
-      },
-    ];
+    const customItems: PaletteEntry[] = entriesForKinds(lang, ['Custom']).map((entry) => ({
+      ...entry,
+      onAdd: () => openCustomEditor(),
+    }));
 
     /// 数据接口子项 — 每种传输类型一个全局节点入口
     const transportItems: PaletteEntry[] = (

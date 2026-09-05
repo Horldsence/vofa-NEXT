@@ -39,7 +39,6 @@ import { useNumericInputs } from '../../../lib/hooks/useNumericPort';
 
 interface FrameDecoderProps {
   widget: Extract<WidgetConfig, { kind: 'FrameDecoder' }>;
-  onRemove: () => void;
 }
 
 /// 帧解码控件 — 字节流 → 按块定义解析 → 输出端口

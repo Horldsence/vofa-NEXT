@@ -21,7 +21,6 @@ import { CommandSenderSidebar } from './CommandSenderSidebar';
 
 interface CommandSenderProps {
   widget: Extract<WidgetConfig, { kind: 'Command' }>;
-  onRemove: () => void;
 }
 
 type SendFrameFn = (frame: CommandFrame, bytes: Uint8Array) => Promise<boolean>;

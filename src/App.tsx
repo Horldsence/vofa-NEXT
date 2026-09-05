@@ -22,7 +22,7 @@ import { useLayoutStore, AI_FLOAT_MIN_W, AI_FLOAT_MIN_H } from './store/layoutSt
 import { AiChatPanel } from './components/ai/AiChatPanel';
 import { useUpdateStore } from './store/updateStore';
 import { t } from './i18n';
-import { createWidget } from './lib/utils/createWidget';
+import { createWidget } from './lib/utils/widgetDefaults';
 import { openDataPanelAndReveal } from './lib/utils/revealDataTab';
 import { initAiToolHost } from './lib/ai/toolHost';
 import { resolveStartupFlow, shouldShowGuideAfterUpdate } from './lib/startupFlow';

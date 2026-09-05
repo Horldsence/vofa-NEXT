@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { DataTabContent } from '../DataTabContent';
 import { useAppStore } from '../../../store/appStore';
 import { useWaveformScopeStore, createPerWidgetState } from '../../../store/waveformScopeStore';
-import { PieChart } from '../../displays/widgets/PieChart';
+import { PieChart } from '../../widgets/pieChart/PieChartWidget';
 import type { DataTab, WidgetConfig } from '../../../types';
 
 const STABLE_TAB: DataTab = { id: 'stable', type: 'pie', name: 'Stable', widgetId: 'pie-1', closable: true };

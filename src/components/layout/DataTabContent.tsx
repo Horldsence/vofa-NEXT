@@ -1,26 +1,9 @@
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
-import {
-  LineChart as LineChartIcon,
-  Activity as ActivityIcon,
-  PieChart as PieIcon,
-  Image as ImageIcon,
-  Box as BoxIcon,
-  BarChart3 as BarChart3Icon,
-  Send as SendIcon,
-  Cpu as CpuIcon,
-  CircuitBoard as CircuitBoardIcon,
-  ScanText as ScanTextIcon,
-  Zap as ZapIcon,
-  AlertTriangle as AlertTriangleIcon,
-  ListTree as ListTreeIcon,
-  History as HistoryIcon,
-  Settings2 as SettingsIcon,
-} from 'lucide-react';
 import { WaveformChart } from '../displays/waveform/WaveformChart';
 import { RawDataView } from '../displays/rawdata/RawDataView';
-import { PieChart } from '../displays/widgets/PieChart';
-import { ImageViewer } from '../displays/widgets/ImageViewer';
+import { PieChart as PieChartWidget } from '../widgets/pieChart/PieChartWidget';
+import { ImageViewer as ImageWidget } from '../widgets/image/ImageWidget';
 import { SpectrumChart } from '../displays/widgets/SpectrumChart';
 import { CommandSender } from '../displays/command/CommandSender';
 import { CanView } from '../displays/can/CanView';
@@ -30,7 +13,7 @@ import { CompileResultsView } from '../displays/compileResults/CompileResultsVie
 import { OperationHistoryView } from '../displays/history/OperationHistoryView';
 import { NodePropertiesPanel } from '../nodes/NodePropertiesPanel';
 import { FrameDecoder } from '../displays/decoder/FrameDecoder';
-import { Trigger } from '../controls/Trigger';
+import { Trigger } from '../widgets/trigger/TriggerView';
 import { TableView } from '../displays/widgets/TableView';
 import { AxisSettings } from '../displays/waveform/AxisSettings';
 import { SuspenseFallback } from '../ui/SuspenseFallback';
@@ -45,10 +28,7 @@ import { setWaveformOverviewActive } from '../../lib/buffers/sourceManagers';
 import { traceProtocolSource } from '../../store/appStoreHelpers';
 
 // 重型 3D 控件 (Three.js) — 懒加载, 首次切到 model3d Tab 时才拉取
-const Model3DWidget = lazy(() => import('../displays/widgets/Model3DWidget.lazy'));
-
-/// 稳定空回调 — DataPanel 展示控件不可删除; 共享引用让 memo 包装的控件跳过父级重渲染
-const noopRemove = () => { return undefined; };
+const Model3DWidget = lazy(() => import('../widgets/model3d/Model3DWidget.lazy'));
 
 // =====================================================================
 // 各 Tab 类型分支 — 全部 memo 化, 且只接收稳定 props (模块级常量回调 /
@@ -115,40 +95,37 @@ const RawTabView = memo(function RawTabView({ widgetId }: RawTabViewProps) {
 
 interface PieTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'PieChart' }>;
-  onRemove: () => void;
 }
 
-const PieTabView = memo(function PieTabView({ widget, onRemove }: PieTabViewProps) {
+const PieTabView = memo(function PieTabView({ widget }: PieTabViewProps) {
   return (
     <div className="flex h-full p-2">
-      <PieChart widget={widget} onRemove={onRemove} full />
+      <PieChartWidget widget={widget} full />
     </div>
   );
 });
 
 interface ImageTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'Image' }>;
-  onRemove: () => void;
 }
 
-const ImageTabView = memo(function ImageTabView({ widget, onRemove }: ImageTabViewProps) {
+const ImageTabView = memo(function ImageTabView({ widget }: ImageTabViewProps) {
   return (
     <div className="flex h-full p-2">
-      <ImageViewer widget={widget} onRemove={onRemove} full />
+      <ImageWidget widget={widget} full />
     </div>
   );
 });
 
 interface Model3DTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'Model3D' }>;
-  onRemove: () => void;
 }
 
-const Model3DTabView = memo(function Model3DTabView({ widget, onRemove }: Model3DTabViewProps) {
+const Model3DTabView = memo(function Model3DTabView({ widget }: Model3DTabViewProps) {
   return (
     <div className="flex h-full">
       <Suspense fallback={<SuspenseFallback />}>
-        <Model3DWidget widget={widget} onRemove={onRemove} />
+        <Model3DWidget widget={widget} />
       </Suspense>
     </div>
   );
@@ -156,66 +133,61 @@ const Model3DTabView = memo(function Model3DTabView({ widget, onRemove }: Model3
 
 interface SpectrumTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'Spectrum' }>;
-  onRemove: () => void;
 }
 
-const SpectrumTabView = memo(function SpectrumTabView({ widget, onRemove }: SpectrumTabViewProps) {
+const SpectrumTabView = memo(function SpectrumTabView({ widget }: SpectrumTabViewProps) {
   return (
     <div className="flex h-full">
-      <SpectrumChart widget={widget} onRemove={onRemove} />
+      <SpectrumChart widget={widget} />
     </div>
   );
 });
 
 interface CommandTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'Command' }>;
-  onRemove: () => void;
 }
 
-const CommandTabView = memo(function CommandTabView({ widget, onRemove }: CommandTabViewProps) {
+const CommandTabView = memo(function CommandTabView({ widget }: CommandTabViewProps) {
   return (
     <div className="flex h-full p-2">
-      <CommandSender widget={widget} onRemove={onRemove} />
+      <CommandSender widget={widget} />
     </div>
   );
 });
 
 interface TableTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'TableView' }>;
-  onRemove: () => void;
   loopbackHistory: LoopbackResult[] | undefined;
 }
 
-const TableTabView = memo(function TableTabView({ widget, onRemove, loopbackHistory }: TableTabViewProps) {
+const TableTabView = memo(function TableTabView({ widget, loopbackHistory }: TableTabViewProps) {
   return (
     <div className="flex h-full w-full">
-      <TableView widget={widget} onRemove={onRemove} loopbackHistory={loopbackHistory} />
+      <TableView widget={widget} loopbackHistory={loopbackHistory} />
     </div>
   );
 });
 
 interface FrameDecoderTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'FrameDecoder' }>;
-  onRemove: () => void;
 }
 
-const FrameDecoderTabView = memo(function FrameDecoderTabView({ widget, onRemove }: FrameDecoderTabViewProps) {
+const FrameDecoderTabView = memo(function FrameDecoderTabView({ widget }: FrameDecoderTabViewProps) {
   return (
     <div className="flex h-full w-full">
-      <FrameDecoder widget={widget} onRemove={onRemove} />
+      <FrameDecoder widget={widget} />
     </div>
   );
 });
 
 interface TriggerTabViewProps {
   widget: Extract<WidgetConfig, { kind: 'Trigger' }>;
-  onRemove: () => void;
 }
 
-const TriggerTabView = memo(function TriggerTabView({ widget, onRemove }: TriggerTabViewProps) {
+const TriggerTabView = memo(function TriggerTabView({ widget }: TriggerTabViewProps) {
   return (
     <div className="flex h-full w-full">
-      <Trigger widget={widget} onRemove={onRemove} />
+      <Trigger widget={widget} />
     </div>
   );
 });
@@ -407,35 +379,35 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
         (w) => w.params.id === tab.widgetId && w.kind === 'PieChart'
       ) as Extract<WidgetConfig, { kind: 'PieChart' }> | undefined;
       if (!widget) return noWidget;
-      return <PieTabView widget={widget} onRemove={noopRemove} />;
+      return <PieTabView widget={widget} />;
     }
     case 'image': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Image'
       ) as Extract<WidgetConfig, { kind: 'Image' }> | undefined;
       if (!widget) return noWidget;
-      return <ImageTabView widget={widget} onRemove={noopRemove} />;
+      return <ImageTabView widget={widget} />;
     }
     case 'model3d': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Model3D'
       ) as Extract<WidgetConfig, { kind: 'Model3D' }> | undefined;
       if (!widget) return noWidget;
-      return <Model3DTabView widget={widget} onRemove={noopRemove} />;
+      return <Model3DTabView widget={widget} />;
     }
     case 'spectrum': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Spectrum'
       ) as Extract<WidgetConfig, { kind: 'Spectrum' }> | undefined;
       if (!widget) return noWidget;
-      return <SpectrumTabView widget={widget} onRemove={noopRemove} />;
+      return <SpectrumTabView widget={widget} />;
     }
     case 'command': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Command'
       ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
       if (!widget) return noWidget;
-      return <CommandTabView widget={widget} onRemove={noopRemove} />;
+      return <CommandTabView widget={widget} />;
     }
     case 'can':
       return canTabContent;
@@ -457,64 +429,24 @@ export const DataTabContent = memo(function DataTabContent({ tabId }: { tabId: s
       const cmdWidget = widgets.find(
         (w) => w.kind === 'Command' && w.params.loopbackEnabled
       ) as Extract<WidgetConfig, { kind: 'Command' }> | undefined;
-      return <TableTabView widget={widget} onRemove={noopRemove} loopbackHistory={cmdWidget?.params.loopbackHistory} />;
+      return <TableTabView widget={widget} loopbackHistory={cmdWidget?.params.loopbackHistory} />;
     }
     case 'frame-decoder': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'FrameDecoder'
       ) as Extract<WidgetConfig, { kind: 'FrameDecoder' }> | undefined;
       if (!widget) return noWidget;
-      return <FrameDecoderTabView widget={widget} onRemove={noopRemove} />;
+      return <FrameDecoderTabView widget={widget} />;
     }
     case 'trigger': {
       const widget = widgets.find(
         (w) => w.params.id === tab.widgetId && w.kind === 'Trigger'
       ) as Extract<WidgetConfig, { kind: 'Trigger' }> | undefined;
       if (!widget) return noWidget;
-      return <TriggerTabView widget={widget} onRemove={noopRemove} />;
+      return <TriggerTabView widget={widget} />;
     }
     default:
       return null;
   }
 });
 
-/// 数据 Tab 图标 (按类型)
-export function DataTabIcon({ type, size = 12 }: { type: string; size?: number }) {
-  switch (type) {
-    case 'waveform':
-    case 'waveform-extra':
-      return <LineChartIcon size={size} />;
-    case 'raw':
-      return <ActivityIcon size={size} />;
-    case 'pie':
-      return <PieIcon size={size} />;
-    case 'image':
-      return <ImageIcon size={size} />;
-    case 'model3d':
-      return <BoxIcon size={size} />;
-    case 'spectrum':
-      return <BarChart3Icon size={size} />;
-    case 'command':
-      return <SendIcon size={size} />;
-    case 'can':
-      return <CpuIcon size={size} />;
-    case 'logic':
-      return <CircuitBoardIcon size={size} />;
-    case 'frame-decoder':
-      return <ScanTextIcon size={size} />;
-    case 'trigger':
-      return <ZapIcon size={size} />;
-    case 'table-view':
-      return <BarChart3Icon size={size} />;
-    case 'compile-errors':
-      return <AlertTriangleIcon size={size} />;
-    case 'compile-results':
-      return <ListTreeIcon size={size} />;
-    case 'operation-history':
-      return <HistoryIcon size={size} />;
-    case 'node-properties':
-      return <SettingsIcon size={size} />;
-    default:
-      return null;
-  }
-}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { widgetToNodeKind } from '../nodeDef';
-import { createWidget } from '../createWidget';
+import { createWidget } from '../widgetDefaults';
 import type { WidgetConfig } from '../../../types';
 
 describe('widgetToNodeKind - Str', () => {

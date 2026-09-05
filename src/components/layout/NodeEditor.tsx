@@ -11,7 +11,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { useAppStore } from '../../store/appStore';
-import { createWidget } from '../../lib/utils/createWidget';
+import { createWidget } from '../../lib/utils/widgetDefaults';
 import { t } from '../../i18n';
 import { notify } from '../../lib/tauri/notifications';
 import { useContextMenu } from '../../lib/hooks/useContextMenu';

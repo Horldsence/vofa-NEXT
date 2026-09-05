@@ -222,9 +222,10 @@ describe('adoptSourceGraph (widget 配置记录收敛 — 配置模型后端权�
     });
     const after = useAppStore.getState();
     const node = after.rfNodes.find((n) => n.id === 'w-gauge');
-    expect((node?.data as { widget: { params: { max: number } } }).widget.params.max).toBe(200);
+    // 旧顶层 min/max 记录经 normalize 迁移为 range 量程对象
+    expect(((node?.data as unknown as { widget: { params: { range: { max: number } } } }).widget.params.range)?.max).toBe(200);
     const flat = after.widgets.find((w) => w.params.id === 'w-gauge');
-    expect((flat?.params as unknown as { max: number }).max).toBe(200);
+    expect(((flat?.params as unknown as { range: { max: number } }).range)?.max).toBe(200);
     void changed;
   });
 

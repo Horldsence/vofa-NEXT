@@ -27,10 +27,8 @@ import {
   schemaFromProtocolConfig,
 } from '../lib/utils/protocolSchema';
 import { getWidgetPorts } from '../components/nodes/WidgetPorts';
-import {
-  normalizeWidgetConfig,
-  widgetInputValue,
-} from '../lib/utils/createWidget';
+import { widgetInputValue } from '../lib/utils/widgetDefaults';
+import { normalizeWidgetConfig } from '../lib/utils/widgetNormalize';
 import { WIDGET_DEFAULT_WIDTH } from '../lib/utils/widgetSize';
 import type {
   DataTab,
@@ -358,6 +356,7 @@ const KNOWN_WIDGET_KINDS: Record<WidgetConfig['kind'], true> = {
   TextDisplay: true,
   TextInput: true,
   Str: true,
+  Progress: true,
   TextOut: true,
 };
 

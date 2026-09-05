@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { WidgetConfig } from '../../../types';
 import { formatControlValue, snapControlValue, validateNumericRange } from '../numericControl';
-import { normalizeWidgetConfig, widgetInputValue } from '../createWidget';
+import { widgetInputValue } from '../widgetDefaults';
+import { normalizeWidgetConfig } from '../widgetNormalize';
 
 const legacy = (kind: WidgetConfig['kind'], params: Record<string, unknown>) =>
   ({ kind, params } as unknown as WidgetConfig);
@@ -78,3 +79,37 @@ describe('input widget migration', () => {
     expect(widgetInputValue(widget)).toBe(5);
   });
 });
+
+describe('display range migration (Gauge / Progress)', () => {
+  it('migrates legacy gauge top-level min/max into a manual display range', () => {
+    const widget = normalizeWidgetConfig(legacy('Gauge', {
+      id: 'g1', label: 'G', min: 0, max: 200, unit: 'V', channel: 1,
+    }));
+    expect(widget).toMatchObject({
+      kind: 'Gauge',
+      params: {
+        unit: 'V', channel: 1,
+        range: { mode: 'manual', min: 0, max: 200, windowSec: 10, majorTicks: 5, precision: 'auto' },
+      },
+    });
+    // 归一化幂等
+    expect(normalizeWidgetConfig(widget)).toEqual(widget);
+  });
+
+  it('repairs invalid progress range fields and drops unknown shapes', () => {
+    const widget = normalizeWidgetConfig(legacy('Progress', {
+      id: 'p1',
+      range: { mode: 'auto', min: 5, max: 2, windowSec: 0, majorTicks: 99, precision: 9 },
+      orientation: 'diagonal', showValue: false, color: 'red',
+    }));
+    expect(widget.kind).toBe('Progress');
+    if (widget.kind !== 'Progress') return;
+    expect(widget.params.range).toEqual({
+      mode: 'auto', min: 5, max: 105, windowSec: 10, majorTicks: 11, precision: 6,
+    });
+    expect(widget.params.orientation).toBe('horizontal');
+    expect(widget.params.showValue).toBe(false);
+    expect(widget.params.color).toBe('');
+  });
+});
+

@@ -6,7 +6,6 @@ import type { WidgetConfig, LoopbackResult } from '../../../types';
 
 interface TableViewProps {
   widget: Extract<WidgetConfig, { kind: 'TableView' }>;
-  onRemove: () => void;
   /// 可选: 外部注入的回环历史 (来自 CommandSender loopbackHistory)
   loopbackHistory?: LoopbackResult[];
 }

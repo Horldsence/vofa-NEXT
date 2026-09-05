@@ -1,9 +1,6 @@
-import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Unplug } from 'lucide-react';
 import { useAppStore } from '../../../store/appStore';
-import { RawDataBuffer } from '../../../lib/buffers/dataBuffer';
-import { acquireRawDataNode, releaseRawDataNode } from '../../../lib/buffers/rawDataNodeBuffer';
-import { acquireRawDataTransport, releaseRawDataTransport } from '../../../lib/buffers/rawDataTransportBuffer';
 import { classifyRawDataChannel, resolveRawDataChannelKey } from '../../../lib/utils/rawDataChannel';
 import type { RawDataFilterOptions } from '../../../lib/buffers/rawDataSubscription';
 import { useSelection } from '../../../lib/hooks/useSelection';
@@ -13,6 +10,7 @@ import { traceTransportSource } from '../../../store/appStoreHelpers';
 import { t } from '../../../i18n';
 import type { RawDataGrouping, RawDataRepr, DirectionFilter, HexColorMode, AppendMode, SendPanelMode } from './rawDataViewHelpers';
 import { byteToHex, byteToAscii, formatTime } from './rawDataViewHelpers';
+import { useLongTaskMonitor, useRawDataBuffer, useRawNumericSamples } from './useRawDataBuffer';
 import { DroppedInfoPopover } from '../../common/DroppedInfoPopover';
 import { RawDataViewHeader } from './RawDataViewHeader';
 import { RawDataViewContent } from './RawDataViewContent';
@@ -20,8 +18,6 @@ import { RawDataViewNumericContent } from './RawDataViewNumericContent';
 import { RawDataViewSendPanel } from './RawDataViewSendPanel';
 import { RawDataViewSettings } from './RawDataViewSettings';
 import { getRawDataViewPrefs } from '../../../lib/buffers/rawDataViewStore';
-import { getPortSampleStore } from '../../../lib/data/dataClient';
-
 /// 原始数据显示 — Grid/Line × HEX/ASCII 四视图, 支持虚拟滚动、文本选中/行选中复制、时间戳、发送
 /// 纯端口制: 每张卡片独立的输入选择 (存 RawDataConfig.selectedInput), 选择器只列该卡片
 /// 已连接的端口 (Transport.rx / Protocol.out / FrameDecoder.raw / 数值口); 无连线时空态引导。
@@ -163,84 +159,18 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
 
   const backendFilter = isFiltered ? filterOptions : undefined;
 
-  // 节点 buffer。方向和搜索由后端订阅源执行。
-  const [nodeBuffer, setNodeBuffer] = useState<RawDataBuffer | null>(null);
-  useEffect(() => {
-    if (!nodeBufferKey) {
-      setNodeBuffer(null);
-      return;
-    }
-    const acquired = acquireRawDataNode(nodeBufferKey, backendFilter);
-    setNodeBuffer(acquired);
-    return () => releaseRawDataNode(nodeBufferKey, backendFilter);
-  }, [nodeBufferKey, backendFilter]);
-
-  // 字节源通道 buffer: 按 Transport 引用计数获取 (同 Transport 多卡片自动共享同一订阅);
-  // 上溯失败 (无 transportId) 用空 buffer 占位；RawData 不再维持隐藏的全局订阅。
   const byteTransportId = isByteSrc ? (channelInfo?.transportId ?? null) : null;
-  const transportBufferKey = byteTransportId ?? null;
-  const [transportBuffer, setTransportBuffer] = useState<RawDataBuffer | null>(null);
-  useEffect(() => {
-    if (!transportBufferKey) {
-      setTransportBuffer(null);
-      return;
-    }
-    const acquired = acquireRawDataTransport(transportBufferKey, backendFilter);
-    setTransportBuffer(acquired);
-    return () => releaseRawDataTransport(transportBufferKey, backendFilter);
-  }, [transportBufferKey, backendFilter]);
-
-  const emptyByteBufferRef = useRef<RawDataBuffer | null>(null);
-  // 惰性取空 buffer (占位: 无 transportId / 无连线时保持订阅链类型完整)
-  const getEmptyByteBuffer = useCallback((): RawDataBuffer => {
-    emptyByteBufferRef.current ??= new RawDataBuffer();
-    return emptyByteBufferRef.current;
-  }, []);
-  const byteSourceBuffer = !isByteSrc
-    ? null
-    : byteTransportId
-      ? transportBuffer
-      : getEmptyByteBuffer();
-
-  // 调试: 长任务监控 — 主线程单次任务 >100ms 即记录 (卡死定位)
-  useEffect(() => {
-    if (typeof PerformanceObserver === 'undefined') return;
-    try {
-      const obs = new PerformanceObserver((list) => {
-        if (list.getEntries().length > 0) {
-          console.info('[raw-data] long task detected');
-        }
-      });
-      obs.observe({ entryTypes: ['longtask'] });
-      return () => obs.disconnect();
-    } catch {
-      return;
-    }
-  }, []);
-
-  const buffer = nodeBuffer ?? byteSourceBuffer ?? getEmptyByteBuffer();
-
-  // 强制重新渲染的版本号
-  const [version, setVersion] = useState(0);
-  useEffect(() => {
-    return buffer.subscribe(() => setVersion((v) => v + 1));
-  }, [buffer]);
+  const { buffer, version } = useRawDataBuffer({
+    nodeBufferKey,
+    byteTransportId,
+    isByteSrc,
+    backendFilter,
+  });
+  useLongTaskMonitor();
 
   // ---- 数值通道视图 ----
   const numScrollRef = useRef<HTMLDivElement>(null);
-  const sampleStore = useMemo(
-    () =>
-      getPortSampleStore(
-        isNum ? selectedChannel?.sourceId : undefined,
-        isNum ? (selectedChannel?.sourceHandle ?? 'data') : undefined
-      ),
-    [isNum, selectedChannel?.sourceId, selectedChannel?.sourceHandle]
-  );
-  const sampleSnapshot = useSyncExternalStore(
-    sampleStore.subscribe,
-    sampleStore.getSnapshot,
-    sampleStore.getSnapshot
-  );
+  const { snapshot: sampleSnapshot, clearSamples } = useRawNumericSamples(isNum ? selectedChannel : undefined);
   const numRows = sampleSnapshot.rows;
 
   const lineCount = buffer.lineCount;
@@ -297,7 +227,7 @@ export function RawDataView({ widgetId }: { widgetId?: string }) {
 
   const handleClear = () => {
     if (isNum) {
-      sampleStore.clear();
+      clearSamples();
       return;
     }
     void clearData();

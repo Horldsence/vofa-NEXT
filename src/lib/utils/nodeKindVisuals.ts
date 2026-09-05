@@ -11,6 +11,7 @@
 
 import {
   Activity,
+  BarChartHorizontal,
   Binary,
   Box,
   Cable,
@@ -72,6 +73,7 @@ export const WIDGET_KIND_ICONS: Record<WidgetConfig['kind'], LucideIcon> = {
   FFT: Activity,
   IFFT: Activity,
   Str: Type,
+  Progress: BarChartHorizontal,
   TextOut: Send,
   Custom: Code2,
 };

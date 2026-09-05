@@ -1,7 +1,8 @@
 import type { Node } from '@xyflow/react';
 import type { WidgetConfig } from '../../types';
 import type { AppSlice } from './types';
-import { createWidget, normalizeWidgetConfig, widgetInputValue } from '../../lib/utils/createWidget';
+import { createWidget, widgetInputValue } from '../../lib/utils/widgetDefaults';
+import { normalizeWidgetConfig } from '../../lib/utils/widgetNormalize';
 import { widgetToTab } from '../../lib/utils/widgetTab';
 import { WIDGET_DEFAULT_WIDTH } from '../../lib/utils/widgetSize';
 import { withHistoryOp, widgetKindLabelKey } from '../historyStore';

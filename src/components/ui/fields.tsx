@@ -7,14 +7,17 @@ import { useEffect, useState } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { t } from '../../i18n';
 
-export function TextField({ value, label, onCommit }: { value: string; label: string; onCommit: (value: string) => void }) {
+export function TextField({ value, label, onCommit, allowEmpty = false }: {
+  value: string; label: string; onCommit: (value: string) => void; /// 允许提交空串 (如单位后缀)
+  allowEmpty?: boolean;
+}) {
   const lang = useAppStore((s) => s.lang);
   const [draft, setDraft] = useState(value);
   const [invalid, setInvalid] = useState(false);
   useEffect(() => { setDraft(value); setInvalid(false); }, [value]);
   const commit = () => {
     const next = draft.trim();
-    if (next === '') {
+    if (next === '' && !allowEmpty) {
       setInvalid(true);
       return;
     }

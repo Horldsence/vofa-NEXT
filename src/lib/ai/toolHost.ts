@@ -14,7 +14,7 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../../store/appStore';
 import type { Node } from '@xyflow/react';
-import { createWidget } from '../utils/createWidget';
+import { createWidget } from '../utils/widgetDefaults';
 import {
   isGlobalNode,
   type ProtocolNodeData,
@@ -34,9 +34,9 @@ interface AiToolInvoke {
 }
 
 /// 合法 widget kind 清单 (与 `WidgetConfig` 联合类型一致, 供运行时校验)。
-const WIDGET_KINDS = [
+export const WIDGET_KINDS = [
   'Knob', 'Button', 'Radio', 'Checkbox', 'Slider', 'Label', 'Waveform',
-  'PieChart', 'Image', 'Gauge', 'LED', 'NumberDisplay', 'Custom', 'Math',
+  'PieChart', 'Image', 'Gauge', 'Progress', 'LED', 'NumberDisplay', 'Custom', 'Math',
   'Filter', 'FFT', 'IFFT', 'Spectrum', 'Model3D', 'Command', 'FrameDecoder',
   'TableView', 'RawData', 'Trigger', 'TextDisplay', 'TextInput', 'Str', 'TextOut',
 ] as const;

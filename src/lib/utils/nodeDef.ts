@@ -11,7 +11,7 @@ import type { WidgetConfig, MathOp, StrOp, WindowType, SpectrumOutput, DecoderBl
 import type { TransportConfig, ProtocolConfig } from '../../types';
 import type { FilterConfig } from '../../types/common';
 import { isUnaryMathOp } from '../../types';
-import { evalCustomWidgetDef } from '../../components/displays/widgets/CustomWidget';
+import { evalCustomWidgetDef } from '../../components/widgets/custom/CustomWidget';
 import type { Edge } from '@xyflow/react';
 
 /// 与后端 `dsp_filter::FilterConfig` 一一对应 (serde tag="preset", rename_all="lowercase" 仅影响 variant 名)
@@ -196,6 +196,7 @@ export function widgetToNodeKind(widget: WidgetConfig): NodeKind {
     case 'PieChart':
     case 'Image':
     case 'Gauge':
+    case 'Progress':
     case 'LED':
     case 'NumberDisplay':
     case 'Label':
