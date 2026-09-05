@@ -30,7 +30,19 @@ fn spawn_workspace_autosave(app: &AppHandle, dir: PathBuf) {
             std::sync::Arc::clone(&state.source_graphs),
         )
     };
+    let app = app.clone();
     tauri::async_runtime::spawn(async move {
+        // 启动恢复为后台异步任务 — 落盘先等恢复完成门, 避免把恢复中途的
+        // 半成品状态 (部分 tab 图已应用) 写回 workspace.json
+        let mut restore_done = {
+            let state = app.state::<AppState>();
+            state.subscribe_restore_done()
+        };
+        while !*restore_done.borrow_and_update() {
+            if restore_done.changed().await.is_err() {
+                break;
+            }
+        }
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(800)).await;
             let should_save = {

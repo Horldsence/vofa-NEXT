@@ -84,6 +84,10 @@ pub struct AppState {
     pub waveform_snapshots: Arc<Mutex<HashMap<String, WaveformSnapshot>>>,
     /// 快照 id 单调序号。
     pub next_waveform_snapshot_id: AtomicU64,
+    /// 启动工作区恢复完成门 — setup 阶段恢复在后台任务执行 (不阻塞主线程,
+    /// 事件循环可立即绘制启动页); `workspace_get` / 落盘任务 await 此门,
+    /// 保持"恢复先于前端水合"的时序语义
+    restore_done_tx: tokio::sync::watch::Sender<bool>,
 }
 
 impl AppState {
@@ -122,6 +126,7 @@ impl AppState {
         )));
         let pipeline_config = Arc::new(RwLock::new(PipelineConfig::default()));
         let data_bus = DataBus::default();
+        let (restore_done_tx, _restore_done_rx) = tokio::sync::watch::channel(false);
 
         let eval: GraphEvalState = build_graph_eval_state(
             data_bus,
@@ -174,7 +179,18 @@ impl AppState {
             pipeline_config,
             waveform_snapshots: Arc::new(Mutex::new(HashMap::new())),
             next_waveform_snapshot_id: AtomicU64::new(1),
+            restore_done_tx,
         }
+    }
+
+    /// 订阅启动恢复完成门 (workspace_get / 落盘任务 await 用)
+    pub fn subscribe_restore_done(&self) -> tokio::sync::watch::Receiver<bool> {
+        self.restore_done_tx.subscribe()
+    }
+
+    /// 标记启动恢复已完成 (无论成败) — 放行所有 await 方
+    pub fn signal_restore_done(&self) {
+        let _ = self.restore_done_tx.send(true);
     }
 
     /// 抽取图评估所需的 Arc 字段 (供 ticker / 数据平面持有)

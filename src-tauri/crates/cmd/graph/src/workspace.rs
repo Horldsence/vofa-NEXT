@@ -17,6 +17,7 @@ use tauri::State;
 use app_state::AppState;
 use buffer_graph::Edge;
 use kind::NodeDef;
+use vofa_core::Result;
 
 use graph_ops::apply_tab_graph_parts;
 
@@ -41,11 +42,22 @@ pub struct TabGraphSnapshot {
 }
 
 /// 读取工作区水合快照;启动时未恢复过持久化工作区返回 None。
+///
+/// 启动恢复在后台任务执行 (不阻塞主线程/事件循环), 此处先 await 恢复完成门,
+/// 保证前端水合时工作区已就绪 (恢复失败/无持久化也会放行 → 返回 None, 默认启动)。
+/// Tauri 约定: 含引用入参的 async 命令必须返回 Result (恒为 Ok, 仅满足签名)。
 #[tauri::command]
-pub fn workspace_get(state: State<'_, AppState>) -> Option<WorkspaceSnapshot> {
+pub async fn workspace_get(state: State<'_, AppState>) -> Result<Option<WorkspaceSnapshot>> {
+    let mut restore_done = state.subscribe_restore_done();
+    while !*restore_done.borrow_and_update() {
+        // 发送端丢弃 (AppState 常驻, 理论不发生) 时按未恢复处理
+        if restore_done.changed().await.is_err() {
+            break;
+        }
+    }
     let ws = state.workspace.lock();
     if !ws.restored {
-        return None;
+        return Ok(None);
     }
     let (tabs, data_tabs, positions) =
         (ws.tabs.clone(), ws.data_tabs.clone(), ws.positions.clone());
@@ -81,13 +93,13 @@ pub fn workspace_get(state: State<'_, AppState>) -> Option<WorkspaceSnapshot> {
         ordered
     };
     let version = state.graphs_version.load(Ordering::Relaxed);
-    Some(WorkspaceSnapshot {
+    Ok(Some(WorkspaceSnapshot {
         version,
         tabs,
         data_tabs,
         graphs,
         positions,
-    })
+    }))
 }
 
 /// 提交 tab 元数据 (控件 tab + 数据面板 tab) — 增删/改名/重排后整表覆盖。

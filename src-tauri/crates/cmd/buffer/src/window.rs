@@ -51,6 +51,19 @@ pub fn set_window_acrylic<R: Runtime>(window: WebviewWindow<R>, enabled: bool) {
     });
 }
 
+/// 显示主窗口 (不关启动页) — 前端在设置加载完成后先调用本命令解除隐藏窗口的
+/// 渲染节流, 待首帧真正绘制 (rAF 确认) 后再调 [`close_splashscreen`],
+/// 消除"主窗口已显示但内容未绘制完成"的透明空白期。
+#[tauri::command]
+pub fn show_main_window(app: tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(main) = app.get_webview_window("main") {
+        if let Err(e) = main.show().and_then(|()| main.set_focus()) {
+            log::warn!("show main window failed: {e}");
+        }
+    }
+}
+
 /// 关闭启动页窗口并显示主窗口。
 ///
 /// 前端在应用初始化完成（设置加载完毕、首帧已渲染）后调用本命令。

@@ -172,11 +172,29 @@ function App() {
     }
   }, [workspaceReady, workspaceRestored]);
 
-  // 设置加载完成后: 关闭启动页并显示主窗口
-  // 注意不能用 requestAnimationFrame 等待首帧 — 窗口隐藏时 rAF 会被系统节流不触发
+  // 设置加载完成后: 显示主窗口, 待首帧真正绘制后再关启动页。
+  // 顺序很重要 — 主窗口一直隐藏 (visible:false), 隐藏窗口的渲染被系统节流,
+  // 先 show() 解除节流, 再等 2 次 rAF (保证至少一帧已合成) 才关启动页,
+  // 消除"主窗口已显示但内容未绘制完成"的透明空白期; 超时兜底防 rAF 异常卡住启动页
   useEffect(() => {
     if (!settingsLoaded) return;
-    void invoke('close_splashscreen');
+    void invoke('show_main_window');
+    let closed = false;
+    const closeSplash = () => {
+      if (closed) return;
+      closed = true;
+      void invoke('close_splashscreen');
+    };
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(closeSplash);
+    });
+    const bail = setTimeout(closeSplash, 1500);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(bail);
+    };
   }, [settingsLoaded]);
 
   // AI 前端托管工具宿主 — 监听 ai_tool_invoke, 让内置 AI 编辑节点/操作软件 (幂等)

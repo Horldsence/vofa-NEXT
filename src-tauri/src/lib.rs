@@ -71,16 +71,21 @@ pub fn run() {
             app.manage(ai::AiState::new(ai_config_dir.clone()));
 
             // 工作区启动恢复: widget 配置 + 画布位置 + tab 元数据 + 各 tab 源图
-            // 落盘在 app config dir 的 workspace.json; 恢复后逐 tab 重编译,
-            // 前端就绪后经 workspace_get 水合 (返回 false = 无持久化, 默认启动)
-            let restored = tauri::async_runtime::block_on(async {
-                let state = app.state::<AppState>();
-                graph::restore_workspace(&state, &ai_config_dir).await
+            // 落盘在 app config dir 的 workspace.json; 恢复在后台任务执行 (不阻塞
+            // 主线程 — 事件循环可立即绘制启动页, 否则 setup 期间整段"无窗口"),
+            // workspace_get / 落盘任务 await 恢复完成门保持原时序
+            // (返回 false = 无持久化, 默认启动)
+            let app_handle = app.handle().clone();
+            let restore_dir = ai_config_dir.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app_handle.state::<AppState>();
+                let restored = graph::restore_workspace(&state, &restore_dir).await;
+                state.signal_restore_done();
+                log::info!(
+                    "workspace restore: {}",
+                    if restored { "loaded" } else { "none" }
+                );
             });
-            log::info!(
-                "workspace restore: {}",
-                if restored { "loaded" } else { "none" }
-            );
 
             // 后台任务: 工作区防抖落盘 / 推送 ticker / 启动页兜底
             app_state::spawn_background_tasks(app.handle(), ai_config_dir);
@@ -176,6 +181,7 @@ pub fn run() {
             inspect_element,
             // 窗口
             set_window_acrylic,
+            show_main_window,
             close_splashscreen,
             // 应用更新
             check_update,
